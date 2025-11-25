@@ -16,7 +16,6 @@
 # 🔥 Featured News
 
 - [2025.10.1] The call for papers is now open for [the first International Conference on AI Scientist (ICAIS)](https://icais.ai), to be held in Beijing!
-- [2025.09.26] We have released this repository for the first time, with the open-source code for the initial stage available at [ResearAI/ResearStudio](https://github.com/ResearAI/ResearStudio)
 
 ---
 
@@ -31,9 +30,6 @@ We have now demonstrated that AI can genuinely push the frontier forward across 
 ### Open Source Plan
 Our entire open source plan will be divided into four phases.
 
-#### Phase 0: General Agent Framework
-We have already open-sourced the front-end and back-end code at [ResearAI/ResearStudio](https://github.com/ResearAI/ResearStudio). You can use it as a foundation to build various professional Agents with your own custom tools.
-
 #### Phase 1: Application-Based Access 
 To ensure safety, we will invite a small group of users to try DeepScientist. If you have a task you're ready to explore, please fill out our [Waitlist Form](https://forms.gle/8FnGgqgBVEKv3q6a7). We will collaborate with you to further refine DeepScientist.
 
@@ -43,7 +39,6 @@ To ensure safety, we will invite a small group of users to try DeepScientist. If
 
 After ensuring safety, we will open-source our foundational components. At this stage, you can immediately start building your own DeepScientist or replicating our work (perhaps an "Open-DeepScientist," which we strongly encourage!):
 
-- Implementing DeepScientist doesn't require massive engineering efforts, especially with our foundational components. It took us only about one month starting from [ResearStudio](https://github.com/ResearAI/ResearStudio).
 
 - Your implementation could very well be more elegant and efficient than ours. We admit that our implementation of components and workflows still contains some unpolished code and design.
 
@@ -77,37 +72,31 @@ We will act responsibly, conducting long-term testing and adjustments to prevent
 
 ###### Comment 3
 
-* Q: Will I have a chance to reproduce or improve DeepScientist?
-* A: Of course! We built it on top of [ResearStudio](https://github.com/ResearAI/ResearStudio) in just two months. I believe you could easily create something like an “Open-DeepScientist” or “nano-DeepScientist.” We strongly encourage the community to pursue such projects.
-
-
-###### Comment 4
-
 * Q: Do you believe there is a Scaling Law for AI-driven scientific discovery?
 * A: I firmly believe that AI-driven scientific discovery follows its own Scaling Law. But it’s not an isolated phenomenon—it’s a natural extension and amplification of the accelerating pace of human discovery. Throughout history, the speed of scientific progress has continuously increased, and in modern times this acceleration is especially tangible. Ever since middle school, I loved playing *Sid Meier’s Civilization*, where knowledge and technology accumulation leads to faster “Eureka moments.” I believe we are now entering a real-world “Eureka Era” driven by AI.
 
 
 
-###### Comment 5
+###### Comment 4
 
 * Q: At present, so-called “AI scientists” seem more like “high-throughput trial-and-error machines” rather than true “discoverers” with deep insights. How can we improve their scientific intuition?
 * A: First, as model capabilities grow, I can already sense improvements in their ability to identify limitations in scientific questions. Early on, with DeepSeek-R1, its observations were very superficial. But after the release of Qwen-3-235B-Thinking-2507, its insight and hypothesis-generation capabilities clearly improved. (In my view, only models stronger than this Qwen-3-235B version are capable of generating truly valuable discoveries.) RLVR is a promising direction, but it comes with challenges: high costs and low training efficiency (roughly 1000 GPU hours to produce just one useful sample).
 
 
-###### Comment 6
+###### Comment 5
 
 * Q: The total cost of this research is about $100,000. Compared to funding a human PhD student for a similar research cycle, do you think this is cost-effective at the current stage?
 * A: I think both have their strengths. Failure is the mother of success, and the biggest advantage of AI is its ability to explore continuously without fatigue. On one hand, we can rely on AI to try many different strategies—even discovering that a certain approach fails in a field is itself a meaningful finding. On the other hand, this is just the beginning. In the coming years, AI costs will decrease significantly due to both improved capabilities and cheaper reasoning.
 
 
 
-###### Comment 7
+###### Comment 6
 
 * Q: One of the most exciting findings in your paper is the “near-linear relationship” between computational resources and research output. Do you predict this trend will continue indefinitely with more GPUs, or will it soon hit a bottleneck? What might that next bottleneck be?
 * A: I don’t think it will continue indefinitely. We are about to hit a bottleneck. The next bottleneck will be “exploration efficiency,” not “exploration scale.” Right now, most compute is wasted on low-value explorations. In the future, the challenge is to avoid such low-value work. While DeepScientist occasionally discovers new methods to improve performance through trial and error, the gains are often marginal. True breakthroughs will only come when we can perform large-scale, high-value exploration.
 
 
-###### Comment 8
+###### Comment 7
 
 * Q: Are there any other surprises?
 * A: Yes! In early October, we will both fully open-source a tool. I believe every researcher will be interested in it—it significantly enhances DeepScientist’s demonstration capabilities.
@@ -147,11 +136,11 @@ We will act responsibly, conducting long-term testing and adjustments to prevent
 
 Join the conversation and exchange ideas in these online communities:
 
-*   **AI Scientist Research Discussion Group:** [![Platform](https://img.shields.io/badge/WeChat-07C160?style=for-the-badge&logo=wechat&logoColor=white)]() <!-- Removed placeholder link -->
-    </br>
-    <img src="https://github.com/ResearAI/Awesome-AI-Scientist/blob/main/img/WeChat.jpg?raw=true" alt="AI Scientist WeChat Group QR Code" width="150">
-    </br>
+**AI Scientist Research Discussion Group:** [![Platform](https://img.shields.io/badge/WeChat-07C160?style=for-the-badge&logo=wechat&logoColor=white)]() 
 
+If you’re interested in AI Scientist, you can add **nauhcutnil** on WeChat to be invited to the AI Scientist discussion group. Please include the note **“AIScientist Wechat Group”** when sending your friend request.
+
+  
 
 
 ```
