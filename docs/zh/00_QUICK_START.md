@@ -13,14 +13,10 @@
 
 ## 1. 安装
 
-先安装 `uv`，再全局安装 Codex 和 DeepScientist：
+全局安装 DeepScientist：
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-```bash
-npm install -g @openai/codex @researai/deepscientist
+npm install -g @researai/deepscientist
 ```
 
 如果你后续还要在本地编译论文 PDF，也可以顺手安装轻量级 LaTeX 运行时：
@@ -39,7 +35,31 @@ ds
 
 DeepScientist 现在使用 `uv` 管理锁定的本地 Python 运行时。如果你已经激活了 conda 环境，且其中的 Python 满足 `>=3.11`，`ds` 会优先使用它；否则 `uv` 会自动在 DeepScientist home 下准备受管 Python。
 
+如果你的机器上还没有 `uv`，第一次运行 `ds` 时会自动在本地安装一份。npm 包本身也已经带上了 Codex CLI 依赖，因此不需要再单独执行 `npm install -g @openai/codex`；但你后续仍然可能需要手动运行一次 `codex` 完成登录。
+
 默认情况下，DeepScientist home 在 macOS / Linux 上是 `~/DeepScientist`，在 Windows 上是 `%USERPROFILE%\\DeepScientist`。如果你希望放到别的路径，可以直接使用 `ds --home <path>`。
+
+如果你希望直接把“当前工作目录”作为 DeepScientist home，可以运行：
+
+```bash
+ds --hero
+```
+
+它等价于 `ds --home "$PWD"`。
+
+如果你是从源码仓库安装，并希望把默认的 CLI 安装基路径改到别的位置，可以使用：
+
+```bash
+bash install.sh --dir /data/DeepScientist
+```
+
+如果你已经有一个正在使用的 DeepScientist home，之后又想安全迁移到别的路径，可以使用：
+
+```bash
+ds migrate /data/DeepScientist
+```
+
+`ds migrate` 会先显示当前绝对路径和目标绝对路径，停止托管 daemon，要求二次确认，校验复制结果，并在确认迁移成功后才删除旧路径。
 
 默认情况下，网页会运行在：
 

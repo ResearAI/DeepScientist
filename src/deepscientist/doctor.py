@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import socket
 import subprocess
 import sys
@@ -110,11 +111,33 @@ def _check_home_writable(home: Path) -> dict[str, Any]:
     )
 
 
-def _check_uv() -> dict[str, Any]:
-    resolved = which("uv")
+def _resolve_uv_binary(home: Path) -> str | None:
+    for env_name in ("DEEPSCIENTIST_UV", "UV_BIN"):
+        override = str(os.environ.get(env_name) or "").strip()
+        if not override:
+            continue
+        override_path = Path(override).expanduser()
+        if override_path.exists():
+            return str(override_path)
+        resolved_override = which(override)
+        if resolved_override:
+            return resolved_override
+
+    local_candidates = [
+        home / "runtime" / "tools" / "uv" / "bin" / "uv",
+        home / "runtime" / "tools" / "uv" / "bin" / "uv.exe",
+    ]
+    for candidate in local_candidates:
+        if candidate.exists():
+            return str(candidate)
+    return which("uv")
+
+
+def _check_uv(home: Path) -> dict[str, Any]:
+    resolved = _resolve_uv_binary(home)
     if not resolved:
         guidance = [
-            "Install uv, then rerun `ds doctor`.",
+            "Run `ds` once so DeepScientist can bootstrap a local uv runtime manager automatically.",
         ]
         if sys.platform == "win32":
             guidance.append('PowerShell: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`')
@@ -124,7 +147,7 @@ def _check_uv() -> dict[str, Any]:
             check_id="uv",
             label="uv runtime manager",
             ok=False,
-            summary="uv is not available on PATH.",
+            summary="uv is not available to DeepScientist.",
             errors=["DeepScientist cannot provision or repair its local Python runtime without `uv`."],
             guidance=guidance,
         )
@@ -238,10 +261,10 @@ def _check_codex(config_manager: ConfigManager) -> dict[str, Any]:
             check_id="codex",
             label="Codex CLI",
             ok=False,
-            summary="Codex CLI is not available on PATH.",
+            summary="Codex CLI is not available to DeepScientist.",
             errors=[f"Runner binary `{binary}` could not be resolved."],
             guidance=[
-                "Install Codex first: `npm install -g @openai/codex`.",
+                "Run `npm install -g @researai/deepscientist` again so the bundled Codex dependency is installed.",
                 "Then run `codex` once and complete login.",
             ],
             details={"binary": binary},
@@ -413,7 +436,7 @@ def run_doctor(home: Path, *, repo_root: Path) -> dict[str, Any]:
     checks = [
         _check_python_runtime(),
         _check_home_writable(home),
-        _check_uv(),
+        _check_uv(home),
         _check_git(config_manager),
         _check_config_validation(config_manager),
         _check_runner_support(config_manager),

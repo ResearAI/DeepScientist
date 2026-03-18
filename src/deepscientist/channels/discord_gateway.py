@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect as websocket_connect
 
+from ..connector_runtime import format_conversation_id
 from ..shared import read_json, utc_now, write_json
 
 
@@ -24,11 +25,17 @@ class DiscordGatewayService:
         config: dict[str, Any],
         on_event: Callable[[dict[str, Any]], None],
         log: Callable[[str, str], None] | None = None,
+        profile_id: str | None = None,
+        profile_label: str | None = None,
+        encode_profile_id: bool = False,
     ) -> None:
         self.home = home
         self.config = config
         self.on_event = on_event
         self.log = log or self._default_log
+        self.profile_id = str(profile_id or "").strip() or None
+        self.profile_label = str(profile_label or "").strip() or None
+        self._encode_profile_id = bool(encode_profile_id and self.profile_id)
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._heartbeat_stop = threading.Event()
@@ -37,6 +44,8 @@ class DiscordGatewayService:
         self._seq: int | None = None
         self._bot_user_id: str | None = None
         self._root = home / "logs" / "connectors" / "discord"
+        if self.profile_id:
+            self._root = self._root / "profiles" / self.profile_id
         self._runtime_path = self._root / "runtime.json"
 
     def start(self) -> bool:
@@ -71,7 +80,7 @@ class DiscordGatewayService:
         self._thread = threading.Thread(
             target=self._run,
             daemon=True,
-            name="deepscientist-discord-gateway",
+            name=f"deepscientist-discord-gateway-{self.profile_id or 'default'}",
         )
         self._thread.start()
         return True
@@ -288,11 +297,21 @@ class DiscordGatewayService:
             "sender_id": sender_id,
             "sender_name": str(author.get("global_name") or author.get("username") or sender_id).strip(),
             "message_id": str(data.get("id") or "").strip(),
-            "conversation_id": f"discord:{chat_type}:{channel_id}",
+            "conversation_id": self._conversation_id(chat_type, channel_id),
+            "profile_id": self.profile_id,
+            "profile_label": self.profile_label,
             "text": normalized_text,
             "mentioned": mentioned,
             "raw_event": data,
         }
+
+    def _conversation_id(self, chat_type: str, chat_id: str) -> str:
+        return format_conversation_id(
+            "discord",
+            chat_type,
+            chat_id,
+            profile_id=self.profile_id if self._encode_profile_id else None,
+        )
 
     @staticmethod
     def _strip_bot_mention(text: str, bot_user_id: str) -> str:
@@ -354,6 +373,10 @@ class DiscordGatewayService:
         state = read_json(self._runtime_path, {}) or {}
         if not isinstance(state, dict):
             state = {}
+        if self.profile_id:
+            state["profile_id"] = self.profile_id
+        if self.profile_label:
+            state["profile_label"] = self.profile_label
         state.update(patch)
         write_json(self._runtime_path, state)
 

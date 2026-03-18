@@ -77,7 +77,7 @@ export const HERO_COPY = {
   tagline: 'Survey / Experiment / Publish',
   primaryCta: 'Start Research',
   secondaryCta: 'List Quest',
-  supportLine: 'Notebook / PDF / AutoFigure / Copilot, fully connected',
+  supportLine: 'DeepScientist keeps your full research loop local, reproducible, and continuously moving.',
 }
 
 export const HERO_RESEARCH_STEPS: HeroResearchStep[] = [

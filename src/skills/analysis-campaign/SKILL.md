@@ -22,7 +22,7 @@ Do not invent a separate experiment system for those cases.
 - Treat `artifact.interact(...)` as the main long-lived communication thread across TUI, web, and bound connectors.
 - If `artifact.interact(...)` returns queued user requirements, treat them as the highest-priority user instruction bundle before continuing the campaign.
 - Immediately follow any non-empty mailbox poll with another `artifact.interact(...)` update that confirms receipt; if the request is directly answerable, answer there, otherwise say the current subtask is paused, give a short plan plus nearest report-back point, and handle that request first.
-- Emit `artifact.interact(kind='progress', reply_mode='threaded', ...)` only when there is real user-visible progress: the first meaningful signal of long work, a meaningful checkpoint, or an occasional keepalive during truly long work. Do not update by tool-call cadence.
+- Emit `artifact.interact(kind='progress', reply_mode='threaded', ...)` when there is real user-visible progress: the first meaningful signal of long work, a meaningful checkpoint, or a concise keepalive if active work has drifted beyond roughly 10 to 30 tool calls without a user-visible update.
 - Prefer `bash_exec` for campaign slice commands so each run has a durable session id, quest-local log folder, and later `read/list/kill` control.
 - Keep progress updates chat-like and easy to understand: say what changed, what it means, and what happens next.
 - Default to plain-language summaries. Do not mention file paths, artifact ids, branch/worktree ids, session ids, raw commands, or raw logs unless the user asks or needs them to act.
@@ -311,14 +311,20 @@ For writing-facing campaigns, prefer running `claim-carrying` slices before `sup
 
 For slices that run longer than a quick smoke check:
 
-- launch them with `bash_exec(mode='detach', ...)`
-- monitor them with `bash_exec(mode='list')` and `bash_exec(mode='read', id=...)`
+- first run a bounded smoke test so the slice command, outputs, and metric path are validated cheaply
+- once the smoke test passes, launch the real slice with `bash_exec(mode='detach', ...)` and normally leave `timeout_seconds` unset for that long run
+- monitor them with `bash_exec(mode='list')` and `bash_exec(mode='read', id=..., tail_limit=..., order='desc')`
+- after the first read, prefer `bash_exec(mode='read', id=..., after_seq=last_seen_seq, tail_limit=..., order='asc')` for incremental monitoring
+- if ids become unclear, recover them through `bash_exec(mode='history')`
+- launch long slices with a structured `comment` such as `{stage, goal, action, expected_signal, next_check}`
+- use `silent_seconds`, `progress_age_seconds`, `signal_age_seconds`, and `watchdog_overdue` from `bash_exec(mode='list'|'read', ...)` as the default stall checks
 - use an explicit wait-and-check cadence of about `60s`, `120s`, `300s`, `600s`, `1800s`, then every `1800s` while still running
-- if needed, use shell `sleep` between checks or an equivalent bounded `bash_exec(mode='await', id=..., timeout_seconds=...)`
+- if needed, use an explicit bounded wait such as `bash_exec(command='sleep 60', mode='await', timeout_seconds=70)` or `bash_exec(mode='await', id=..., timeout_seconds=...)` between checks
 - after the first meaningful signal and then at real checkpoints (e.g., completion, or roughly every ~30 minutes if still running), send `artifact.interact(kind='progress', ...)` so the user sees slice status, latest evidence, and the next check point
 - after each completed sleep / await monitoring cycle for an active slice, send another concise `artifact.interact(kind='progress', ...)` update rather than going silent
 - include the estimated next reply time or next check time in those monitoring updates
-- stop them with `bash_exec(mode='kill', id=...)` if the slice is invalid, wedged, or superseded
+- stop them with `bash_exec(mode='kill', id=..., wait=true, timeout_seconds=...)` if the slice is invalid, wedged, or superseded; add `force=true` when immediate termination is required
+- when you control the slice code, prefer a throttled `tqdm` progress reporter and, when feasible, pair it with concise `__DS_PROGRESS__` lines carrying phase and ETA
 - do not mark a slice complete until the managed log and outputs both confirm completion
 
 ### 3. Keep comparability

@@ -5,6 +5,7 @@ import threading
 from pathlib import Path
 from typing import Any, Callable
 
+from ..connector_runtime import format_conversation_id, parse_conversation_id
 from ..shared import append_jsonl, ensure_dir, read_json, utc_now, write_json
 
 
@@ -16,14 +17,22 @@ class WhatsAppLocalSessionService:
         config: dict[str, Any],
         on_event: Callable[[dict[str, Any]], None],
         log: Callable[[str, str], None] | None = None,
+        profile_id: str | None = None,
+        profile_label: str | None = None,
+        encode_profile_id: bool = False,
     ) -> None:
         self.home = home
         self.config = config
         self.on_event = on_event
         self.log = log or self._default_log
+        self.profile_id = str(profile_id or "").strip() or None
+        self.profile_label = str(profile_label or "").strip() or None
+        self._encode_profile_id = bool(encode_profile_id and self.profile_id)
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._root = home / "logs" / "connectors" / "whatsapp"
+        if self.profile_id:
+            self._root = self._root / "profiles" / self.profile_id
         self._runtime_path = self._root / "runtime.json"
         self._cursor_path = self._root / "local_session.cursor.json"
 
@@ -60,7 +69,7 @@ class WhatsAppLocalSessionService:
         self._thread = threading.Thread(
             target=self._run,
             daemon=True,
-            name="deepscientist-whatsapp-local-session",
+            name=f"deepscientist-whatsapp-local-session-{self.profile_id or 'default'}",
         )
         self._thread.start()
         return True
@@ -165,11 +174,16 @@ class WhatsAppLocalSessionService:
                 )
         write_json(self._cursor_path, {"offset": offset})
 
-    @staticmethod
-    def _normalize_entry(payload: dict[str, Any]) -> dict[str, Any] | None:
+    def _normalize_entry(self, payload: dict[str, Any]) -> dict[str, Any] | None:
         if isinstance(payload.get("normalized"), dict):
             normalized = dict(payload["normalized"])
             normalized.setdefault("raw_event", payload)
+            parsed = parse_conversation_id(normalized.get("conversation_id"))
+            chat_type = str((parsed or {}).get("chat_type") or normalized.get("chat_type") or "direct").strip().lower() or "direct"
+            chat_id = str((parsed or {}).get("chat_id") or normalized.get("group_id") or normalized.get("direct_id") or "").strip() or "unknown"
+            normalized["conversation_id"] = self._conversation_id(chat_type, chat_id)
+            normalized["profile_id"] = self.profile_id
+            normalized["profile_label"] = self.profile_label
             return normalized
         conversation_id = str(payload.get("conversation_id") or "").strip()
         chat_type = str(payload.get("chat_type") or "").strip().lower()
@@ -201,11 +215,21 @@ class WhatsAppLocalSessionService:
             "sender_id": sender_id or chat_id,
             "sender_name": sender_name or sender_id or chat_id,
             "message_id": message_id,
-            "conversation_id": conversation_id or f"whatsapp:{chat_type}:{chat_id}",
+            "conversation_id": self._conversation_id(chat_type, chat_id),
+            "profile_id": self.profile_id,
+            "profile_label": self.profile_label,
             "text": text,
             "mentioned": False,
             "raw_event": payload,
         }
+
+    def _conversation_id(self, chat_type: str, chat_id: str) -> str:
+        return format_conversation_id(
+            "whatsapp",
+            chat_type,
+            chat_id,
+            profile_id=self.profile_id if self._encode_profile_id else None,
+        )
 
     def _session_dir(self) -> Path | None:
         raw = str(self.config.get("session_dir") or "").strip()
@@ -217,6 +241,10 @@ class WhatsAppLocalSessionService:
         state = read_json(self._runtime_path, {}) or {}
         if not isinstance(state, dict):
             state = {}
+        if self.profile_id:
+            state["profile_id"] = self.profile_id
+        if self.profile_label:
+            state["profile_label"] = self.profile_label
         state.update(patch)
         write_json(self._runtime_path, state)
 

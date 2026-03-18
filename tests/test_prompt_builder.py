@@ -694,12 +694,23 @@ def test_prompt_builder_mentions_long_running_bash_exec_monitoring_protocol(temp
     assert "sleep about `1800s`" in prompt
     assert "artifact.interact(kind='progress', ...)" in prompt
     assert "bash_exec(mode='read', id=...)" in prompt
+    assert "bash_exec(mode='read', id=..., tail_limit=..., order='desc')" in prompt
+    assert "bash_exec(mode='read', id=..., after_seq=last_seen_seq" in prompt
     assert "include a structured `comment`" in prompt
+    assert "{stage, goal, action, expected_signal, next_check}" in prompt
     assert "each completed sleep/await cycle" in prompt
     assert "estimated next reply time" in prompt
     assert "__DS_PROGRESS__" in prompt
     assert "estimate whether the command can finish within the selected wait window" in prompt
     assert "use bash_exec(mode='detach', ...) and monitor" in prompt
+    assert "first run a bounded smoke test or pilot" in prompt
+    assert "stop it with `bash_exec(mode='kill', id=..., wait=true, timeout_seconds=...)`" in prompt
+    assert "wait=true" in prompt
+    assert "force=true" in prompt
+    assert "bash_exec(mode='history')" in prompt
+    assert "silent_seconds" in prompt
+    assert "watchdog_overdue" in prompt
+    assert "tqdm-style progress reporter" in prompt
 
 
 def test_prompt_builder_requires_all_shell_like_commands_to_use_bash_exec(temp_home: Path) -> None:

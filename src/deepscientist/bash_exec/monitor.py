@@ -202,6 +202,18 @@ def _terminate_process(process: subprocess.Popen[bytes], process_group_id: int |
         process.kill()
 
 
+def _terminate_process_force(process: subprocess.Popen[bytes], process_group_id: int | None) -> None:
+    if process.poll() is not None:
+        return
+    if isinstance(process_group_id, int) and process_group_id > 0:
+        try:
+            os.killpg(process_group_id, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+    else:
+        process.kill()
+
+
 def _drain_buffer(
     buffer: str,
     append_line,
@@ -350,12 +362,15 @@ def run_monitor(session_dir: Path) -> int:
             },
         )
         progress = _parse_progress_marker(line)
+        output_updates: dict[str, Any] = {}
+        if stream not in {"system", "prompt"}:
+            output_updates = {"last_output_at": timestamp, "last_output_seq": seq}
         if progress is not None:
             progress.setdefault("ts", timestamp)
             _atomic_write_json(progress_path, progress)
-            update_meta(last_progress=progress, latest_seq=seq)
+            update_meta(last_progress=progress, latest_seq=seq, **output_updates)
         else:
-            update_meta(latest_seq=seq)
+            update_meta(latest_seq=seq, **output_updates)
 
     master_fd: int | None = None
     slave_fd: int | None = None
@@ -410,16 +425,20 @@ def run_monitor(session_dir: Path) -> int:
             if not stop_requested and stop_request_path.exists():
                 request = read_json(stop_request_path, {}) or {}
                 stop_reason = str(request.get("reason") or "user_stop").strip() or "user_stop"
+                force_stop = bool(request.get("force"))
                 update_meta(
                     status="terminating",
                     stop_reason=stop_reason,
                     stopped_by_user_id=str(request.get("user_id") or meta.get("stopped_by_user_id") or meta.get("agent_id") or "agent"),
                 )
                 append_line(
-                    f"Termination requested: {stop_reason}",
+                    f"{'Force t' if force_stop else 'T'}ermination requested: {stop_reason}",
                     stream="system",
                 )
-                _terminate_process(process, process_group_id)
+                if force_stop:
+                    _terminate_process_force(process, process_group_id)
+                else:
+                    _terminate_process(process, process_group_id)
                 stop_requested = True
 
             if deadline is not None and time.monotonic() >= deadline and process.poll() is None and not stop_requested:

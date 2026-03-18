@@ -632,22 +632,66 @@ def test_bash_exec_mcp_server_supports_detach_read_list_and_kill(temp_home: Path
             await server.call_tool(
                 "bash_exec",
                 {
-                    "command": "printf 'alpha\\n'; sleep 5; printf 'omega\\n'",
+                    "command": "printf 'alpha\\n'; sleep 1; printf 'omega\\n'; sleep 30",
                     "mode": "detach",
+                    "comment": {"stage": "baseline", "goal": "smoke"},
                 },
             )
         )
         assert detached["status"] == "running"
+        assert detached["kind"] == "exec"
+        assert detached["comment"] == {"stage": "baseline", "goal": "smoke"}
+        assert detached["watchdog_after_seconds"] == 1800
         bash_id = detached["bash_id"]
-        await asyncio.sleep(0.8)
+        await asyncio.sleep(0.6)
 
         listing = _unwrap_tool_result(await server.call_tool("bash_exec", {"mode": "list"}))
         assert listing["count"] >= 1
         assert any(item["bash_id"] == bash_id for item in listing["items"])
+        assert listing["summary"]["running_count"] >= 1
+        assert any(bash_id in line for line in listing["history_lines"])
 
-        read_back = _unwrap_tool_result(await server.call_tool("bash_exec", {"mode": "read", "id": bash_id}))
+        exec_listing = _unwrap_tool_result(await server.call_tool("bash_exec", {"mode": "list", "kind": "exec"}))
+        assert any(item["bash_id"] == bash_id for item in exec_listing["items"])
+
+        history = _unwrap_tool_result(await server.call_tool("bash_exec", {"mode": "history"}))
+        assert any(bash_id in line for line in history["lines"])
+
+        read_back = _unwrap_tool_result(
+            await server.call_tool(
+                "bash_exec",
+                {
+                    "mode": "read",
+                    "id": bash_id,
+                    "tail_limit": 5,
+                    "order": "desc",
+                },
+            )
+        )
         assert read_back["bash_id"] == bash_id
-        assert "alpha" in read_back["log"]
+        assert read_back["comment"] == {"stage": "baseline", "goal": "smoke"}
+        assert any("alpha" in str(item.get("line") or "") for item in read_back["tail"])
+        assert read_back["tail_limit"] == 5
+        assert read_back["order"] == "desc"
+        assert isinstance(read_back["silent_seconds"], int)
+        assert read_back["watchdog_after_seconds"] == 1800
+        last_seen_seq = int(read_back["latest_seq"] or 0)
+
+        await asyncio.sleep(1.2)
+        incremental = _unwrap_tool_result(
+            await server.call_tool(
+                "bash_exec",
+                {
+                    "mode": "read",
+                    "id": bash_id,
+                    "after_seq": last_seen_seq,
+                    "tail_limit": 10,
+                    "order": "asc",
+                },
+            )
+        )
+        assert incremental["after_seq"] == last_seen_seq
+        assert any("omega" in str(item.get("line") or "") for item in incremental["tail"])
 
         stopped = _unwrap_tool_result(
             await server.call_tool(
@@ -656,17 +700,14 @@ def test_bash_exec_mcp_server_supports_detach_read_list_and_kill(temp_home: Path
                     "mode": "kill",
                     "id": bash_id,
                     "reason": "pytest-stop",
+                    "force": True,
+                    "wait": True,
+                    "timeout_seconds": 10,
                 },
             )
         )
         assert stopped["bash_id"] == bash_id
-        assert stopped["status"] in {"terminating", "terminated"}
-
-        awaited = _unwrap_tool_result(
-            await server.call_tool("bash_exec", {"mode": "await", "id": bash_id, "timeout_seconds": 10})
-        )
-        assert awaited["bash_id"] == bash_id
-        assert awaited["status"] == "terminated"
-        assert Path(quest_root / awaited["log_path"]).exists()
+        assert stopped["status"] == "terminated"
+        assert Path(quest_root / stopped["log_path"]).exists()
 
     asyncio.run(scenario())

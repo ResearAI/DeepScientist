@@ -7,6 +7,16 @@ import { spawnSync } from 'node:child_process'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..')
+const forceRebuild = ['1', 'true', 'yes', 'on'].includes(
+  String(process.env.DEEPSCIENTIST_FORCE_REBUILD_BUNDLES || '')
+    .trim()
+    .toLowerCase()
+)
+const skipRebuild = ['1', 'true', 'yes', 'on'].includes(
+  String(process.env.DEEPSCIENTIST_SKIP_BUNDLE_REBUILD || '')
+    .trim()
+    .toLowerCase()
+)
 
 function run(command, args, cwd = repoRoot) {
   const result = spawnSync(command, args, {
@@ -30,10 +40,16 @@ function ensureFile(relativePath) {
   }
 }
 
-run('npm', ['--prefix', 'src/ui', 'install', '--include=dev', '--no-audit', '--no-fund'])
-run('npm', ['--prefix', 'src/ui', 'run', 'build'])
-run('npm', ['--prefix', 'src/tui', 'install', '--include=dev', '--no-audit', '--no-fund'])
-run('npm', ['--prefix', 'src/tui', 'run', 'build'])
+const webBundle = 'src/ui/dist/index.html'
+const tuiBundle = 'src/tui/dist/index.js'
 
-ensureFile('src/ui/dist/index.html')
-ensureFile('src/tui/dist/index.js')
+if (!skipRebuild || forceRebuild) {
+  run('npm', ['--prefix', 'src/ui', 'ci', '--include=dev', '--no-audit', '--no-fund'])
+  run('npm', ['--prefix', 'src/ui', 'run', 'build'])
+
+  run('npm', ['--prefix', 'src/tui', 'ci', '--include=dev', '--no-audit', '--no-fund'])
+  run('npm', ['--prefix', 'src/tui', 'run', 'build'])
+}
+
+ensureFile(webBundle)
+ensureFile(tuiBundle)

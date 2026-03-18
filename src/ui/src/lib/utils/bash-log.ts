@@ -1,3 +1,5 @@
+import type { BashProgress } from '@/lib/types/bash'
+
 export type BashStatusValue = 'running' | 'completed' | 'failed' | 'terminated'
 
 export type BashStatusMarker = {
@@ -26,6 +28,21 @@ export const BASH_PROGRESS_PREFIX = PROGRESS_PREFIX
 
 export function isBashProgressMarker(line: string): boolean {
   return Boolean(line && line.startsWith(PROGRESS_PREFIX))
+}
+
+export function parseBashProgressMarker(line: string): BashProgress | null {
+  if (!isBashProgressMarker(line)) return null
+  const raw = line.slice(PROGRESS_PREFIX.length).trim()
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null
+    }
+    return parsed as BashProgress
+  } catch {
+    return null
+  }
 }
 
 export function splitBashLogLine(line: string): { kind: 'line' | 'carriage'; text: string } {

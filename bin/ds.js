@@ -13,6 +13,7 @@ const pyprojectToml = fs.readFileSync(path.join(repoRoot, 'pyproject.toml'), 'ut
 const pythonCandidates = process.platform === 'win32' ? ['python', 'py'] : ['python3', 'python'];
 const requiredPythonSpec = parseRequiredPythonSpec(pyprojectToml);
 const minimumPythonVersion = parseMinimumPythonVersion(requiredPythonSpec);
+const launcherWrapperCommands = ['ds', 'ds-cli', 'research', 'resear'];
 const pythonCommands = new Set([
   'init',
   'new',
@@ -46,6 +47,9 @@ Usage:
   ds update
   ds update --check
   ds update --yes
+  ds migrate /data/DeepScientist
+  ds --hero
+  ds --hero doctor
   ds --tui
   ds --both
   ds --host 0.0.0.0 --port 21000
@@ -67,6 +71,7 @@ Launcher flags:
   --stop                Stop the managed daemon
   --restart             Restart the managed daemon
   --home <path>         Use a custom DeepScientist home
+  --hero                Use the current working directory as DeepScientist home
   --quest-id <id>       Open the TUI on one quest directly
 
 Update:
@@ -74,8 +79,13 @@ Update:
   ds update --check     Print structured update status
   ds update --yes       Install the latest npm release immediately
 
+Migration:
+  ds migrate <target>   Move the DeepScientist home/install root to a new absolute path
+  ds migrate <target> --yes --restart
+
 Runtime:
   DeepScientist uses uv to manage a locked local Python runtime.
+  If uv is missing, ds bootstraps a local copy under the DeepScientist home automatically.
   If an active conda environment provides Python ${requiredPythonSpec}, ds prefers it.
   Otherwise uv provisions a managed Python under the DeepScientist home automatically.
 
@@ -90,6 +100,20 @@ Advanced Python CLI:
 
 function ensureDir(targetPath) {
   fs.mkdirSync(targetPath, { recursive: true });
+}
+
+function expandUserPath(rawPath) {
+  const normalized = String(rawPath || '').trim();
+  if (!normalized) {
+    return normalized;
+  }
+  if (normalized === '~') {
+    return os.homedir();
+  }
+  if (normalized.startsWith(`~${path.sep}`) || normalized.startsWith('~/')) {
+    return path.join(os.homedir(), normalized.slice(2));
+  }
+  return normalized;
 }
 
 function updateStatePath(home) {
@@ -369,6 +393,9 @@ function resolveHome(args) {
   if (index >= 0 && index + 1 < args.length) {
     return path.resolve(args[index + 1]);
   }
+  if (args.includes('--hero') || args.includes('--here')) {
+    return process.cwd();
+  }
   if (process.env.DEEPSCIENTIST_HOME) {
     return path.resolve(process.env.DEEPSCIENTIST_HOME);
   }
@@ -539,12 +566,14 @@ function renderLaunchHints({ home, url, bindUrl, pythonSelection }) {
   renderKeyValueRows([
     ['ds --port 21000', 'Change the web port'],
     ['ds --host 0.0.0.0 --port 21000', 'Bind on all interfaces'],
+    ['ds --hero', 'Use the current directory as home'],
     ['ds --both', 'Start web + TUI together'],
     ['ds --tui', 'Start the terminal workspace only'],
     ['ds --no-browser', 'Do not auto-open the browser'],
     ['ds --status', 'Show daemon health as JSON'],
     ['ds --restart', 'Restart the managed daemon'],
     ['ds --stop', 'Stop the managed daemon'],
+    ['ds migrate /data/DeepScientist', 'Move the full home/install root safely'],
     ['ds --help', 'Show the full launcher help'],
   ]);
   console.log('');
@@ -615,6 +644,7 @@ function printLaunchCard({
   console.log(centerText(browserLine, width));
   console.log(centerText(nextStep, width));
   console.log(centerText('Run ds --stop to stop the managed daemon.', width));
+  console.log(centerText('Need to move this installation later? Use ds migrate /new/path.', width));
   console.log('');
   renderLaunchHints({ home, url, bindUrl, pythonSelection });
 }
@@ -879,6 +909,22 @@ Flags:
 `);
 }
 
+function printMigrateHelp() {
+  console.log(`DeepScientist migrate
+
+Usage:
+  ds migrate /absolute/target/path
+  ds migrate /absolute/target/path --yes
+  ds migrate /absolute/target/path --restart
+  ds migrate /absolute/target/path --home /current/source/path
+
+Flags:
+  --yes              Skip the interactive double-confirmation prompt
+  --restart          Start the managed daemon again from the migrated home
+  --home <path>      Override the current DeepScientist source home/root
+`);
+}
+
 function parseUpdateArgs(argv) {
   const args = [...argv];
   if (args[0] === 'update') {
@@ -935,6 +981,40 @@ function parseUpdateArgs(argv) {
   };
 }
 
+function parseMigrateArgs(argv) {
+  const args = [...argv];
+  if (args[0] === 'migrate') {
+    args.shift();
+  }
+  let home = null;
+  let target = null;
+  let yes = false;
+  let restart = false;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--yes') yes = true;
+    else if (arg === '--restart') restart = true;
+    else if (arg === '--home' && args[index + 1]) home = path.resolve(expandUserPath(args[++index]));
+    else if (arg === '--help' || arg === '-h') return { help: true };
+    else if (arg.startsWith('--')) return null;
+    else if (!target) target = path.resolve(expandUserPath(arg));
+    else return null;
+  }
+
+  if (!target) {
+    return null;
+  }
+
+  return {
+    help: false,
+    home,
+    target,
+    yes,
+    restart,
+  };
+}
+
 function findFirstPositionalArg(args) {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -956,6 +1036,188 @@ function realpathOrSelf(targetPath) {
   } catch {
     return targetPath;
   }
+}
+
+function isPathEqual(left, right) {
+  return realpathOrSelf(path.resolve(left)) === realpathOrSelf(path.resolve(right));
+}
+
+function isPathInside(candidatePath, parentPath) {
+  const candidate = realpathOrSelf(path.resolve(candidatePath));
+  const parent = realpathOrSelf(path.resolve(parentPath));
+  if (candidate === parent) {
+    return false;
+  }
+  const relative = path.relative(parent, candidate);
+  return Boolean(relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function buildInstalledWrapperScript() {
+  return [
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+    'HOME_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"',
+    'if [ -z "${DEEPSCIENTIST_HOME:-}" ]; then',
+    '  export DEEPSCIENTIST_HOME="$HOME_DIR"',
+    'fi',
+    'NODE_BIN="${DEEPSCIENTIST_NODE:-node}"',
+    'exec "$NODE_BIN" "$SCRIPT_DIR/ds.js" "$@"',
+    '',
+  ].join('\n');
+}
+
+function buildGlobalWrapperScript({ installDir, home, commandName }) {
+  return [
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    'if [ -z "${DEEPSCIENTIST_HOME:-}" ]; then',
+    `  export DEEPSCIENTIST_HOME="${home}"`,
+    'fi',
+    `exec "${path.join(installDir, 'bin', commandName)}" "$@"`,
+    '',
+  ].join('\n');
+}
+
+function writeExecutableScript(targetPath, content) {
+  ensureDir(path.dirname(targetPath));
+  fs.writeFileSync(targetPath, content, { encoding: 'utf8', mode: 0o755 });
+  fs.chmodSync(targetPath, 0o755);
+}
+
+function repairMigratedInstallWrappers(targetHome) {
+  const installBinDir = path.join(targetHome, 'cli', 'bin');
+  if (!fs.existsSync(installBinDir)) {
+    return;
+  }
+  const content = buildInstalledWrapperScript();
+  for (const commandName of launcherWrapperCommands) {
+    const wrapperPath = path.join(installBinDir, commandName);
+    if (!fs.existsSync(wrapperPath)) {
+      continue;
+    }
+    writeExecutableScript(wrapperPath, content);
+  }
+}
+
+function candidateWrapperPathsForCommand(commandName) {
+  const directories = String(process.env.PATH || '')
+    .split(path.delimiter)
+    .filter(Boolean);
+  const candidates = [];
+  for (const directory of directories) {
+    candidates.push(path.join(directory, commandName));
+    if (process.platform === 'win32') {
+      candidates.push(path.join(directory, `${commandName}.cmd`));
+      candidates.push(path.join(directory, `${commandName}.ps1`));
+    }
+  }
+  return candidates;
+}
+
+function rewriteLauncherWrappersIfPointingAtSource({ sourceHome, targetHome }) {
+  if (process.platform === 'win32') {
+    return [];
+  }
+  const rewritten = [];
+  const sourceInstallDir = path.join(sourceHome, 'cli');
+  const targetInstallDir = path.join(targetHome, 'cli');
+  for (const commandName of launcherWrapperCommands) {
+    for (const candidate of candidateWrapperPathsForCommand(commandName)) {
+      if (!fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) {
+        continue;
+      }
+      let text = '';
+      try {
+        text = fs.readFileSync(candidate, 'utf8');
+      } catch {
+        continue;
+      }
+      if (!text.includes(sourceInstallDir) && !text.includes(sourceHome)) {
+        continue;
+      }
+      writeExecutableScript(
+        candidate,
+        buildGlobalWrapperScript({
+          installDir: targetInstallDir,
+          home: targetHome,
+          commandName,
+        })
+      );
+      rewritten.push(candidate);
+    }
+  }
+  return rewritten;
+}
+
+function scheduleDeferredSourceCleanup({ sourceHome, targetHome }) {
+  const logPath = path.join(targetHome, 'logs', 'migrate-cleanup.log');
+  ensureDir(path.dirname(logPath));
+  const helperScript = [
+    "const fs = require('node:fs');",
+    "const { setTimeout: sleep } = require('node:timers/promises');",
+    'const parentPid = Number(process.argv[1]);',
+    'const sourceHome = process.argv[2];',
+    'const logPath = process.argv[3];',
+    '(async () => {',
+    '  for (let attempt = 0; attempt < 300; attempt += 1) {',
+    '    try {',
+    '      process.kill(parentPid, 0);',
+    '      await sleep(100);',
+    '      continue;',
+    '    } catch {',
+    '      break;',
+    '    }',
+    '  }',
+    '  try {',
+    '    fs.rmSync(sourceHome, { recursive: true, force: true });',
+    '  } catch (error) {',
+    "    fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${error instanceof Error ? error.message : String(error)}\\n`, 'utf8');",
+    '    process.exit(1);',
+    '  }',
+    '})();',
+  ].join('\n');
+  const child = spawn(process.execPath, ['-e', helperScript, String(process.pid), sourceHome, logPath], {
+    detached: true,
+    stdio: 'ignore',
+    env: process.env,
+  });
+  child.unref();
+}
+
+async function promptMigrationConfirmation({ sourceHome, targetHome }) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error('DeepScientist migration needs a TTY for confirmation. Re-run with `--yes` to continue non-interactively.');
+  }
+  console.log('');
+  console.log('DeepScientist home migration');
+  console.log('');
+  console.log(`From: ${sourceHome}`);
+  console.log(`To:   ${targetHome}`);
+  console.log('');
+  console.log('This will stop the managed daemon, copy the full DeepScientist root, verify the copy, update launcher wrappers, and delete the old path after success.');
+  const ask = (question) => new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(String(answer || '').trim());
+    });
+  });
+  const first = await ask('Type YES to continue: ');
+  if (first !== 'YES') {
+    return false;
+  }
+  const second = await ask('Type MIGRATE to confirm old-path deletion after a successful copy: ');
+  return second === 'MIGRATE';
+}
+
+function printMigrationSummary({ sourceHome, targetHome, restart }) {
+  console.log('');
+  console.log('DeepScientist migrate');
+  console.log('');
+  console.log(`Source: ${sourceHome}`);
+  console.log(`Target: ${targetHome}`);
+  console.log(`Restart: ${restart ? 'yes' : 'no'}`);
 }
 
 function pythonMeetsMinimum(probe) {
@@ -1173,6 +1435,22 @@ function runtimeUvPythonInstallPath(home) {
   return path.join(home, 'runtime', 'python');
 }
 
+function runtimeToolsPath(home) {
+  return path.join(home, 'runtime', 'tools');
+}
+
+function runtimeUvRootPath(home) {
+  return path.join(runtimeToolsPath(home), 'uv');
+}
+
+function runtimeUvBinDir(home) {
+  return path.join(runtimeUvRootPath(home), 'bin');
+}
+
+function runtimeUvBinaryPath(home) {
+  return path.join(runtimeUvBinDir(home), process.platform === 'win32' ? 'uv.exe' : 'uv');
+}
+
 function legacyVenvRootPath(home) {
   return path.join(home, 'runtime', 'venv');
 }
@@ -1263,6 +1541,7 @@ function runSync(binary, args, options = {}) {
     stdio: options.capture ? 'pipe' : 'inherit',
     env: options.env || process.env,
     encoding: 'utf8',
+    input: options.input,
   });
   if (result.error) {
     throw result.error;
@@ -1300,18 +1579,101 @@ function readJsonFile(filePath) {
   }
 }
 
-function resolveUvBinary() {
-  const configured = String(process.env.DEEPSCIENTIST_UV || process.env.UV_BIN || '').trim();
-  if (configured) {
-    return configured;
+function executableExtensions() {
+  if (process.platform !== 'win32') {
+    return [''];
   }
-  return resolveExecutableOnPath('uv');
+  return (process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM')
+    .split(';')
+    .filter(Boolean);
 }
 
-function printUvInstallGuidance() {
+function candidateExecutablePaths(basePath) {
+  if (process.platform !== 'win32') {
+    return [basePath];
+  }
+  const extension = path.extname(basePath);
+  if (extension) {
+    return [basePath];
+  }
+  return executableExtensions().map((suffix) => `${basePath}${suffix}`);
+}
+
+function isExecutableFile(candidate) {
+  try {
+    if (!fs.existsSync(candidate)) {
+      return false;
+    }
+    const stat = fs.statSync(candidate);
+    if (!stat.isFile()) {
+      return false;
+    }
+    if (process.platform !== 'win32') {
+      fs.accessSync(candidate, fs.constants.X_OK);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveBinaryReference(reference) {
+  const normalized = String(reference || '').trim();
+  if (!normalized) {
+    return null;
+  }
+  const expanded = expandUserPath(normalized);
+  if (
+    path.isAbsolute(expanded)
+    || normalized.startsWith('.')
+    || normalized.includes(path.sep)
+    || (path.sep === '\\' ? normalized.includes('/') : normalized.includes('\\'))
+  ) {
+    const absolute = path.isAbsolute(expanded) ? expanded : path.resolve(expanded);
+    for (const candidate of candidateExecutablePaths(absolute)) {
+      if (isExecutableFile(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+  return resolveExecutableOnPath(expanded);
+}
+
+function resolveUvBinary(home) {
+  const configured = String(process.env.DEEPSCIENTIST_UV || process.env.UV_BIN || '').trim();
+  if (configured) {
+    return {
+      path: resolveBinaryReference(configured),
+      source: 'env',
+      configured,
+    };
+  }
+  const local = resolveBinaryReference(runtimeUvBinaryPath(home));
+  if (local) {
+    return {
+      path: local,
+      source: 'local',
+      configured: null,
+    };
+  }
+  const discovered = resolveExecutableOnPath('uv');
+  return {
+    path: discovered,
+    source: discovered ? 'path' : null,
+    configured: null,
+  };
+}
+
+function printUvInstallGuidance(home, errorMessage = null) {
   console.error('');
-  console.error('DeepScientist now requires `uv` to manage its locked local Python runtime.');
-  console.error('Install `uv`, then run `ds` again.');
+  if (errorMessage) {
+    console.error(`DeepScientist could not prepare a local uv runtime manager: ${errorMessage}`);
+  } else {
+    console.error('DeepScientist could not find a usable uv runtime manager.');
+  }
+  console.error(`DeepScientist normally installs uv automatically under ${runtimeUvBinDir(home)}.`);
+  console.error('If the automatic bootstrap fails, install uv manually and run `ds` again.');
   console.error('');
   if (process.platform === 'win32') {
     console.error('Windows PowerShell:');
@@ -1323,6 +1685,115 @@ function printUvInstallGuidance() {
   console.error('Alternative:');
   console.error('  pipx install uv');
   console.error('');
+}
+
+function downloadFileWithNode(url, destinationPath) {
+  const downloader = [
+    'const fs = require("node:fs");',
+    'const url = process.argv[1];',
+    'const destination = process.argv[2];',
+    'const timeoutMs = Number(process.argv[3] || "45000");',
+    '(async () => {',
+    '  const controller = new AbortController();',
+    '  const timer = setTimeout(() => controller.abort(), timeoutMs);',
+    '  try {',
+    '    const response = await fetch(url, { signal: controller.signal });',
+    '    if (!response.ok) {',
+    '      throw new Error(`HTTP ${response.status} ${response.statusText}`);',
+    '    }',
+    '    const body = await response.text();',
+    '    fs.writeFileSync(destination, body, "utf8");',
+    '  } finally {',
+    '    clearTimeout(timer);',
+    '  }',
+    '})().catch((error) => {',
+    '  console.error(error instanceof Error ? error.message : String(error));',
+    '  process.exit(1);',
+    '});',
+  ].join('\n');
+  const result = spawnSync(process.execPath, ['-e', downloader, url, destinationPath, '45000'], {
+    cwd: repoRoot,
+    stdio: 'inherit',
+    env: process.env,
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(`Download failed with status ${result.status ?? 1}.`);
+  }
+}
+
+function installLocalUv(home) {
+  const uvRoot = runtimeUvRootPath(home);
+  const binDir = runtimeUvBinDir(home);
+  const tempDir = path.join(uvRoot, 'tmp');
+  const installerName = process.platform === 'win32' ? 'install-uv.ps1' : 'install-uv.sh';
+  const installerUrl =
+    process.platform === 'win32'
+      ? 'https://astral.sh/uv/install.ps1'
+      : 'https://astral.sh/uv/install.sh';
+  const installerPath = path.join(tempDir, installerName);
+
+  ensureDir(binDir);
+  ensureDir(tempDir);
+
+  console.log(`DeepScientist is installing a local uv runtime manager under ${binDir}.`);
+  downloadFileWithNode(installerUrl, installerPath);
+
+  const installEnv = {
+    ...process.env,
+    UV_UNMANAGED_INSTALL: binDir,
+  };
+
+  let shellBinary;
+  let shellArgs;
+  if (process.platform === 'win32') {
+    shellBinary =
+      resolveExecutableOnPath('powershell.exe')
+      || resolveExecutableOnPath('powershell')
+      || resolveExecutableOnPath('pwsh.exe')
+      || resolveExecutableOnPath('pwsh');
+    if (!shellBinary) {
+      throw new Error('PowerShell is not available to run the official uv installer.');
+    }
+    shellArgs = ['-ExecutionPolicy', 'ByPass', '-File', installerPath];
+  } else {
+    shellBinary = resolveExecutableOnPath('sh');
+    if (!shellBinary) {
+      throw new Error('`sh` is not available to run the official uv installer.');
+    }
+    shellArgs = [installerPath];
+  }
+
+  const installResult = spawnSync(shellBinary, shellArgs, {
+    cwd: repoRoot,
+    stdio: 'inherit',
+    env: installEnv,
+  });
+  if (installResult.error) {
+    throw installResult.error;
+  }
+  if (installResult.status !== 0) {
+    throw new Error(`The official uv installer exited with status ${installResult.status ?? 1}.`);
+  }
+
+  const installedBinary = resolveBinaryReference(runtimeUvBinaryPath(home));
+  if (!installedBinary) {
+    throw new Error(`uv installation finished, but no executable was found under ${binDir}.`);
+  }
+  return installedBinary;
+}
+
+function ensureUvBinary(home) {
+  const resolved = resolveUvBinary(home);
+  if (resolved.path) {
+    return resolved.path;
+  }
+  if (resolved.source === 'env' && resolved.configured) {
+    throw new Error(`Configured uv binary could not be resolved: ${resolved.configured}`);
+  }
+  return installLocalUv(home);
 }
 
 function buildUvRuntimeEnv(home, extraEnv = {}) {
@@ -1426,9 +1897,12 @@ function ensurePythonRuntime(home) {
   ensureDir(path.join(home, 'runtime', 'bundle'));
   ensureDir(runtimeUvCachePath(home));
   ensureDir(runtimeUvPythonInstallPath(home));
-  const uvBinary = resolveUvBinary();
-  if (!uvBinary) {
-    printUvInstallGuidance();
+  ensureDir(runtimeToolsPath(home));
+  let uvBinary;
+  try {
+    uvBinary = ensureUvBinary(home);
+  } catch (error) {
+    printUvInstallGuidance(home, error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
   const runtimePlan = resolvePythonRuntimePlan();
@@ -1557,6 +2031,9 @@ function normalizePythonCliArgs(args, home) {
       index += 1;
       continue;
     }
+    if (arg === '--hero' || arg === '--here') {
+      continue;
+    }
     normalized.push(arg);
   }
   return ['--home', home, ...normalized];
@@ -1646,34 +2123,11 @@ function resolveExecutableOnPath(commandName) {
     return null;
   }
   const directories = pathValue.split(path.delimiter).filter(Boolean);
-  const extensions =
-    process.platform === 'win32'
-      ? (process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM')
-          .split(';')
-          .filter(Boolean)
-      : [''];
   for (const directory of directories) {
     const base = path.join(directory, commandName);
-    for (const extension of extensions) {
-      const candidate = process.platform === 'win32' ? `${base}${extension}` : base;
-      try {
-        if (!fs.existsSync(candidate)) {
-          continue;
-        }
-        const stat = fs.statSync(candidate);
-        if (!stat.isFile()) {
-          continue;
-        }
-        if (process.platform !== 'win32') {
-          try {
-            fs.accessSync(candidate, fs.constants.X_OK);
-          } catch {
-            continue;
-          }
-        }
+    for (const candidate of candidateExecutablePaths(base)) {
+      if (isExecutableFile(candidate)) {
         return candidate;
-      } catch {
-        continue;
       }
     }
   }
@@ -2792,6 +3246,135 @@ async function updateMain(rawArgs) {
   process.exit(payload.ok ? 0 : 1);
 }
 
+async function migrateMain(rawArgs) {
+  const options = parseMigrateArgs(rawArgs);
+  if (!options) {
+    printMigrateHelp();
+    process.exit(1);
+  }
+  if (options.help) {
+    printMigrateHelp();
+    process.exit(0);
+  }
+
+  const sourceHome = realpathOrSelf(options.home || resolveHome(rawArgs));
+  const targetHome = path.resolve(options.target);
+  if (!fs.existsSync(sourceHome)) {
+    console.error(`DeepScientist source path does not exist: ${sourceHome}`);
+    process.exit(1);
+  }
+  if (isPathEqual(sourceHome, targetHome)) {
+    console.error('DeepScientist source and target paths are identical. Choose a different migration target.');
+    process.exit(1);
+  }
+  if (isPathInside(targetHome, sourceHome) || isPathInside(sourceHome, targetHome)) {
+    console.error('DeepScientist migration requires two separate sibling paths. Do not nest one path inside the other.');
+    process.exit(1);
+  }
+  if (fs.existsSync(targetHome)) {
+    console.error(`DeepScientist target path already exists: ${targetHome}`);
+    process.exit(1);
+  }
+
+  printMigrationSummary({ sourceHome, targetHome, restart: options.restart });
+  if (!options.yes) {
+    const confirmed = await promptMigrationConfirmation({ sourceHome, targetHome });
+    if (!confirmed) {
+      console.log('DeepScientist migration cancelled.');
+      process.exit(1);
+    }
+  }
+
+  const state = readDaemonState(sourceHome);
+  const configured = readConfiguredUiAddressFromFile(sourceHome);
+  const url = state?.url || browserUiUrl(configured.host, configured.port);
+  const health = await fetchHealth(url);
+  if (state || healthMatchesHome({ health, home: sourceHome })) {
+    await stopDaemon(sourceHome);
+  } else if (health && health.status === 'ok') {
+    console.log(`Skipping daemon stop because ${url} belongs to another DeepScientist home.`);
+  }
+
+  const pythonRuntime = ensurePythonRuntime(sourceHome);
+  const runtimePython = pythonRuntime.runtimePython;
+  const result = runPythonCli(
+    runtimePython,
+    ['--home', sourceHome, 'migrate', targetHome],
+    { capture: true, allowFailure: true }
+  );
+  let payload = null;
+  try {
+    payload = JSON.parse(String(result.stdout || '{}'));
+  } catch {
+    payload = null;
+  }
+  if (result.status !== 0 || !payload || payload.ok !== true) {
+    if (result.stdout) {
+      process.stdout.write(result.stdout);
+      if (!String(result.stdout).endsWith('\n')) {
+        process.stdout.write('\n');
+      }
+    }
+    if (result.stderr) {
+      process.stderr.write(result.stderr);
+      if (!String(result.stderr).endsWith('\n')) {
+        process.stderr.write('\n');
+      }
+    }
+    console.error('DeepScientist migration failed.');
+    process.exit(result.status ?? 1);
+  }
+
+  repairMigratedInstallWrappers(targetHome);
+  const rewrittenWrappers = rewriteLauncherWrappersIfPointingAtSource({ sourceHome, targetHome });
+
+  const sourceContainsCurrentInstall = isPathEqual(repoRoot, path.join(sourceHome, 'cli')) || isPathInside(repoRoot, sourceHome);
+  if (sourceContainsCurrentInstall) {
+    scheduleDeferredSourceCleanup({ sourceHome, targetHome });
+  } else {
+    fs.rmSync(sourceHome, { recursive: true, force: true });
+  }
+
+  let restartMessage = 'Restart skipped.';
+  if (options.restart) {
+    const migratedLauncher = path.join(targetHome, 'cli', 'bin', 'ds.js');
+    if (!fs.existsSync(migratedLauncher)) {
+      restartMessage = `Migration succeeded, but restart was skipped because the migrated launcher is missing: ${migratedLauncher}`;
+    } else {
+      const child = spawn(
+        process.execPath,
+        [migratedLauncher, '--home', targetHome, '--daemon-only', '--no-browser', '--skip-update-check'],
+        {
+          cwd: path.join(targetHome, 'cli'),
+          detached: true,
+          stdio: 'ignore',
+          env: process.env,
+        }
+      );
+      child.unref();
+      restartMessage = 'Managed daemon restart scheduled from the migrated home.';
+    }
+  }
+
+  console.log('');
+  console.log('DeepScientist migration completed.');
+  console.log(`New home: ${targetHome}`);
+  if (payload.summary) {
+    console.log(payload.summary);
+  }
+  if (rewrittenWrappers.length > 0) {
+    console.log(`Updated wrappers: ${rewrittenWrappers.join(', ')}`);
+  }
+  console.log(restartMessage);
+  if (sourceContainsCurrentInstall) {
+    console.log(`Old path cleanup has been scheduled: ${sourceHome}`);
+  } else {
+    console.log(`Old path removed: ${sourceHome}`);
+  }
+  console.log(`Use \`ds --home ${targetHome}\` if you want to override the default explicitly.`);
+  process.exit(0);
+}
+
 async function launcherMain(rawArgs) {
   const options = parseLauncherArgs(rawArgs);
   if (!options) {
@@ -2893,6 +3476,10 @@ async function main() {
     await updateMain(args);
     return;
   }
+  if (positional && positional.value === 'migrate') {
+    await migrateMain(args);
+    return;
+  }
   if (args.length === 0 || args[0] === 'ui' || (!positional && args[0]?.startsWith('--'))) {
     await launcherMain(args);
     return;
@@ -2936,8 +3523,11 @@ module.exports = {
     buildUvRuntimeEnv,
     runtimePythonEnvPath,
     runtimePythonPath,
+    runtimeUvBinaryPath,
     legacyVenvRootPath,
+    resolveUvBinary,
     resolveHome,
+    parseMigrateArgs,
     useEditableProjectInstall,
     compareVersions,
     detectInstallMode,

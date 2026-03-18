@@ -5187,7 +5187,7 @@ class ArtifactService:
         return targets
 
     def _connectors_config(self) -> dict[str, Any]:
-        return ConfigManager(self.home).load_named("connectors")
+        return ConfigManager(self.home).load_named_normalized("connectors")
 
     @staticmethod
     def _delivery_policy(connectors: dict[str, Any]) -> str:

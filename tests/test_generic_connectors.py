@@ -197,6 +197,25 @@ def test_generic_connector_auto_binds_to_latest_existing_quest_and_rebinds_to_ne
     assert any(item["event_type"] == "inbound" for item in connector_statuses["whatsapp"]["recent_events"])
 
 
+def test_connector_availability_summary_prefers_enabled_bound_connector(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+    connectors = manager.load_named("connectors")
+    connectors["qq"]["enabled"] = True
+    connectors["qq"]["main_chat_id"] = "user-1"
+    write_yaml(manager.path_for("connectors"), connectors)
+
+    app = DaemonApp(temp_home)
+    summary = app.handlers.connectors_availability()
+
+    assert summary["has_enabled_external_connector"] is True
+    assert summary["has_bound_external_connector"] is True
+    assert summary["should_recommend_binding"] is False
+    assert summary["preferred_connector_name"] == "qq"
+    assert summary["preferred_conversation_id"] == "qq:direct:user-1"
+
+
 def test_handlers_connectors_include_lingzhu_snapshot(temp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ensure_home_layout(temp_home)
     manager = ConfigManager(temp_home)
@@ -306,6 +325,60 @@ def test_create_quest_with_preferred_connector_conversation_binds_only_selected_
     latest_sources = app.quest_service.binding_sources(latest_id)
     assert "whatsapp:direct:+15550002222" in latest_sources
     assert "whatsapp:direct:+15550001111" not in latest_sources
+
+
+def test_create_quest_with_requested_connector_bindings_binds_selected_targets_per_connector(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+    connectors = manager.load_named("connectors")
+    connectors["whatsapp"]["enabled"] = True
+    connectors["telegram"]["enabled"] = True
+    connectors["whatsapp"]["auto_bind_dm_to_active_quest"] = True
+    connectors["telegram"]["auto_bind_dm_to_active_quest"] = True
+    write_yaml(manager.path_for("connectors"), connectors)
+
+    older_quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create(
+        "multi connector requested binding"
+    )
+    app = DaemonApp(temp_home)
+
+    whatsapp_reply = app.handle_connector_inbound(
+        "whatsapp",
+        {
+            "chat_type": "direct",
+            "sender_id": "+15550003333",
+            "sender_name": "Carol",
+            "text": "Keep this conversation available.",
+        },
+    )
+    assert whatsapp_reply["accepted"] is True
+    assert older_quest["quest_id"] in whatsapp_reply["reply"]["payload"]["text"]
+
+    telegram_reply = app.handle_connector_inbound(
+        "telegram",
+        {
+            "chat_type": "direct",
+            "sender_id": "tg-user-1",
+            "sender_name": "Dave",
+            "text": "Keep this conversation available.",
+        },
+    )
+    assert telegram_reply["accepted"] is True
+    assert older_quest["quest_id"] in telegram_reply["reply"]["payload"]["text"]
+
+    latest = app.create_quest(
+        goal="requested connector bindings quest",
+        source="web",
+        requested_connector_bindings=[
+            {"connector": "whatsapp", "conversation_id": "whatsapp:direct:+15550003333"},
+            {"connector": "telegram", "conversation_id": "telegram:direct:tg-user-1"},
+        ],
+        force_connector_rebind=True,
+    )
+    latest_sources = app.quest_service.binding_sources(latest["quest_id"])
+    assert "whatsapp:direct:+15550003333" in latest_sources
+    assert "telegram:direct:tg-user-1" in latest_sources
 
 
 def test_generic_connector_supports_terminal_command_and_restore(temp_home: Path) -> None:

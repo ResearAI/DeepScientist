@@ -268,7 +268,7 @@ export default function Hero() {
     title: string
     goal: string
     quest_id?: string
-    preferred_connector_conversation_id?: string
+    requested_connector_bindings?: Array<{ connector: string; conversation_id?: string | null }>
     requested_baseline_ref?: { baseline_id: string; variant_id?: string | null } | null
     startup_contract?: Record<string, unknown> | null
   }) => {
@@ -286,7 +286,7 @@ export default function Hero() {
         source: 'web-react',
         auto_start: true,
         initial_message: payload.goal.trim(),
-        preferred_connector_conversation_id: payload.preferred_connector_conversation_id?.trim() || undefined,
+        requested_connector_bindings: payload.requested_connector_bindings,
         requested_baseline_ref: payload.requested_baseline_ref ?? undefined,
         startup_contract: payload.startup_contract ?? undefined,
       })

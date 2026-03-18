@@ -661,8 +661,8 @@ def build_bash_exec_server(context: McpContext) -> FastMCP:
         description=(
             "Execute a bash command inside the current quest. "
             "mode=detach returns immediately. mode=await/create waits for completion. "
-            "mode=read returns the saved log. mode=kill requests termination. "
-            "mode=list shows known quest-local bash sessions."
+            "mode=read returns the saved log or a tailed log window. mode=kill requests termination. "
+            "mode=list shows known quest-local bash sessions. mode=history shows a compact reverse-chronological bash id list."
         ),
     )
     def bash_exec(
@@ -676,39 +676,88 @@ def build_bash_exec_server(context: McpContext) -> FastMCP:
         export_log_to: str | None = None,
         timeout_seconds: int | None = None,
         status: str | None = None,
+        kind: str | None = None,
         agent_ids: list[str] | None = None,
         agent_instance_ids: list[str] | None = None,
         chat_session_id: str | None = None,
         limit: int = 20,
+        tail_limit: int | None = None,
+        before_seq: int | None = None,
+        after_seq: int | None = None,
+        order: str = "asc",
+        include_log: bool = False,
+        wait: bool = False,
+        force: bool = False,
         comment: str | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         quest_root = context.require_quest_root().resolve()
         normalized_mode = (mode or "detach").strip().lower()
         if normalized_mode == "create":
             normalized_mode = "await"
-        if normalized_mode not in {"detach", "await", "read", "kill", "list"}:
-            raise ValueError("Mode must be one of `detach`, `await`, `create`, `read`, `kill`, or `list`.")
-        if normalized_mode == "list":
+        if normalized_mode not in {"detach", "await", "read", "kill", "list", "history"}:
+            raise ValueError("Mode must be one of `detach`, `await`, `create`, `read`, `kill`, `list`, or `history`.")
+        if normalized_mode in {"list", "history"}:
+            resolved_limit = 500 if normalized_mode == "history" and limit == 20 else max(1, min(limit, 500))
             items = service.list_sessions(
                 quest_root,
                 status=status,
+                kind=kind,
                 agent_ids=agent_ids,
                 agent_instance_ids=agent_instance_ids,
                 chat_session_id=chat_session_id,
-                limit=max(1, min(limit, 500)),
+                limit=resolved_limit,
             )
+            history_lines = [service.format_history_line(item) for item in items]
             counts: dict[str, int] = {}
             for item in items:
                 item_status = str(item.get("status") or "unknown")
                 counts[item_status] = counts.get(item_status, 0) + 1
-            return {
+            payload = {
                 "count": len(items),
                 "items": items,
                 "status_counts": counts,
+                "summary": service.summary(quest_root),
+                "history_lines": history_lines,
             }
+            if normalized_mode == "history":
+                return {
+                    "count": len(items),
+                    "lines": history_lines,
+                    "items": items,
+                }
+            return payload
         if normalized_mode == "read":
             bash_id = service.resolve_session_id(quest_root, id)
             session = service.get_session(quest_root, bash_id)
+            normalized_order = (order or "asc").strip().lower()
+            if normalized_order not in {"asc", "desc"}:
+                normalized_order = "asc"
+            use_tail = tail_limit is not None or before_seq is not None or after_seq is not None or normalized_order != "asc"
+            if use_tail:
+                resolved_tail_limit = max(1, min(int(tail_limit or 200), 1000))
+                entries, tail_meta = service.read_log_entries(
+                    quest_root,
+                    bash_id,
+                    limit=resolved_tail_limit,
+                    before_seq=before_seq,
+                    after_seq=after_seq,
+                    order=normalized_order,
+                )
+                payload = service.build_tool_result(
+                    context,
+                    session=session,
+                    include_log=include_log,
+                    export_log=export_log,
+                    export_log_to=export_log_to,
+                )
+                payload["tail"] = entries
+                payload["tail_limit"] = tail_meta.get("tail_limit")
+                payload["tail_start_seq"] = tail_meta.get("tail_start_seq")
+                payload["latest_seq"] = tail_meta.get("latest_seq")
+                payload["after_seq"] = tail_meta.get("after_seq")
+                payload["before_seq"] = tail_meta.get("before_seq")
+                payload["order"] = normalized_order
+                return payload
             return service.build_tool_result(
                 context,
                 session=session,
@@ -723,7 +772,10 @@ def build_bash_exec_server(context: McpContext) -> FastMCP:
                 bash_id,
                 reason=reason,
                 user_id=f"agent:{context.agent_role or 'pi'}",
+                force=force,
             )
+            if wait:
+                session = service.wait_for_session(quest_root, bash_id, timeout_seconds=timeout_seconds)
             return service.build_tool_result(context, session=session, include_log=False)
         if normalized_mode == "await" and not command:
             bash_id = service.resolve_session_id(quest_root, id)
@@ -744,6 +796,7 @@ def build_bash_exec_server(context: McpContext) -> FastMCP:
             workdir=workdir,
             env=env,
             timeout_seconds=timeout_seconds,
+            comment=comment,
         )
         if normalized_mode == "detach":
             return service.build_tool_result(context, session=session, include_log=False)

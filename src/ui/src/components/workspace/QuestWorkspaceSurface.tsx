@@ -41,6 +41,7 @@ import { useOpenFile } from '@/hooks/useOpenFile'
 import { useBashLogStream } from '@/lib/hooks/useBashLogStream'
 import { useBashSessionStream } from '@/lib/hooks/useBashSessionStream'
 import { EnhancedTerminal } from '@/lib/plugins/cli/components/EnhancedTerminal'
+import { McpBashExecView } from '@/components/chat/toolViews/McpBashExecView'
 import LabQuestGraphCanvas from '@/lib/plugins/lab/components/LabQuestGraphCanvas'
 import { useLabCopilotStore } from '@/lib/stores/lab-copilot'
 import { useLabGraphSelectionStore } from '@/lib/stores/lab-graph-selection'
@@ -49,6 +50,7 @@ import { getProgressPercent } from '@/lib/utils/bash-progress'
 import { QuestSettingsSurface } from '@/components/workspace/QuestSettingsSurface'
 import { QuestMemorySurface } from '@/components/workspace/QuestMemorySurface'
 import { QuestStageSurface } from '@/components/workspace/QuestStageSurface'
+import type { ToolEventData } from '@/lib/types/chat-events'
 import type { BashLogEntry, BashProgress, BashSession } from '@/lib/types/bash'
 import {
   isBashProgressMarker,
@@ -181,6 +183,128 @@ function stripAnsiSequences(value?: string | null) {
 function formatBashSessionStatus(status?: string | null) {
   if (!status) return 'idle'
   return status.replace(/_/g, ' ')
+}
+
+function isActiveBashSession(status?: string | null) {
+  const normalized = String(status || '').trim().toLowerCase()
+  return normalized === 'running' || normalized === 'terminating'
+}
+
+function summarizeBashCommand(command?: string | null, limit = 84) {
+  const normalized = String(command || '').replace(/\s+/g, ' ').trim()
+  if (!normalized) return 'bash_exec'
+  if (normalized.length <= limit) return normalized
+  return `${normalized.slice(0, Math.max(0, limit - 1)).trimEnd()}…`
+}
+
+function formatCompactDurationSeconds(value?: number | null) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return '—'
+  if (value < 60) return `${Math.round(value)}s`
+  if (value < 3600) {
+    const minutes = Math.floor(value / 60)
+    const seconds = Math.floor(value % 60)
+    return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
+  }
+  const hours = Math.floor(value / 3600)
+  const minutes = Math.floor((value % 3600) / 60)
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
+}
+
+function summarizeBashComment(comment?: BashSession['comment']) {
+  if (typeof comment === 'string') {
+    const normalized = flattenText(comment)
+    return normalized ? clampText(normalized, 140) : null
+  }
+  if (!comment || typeof comment !== 'object' || Array.isArray(comment)) {
+    return null
+  }
+  const record = comment as Record<string, unknown>
+  const preferredKeys = ['summary', 'note', 'reason', 'task', 'goal', 'label', 'description']
+  for (const key of preferredKeys) {
+    const value = record[key]
+    if (typeof value !== 'string') continue
+    const normalized = flattenText(value)
+    if (normalized) return clampText(normalized, 140)
+  }
+  return null
+}
+
+function buildWorkspaceBashToolContent(session: BashSession): ToolEventData {
+  return {
+    event_id: `workspace-bash:${session.bash_id}`,
+    timestamp: Date.parse(session.started_at) || Date.now(),
+    tool_call_id: session.bash_id,
+    name: 'bash_exec',
+    function: 'bash_exec',
+    status: isActiveBashSession(session.status) ? 'calling' : 'called',
+    args: {
+      command: session.command,
+      workdir: session.workdir,
+      mode: session.mode,
+    },
+    content: {
+      result: {
+        bash_id: session.bash_id,
+        status: session.status,
+        exit_code: session.exit_code,
+        stop_reason: session.stop_reason,
+        last_progress: session.last_progress,
+        comment: session.comment,
+      },
+    },
+    metadata: {
+      session_id: session.chat_session_id ?? undefined,
+      cli_server_id: session.cli_server_id,
+      agent_id: session.agent_id,
+      agent_instance_id: session.agent_instance_id ?? undefined,
+      bash_id: session.bash_id,
+      bash_status: session.status,
+      bash_mode: session.mode,
+      bash_command: session.command,
+      bash_workdir: session.workdir,
+    },
+  }
+}
+
+function RunningTag({ label = 'Running' }: { label?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-200">
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {label}
+    </span>
+  )
+}
+
+function TerminalModeButton({
+  active,
+  icon,
+  label,
+  running,
+  onClick,
+}: {
+  active: boolean
+  icon: React.ReactNode
+  label: string
+  running?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold transition',
+        active
+          ? 'border-[#9b8352]/50 bg-[#9b8352]/[0.10] text-foreground shadow-sm'
+          : 'border-black/[0.08] bg-white/[0.84] text-muted-foreground hover:bg-white dark:border-white/[0.10] dark:bg-[rgba(18,18,18,0.72)] dark:hover:bg-[rgba(24,24,24,0.9)]'
+      )}
+      aria-pressed={active}
+    >
+      <span className="inline-flex h-4 w-4 items-center justify-center">{icon}</span>
+      <span>{label}</span>
+      {running ? <RunningTag /> : null}
+    </button>
+  )
 }
 
 function sortBashLogEntries(entries: BashLogEntry[]) {
@@ -894,7 +1018,9 @@ function QuestTerminalLegacySurface({
     if (!selectedSession) return
     setStopPending(true)
     try {
-      await stopBashSession(questId, selectedSession.bash_id, 'Stopped from terminal panel')
+      await stopBashSession(questId, selectedSession.bash_id, {
+        reason: 'Stopped from terminal panel',
+      })
       await Promise.allSettled([
         reloadSessions(),
         reloadSelectedLogs(selectedSession.bash_id),
@@ -1082,28 +1208,27 @@ function QuestTerminalLegacySurface({
   )
 }
 
-function QuestTerminalSurface({
+type QuestTerminalMode = 'interactive' | 'deepscientist-bash'
+
+type QuestTerminalConnection = {
+  status: string
+  error?: string
+}
+
+function QuestInteractiveTerminalPane({
   questId,
   onRefresh,
+  terminalSessions,
+  connection,
+  reloadSessions,
 }: {
   questId: string
   onRefresh: () => Promise<void>
+  terminalSessions: BashSession[]
+  connection: QuestTerminalConnection
+  reloadSessions: () => Promise<void>
 }) {
   const { addToast } = useToast()
-  const {
-    sessions,
-    connection,
-    reload: reloadSessions,
-  } = useBashSessionStream({
-    projectId: questId,
-    enabled: Boolean(questId),
-    limit: 120,
-  })
-
-  const terminalSessions = React.useMemo(
-    () => sessions.filter((session) => String(session.kind || '').toLowerCase() === 'terminal'),
-    [sessions]
-  )
   const [selectedSessionId, setSelectedSessionId] = React.useState<string | null>(null)
   const [logsLoading, setLogsLoading] = React.useState(false)
   const [logsError, setLogsError] = React.useState<string | null>(null)
@@ -1482,7 +1607,9 @@ function QuestTerminalSurface({
     if (!selectedSession) return
     setStopPending(true)
     try {
-      await stopBashSession(questId, selectedSession.bash_id, 'Stopped from terminal panel')
+      await stopBashSession(questId, selectedSession.bash_id, {
+        reason: 'Stopped from terminal panel',
+      })
       await Promise.allSettled([reloadSessions(), onRefresh()])
     } finally {
       setStopPending(false)
@@ -1599,8 +1726,11 @@ function QuestTerminalSurface({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-foreground">
-                          {session.label || session.bash_id}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="truncate text-sm font-semibold text-foreground">
+                            {session.label || session.bash_id}
+                          </div>
+                          {isActiveBashSession(session.status) ? <RunningTag /> : null}
                         </div>
                         <div className="mt-1 truncate text-xs text-muted-foreground">
                           {session.workdir || 'project root'}
@@ -1693,6 +1823,391 @@ function QuestTerminalSurface({
             ) : null}
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function QuestDeepScientistBashPane({
+  questId,
+  onRefresh,
+  execSessions,
+  connection,
+  reloadSessions,
+}: {
+  questId: string
+  onRefresh: () => Promise<void>
+  execSessions: BashSession[]
+  connection: QuestTerminalConnection
+  reloadSessions: () => Promise<void>
+}) {
+  const [selectedSessionId, setSelectedSessionId] = React.useState<string | null>(null)
+  const [stopPending, setStopPending] = React.useState(false)
+  const [liveStatus, setLiveStatus] = React.useState<string | null>(null)
+  const [liveExitCode, setLiveExitCode] = React.useState<number | null>(null)
+  const [liveStopReason, setLiveStopReason] = React.useState<string | null>(null)
+  const [liveProgress, setLiveProgress] = React.useState<BashProgress | null>(null)
+
+  const selectedSession = React.useMemo<BashSession | null>(() => {
+    if (!execSessions.length) return null
+    return execSessions.find((session) => session.bash_id === selectedSessionId) ?? execSessions[0]
+  }, [execSessions, selectedSessionId])
+
+  React.useEffect(() => {
+    if (!execSessions.length) {
+      setSelectedSessionId(null)
+      return
+    }
+    if (!selectedSessionId || !execSessions.some((session) => session.bash_id === selectedSessionId)) {
+      const runningSession =
+        execSessions.find((session) => isActiveBashSession(session.status)) ?? execSessions[0]
+      setSelectedSessionId(runningSession.bash_id)
+    }
+  }, [execSessions, selectedSessionId])
+
+  React.useEffect(() => {
+    setLiveStatus(null)
+    setLiveExitCode(null)
+    setLiveStopReason(null)
+    setLiveProgress(null)
+  }, [selectedSession?.bash_id])
+
+  const selectedToolContent = React.useMemo<ToolEventData | null>(() => {
+    if (!selectedSession) return null
+    return buildWorkspaceBashToolContent(selectedSession)
+  }, [selectedSession])
+
+  const handleRefresh = React.useCallback(async () => {
+    await Promise.allSettled([reloadSessions(), onRefresh()])
+  }, [onRefresh, reloadSessions])
+
+  const handleStop = React.useCallback(async () => {
+    if (!selectedSession) return
+    setStopPending(true)
+    try {
+      await stopBashSession(questId, selectedSession.bash_id, {
+        reason: 'Stopped from DeepScientist bash panel',
+      })
+      await Promise.allSettled([reloadSessions(), onRefresh()])
+    } finally {
+      setStopPending(false)
+    }
+  }, [onRefresh, questId, reloadSessions, selectedSession])
+
+  const effectiveStatus = liveStatus ?? selectedSession?.status ?? null
+  const effectiveExitCode = liveExitCode ?? selectedSession?.exit_code ?? null
+  const effectiveStopReason = liveStopReason ?? selectedSession?.stop_reason ?? null
+  const effectiveProgress = liveProgress ?? selectedSession?.last_progress ?? null
+  const commentSummary = summarizeBashComment(selectedSession?.comment)
+
+  return (
+    <div className="h-full min-h-0 overflow-hidden">
+      <div className="flex h-full min-h-0 overflow-hidden">
+        <div className="w-[360px] shrink-0 border-r border-black/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(244,239,233,0.94))] p-3 shadow-card dark:border-white/[0.10] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))]">
+          <div className="flex items-center justify-between gap-3 px-1 pb-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                DeepScientist Bash
+              </div>
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                All agent `bash_exec` sessions for this project.
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <StatusPill>{formatBashSessionStatus(connection.status)}</StatusPill>
+              <WorkspaceRefreshButton onRefresh={handleRefresh} label="Refresh" />
+            </div>
+          </div>
+
+          <div className="feed-scrollbar h-[calc(100%-4rem)] space-y-2 overflow-auto pr-1">
+            {!execSessions.length ? (
+              <div className="rounded-[20px] border border-dashed border-black/[0.10] px-3 py-4 text-sm text-muted-foreground dark:border-white/[0.12]">
+                No DeepScientist bash sessions recorded yet.
+              </div>
+            ) : (
+              execSessions.map((session) => {
+                const isActive = session.bash_id === selectedSession?.bash_id
+                const progressPercent =
+                  getProgressPercent(session.last_progress) ?? session.last_progress?.percent ?? null
+                const comment = summarizeBashComment(session.comment)
+                return (
+                  <button
+                    key={session.bash_id}
+                    type="button"
+                    onClick={() => setSelectedSessionId(session.bash_id)}
+                    className={cn(
+                      'w-full rounded-[20px] border px-3 py-3 text-left transition',
+                      isActive
+                        ? 'border-[#9b8352]/50 bg-[#9b8352]/[0.08] shadow-sm'
+                        : 'border-black/[0.06] bg-white/[0.56] hover:border-black/[0.10] hover:bg-white/[0.78] dark:border-white/[0.08] dark:bg-white/[0.03] dark:hover:bg-white/[0.05]'
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="truncate text-sm font-semibold text-foreground">
+                            {summarizeBashCommand(session.command)}
+                          </div>
+                          {isActiveBashSession(session.status) ? <RunningTag /> : null}
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {session.workdir || 'project root'}
+                        </div>
+                        {comment ? (
+                          <div className="mt-2 line-clamp-2 text-[11px] text-muted-foreground">
+                            {comment}
+                          </div>
+                        ) : null}
+                      </div>
+                      <StatusPill>{formatBashSessionStatus(session.status)}</StatusPill>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                      <span>{formatRelativeTime(session.started_at)}</span>
+                      <span>·</span>
+                      <span className="font-mono normal-case tracking-[0.02em]">{session.bash_id}</span>
+                      {typeof session.run_age_seconds === 'number' ? (
+                        <>
+                          <span>·</span>
+                          <span>{formatCompactDurationSeconds(session.run_age_seconds)}</span>
+                        </>
+                      ) : null}
+                      {typeof progressPercent === 'number' ? (
+                        <>
+                          <span>·</span>
+                          <span>{progressPercent.toFixed(0)}%</span>
+                        </>
+                      ) : null}
+                    </div>
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
+            {selectedSession ? (
+              <>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/[0.04] text-foreground dark:bg-white/[0.06]">
+                        <Sparkles className="h-4 w-4" />
+                      </div>
+                      <div className="break-words text-lg font-semibold text-foreground">
+                        {summarizeBashCommand(selectedSession.command, 160)}
+                      </div>
+                      {isActiveBashSession(effectiveStatus) ? <RunningTag /> : null}
+                    </div>
+                    <div className="mt-2 break-all text-xs text-muted-foreground">
+                      {selectedSession.workdir || 'project root'}
+                    </div>
+                    {commentSummary ? (
+                      <div className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                        {commentSummary}
+                      </div>
+                    ) : null}
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <StatusPill>{formatBashSessionStatus(effectiveStatus)}</StatusPill>
+                      <StatusPill mono>{selectedSession.bash_id}</StatusPill>
+                      <StatusPill>{selectedSession.mode}</StatusPill>
+                      {effectiveExitCode != null ? <StatusPill>exit {effectiveExitCode}</StatusPill> : null}
+                      {selectedSession.agent_instance_id ? (
+                        <StatusPill mono>{selectedSession.agent_instance_id}</StatusPill>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isActiveBashSession(effectiveStatus) ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          void handleStop()
+                        }}
+                        disabled={stopPending}
+                        className="h-9 rounded-full border-black/[0.08] bg-white/[0.84] px-3 text-[11px] shadow-sm backdrop-blur hover:bg-white dark:border-white/[0.10] dark:bg-[rgba(18,18,18,0.72)] dark:hover:bg-[rgba(24,24,24,0.9)]"
+                      >
+                        <Square className="mr-1.5 h-3.5 w-3.5" />
+                        {stopPending ? 'Stopping…' : 'Stop'}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="grid gap-x-10 gap-y-6 sm:grid-cols-2 xl:grid-cols-4">
+                  <OverviewMetric
+                    icon={<Activity className="h-4 w-4" />}
+                    label="State"
+                    value={formatBashSessionStatus(effectiveStatus)}
+                    hint={connection.status === 'open' ? 'streaming live' : connection.error || connection.status}
+                  />
+                  <OverviewMetric
+                    icon={<Clock3 className="h-4 w-4" />}
+                    label="Started"
+                    value={formatRelativeTime(selectedSession.started_at)}
+                    hint={
+                      typeof selectedSession.run_age_seconds === 'number'
+                        ? `Running ${formatCompactDurationSeconds(selectedSession.run_age_seconds)}`
+                        : selectedSession.finished_at
+                          ? `Finished ${formatRelativeTime(selectedSession.finished_at)}`
+                          : 'Waiting for duration'
+                    }
+                  />
+                  <OverviewMetric
+                    icon={<FlaskConical className="h-4 w-4" />}
+                    label="Progress"
+                    value={
+                      effectiveProgress && (getProgressPercent(effectiveProgress) ?? effectiveProgress.percent) != null
+                        ? `${(getProgressPercent(effectiveProgress) ?? effectiveProgress.percent ?? 0).toFixed(0)}%`
+                        : '—'
+                    }
+                    hint={effectiveProgress?.desc || effectiveProgress?.phase || effectiveStopReason || null}
+                  />
+                  <OverviewMetric
+                    icon={<FileCode2 className="h-4 w-4" />}
+                    label="Watch"
+                    value={
+                      typeof selectedSession.silent_seconds === 'number'
+                        ? `silent ${formatCompactDurationSeconds(selectedSession.silent_seconds)}`
+                        : selectedSession.watchdog_overdue
+                          ? 'overdue'
+                          : 'active'
+                    }
+                    hint={
+                      selectedSession.watchdog_overdue
+                        ? 'Watchdog window exceeded'
+                        : typeof selectedSession.progress_age_seconds === 'number'
+                          ? `progress ${formatCompactDurationSeconds(selectedSession.progress_age_seconds)} ago`
+                          : selectedSession.log_path
+                    }
+                  />
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-hidden rounded-[24px] border border-black/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(244,239,233,0.94))] p-4 shadow-card dark:border-white/[0.10] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))]">
+                  {selectedToolContent ? (
+                    <McpBashExecView
+                      key={selectedSession.bash_id}
+                      toolContent={selectedToolContent}
+                      live={isActiveBashSession(effectiveStatus)}
+                      projectId={questId}
+                      readOnly={false}
+                      panelMode="terminal"
+                      chrome="default"
+                      onLiveStateChange={(state) => {
+                        setLiveStatus(state.status)
+                        setLiveExitCode(state.exitCode)
+                        setLiveStopReason(state.stopReason || null)
+                        setLiveProgress(state.progress)
+                      }}
+                    />
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              <div className="flex h-full items-center justify-center rounded-[24px] border border-dashed border-black/[0.10] px-4 py-6 text-sm text-muted-foreground dark:border-white/[0.12]">
+                Select a DeepScientist bash session to inspect its output.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function QuestTerminalSurface({
+  questId,
+  onRefresh,
+}: {
+  questId: string
+  onRefresh: () => Promise<void>
+}) {
+  const {
+    sessions,
+    connection,
+    reload: reloadSessions,
+  } = useBashSessionStream({
+    projectId: questId,
+    enabled: Boolean(questId),
+    limit: 120,
+  })
+  const [mode, setMode] = React.useState<QuestTerminalMode>('interactive')
+
+  const terminalSessions = React.useMemo(
+    () => sessions.filter((session) => String(session.kind || '').toLowerCase() === 'terminal'),
+    [sessions]
+  )
+  const execSessions = React.useMemo(
+    () => sessions.filter((session) => String(session.kind || '').toLowerCase() === 'exec'),
+    [sessions]
+  )
+  const interactiveRunning = React.useMemo(
+    () => terminalSessions.some((session) => isActiveBashSession(session.status)),
+    [terminalSessions]
+  )
+  const execRunning = React.useMemo(
+    () => execSessions.some((session) => isActiveBashSession(session.status)),
+    [execSessions]
+  )
+
+  React.useEffect(() => {
+    if (mode === 'interactive' && terminalSessions.length === 0 && execSessions.length > 0) {
+      setMode('deepscientist-bash')
+      return
+    }
+    if (mode === 'deepscientist-bash' && execSessions.length === 0 && terminalSessions.length > 0) {
+      setMode('interactive')
+    }
+  }, [execSessions.length, mode, terminalSessions.length])
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--lab-surface-muted)]">
+      <div className="flex items-center justify-between gap-3 border-b border-black/[0.08] px-4 py-3 dark:border-white/[0.10]">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-foreground">Terminal workspace</div>
+          <div className="text-xs text-muted-foreground">
+            Switch between the interactive terminal and DeepScientist&apos;s recorded bash sessions.
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <TerminalModeButton
+            active={mode === 'interactive'}
+            icon={<Terminal className="h-4 w-4" />}
+            label="Terminal"
+            running={interactiveRunning}
+            onClick={() => setMode('interactive')}
+          />
+          <TerminalModeButton
+            active={mode === 'deepscientist-bash'}
+            icon={<Sparkles className="h-4 w-4" />}
+            label="DeepScientist's bash session"
+            running={execRunning}
+            onClick={() => setMode('deepscientist-bash')}
+          />
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {mode === 'interactive' ? (
+          <QuestInteractiveTerminalPane
+            questId={questId}
+            onRefresh={onRefresh}
+            terminalSessions={terminalSessions}
+            connection={connection}
+            reloadSessions={reloadSessions}
+          />
+        ) : (
+          <QuestDeepScientistBashPane
+            questId={questId}
+            onRefresh={onRefresh}
+            execSessions={execSessions}
+            connection={connection}
+            reloadSessions={reloadSessions}
+          />
+        )}
       </div>
     </div>
   )

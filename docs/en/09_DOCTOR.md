@@ -4,14 +4,10 @@ Use `ds doctor` when DeepScientist does not start cleanly after installation.
 
 ## Recommended flow
 
-1. Install `uv`, then install DeepScientist and Codex:
+1. Install DeepScientist:
 
    ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
-
-   ```bash
-   npm install -g @openai/codex @researai/deepscientist
+   npm install -g @researai/deepscientist
    ```
 
 2. Try to start DeepScientist:
@@ -47,10 +43,10 @@ Use `ds doctor` when DeepScientist does not start cleanly after installation.
 
 ### Codex is missing
 
-Run:
+Run the package install again so the bundled Codex dependency is present:
 
 ```bash
-npm install -g @openai/codex
+npm install -g @researai/deepscientist
 ```
 
 ### Codex is installed but not logged in
@@ -65,7 +61,7 @@ Finish login once, then rerun `ds doctor`.
 
 ### `uv` is missing
 
-Run:
+Normally `ds` will bootstrap a local `uv` automatically. If that bootstrap fails, install it manually:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -130,7 +126,7 @@ conda activate ds311
 ds
 ```
 
-If you do nothing, `uv` can still provision a managed Python runtime automatically under the DeepScientist home.
+If you do nothing, `ds` can still bootstrap a managed `uv` + Python runtime automatically under the DeepScientist home.
 
 ### Git user identity is missing
 

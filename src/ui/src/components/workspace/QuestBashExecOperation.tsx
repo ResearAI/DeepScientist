@@ -88,6 +88,12 @@ function extractInitialProgress(value: Record<string, unknown> | null): BashProg
   return candidate as BashProgress
 }
 
+function formatPercentLabel(value: number | null) {
+  if (value == null) return ''
+  const rounded = Math.round(value * 10) / 10
+  return Number.isInteger(rounded) ? `${rounded.toFixed(0)}%` : `${rounded.toFixed(1)}%`
+}
+
 export function QuestBashExecOperation({
   questId,
   itemId,
@@ -205,14 +211,12 @@ export function QuestBashExecOperation({
   const progressMeta = formatProgressMeta(liveProgress)
   const progressReason = liveStopReason.trim()
   const summary = summarizeCommand(command) || title || 'bash_exec'
-  const progressSummary = [
-    progressLabel,
-    progressPercent != null ? `${progressPercent.toFixed(0)}%` : isRunning ? 'running' : statusLabel,
-    progressMeta || progressReason,
-  ]
+  const compactProgressLabel = formatPercentLabel(progressPercent)
+  const progressSummary = [progressLabel, compactProgressLabel, progressMeta || progressReason]
     .filter(Boolean)
     .join(' · ')
   const showProgress = liveProgress != null
+  const showProgressSummary = showProgress && Boolean(progressSummary)
   const StatusIcon = isFailed ? AlertCircle : isStopped ? Square : isRunning ? Loader2 : CheckCircle2
   const statusChipClass = isFailed
     ? 'border-rose-500/20 bg-rose-500/10 text-rose-700 dark:border-rose-300/20 dark:bg-rose-300/10 dark:text-rose-200'
@@ -317,60 +321,37 @@ export function QuestBashExecOperation({
             </div>
           </div>
 
-          <div className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
+          <div className="ml-auto flex min-w-0 shrink items-center gap-2 text-[11px] text-muted-foreground">
+            {showProgressSummary ? (
+              <span
+                className="max-w-[220px] shrink truncate font-medium text-muted-foreground"
+                title={progressSummary}
+              >
+                {progressSummary}
+              </span>
+            ) : null}
             <span
               className={cn(
-                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium',
+                'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-medium',
                 statusChipClass
               )}
             >
               <StatusIcon className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')} />
               {statusLabel}
             </span>
-            {createdAt ? <span>{formatTime(createdAt)}</span> : null}
+            {createdAt ? <span className="shrink-0 whitespace-nowrap">{formatTime(createdAt)}</span> : null}
             <ChevronDown
               className={cn(
-                'h-4 w-4 transition-transform',
+                'h-4 w-4 shrink-0 transition-transform',
                 expanded && 'rotate-180'
               )}
             />
           </div>
         </div>
-
-        {showProgress ? (
-          <div className="ml-[42px] flex min-w-0 items-center gap-3">
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
-              <motion.div
-                className={cn(
-                  'h-full rounded-full',
-                  isFailed
-                    ? 'bg-rose-400/80'
-                    : isStopped
-                      ? 'bg-amber-400/80'
-                      : 'bg-[linear-gradient(90deg,rgba(143,163,184,0.86),rgba(201,176,132,0.82))]'
-                )}
-                animate={
-                  progressPercent == null
-                    ? { x: ['-100%', '220%'] }
-                    : { width: `${progressPercent}%`, x: '0%' }
-                }
-                transition={
-                  progressPercent == null
-                    ? { duration: 1.4, repeat: Infinity, ease: 'easeInOut' }
-                    : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
-                }
-                style={progressPercent == null ? { width: '34%' } : undefined}
-              />
-            </div>
-            <div className="max-w-[40%] truncate text-[11px] text-muted-foreground" title={progressSummary}>
-              {progressSummary}
-            </div>
-          </div>
-        ) : null}
       </button>
 
       {expanded ? (
-        <div className="mt-2 overflow-hidden rounded-[18px] border border-black/[0.05] bg-black/[0.03] p-0 dark:border-white/[0.06] dark:bg-white/[0.03]">
+        <div className="ds-studio-bash-shell mt-2 overflow-hidden rounded-none border border-black/[0.05] bg-black/[0.03] p-0 dark:border-white/[0.06] dark:bg-white/[0.03]">
           <McpBashExecView
             toolContent={toolContent}
             live={label === 'tool_call' || status === 'running' || status === 'terminating'}

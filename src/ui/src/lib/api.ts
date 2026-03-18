@@ -4,6 +4,7 @@ import type {
   ConfigTestPayload,
   ConfigValidationPayload,
   ConnectorSnapshot,
+  ConnectorAvailabilitySnapshot,
   ExplorerPayload,
   FeedEnvelope,
   GitBranchesPayload,
@@ -84,6 +85,7 @@ export const client = {
   quests: () => api<QuestSummary[]>('/api/quests'),
   nextQuestId: () => api<{ quest_id: string }>('/api/quest-id/next'),
   baselines: () => api<BaselineRegistryEntry[]>('/api/baselines'),
+  connectorsAvailability: () => api<ConnectorAvailabilitySnapshot>('/api/connectors/availability'),
   session: (questId: string) => api<SessionPayload>(`/api/quests/${questId}/session`),
   updateQuestSettings: (
     questId: string,
@@ -100,12 +102,17 @@ export const client = {
   updateQuestBindings: async (
     questId: string,
     payload: {
+      connector?: string | null
       conversation_id?: string | null
+      bindings?: Array<{
+        connector: string
+        conversation_id?: string | null
+      }>
       force?: boolean
     }
   ) => {
     const response = await fetch(`/api/quests/${questId}/bindings`, {
-      method: 'POST',
+      method: Array.isArray(payload.bindings) ? 'PUT' : 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -322,6 +329,11 @@ export const client = {
     auto_start?: boolean
     initial_message?: string
     preferred_connector_conversation_id?: string
+    requested_connector_bindings?: Array<{
+      connector: string
+      conversation_id?: string | null
+    }>
+    force_connector_rebind?: boolean
     requested_baseline_ref?: { baseline_id: string; variant_id?: string | null } | null
     startup_contract?: Record<string, unknown> | null
   }) =>

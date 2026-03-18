@@ -17,7 +17,7 @@ from urllib.request import Request, urlopen
 from ..artifact import ArtifactService
 from ..bash_exec import BashExecService
 from ..bash_exec.runtime import TerminalClient
-from ..bridges import get_connector_bridge, register_builtin_connector_bridges
+from ..bridges import register_builtin_connector_bridges
 from ..bridges.connectors import QQConnectorBridge
 from ..channels import QQRelayChannel, get_channel_factory, list_channel_names, register_builtin_channels
 from ..channels.discord_gateway import DiscordGatewayService
@@ -27,13 +27,15 @@ from ..channels.slack_socket import SlackSocketModeService
 from ..channels.telegram_polling import TelegramPollingService
 from ..channels.whatsapp_local_session import WhatsAppLocalSessionService
 from ..cloud import CloudLinkService
-from ..connector_runtime import conversation_identity_key, normalize_conversation_id, parse_conversation_id
+from ..connector_profiles import PROFILEABLE_CONNECTOR_NAMES, connector_profile_label, list_connector_profiles, merge_connector_profile_config
+from ..connector_runtime import conversation_identity_key, format_conversation_id, normalize_conversation_id, parse_conversation_id
 from ..config import ConfigManager
 from ..home import repo_root
 from ..memory import MemoryService
 from ..latex_runtime import QuestLatexService
 from ..prompts import PromptBuilder
 from ..prompts.builder import STANDARD_SKILLS
+from ..qq_profiles import list_qq_profiles, merge_qq_profile_config
 from ..quest import QuestService
 from ..runners import CodexRunner, RunRequest, get_runner_factory, register_builtin_runners
 from ..runtime_logs import JsonlLogger
@@ -62,7 +64,7 @@ class DaemonApp:
         self.repo_root = repo_root()
         self.config_manager = ConfigManager(home)
         self.runners_config = self.config_manager.load_named("runners")
-        self.connectors_config = self.config_manager.load_named("connectors")
+        self.connectors_config = self.config_manager.load_named_normalized("connectors")
         self.skill_installer = SkillInstaller(self.repo_root, home)
         self.quest_service = QuestService(home, skill_installer=self.skill_installer)
         self.latex_service = QuestLatexService(self.quest_service)
@@ -110,20 +112,224 @@ class DaemonApp:
         self._serve_host: str | None = None
         self._serve_port: int | None = None
         self._shutdown_requested = threading.Event()
-        self._qq_gateway: QQGatewayService | None = None
-        self._telegram_polling: TelegramPollingService | None = None
-        self._slack_socket: SlackSocketModeService | None = None
-        self._discord_gateway: DiscordGatewayService | None = None
-        self._feishu_long_connection: FeishuLongConnectionService | None = None
-        self._whatsapp_local_session: WhatsAppLocalSessionService | None = None
+        self._qq_gateways: dict[str, QQGatewayService] = {}
+        self._telegram_polling: dict[str, TelegramPollingService] = {}
+        self._slack_socket: dict[str, SlackSocketModeService] = {}
+        self._discord_gateway: dict[str, DiscordGatewayService] = {}
+        self._feishu_long_connection: dict[str, FeishuLongConnectionService] = {}
+        self._whatsapp_local_session: dict[str, WhatsAppLocalSessionService] = {}
         self.handlers = ApiHandlers(self)
 
     def list_connector_statuses(self) -> list[dict[str, object]]:
-        items = [channel.status() for channel in self.channels.values()]
+        title_by_quest = self._quest_titles_by_id()
+        items = [self._augment_connector_status(channel.status(), title_by_quest=title_by_quest) for channel in self.channels.values()]
         lingzhu_config = self.connectors_config.get("lingzhu")
         if isinstance(lingzhu_config, dict):
-            items.append(self.config_manager.lingzhu_snapshot(lingzhu_config))
+            items.append(self._augment_connector_status(self.config_manager.lingzhu_snapshot(lingzhu_config), title_by_quest=title_by_quest))
         return items
+
+    def _quest_titles_by_id(self) -> dict[str, str | None]:
+        return {
+            str(item.get("quest_id") or "").strip(): str(item.get("title") or "").strip() or None
+            for item in self.quest_service.list_quests()
+        }
+
+    def _augment_connector_status(
+        self,
+        snapshot: dict[str, object],
+        *,
+        title_by_quest: dict[str, str | None] | None = None,
+    ) -> dict[str, object]:
+        if not isinstance(snapshot, dict):
+            return snapshot
+        connector_name = str(snapshot.get("name") or "").strip().lower()
+        titles = title_by_quest or self._quest_titles_by_id()
+        binding_map: dict[str, dict[str, str | None]] = {}
+        for raw in snapshot.get("bindings") or []:
+            if not isinstance(raw, dict):
+                continue
+            conversation_id = str(raw.get("conversation_id") or "").strip()
+            if not conversation_id:
+                continue
+            quest_id = str(raw.get("quest_id") or "").strip() or None
+            binding_map[conversation_identity_key(conversation_id)] = {
+                "quest_id": quest_id,
+                "quest_title": titles.get(quest_id or ""),
+            }
+
+        def augment_target(target: object) -> dict[str, object] | None:
+            if not isinstance(target, dict):
+                return None
+            payload = dict(target)
+            conversation_id = str(payload.get("conversation_id") or "").strip()
+            if not conversation_id:
+                return payload
+            binding = binding_map.get(conversation_identity_key(conversation_id)) or {}
+            bound_quest_id = str(binding.get("quest_id") or "").strip() or None
+            bound_quest_title = str(binding.get("quest_title") or "").strip() or None
+            if bound_quest_id:
+                payload["bound_quest_id"] = bound_quest_id
+                payload["bound_quest_title"] = bound_quest_title
+                payload["is_bound"] = True
+                payload["warning"] = f"Currently bound to {bound_quest_id}"
+            else:
+                payload["bound_quest_id"] = None
+                payload["bound_quest_title"] = None
+                payload["is_bound"] = False
+            payload["selectable"] = True
+            if not payload.get("connector") and connector_name:
+                payload["connector"] = connector_name
+            return payload
+
+        known_targets = [item for item in (augment_target(target) for target in snapshot.get("known_targets") or []) if item is not None]
+        discovered_targets = [item for item in (augment_target(target) for target in snapshot.get("discovered_targets") or []) if item is not None]
+        bindings = []
+        for raw in snapshot.get("bindings") or []:
+            if not isinstance(raw, dict):
+                continue
+            payload = dict(raw)
+            quest_id = str(payload.get("quest_id") or "").strip() or None
+            payload["quest_title"] = titles.get(quest_id or "")
+            bindings.append(payload)
+        payload = dict(snapshot)
+        if known_targets:
+            payload["known_targets"] = known_targets
+        if discovered_targets:
+            payload["discovered_targets"] = discovered_targets
+            payload["target_count"] = len(discovered_targets)
+        default_target = augment_target(snapshot.get("default_target"))
+        if default_target is not None:
+            payload["default_target"] = default_target
+        if bindings:
+            payload["bindings"] = bindings
+        profiles_payload = []
+        for raw_profile in snapshot.get("profiles") or []:
+            if not isinstance(raw_profile, dict):
+                continue
+            profile_payload = dict(raw_profile)
+            profile_payload["discovered_targets"] = [
+                item
+                for item in (
+                    augment_target(target)
+                    for target in raw_profile.get("discovered_targets") or []
+                )
+                if item is not None
+            ]
+            profile_payload["recent_conversations"] = [
+                dict(item)
+                for item in raw_profile.get("recent_conversations") or []
+                if isinstance(item, dict)
+            ]
+            profile_payload["bindings"] = [
+                {
+                    **dict(item),
+                    "quest_title": titles.get(str(item.get("quest_id") or "").strip() or ""),
+                }
+                for item in raw_profile.get("bindings") or []
+                if isinstance(item, dict)
+            ]
+            profiles_payload.append(profile_payload)
+        if profiles_payload:
+            payload["profiles"] = profiles_payload
+        return payload
+
+    @staticmethod
+    def _connector_has_delivery_target(snapshot: dict[str, object]) -> bool:
+        if str(snapshot.get("main_chat_id") or "").strip():
+            return True
+        if str(snapshot.get("last_conversation_id") or "").strip():
+            return True
+        if isinstance(snapshot.get("default_target"), dict) and snapshot.get("default_target"):
+            return True
+        if isinstance(snapshot.get("bindings"), list) and snapshot.get("bindings"):
+            return True
+        if isinstance(snapshot.get("recent_conversations"), list) and snapshot.get("recent_conversations"):
+            return True
+        if isinstance(snapshot.get("discovered_targets"), list) and snapshot.get("discovered_targets"):
+            return True
+        for key in ("binding_count", "target_count"):
+            try:
+                if int(snapshot.get(key) or 0) > 0:
+                    return True
+            except (TypeError, ValueError):
+                continue
+        return False
+
+    def connector_availability_summary(self) -> dict[str, object]:
+        available_connectors: list[dict[str, object]] = []
+        preferred_connector_name: str | None = None
+        preferred_conversation_id: str | None = None
+        has_enabled_external_connector = False
+        has_bound_external_connector = False
+
+        for item in self.list_connector_statuses():
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name or name == "local":
+                continue
+            enabled = bool(item.get("enabled"))
+            connection_state = str(item.get("connection_state") or "").strip() or None
+            has_target = self._connector_has_delivery_target(item)
+            if enabled:
+                has_enabled_external_connector = True
+            if enabled and has_target:
+                has_bound_external_connector = True
+                if preferred_connector_name is None:
+                    preferred_connector_name = name
+                    preferred_conversation_id = str(
+                        ((item.get("default_target") or {}) if isinstance(item.get("default_target"), dict) else {}).get(
+                            "conversation_id"
+                        )
+                        or item.get("last_conversation_id")
+                        or ""
+                    ).strip() or None
+            available_connectors.append(
+                {
+                    "name": name,
+                    "enabled": enabled,
+                    "connection_state": connection_state,
+                    "binding_count": int(item.get("binding_count") or 0),
+                    "target_count": int(item.get("target_count") or 0),
+                    "has_delivery_target": has_target,
+                }
+            )
+
+        return {
+            "has_enabled_external_connector": has_enabled_external_connector,
+            "has_bound_external_connector": has_bound_external_connector,
+            "should_recommend_binding": not has_bound_external_connector,
+            "preferred_connector_name": preferred_connector_name,
+            "preferred_conversation_id": preferred_conversation_id,
+            "available_connectors": available_connectors,
+        }
+
+    def _normalize_requested_connector_bindings(
+        self,
+        requested_connector_bindings: list[dict[str, object]] | None,
+    ) -> list[dict[str, str | None]]:
+        items = requested_connector_bindings if isinstance(requested_connector_bindings, list) else []
+        normalized_by_connector: dict[str, dict[str, str | None]] = {}
+        for raw in items:
+            if not isinstance(raw, dict):
+                continue
+            raw_connector_name = str(raw.get("connector") or "").strip().lower()
+            conversation_id = normalize_conversation_id(raw.get("conversation_id"))
+            parsed = parse_conversation_id(conversation_id)
+            connector_name = raw_connector_name
+            if parsed is not None:
+                connector_name = str(parsed.get("connector") or connector_name).strip().lower()
+            if not connector_name or connector_name == "local":
+                continue
+            if connector_name not in self.channels:
+                continue
+            if parsed is not None and str(parsed.get("connector") or "").strip().lower() != connector_name:
+                continue
+            normalized_by_connector[connector_name] = {
+                "connector": connector_name,
+                "conversation_id": conversation_id or None,
+            }
+        return list(normalized_by_connector.values())
 
     def _launcher_update_base_command(self) -> list[str]:
         node_binary = str(os.environ.get("DEEPSCIENTIST_NODE_BINARY") or "").strip() or which("node") or which("nodejs")
@@ -407,7 +613,7 @@ class DaemonApp:
         return factory(home=self.home, app=self, config=self.connectors_config.get(name, {}))
 
     def reload_connectors_config(self, *, restart_background: bool = True) -> dict[str, object]:
-        self.connectors_config = self.config_manager.load_named("connectors")
+        self.connectors_config = self.config_manager.load_named_normalized("connectors")
         register_builtin_channels(home=self.home, connectors_config=self.connectors_config)
         for name, channel in self.channels.items():
             config = self.connectors_config.get(name, {})
@@ -495,9 +701,12 @@ class DaemonApp:
         announce_connector_binding: bool = True,
         exclude_conversation_id: str | None = None,
         preferred_connector_conversation_id: str | None = None,
+        requested_connector_bindings: list[dict[str, object]] | None = None,
+        force_connector_rebind: bool = False,
         requested_baseline_ref: dict[str, object] | None = None,
         startup_contract: dict[str, object] | None = None,
     ) -> dict:
+        normalized_requested_bindings = self._normalize_requested_connector_bindings(requested_connector_bindings)
         snapshot = self.quest_service.create(
             goal=goal,
             title=title,
@@ -545,7 +754,51 @@ class DaemonApp:
                 ) from exc
         preferred_binding = normalize_conversation_id(preferred_connector_conversation_id)
         preferred_parsed = parse_conversation_id(preferred_binding)
-        if (
+        if normalized_requested_bindings:
+            try:
+                binding_result = self.update_quest_bindings(
+                    snapshot["quest_id"],
+                    normalized_requested_bindings,
+                    force=force_connector_rebind,
+                )
+                if isinstance(binding_result, tuple):
+                    raise RuntimeError(str(binding_result[1].get("message") or "Unable to bind connector targets."))
+                if announce_connector_binding:
+                    for result in binding_result.get("results") or []:
+                        if not isinstance(result, dict):
+                            continue
+                        conversation_id = str(result.get("conversation_id") or "").strip()
+                        connector_name = str(result.get("connector") or "").strip().lower()
+                        if not conversation_id or not connector_name or connector_name == "local":
+                            continue
+                        channel = self._channel_with_bindings(connector_name)
+                        channel.send(
+                            {
+                                "conversation_id": conversation_id,
+                                "quest_id": snapshot["quest_id"],
+                                "kind": "ack",
+                                "message": self._quest_created_connector_message(
+                                    connector_name,
+                                    quest_id=snapshot["quest_id"],
+                                    goal=goal,
+                                    previous_quest_id=str(result.get("previous_quest_id") or "").strip() or None,
+                                ),
+                            }
+                        )
+                snapshot = self.quest_service.snapshot(snapshot["quest_id"])
+            except Exception as exc:
+                shutil.rmtree(Path(snapshot["quest_root"]), ignore_errors=True)
+                self.sessions.forget(snapshot["quest_id"])
+                self.logger.log(
+                    "warning",
+                    "quest.connector_binding_failed",
+                    quest_id=snapshot.get("quest_id"),
+                    message=str(exc),
+                )
+                raise RuntimeError(
+                    f"Quest creation failed because one or more selected connector targets could not be bound: {exc}"
+                ) from exc
+        elif (
             preferred_binding
             and preferred_parsed
             and str(preferred_parsed.get("connector") or "").strip().lower() in self.channels
@@ -577,7 +830,7 @@ class DaemonApp:
                         ),
                     }
                 )
-        elif not preferred_binding:
+        else:
             self._auto_bind_connectors_to_latest_quest(
                 snapshot["quest_id"],
                 goal=goal,
@@ -1783,9 +2036,186 @@ class DaemonApp:
         channel = self._channel_with_bindings(connector_name)
         return channel.list_bindings()
 
-    def update_quest_binding(
+    def preview_connector_binding_conflicts(
+        self,
+        requested_bindings: list[dict[str, object]] | None,
+        *,
+        quest_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        normalized_bindings = self._normalize_requested_connector_bindings(requested_bindings)
+        conflicts: list[dict[str, object]] = []
+        seen: set[tuple[str, str]] = set()
+        for item in normalized_bindings:
+            connector_name = str(item.get("connector") or "").strip().lower()
+            conversation_id = str(item.get("conversation_id") or "").strip()
+            if not connector_name or not conversation_id:
+                continue
+            for conflict in self._inspect_connector_binding_conflicts(quest_id, conversation_id):
+                conflict_quest_id = str(conflict.get("quest_id") or "").strip()
+                identity = (connector_name, conflict_quest_id)
+                if not conflict_quest_id or identity in seen:
+                    continue
+                seen.add(identity)
+                conflicts.append(
+                    {
+                        "connector": connector_name,
+                        "conversation_id": conversation_id,
+                        **conflict,
+                    }
+                )
+        return conflicts
+
+    def _inspect_connector_binding_conflicts(
+        self,
+        quest_id: str | None,
+        conversation_id: str,
+    ) -> list[dict[str, object]]:
+        normalized = normalize_conversation_id(conversation_id)
+        parsed = parse_conversation_id(normalized)
+        if parsed is None or str(parsed.get("connector") or "").strip().lower() == "local":
+            return []
+        connector_name = str(parsed.get("connector") or "").strip().lower()
+        if connector_name not in self.channels:
+            return []
+        channel = self._channel_with_bindings(connector_name)
+        conversation_key = conversation_identity_key(normalized)
+        titles = self._quest_titles_by_id()
+        conflicts: list[dict[str, object]] = []
+        existing_bound = channel.resolve_bound_quest(normalized)
+        normalized_quest_id = str(quest_id or "").strip() or None
+        if existing_bound and existing_bound != normalized_quest_id:
+            conflicts.append(
+                {
+                    "quest_id": existing_bound,
+                    "title": titles.get(existing_bound),
+                    "reason": "connector_binding",
+                }
+            )
+        for item in self.quest_service.list_quests():
+            other_id = str(item.get("quest_id") or "").strip()
+            if not other_id or other_id == normalized_quest_id:
+                continue
+            sources = self.quest_service.binding_sources(other_id)
+            if any(conversation_identity_key(source) == conversation_key for source in sources):
+                conflicts.append(
+                    {
+                        "quest_id": other_id,
+                        "title": titles.get(other_id),
+                        "reason": "quest_binding",
+                    }
+                )
+        deduped_conflicts: list[dict[str, object]] = []
+        seen_conflict_ids: set[str] = set()
+        for item in conflicts:
+            candidate = str(item.get("quest_id") or "").strip()
+            if not candidate or candidate in seen_conflict_ids:
+                continue
+            seen_conflict_ids.add(candidate)
+            deduped_conflicts.append(item)
+        return deduped_conflicts
+
+    def _unbind_quest_connector_bindings(
         self,
         quest_id: str,
+        connector_name: str,
+        *,
+        preserve: set[str] | None = None,
+    ) -> list[str]:
+        normalized_connector = str(connector_name or "").strip().lower()
+        preserve_keys = {conversation_identity_key(item) for item in (preserve or set()) if item}
+        removed: list[str] = []
+        if not normalized_connector or normalized_connector == "local":
+            return removed
+        try:
+            channel = self._channel_with_bindings(normalized_connector)
+        except Exception:
+            return removed
+        for item in channel.list_bindings():
+            if str(item.get("quest_id") or "").strip() != quest_id:
+                continue
+            conversation_id = str(item.get("conversation_id") or "").strip()
+            if not conversation_id:
+                continue
+            if preserve_keys and conversation_identity_key(conversation_id) in preserve_keys:
+                continue
+            if channel.unbind_conversation(conversation_id, quest_id=quest_id):
+                removed.append(conversation_id)
+                self.sessions.unbind(quest_id, conversation_id)
+        for conversation_id in removed:
+            self.quest_service.unbind_source(quest_id, conversation_id)
+        return removed
+
+    def _apply_conversation_binding(
+        self,
+        quest_id: str,
+        conversation_id: str,
+        *,
+        force: bool = False,
+        clear_scope: str = "connector",
+    ) -> dict | tuple[int, dict]:
+        quest_root = self.home / "quests" / quest_id
+        if not quest_root.joinpath("quest.yaml").exists():
+            return 404, {"ok": False, "message": f"Unknown quest `{quest_id}`."}
+        normalized = normalize_conversation_id(conversation_id)
+        parsed = parse_conversation_id(normalized)
+        if parsed is None:
+            return 400, {"ok": False, "message": f"Invalid connector conversation `{conversation_id}`."}
+        connector_name = str(parsed.get("connector") or "").strip().lower()
+        if not connector_name or connector_name == "local" or connector_name not in self.channels:
+            return 400, {"ok": False, "message": f"Unknown connector `{connector_name}` for conversation `{normalized}`."}
+        channel = self._channel_with_bindings(connector_name)
+        conflicts = self._inspect_connector_binding_conflicts(quest_id, normalized)
+        if conflicts and not force:
+            return 409, {
+                "ok": False,
+                "conflict": True,
+                "message": "Conversation is already bound to another quest.",
+                "quest_id": quest_id,
+                "connector": connector_name,
+                "conversation_id": normalized,
+                "conflicts": conflicts,
+            }
+        existing_bound = channel.resolve_bound_quest(normalized)
+        for item in conflicts:
+            other_id = str(item.get("quest_id") or "").strip()
+            if other_id and other_id != quest_id:
+                self.quest_service.unbind_source(other_id, normalized)
+                self.sessions.unbind(other_id, normalized)
+        channel.bind_conversation(normalized, quest_id)
+        self.sessions.bind(quest_id, normalized)
+        self.quest_service.bind_source(quest_id, "local:default")
+        self.quest_service.bind_source(quest_id, normalized)
+        if clear_scope == "all_external":
+            removed = self._unbind_external_bindings(quest_id, preserve={normalized})
+        elif clear_scope == "connector":
+            removed = self._unbind_quest_connector_bindings(quest_id, connector_name, preserve={normalized})
+        else:
+            removed = []
+        snapshot = self.quest_service.snapshot(quest_id)
+        previous_quest_id = str(existing_bound or "").strip() or None
+        if previous_quest_id == quest_id:
+            previous_quest_id = None
+        if previous_quest_id is None:
+            for item in conflicts:
+                candidate = str(item.get("quest_id") or "").strip()
+                if candidate and candidate != quest_id:
+                    previous_quest_id = candidate
+                    break
+        return {
+            "ok": True,
+            "quest_id": quest_id,
+            "connector": connector_name,
+            "conversation_id": normalized,
+            "snapshot": snapshot,
+            "removed_conversations": removed,
+            "conflicts_resolved": [item.get("quest_id") for item in conflicts if item.get("quest_id")],
+            "previous_quest_id": previous_quest_id,
+        }
+
+    def update_quest_connector_binding(
+        self,
+        quest_id: str,
+        connector_name: str,
         conversation_id: str | None,
         *,
         force: bool = False,
@@ -1793,7 +2223,84 @@ class DaemonApp:
         quest_root = self.home / "quests" / quest_id
         if not quest_root.joinpath("quest.yaml").exists():
             return 404, {"ok": False, "message": f"Unknown quest `{quest_id}`."}
+        normalized_connector = str(connector_name or "").strip().lower()
+        if not normalized_connector or normalized_connector == "local":
+            return 400, {"ok": False, "message": "A non-local connector name is required."}
+        if normalized_connector not in self.channels:
+            return 400, {"ok": False, "message": f"Unknown connector `{normalized_connector}`."}
 
+        normalized = normalize_conversation_id(conversation_id)
+        if not normalized:
+            removed = self._unbind_quest_connector_bindings(quest_id, normalized_connector)
+            self.quest_service.bind_source(quest_id, "local:default")
+            snapshot = self.quest_service.snapshot(quest_id)
+            return {
+                "ok": True,
+                "quest_id": quest_id,
+                "connector": normalized_connector,
+                "conversation_id": None,
+                "snapshot": snapshot,
+                "removed_conversations": removed,
+            }
+
+        parsed = parse_conversation_id(normalized)
+        if parsed is None:
+            return 400, {"ok": False, "message": f"Invalid connector conversation `{normalized}`."}
+        if str(parsed.get("connector") or "").strip().lower() != normalized_connector:
+            return 400, {
+                "ok": False,
+                "message": f"Conversation `{normalized}` does not belong to connector `{normalized_connector}`.",
+            }
+
+        return self._apply_conversation_binding(quest_id, normalized, force=force, clear_scope="connector")
+
+    def update_quest_bindings(
+        self,
+        quest_id: str,
+        requested_bindings: list[dict[str, object]] | None,
+        *,
+        force: bool = False,
+    ) -> dict | tuple[int, dict]:
+        quest_root = self.home / "quests" / quest_id
+        if not quest_root.joinpath("quest.yaml").exists():
+            return 404, {"ok": False, "message": f"Unknown quest `{quest_id}`."}
+        normalized_bindings = self._normalize_requested_connector_bindings(requested_bindings)
+        conflicts = self.preview_connector_binding_conflicts(normalized_bindings, quest_id=quest_id)
+        if conflicts and not force:
+            return 409, {
+                "ok": False,
+                "conflict": True,
+                "message": "One or more connector targets are already bound to another quest.",
+                "quest_id": quest_id,
+                "conflicts": conflicts,
+            }
+        results: list[dict[str, object]] = []
+        for item in normalized_bindings:
+            connector_name = str(item.get("connector") or "").strip().lower()
+            result = self.update_quest_connector_binding(
+                quest_id,
+                connector_name,
+                str(item.get("conversation_id") or "").strip() or None,
+                force=True if force or conflicts else False,
+            )
+            if isinstance(result, tuple):
+                return result
+            results.append(result)
+        snapshot = self.quest_service.snapshot(quest_id)
+        return {
+            "ok": True,
+            "quest_id": quest_id,
+            "snapshot": snapshot,
+            "results": results,
+        }
+
+    def update_quest_binding(
+        self,
+        quest_id: str,
+        conversation_id: str | None,
+        *,
+        force: bool = False,
+    ) -> dict | tuple[int, dict]:
         normalized = normalize_conversation_id(conversation_id)
         parsed = parse_conversation_id(normalized)
 
@@ -1811,93 +2318,8 @@ class DaemonApp:
 
         connector_name = str(parsed.get("connector") or "").strip().lower()
         if connector_name not in self.channels or connector_name == "local":
-            return 400, {
-                "ok": False,
-                "message": f"Unknown connector `{connector_name}` for conversation `{normalized}`.",
-            }
-
-        channel = self._channel_with_bindings(connector_name)
-        conversation_key = conversation_identity_key(normalized)
-
-        titles = {
-            str(item.get("quest_id") or "").strip(): str(item.get("title") or "").strip() or None
-            for item in self.quest_service.list_quests()
-        }
-
-        conflicts: list[dict] = []
-        existing_bound = channel.resolve_bound_quest(normalized)
-        if existing_bound and existing_bound != quest_id:
-            conflicts.append(
-                {
-                    "quest_id": existing_bound,
-                    "title": titles.get(existing_bound),
-                    "reason": "connector_binding",
-                }
-            )
-
-        for item in self.quest_service.list_quests():
-            other_id = str(item.get("quest_id") or "").strip()
-            if not other_id or other_id == quest_id:
-                continue
-            sources = self.quest_service.binding_sources(other_id)
-            if any(conversation_identity_key(source) == conversation_key for source in sources):
-                conflicts.append(
-                    {
-                        "quest_id": other_id,
-                        "title": titles.get(other_id),
-                        "reason": "quest_binding",
-                    }
-                )
-
-        deduped_conflicts: list[dict] = []
-        seen_conflict_ids: set[str] = set()
-        for item in conflicts:
-            candidate = str(item.get("quest_id") or "").strip()
-            if not candidate or candidate in seen_conflict_ids:
-                continue
-            seen_conflict_ids.add(candidate)
-            deduped_conflicts.append(item)
-
-        if deduped_conflicts and not force:
-            return 409, {
-                "ok": False,
-                "conflict": True,
-                "message": "Conversation is already bound to another quest.",
-                "quest_id": quest_id,
-                "conversation_id": normalized,
-                "conflicts": deduped_conflicts,
-            }
-
-        for item in deduped_conflicts:
-            other_id = str(item.get("quest_id") or "").strip()
-            if other_id and other_id != quest_id:
-                self.quest_service.unbind_source(other_id, normalized)
-                self.sessions.unbind(other_id, normalized)
-
-        channel.bind_conversation(normalized, quest_id)
-        self.sessions.bind(quest_id, normalized)
-        self.quest_service.bind_source(quest_id, "local:default")
-        self.quest_service.bind_source(quest_id, normalized)
-        removed = self._unbind_external_bindings(quest_id, preserve={normalized})
-        snapshot = self.quest_service.snapshot(quest_id)
-        previous_quest_id = str(existing_bound or "").strip() or None
-        if previous_quest_id == quest_id:
-            previous_quest_id = None
-        if previous_quest_id is None:
-            for item in deduped_conflicts:
-                candidate = str(item.get("quest_id") or "").strip()
-                if candidate and candidate != quest_id:
-                    previous_quest_id = candidate
-                    break
-        return {
-            "ok": True,
-            "quest_id": quest_id,
-            "conversation_id": normalized,
-            "snapshot": snapshot,
-            "removed_conversations": removed,
-            "conflicts_resolved": [item.get("quest_id") for item in deduped_conflicts if item.get("quest_id")],
-            "previous_quest_id": previous_quest_id,
-        }
+            return 400, {"ok": False, "message": f"Unknown connector `{connector_name}` for conversation `{normalized}`."}
+        return self._apply_conversation_binding(quest_id, normalized, force=force, clear_scope="all_external")
 
     def delete_quest(self, quest_id: str, *, source: str = "web") -> dict | tuple[int, dict]:
         quests_root = self.home / "quests"
@@ -1986,52 +2408,6 @@ class DaemonApp:
             "accepted": True,
             "normalized": normalized,
             "reply": reply,
-        }
-
-    def handle_bridge_webhook(
-        self,
-        connector_name: str,
-        *,
-        method: str,
-        path: str,
-        raw_body: bytes,
-        headers: dict[str, str],
-        body: dict,
-    ) -> tuple[int, dict, bytes | str] | dict:
-        bridge = get_connector_bridge(connector_name)
-        if bridge is None:
-            return 404, {"Content-Type": "application/json; charset=utf-8"}, json.dumps({"ok": False, "message": f"Unknown bridge `{connector_name}`."}, ensure_ascii=False)
-        query = self.handlers.parse_query(path)
-        result = bridge.parse_webhook(
-            method=method,
-            headers=headers,
-            query=query,
-            raw_body=raw_body,
-            body=body,
-            config=self.connectors_config.get(connector_name, {}),
-        )
-        if result.response_body is not None and not result.events:
-            headers_out = {"Content-Type": "application/json; charset=utf-8", **result.response_headers}
-            body_out = result.response_body
-            if isinstance(body_out, bytes):
-                return result.status_code, headers_out, body_out
-            if isinstance(body_out, str):
-                return result.status_code, headers_out, body_out
-            return result.status_code, headers_out, json.dumps(body_out, ensure_ascii=False)
-
-        responses: list[dict] = []
-        accepted = False
-        for event in result.events:
-            routed = self.handle_connector_inbound(connector_name, event)
-            responses.append(routed)
-            accepted = accepted or bool(routed.get("accepted"))
-        return {
-            "ok": result.ok,
-            "accepted": accepted,
-            "connector": connector_name,
-            "event_count": len(result.events),
-            "message": result.message,
-            "responses": responses,
         }
 
     def _route_connector_message(self, connector_name: str, message: dict) -> dict:
@@ -2694,7 +3070,7 @@ class DaemonApp:
             original_identity = conversation_identity_key(conversation_id)
             if original_identity in seen_identity_keys:
                 continue
-            result = self.update_quest_binding(quest_id, conversation_id, force=True)
+            result = self._apply_conversation_binding(quest_id, conversation_id, force=True, clear_scope="none")
             if isinstance(result, tuple):
                 continue
             bound_conversation = str(result.get("conversation_id") or "").strip() or conversation_id
@@ -2729,9 +3105,35 @@ class DaemonApp:
         if connector_name == "qq":
             qq_config = self.connectors_config.get("qq", {})
             if isinstance(qq_config, dict):
-                main_chat_id = str(qq_config.get("main_chat_id") or "").strip()
-                if main_chat_id:
-                    conversation_ids.append(f"qq:direct:{main_chat_id}")
+                profiles = list_qq_profiles(qq_config)
+                encode_profile_id = len(profiles) > 1
+                for profile in profiles:
+                    main_chat_id = str(profile.get("main_chat_id") or "").strip()
+                    profile_id = str(profile.get("profile_id") or "").strip()
+                    if main_chat_id:
+                        conversation_ids.append(
+                            format_conversation_id(
+                                "qq",
+                                "direct",
+                                main_chat_id,
+                                profile_id=profile_id if encode_profile_id else None,
+                            )
+                        )
+        elif connector_name in PROFILEABLE_CONNECTOR_NAMES:
+            connector_config = self.connectors_config.get(connector_name, {})
+            if isinstance(connector_config, dict):
+                for profile in list_connector_profiles(connector_name, connector_config):
+                    profile_id = str(profile.get("profile_id") or "").strip()
+                    if not profile_id:
+                        continue
+                    runtime_state = read_json(
+                        self.home / "logs" / "connectors" / connector_name / "profiles" / profile_id / "runtime.json",
+                        {},
+                    )
+                    if isinstance(runtime_state, dict):
+                        runtime_last_conversation_id = str(runtime_state.get("last_conversation_id") or "").strip()
+                        if runtime_last_conversation_id:
+                            conversation_ids.append(runtime_last_conversation_id)
         state_path = self.home / "logs" / "connectors" / connector_name / "state.json"
         state = read_json(state_path, {})
         if isinstance(state, dict):
@@ -2977,36 +3379,32 @@ class DaemonApp:
         chat_type = str(message.get("chat_type") or "").strip().lower()
         if chat_type != "direct":
             return None
+        profile_id = str(message.get("profile_id") or "").strip() or None
         chat_id = str(message.get("chat_id") or message.get("direct_id") or "").strip()
         if not chat_id:
-            conversation_id = str(message.get("conversation_id") or "").strip()
-            parts = conversation_id.split(":", 2)
-            if len(parts) == 3 and parts[0] == "qq" and parts[1] == "direct":
-                chat_id = parts[2]
+            parsed = parse_conversation_id(message.get("conversation_id"))
+            if parsed is not None and str(parsed.get("connector") or "").strip().lower() == "qq":
+                chat_id = str(parsed.get("chat_id") or "").strip()
+                profile_id = str(parsed.get("profile_id") or "").strip() or profile_id
         if not chat_id:
             return None
-        result = self.config_manager.bind_qq_main_chat(chat_id=chat_id)
+        result = self.config_manager.bind_qq_main_chat(profile_id=profile_id, chat_id=chat_id)
         if not result.get("ok"):
             self.logger.log(
                 "warning",
                 "connector.qq_main_chat_bind_failed",
                 chat_id=chat_id,
+                profile_id=profile_id,
                 errors=result.get("errors") or [],
             )
             return None
         if not result.get("saved"):
             return None
-        qq_config = self.connectors_config.get("qq")
-        if isinstance(qq_config, dict):
-            qq_config["main_chat_id"] = chat_id
-        channel = self.channels.get("qq")
-        if channel is not None and hasattr(channel, "config") and isinstance(channel.config, dict):
-            channel.config["main_chat_id"] = chat_id
-        gateway = self._qq_gateway
-        if gateway is not None and isinstance(gateway.config, dict):
-            gateway.config["main_chat_id"] = chat_id
+        self.reload_connectors_config(restart_background=False)
         return {
             "chat_id": chat_id,
+            "profile_id": result.get("profile_id"),
+            "profile_label": result.get("profile_label"),
             "saved_at": result.get("saved_at"),
         }
 
@@ -3017,9 +3415,17 @@ class DaemonApp:
         chat_id = str(binding.get("chat_id") or "").strip()
         if not chat_id:
             return base
+        profile_label = str(binding.get("profile_label") or "").strip()
         notice = self._polite_copy(
-            zh=f"已自动检测并保存当前 QQ openid：`{chat_id}`。您现在可以在 settings 页面看到这个绑定结果。",
-            en=f"I automatically detected and saved this QQ openid: `{chat_id}`. You can now see the binding in settings.",
+            zh=(
+                f"已自动检测并保存当前 QQ openid：`{chat_id}`。"
+                f"{f'当前 bot：{profile_label}。' if profile_label else ''}您现在可以在 settings 页面看到这个绑定结果。"
+            ),
+            en=(
+                f"I automatically detected and saved this QQ openid: `{chat_id}`. "
+                f"{f'Current bot: {profile_label}. ' if profile_label else ''}"
+                "You can now see the binding in settings."
+            ),
         )
         return f"{notice}\n\n{base}"
 
@@ -3058,93 +3464,160 @@ class DaemonApp:
             + restore_en,
         )
 
+    def _profiled_connector_configs(self, connector_name: str) -> list[tuple[str, str | None, dict[str, Any]]]:
+        connector_config = self.connectors_config.get(connector_name, {})
+        if not isinstance(connector_config, dict):
+            return []
+        profiles = list_connector_profiles(connector_name, connector_config)
+        encode_profile_id = len(profiles) > 1
+        items: list[tuple[str, str | None, dict[str, Any]]] = []
+        for profile in profiles:
+            profile_id = str(profile.get("profile_id") or "").strip()
+            if not profile_id:
+                continue
+            merged = merge_connector_profile_config(connector_name, connector_config, profile)
+            merged["encode_profile_id"] = encode_profile_id
+            items.append((profile_id, connector_profile_label(connector_name, profile), merged))
+        return items
+
     def _start_background_connectors(self) -> None:
         qq_config = self.connectors_config.get("qq", {})
-        if isinstance(qq_config, dict) and self._qq_gateway is None:
-            gateway = QQGatewayService(
-                home=self.home,
-                config=qq_config,
-                on_event=lambda event: self.handle_connector_inbound("qq", event),
-                log=lambda level, message: self.logger.log(level, "connector.qq_gateway", message=message),
-            )
-            if gateway.start():
-                self._qq_gateway = gateway
-        telegram_config = self.connectors_config.get("telegram", {})
-        if isinstance(telegram_config, dict) and self._telegram_polling is None:
-            polling = TelegramPollingService(
-                home=self.home,
-                config=telegram_config,
-                on_event=lambda event: self.handle_connector_inbound("telegram", event),
-                log=lambda level, message: self.logger.log(level, "connector.telegram_polling", message=message),
-            )
-            if polling.start():
-                self._telegram_polling = polling
-        slack_config = self.connectors_config.get("slack", {})
-        if isinstance(slack_config, dict) and self._slack_socket is None:
-            slack = SlackSocketModeService(
-                home=self.home,
-                config=slack_config,
-                on_event=lambda event: self.handle_connector_inbound("slack", event),
-                log=lambda level, message: self.logger.log(level, "connector.slack_socket", message=message),
-            )
-            if slack.start():
-                self._slack_socket = slack
-        discord_config = self.connectors_config.get("discord", {})
-        if isinstance(discord_config, dict) and self._discord_gateway is None:
-            discord = DiscordGatewayService(
-                home=self.home,
-                config=discord_config,
-                on_event=lambda event: self.handle_connector_inbound("discord", event),
-                log=lambda level, message: self.logger.log(level, "connector.discord_gateway", message=message),
-            )
-            if discord.start():
-                self._discord_gateway = discord
-        feishu_config = self.connectors_config.get("feishu", {})
-        if isinstance(feishu_config, dict) and self._feishu_long_connection is None:
-            feishu = FeishuLongConnectionService(
-                home=self.home,
-                config=feishu_config,
-                on_event=lambda event: self.handle_connector_inbound("feishu", event),
-                log=lambda level, message: self.logger.log(level, "connector.feishu_long_connection", message=message),
-            )
-            if feishu.start():
-                self._feishu_long_connection = feishu
-        whatsapp_config = self.connectors_config.get("whatsapp", {})
-        if isinstance(whatsapp_config, dict) and self._whatsapp_local_session is None:
-            whatsapp = WhatsAppLocalSessionService(
-                home=self.home,
-                config=whatsapp_config,
-                on_event=lambda event: self.handle_connector_inbound("whatsapp", event),
-                log=lambda level, message: self.logger.log(level, "connector.whatsapp_local_session", message=message),
-            )
-            if whatsapp.start():
-                self._whatsapp_local_session = whatsapp
+        if isinstance(qq_config, dict) and not self._qq_gateways:
+            profiles = list_qq_profiles(qq_config)
+            encode_profile_id = len(profiles) > 1
+            for profile in profiles:
+                profile_id = str(profile.get("profile_id") or "").strip()
+                profile_config = merge_qq_profile_config(qq_config, profile)
+                profile_config["encode_profile_id"] = encode_profile_id
+                gateway = QQGatewayService(
+                    home=self.home,
+                    config=profile_config,
+                    on_event=lambda event: self.handle_connector_inbound("qq", event),
+                    log=lambda level, message, _profile_id=profile_id: self.logger.log(
+                        level,
+                        "connector.qq_gateway",
+                        profile_id=_profile_id,
+                        message=message,
+                    ),
+                )
+                if gateway.start():
+                    self._qq_gateways[profile_id] = gateway
+        if not self._telegram_polling:
+            for profile_id, profile_label, profile_config in self._profiled_connector_configs("telegram"):
+                polling = TelegramPollingService(
+                    home=self.home,
+                    config=profile_config,
+                    on_event=lambda event: self.handle_connector_inbound("telegram", event),
+                    log=lambda level, message, _profile_id=profile_id: self.logger.log(
+                        level,
+                        "connector.telegram_polling",
+                        profile_id=_profile_id,
+                        message=message,
+                    ),
+                    profile_id=profile_id,
+                    profile_label=profile_label,
+                    encode_profile_id=bool(profile_config.get("encode_profile_id")),
+                )
+                if polling.start():
+                    self._telegram_polling[profile_id] = polling
+        if not self._slack_socket:
+            for profile_id, profile_label, profile_config in self._profiled_connector_configs("slack"):
+                slack = SlackSocketModeService(
+                    home=self.home,
+                    config=profile_config,
+                    on_event=lambda event: self.handle_connector_inbound("slack", event),
+                    log=lambda level, message, _profile_id=profile_id: self.logger.log(
+                        level,
+                        "connector.slack_socket",
+                        profile_id=_profile_id,
+                        message=message,
+                    ),
+                    profile_id=profile_id,
+                    profile_label=profile_label,
+                    encode_profile_id=bool(profile_config.get("encode_profile_id")),
+                )
+                if slack.start():
+                    self._slack_socket[profile_id] = slack
+        if not self._discord_gateway:
+            for profile_id, profile_label, profile_config in self._profiled_connector_configs("discord"):
+                discord = DiscordGatewayService(
+                    home=self.home,
+                    config=profile_config,
+                    on_event=lambda event: self.handle_connector_inbound("discord", event),
+                    log=lambda level, message, _profile_id=profile_id: self.logger.log(
+                        level,
+                        "connector.discord_gateway",
+                        profile_id=_profile_id,
+                        message=message,
+                    ),
+                    profile_id=profile_id,
+                    profile_label=profile_label,
+                    encode_profile_id=bool(profile_config.get("encode_profile_id")),
+                )
+                if discord.start():
+                    self._discord_gateway[profile_id] = discord
+        if not self._feishu_long_connection:
+            for profile_id, profile_label, profile_config in self._profiled_connector_configs("feishu"):
+                feishu = FeishuLongConnectionService(
+                    home=self.home,
+                    config=profile_config,
+                    on_event=lambda event: self.handle_connector_inbound("feishu", event),
+                    log=lambda level, message, _profile_id=profile_id: self.logger.log(
+                        level,
+                        "connector.feishu_long_connection",
+                        profile_id=_profile_id,
+                        message=message,
+                    ),
+                    profile_id=profile_id,
+                    profile_label=profile_label,
+                    encode_profile_id=bool(profile_config.get("encode_profile_id")),
+                )
+                if feishu.start():
+                    self._feishu_long_connection[profile_id] = feishu
+        if not self._whatsapp_local_session:
+            for profile_id, profile_label, profile_config in self._profiled_connector_configs("whatsapp"):
+                whatsapp = WhatsAppLocalSessionService(
+                    home=self.home,
+                    config=profile_config,
+                    on_event=lambda event: self.handle_connector_inbound("whatsapp", event),
+                    log=lambda level, message, _profile_id=profile_id: self.logger.log(
+                        level,
+                        "connector.whatsapp_local_session",
+                        profile_id=_profile_id,
+                        message=message,
+                    ),
+                    profile_id=profile_id,
+                    profile_label=profile_label,
+                    encode_profile_id=bool(profile_config.get("encode_profile_id")),
+                )
+                if whatsapp.start():
+                    self._whatsapp_local_session[profile_id] = whatsapp
 
     def _stop_background_connectors(self) -> None:
-        gateway = self._qq_gateway
-        self._qq_gateway = None
-        if gateway is not None:
+        gateways = list(self._qq_gateways.values())
+        self._qq_gateways = {}
+        for gateway in gateways:
             gateway.stop()
-        polling = self._telegram_polling
-        self._telegram_polling = None
-        if polling is not None:
-            polling.stop()
-        slack = self._slack_socket
-        self._slack_socket = None
-        if slack is not None:
-            slack.stop()
-        discord = self._discord_gateway
-        self._discord_gateway = None
-        if discord is not None:
-            discord.stop()
-        feishu = self._feishu_long_connection
-        self._feishu_long_connection = None
-        if feishu is not None:
-            feishu.stop()
-        whatsapp = self._whatsapp_local_session
-        self._whatsapp_local_session = None
-        if whatsapp is not None:
-            whatsapp.stop()
+        polling = list(self._telegram_polling.values())
+        self._telegram_polling = {}
+        for item in polling:
+            item.stop()
+        slack = list(self._slack_socket.values())
+        self._slack_socket = {}
+        for item in slack:
+            item.stop()
+        discord = list(self._discord_gateway.values())
+        self._discord_gateway = {}
+        for item in discord:
+            item.stop()
+        feishu = list(self._feishu_long_connection.values())
+        self._feishu_long_connection = {}
+        for item in feishu:
+            item.stop()
+        whatsapp = list(self._whatsapp_local_session.values())
+        self._whatsapp_local_session = {}
+        for item in whatsapp:
+            item.stop()
 
     @staticmethod
     def _format_status(snapshot: dict) -> str:
@@ -3743,15 +4216,6 @@ class DaemonApp:
                         payload = result(**params, path=self.path)
                     elif method == "GET":
                         payload = result(**params) if params else result()
-                    elif route_name == "bridge_webhook":
-                        payload = result(
-                            **params,
-                            method=method,
-                            path=self.path,
-                            raw_body=raw_body,
-                            headers=dict(self.headers.items()),
-                            body=body,
-                        )
                     elif route_name in {"document_open", "document_asset_upload", "chat", "command", "quest_control", "config_save", "quest_create", "quest_baseline_binding", "run_create", "qq_inbound", "connector_inbound", "docs_open", "admin_shutdown", "bash_stop", "quest_settings", "quest_bindings", "quest_delete", "terminal_session_ensure", "terminal_attach", "terminal_input", "stage_view", "latex_init", "latex_compile", "system_update_action"}:
                         payload = result(**params, body=body)
                     elif route_name == "config_validate":

@@ -11,16 +11,10 @@
 
 ## Install
 
-Install `uv` first:
+Install DeepScientist:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-Then install DeepScientist and Codex:
-
-```bash
-npm install -g @openai/codex @researai/deepscientist
+npm install -g @researai/deepscientist
 ```
 
 ## Start
@@ -30,6 +24,12 @@ ds
 ```
 
 DeepScientist starts the local web workspace at `http://127.0.0.1:20999` by default.
+
+On first start, `ds` will:
+
+- bootstrap a local `uv` runtime manager automatically if your machine does not already have one
+- use the bundled Codex CLI that ships with the npm package
+- still require you to complete Codex login once if your account is not ready yet
 
 If you want another port:
 
@@ -43,7 +43,7 @@ If you want to bind on all interfaces:
 ds --host 0.0.0.0 --port 21000
 ```
 
-DeepScientist now uses `uv` to manage a locked local Python runtime. If a conda environment is active and already provides Python `>=3.11`, `ds` prefers it automatically; otherwise `uv` provisions a managed Python toolchain under `~/DeepScientist/runtime/python/` and a locked environment under `~/DeepScientist/runtime/python-env/`.
+DeepScientist now uses `uv` to manage a locked local Python runtime. If a conda environment is active and already provides Python `>=3.11`, `ds` prefers it automatically; otherwise it bootstraps a managed `uv` + Python toolchain under `~/DeepScientist/runtime/`.
 
 The default DeepScientist home is:
 
@@ -51,6 +51,28 @@ The default DeepScientist home is:
 - Windows: `%USERPROFILE%\\DeepScientist`
 
 Use `ds --home <path>` if you want to place the runtime somewhere else.
+
+If you want to use the current working directory directly as the DeepScientist home, use:
+
+```bash
+ds --hero
+```
+
+This is equivalent to launching with `ds --home "$PWD"`.
+
+If you want to install the bundled CLI tree into another base path from a source checkout:
+
+```bash
+bash install.sh --dir /data/DeepScientist
+```
+
+If you already have a populated DeepScientist home and want to move it safely:
+
+```bash
+ds migrate /data/DeepScientist
+```
+
+`ds migrate` stops the managed daemon first, shows the absolute source and target paths, asks for a double confirmation, verifies the copied tree, updates launcher wrappers, and only then removes the old path.
 
 ## Troubleshooting
 

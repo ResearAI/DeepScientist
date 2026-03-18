@@ -156,35 +156,61 @@ def which(binary: str) -> str | None:
     return shutil.which(binary)
 
 
-def resolve_runner_binary(binary: str, *, runner_name: str | None = None) -> str | None:
-    normalized = str(binary or "").strip()
+def _resolve_executable_reference(reference: str) -> str | None:
+    normalized = str(reference or "").strip()
     if not normalized:
         return None
 
     candidate = Path(normalized).expanduser()
     if candidate.is_absolute() or os.path.sep in normalized or (os.path.altsep and os.path.altsep in normalized):
         return str(candidate) if candidate.exists() else None
+    return shutil.which(normalized)
 
-    discovered = shutil.which(normalized)
-    if discovered:
-        return discovered
+
+def _codex_repo_roots() -> list[Path]:
+    roots: list[Path] = []
+    configured = str(os.environ.get("DEEPSCIENTIST_REPO_ROOT") or "").strip()
+    if configured:
+        roots.append(Path(configured).expanduser().resolve())
+    roots.append(Path(__file__).resolve().parents[2])
+
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        key = str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(root)
+    return deduped
+
+
+def resolve_runner_binary(binary: str, *, runner_name: str | None = None) -> str | None:
+    normalized = str(binary or "").strip()
+    if not normalized:
+        return None
+
+    resolved_reference = _resolve_executable_reference(normalized)
+    candidate = Path(normalized).expanduser()
+    if candidate.is_absolute() or os.path.sep in normalized or (os.path.altsep and os.path.altsep in normalized):
+        return resolved_reference
 
     normalized_runner = str(runner_name or candidate.name or normalized).strip().lower()
     if normalized_runner != "codex":
-        return None
+        return resolved_reference
 
     for env_name in ("DEEPSCIENTIST_CODEX_BINARY", "DS_CODEX_BINARY"):
         override = os.environ.get(env_name)
         if override:
-            override_path = Path(override).expanduser()
-            if override_path.exists():
-                return str(override_path)
+            resolved_override = _resolve_executable_reference(override)
+            if resolved_override:
+                return resolved_override
 
-    repo_root = Path(__file__).resolve().parents[2]
-    node_bin_root = repo_root / "node_modules" / ".bin"
     names = ["codex.cmd", "codex.exe", "codex"] if sys.platform.startswith("win") else ["codex"]
-    for name in names:
-        package_local = node_bin_root / name
-        if package_local.exists():
-            return str(package_local)
-    return None
+    for root in _codex_repo_roots():
+        node_bin_root = root / "node_modules" / ".bin"
+        for name in names:
+            package_local = node_bin_root / name
+            if package_local.exists():
+                return str(package_local)
+    return resolved_reference

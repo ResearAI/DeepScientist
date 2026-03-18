@@ -17,6 +17,7 @@ from .daemon import DaemonApp
 from .doctor import render_doctor_report, run_doctor
 from .home import default_home, ensure_home_layout, repo_root
 from .memory import MemoryService
+from .migration import migrate_deepscientist_root
 from .prompts import PromptBuilder
 from .quest import QuestService
 from .registries import BaselineRegistry
@@ -108,6 +109,9 @@ def build_parser() -> argparse.ArgumentParser:
     config_edit = config_subparsers.add_parser("edit")
     config_edit.add_argument("name", choices=("config", "runners", "connectors", "plugins", "mcp_servers"))
     config_subparsers.add_parser("validate")
+
+    migrate_parser = subparsers.add_parser("migrate")
+    migrate_parser.add_argument("target")
 
     return parser
 
@@ -445,6 +449,27 @@ def config_validate_command(home: Path) -> int:
     return 0
 
 
+def migrate_command(home: Path, target: str) -> int:
+    try:
+        payload = migrate_deepscientist_root(home, Path(target))
+    except ValueError as exc:
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "source": str(home.expanduser().resolve()),
+                    "target": str(Path(target).expanduser().resolve()),
+                    "message": str(exc),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 1
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -492,6 +517,8 @@ def main(argv: list[str] | None = None) -> int:
         return config_edit_command(home, args.name)
     if args.command == "config" and args.config_command == "validate":
         return config_validate_command(home)
+    if args.command == "migrate":
+        return migrate_command(home, args.target)
     parser.error(f"Unknown command: {args.command}")
     return 1
 

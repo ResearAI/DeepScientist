@@ -12,7 +12,7 @@ Use this skill whenever continuation is non-trivial.
 - Treat `artifact.interact(...)` as the main long-lived communication thread across TUI, web, and bound connectors.
 - If `artifact.interact(...)` returns queued user requirements, treat them as the highest-priority user instruction bundle before making the next decision.
 - Immediately follow any non-empty mailbox poll with another `artifact.interact(...)` update that confirms receipt; if the request is directly answerable, answer there, otherwise say the current subtask is paused, give a short plan plus nearest report-back point, and handle that request first.
-- Emit `artifact.interact(kind='progress', reply_mode='threaded', ...)` only when there is real user-visible progress: a meaningful checkpoint, a route-shaping update, or an occasional keepalive during truly long decision analysis. Do not update by tool-call cadence.
+- Emit `artifact.interact(kind='progress', reply_mode='threaded', ...)` when there is real user-visible progress: a meaningful checkpoint, a route-shaping update, or a concise keepalive if active work has drifted beyond roughly 10 to 30 tool calls without a user-visible update.
 - Message templates are references only. Adapt to context and vary wording so updates feel natural and non-robotic.
 - Keep progress updates chat-like and easy to understand: say what changed, what it means, and what happens next.
 - Default to plain-language summaries. Do not mention file paths, artifact ids, branch/worktree ids, session ids, raw commands, or raw logs unless the user asks or needs them to act.

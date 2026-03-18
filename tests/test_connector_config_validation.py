@@ -27,20 +27,21 @@ def test_connector_validation_accepts_no_callback_first_transport_defaults(temp_
     assert result["parsed"]["feishu"]["transport"] == "long_connection"
 
 
-def test_connector_validation_rejects_whatsapp_meta_without_required_tokens(temp_home: Path) -> None:
+def test_connector_validation_normalizes_whatsapp_legacy_transport_back_to_local_session(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     manager = ConfigManager(temp_home)
     manager.ensure_files()
     connectors = manager.load_named("connectors")
     connectors["whatsapp"]["enabled"] = True
     connectors["whatsapp"]["transport"] = "legacy_meta_cloud"
-    connectors["whatsapp"]["provider"] = "meta"
+    connectors["whatsapp"]["session_dir"] = str(temp_home / "whatsapp-session")
+    connectors["whatsapp"]["group_policy"] = "open"
 
     import yaml
 
     result = manager.validate_named_text("connectors", yaml.safe_dump(connectors, sort_keys=False))
-    assert result["ok"] is False
-    assert any("provider: meta" in item for item in result["errors"])
+    assert result["ok"] is True
+    assert result["parsed"]["whatsapp"]["transport"] == "local_session"
 
 
 def test_connector_validation_strips_legacy_qq_mode_fields(temp_home: Path) -> None:

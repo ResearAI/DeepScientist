@@ -11,6 +11,8 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect as websocket_connect
 
 from ..bridges.connectors import QQConnectorBridge
+from ..connector_runtime import format_conversation_id
+from ..qq_profiles import qq_profile_label
 from ..shared import read_json, utc_now, write_json
 
 
@@ -36,7 +38,10 @@ class QQGatewayService:
         self._heartbeat_stop = threading.Event()
         self._session_id: str | None = None
         self._seq: int | None = None
-        self._root = home / "logs" / "connectors" / "qq"
+        self.profile_id = str(self.config.get("profile_id") or "").strip() or "qq-profile"
+        self.profile_label = qq_profile_label(self.config)
+        self.encode_profile_id = bool(self.config.get("encode_profile_id"))
+        self._root = home / "logs" / "connectors" / "qq" / "profiles" / self.profile_id
         self._state_path = self._root / "gateway.json"
 
     def start(self) -> bool:
@@ -206,9 +211,16 @@ class QQGatewayService:
                 "chat_type": "direct",
                 "direct_id": openid,
                 "openid": openid,
+                "profile_id": self.profile_id,
+                "profile_label": self.profile_label,
                 "sender_id": openid,
                 "sender_name": str(author.get("id") or openid).strip(),
-                "conversation_id": f"qq:direct:{openid}",
+                "conversation_id": format_conversation_id(
+                    "qq",
+                    "direct",
+                    openid,
+                    profile_id=self.profile_id if self.encode_profile_id else None,
+                ),
                 "content": str(data.get("content") or "").strip(),
                 "attachments": list(data.get("attachments") or []),
                 "message_id": str(data.get("id") or "").strip(),
@@ -224,9 +236,16 @@ class QQGatewayService:
                 "chat_type": "group",
                 "group_id": group_openid,
                 "group_openid": group_openid,
+                "profile_id": self.profile_id,
+                "profile_label": self.profile_label,
                 "sender_id": member_openid,
                 "sender_name": member_openid or group_openid,
-                "conversation_id": f"qq:group:{group_openid}",
+                "conversation_id": format_conversation_id(
+                    "qq",
+                    "group",
+                    group_openid,
+                    profile_id=self.profile_id if self.encode_profile_id else None,
+                ),
                 "content": str(data.get("content") or "").strip(),
                 "attachments": list(data.get("attachments") or []),
                 "message_id": str(data.get("id") or "").strip(),

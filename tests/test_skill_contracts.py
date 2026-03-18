@@ -176,3 +176,55 @@ def test_review_skill_requires_independent_audit_outputs_and_followup_routing() 
     assert "write" in text
     assert "memory.write" in text
     assert "evaluation_summary" in text
+
+
+def test_stage_skill_progress_contracts_match_tool_call_keepalive_policy() -> None:
+    aligned_skills = (
+        "intake-audit",
+        "baseline",
+        "idea",
+        "experiment",
+        "analysis-campaign",
+        "write",
+        "finalize",
+        "decision",
+        "review",
+        "rebuttal",
+        "scout",
+    )
+
+    for skill_id in aligned_skills:
+        text = _skill_text(skill_id)
+        assert "roughly 10 to 30 tool calls" in text
+        assert "Do not update by tool-call cadence." not in text
+
+
+def test_experiment_and_analysis_skills_require_smoke_then_detach_tail_monitoring() -> None:
+    experiment_text = _skill_text("experiment")
+    analysis_text = _skill_text("analysis-campaign")
+    baseline_text = _skill_text("baseline")
+
+    for text in (baseline_text, experiment_text, analysis_text):
+        assert "smoke test" in text
+        assert "bash_exec(mode='detach', ...)" in text
+        assert "tail_limit=..., order='desc'" in text
+        assert "after_seq=last_seen_seq" in text
+        assert "bash_exec(mode='history')" in text
+        assert "watchdog_overdue" in text
+        assert "bash_exec(mode='kill', id=..., wait=true, timeout_seconds=...)" in text
+
+    assert "tqdm" in baseline_text
+    assert "tqdm" in experiment_text
+    assert "tqdm" in analysis_text
+
+
+def test_baseline_skill_prefers_fast_path_over_upfront_ceremony() -> None:
+    text = _skill_text("baseline")
+
+    assert "Default to the lightest baseline path" in text
+    assert "run a bounded smoke test as soon as that contract is concrete enough" in text
+    assert "Do not delay an early smoke test just because a fuller write-up is not done yet" in text
+    assert "do not stall just to precreate every one of these files" in text
+    assert "do not require every optional checklist or template before the first smoke test" in text
+    assert "Do not build a new wrapper, registry, or result-export scaffold unless" in text
+    assert "The templates below are references, not prerequisites for the first smoke test" in text

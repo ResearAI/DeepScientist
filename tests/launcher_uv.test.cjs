@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const { __internal } = require('../bin/ds.js');
@@ -113,4 +115,56 @@ test('detectInstallMode distinguishes npm packages from source checkouts', () =>
     __internal.detectInstallMode(path.join(path.sep, 'ssdwork', 'deepscientist', 'DeepScientist')),
     'source-checkout'
   );
+});
+
+test('resolveUvBinary prefers the DeepScientist-local uv install over PATH', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-uv-home-'));
+  const localUv = __internal.runtimeUvBinaryPath(home);
+  fs.mkdirSync(path.dirname(localUv), { recursive: true });
+  fs.writeFileSync(localUv, '#!/usr/bin/env bash\nexit 0\n', { encoding: 'utf8', mode: 0o755 });
+
+  const pathBin = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-uv-path-'));
+  const pathUv = path.join(pathBin, process.platform === 'win32' ? 'uv.cmd' : 'uv');
+  fs.writeFileSync(pathUv, process.platform === 'win32' ? '@echo off\r\nexit /b 0\r\n' : '#!/usr/bin/env bash\nexit 0\n', {
+    encoding: 'utf8',
+    mode: 0o755,
+  });
+
+  const originalPath = process.env.PATH;
+  delete process.env.DEEPSCIENTIST_UV;
+  delete process.env.UV_BIN;
+  process.env.PATH = pathBin;
+  try {
+    const resolved = __internal.resolveUvBinary(home);
+    assert.equal(resolved.path, localUv);
+    assert.equal(resolved.source, 'local');
+  } finally {
+    if (typeof originalPath === 'string') {
+      process.env.PATH = originalPath;
+    } else {
+      delete process.env.PATH;
+    }
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(pathBin, { recursive: true, force: true });
+  }
+});
+
+test('parseMigrateArgs accepts target, --yes, and --restart', () => {
+  const parsed = __internal.parseMigrateArgs(['migrate', '/tmp/ds-target', '--yes', '--restart']);
+  assert.equal(parsed.target, path.resolve('/tmp/ds-target'));
+  assert.equal(parsed.yes, true);
+  assert.equal(parsed.restart, true);
+});
+
+test('resolveHome uses the current working directory when --hero is present', () => {
+  const originalCwd = process.cwd();
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-hero-'));
+  process.chdir(tempDir);
+  try {
+    assert.equal(__internal.resolveHome(['--hero']), tempDir);
+    assert.equal(__internal.resolveHome(['--here']), tempDir);
+  } finally {
+    process.chdir(originalCwd);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });

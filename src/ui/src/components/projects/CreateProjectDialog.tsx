@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { client } from '@/lib/api'
+import { connectorTargetLabel, normalizeConnectorTargets, recentConversationLabel } from '@/lib/connectors'
 import { useI18n } from '@/lib/i18n'
 import {
   applyStartResearchIntensityPreset,
@@ -25,6 +26,7 @@ import {
   saveStartResearchDraft,
   saveStartResearchTemplate,
   slugifyQuestRepo,
+  shouldRecommendStartResearchConnectorBinding,
   type CustomProfile,
   type DecisionPolicy,
   type LaunchMode,
@@ -33,7 +35,11 @@ import {
   type StartResearchTemplateEntry,
 } from '@/lib/startResearch'
 import { cn } from '@/lib/utils'
-import type { BaselineRegistryEntry, ConnectorRecentConversation, ConnectorSnapshot, ConnectorTargetSnapshot } from '@/types'
+import type {
+  BaselineRegistryEntry,
+  ConnectorAvailabilitySnapshot,
+  ConnectorSnapshot,
+} from '@/types'
 
 const copy = {
   en: {
@@ -61,8 +67,8 @@ const copy = {
     targetRunnerValue: 'Codex / local daemon',
     connectorDeliveryLabel: 'Connector delivery',
     connectorDeliveryHelp:
-      'Optional. Pick one enabled connector target to receive progress for this new project immediately. Leave it empty to keep the default automatic binding behavior.',
-    connectorDeliveryHint: 'At most one connector can be selected. Click again to clear the selection.',
+      'Optional. Each enabled connector can bind one target for this new project immediately. Leave a connector unchecked to keep it out of the initial binding set.',
+    connectorDeliveryHint: 'Each connector can choose one target. If a target is already bound elsewhere, rebinding this project will replace the old quest binding.',
     connectorSettingsAction: 'Open connector settings',
     connectorEmptyTitle: 'No enabled connector yet',
     connectorEmptyBody:
@@ -74,7 +80,7 @@ const copy = {
     connectorAutoModeBody: 'Keep the current automatic binding behavior during project creation.',
     connectorSummaryLabel: 'Connector',
     connectorSummaryAuto: 'Automatic',
-    connectorSelectedHint: 'This target will be rebound to the new project on create.',
+    connectorSelectedHint: 'If a selected target is already bound to another quest, creating this project will rebind that target here.',
     connectorSourceDefault: 'Default target',
     connectorSourceRecent: 'Recent conversation',
     connectorSourceLast: 'Latest conversation',
@@ -248,8 +254,8 @@ const copy = {
     targetRunnerValue: 'Codex / 本地 daemon',
     connectorDeliveryLabel: '连接器投递',
     connectorDeliveryHelp:
-      '可选。手动选择一个已启用 connector 的目标会话，让新项目创建后立即把进展发到这里；留空则保持默认自动绑定行为。',
-    connectorDeliveryHint: '最多选择 1 个；再次点击已选中的卡片即可取消。',
+      '可选。每个已启用的 connector 都可以为新项目选择 1 个目标会话；不勾选则表示这个 connector 暂不参与初始绑定。',
+    connectorDeliveryHint: '每个 connector 最多选择 1 个目标；如果该目标已绑定到别的 quest，创建当前项目时会自动替换原绑定。',
     connectorSettingsAction: '打开 Connector 设置',
     connectorEmptyTitle: '还没有启用的 connector',
     connectorEmptyBody:
@@ -261,7 +267,7 @@ const copy = {
     connectorAutoModeBody: '创建项目时保持当前默认的自动绑定行为。',
     connectorSummaryLabel: '连接器',
     connectorSummaryAuto: '自动',
-    connectorSelectedHint: '创建后会把这个目标会话重新绑定到新项目。',
+    connectorSelectedHint: '如果当前选中的目标已经绑定到别的 quest，创建后会自动重绑到当前项目。',
     connectorSourceDefault: '默认目标',
     connectorSourceRecent: '最近会话',
     connectorSourceLast: '最新会话',
@@ -424,9 +430,16 @@ type StartConnectorChoice = {
   subtitle: string
   transport: string
   connectionState: string
-  conversationId: string | null
-  targetLabel: string
-  sourceKind: 'default' | 'recent' | 'last' | 'discovered' | 'unavailable'
+  targets: Array<{
+    conversationId: string
+    targetLabel: string
+    compactLabel: string
+    detailLabel: string
+    sourceKind: 'default' | 'recent' | 'last' | 'discovered'
+    boundQuestId?: string | null
+    boundQuestTitle?: string | null
+    warning?: string | null
+  }>
 }
 
 function titleCaseConnector(name: string) {
@@ -446,72 +459,94 @@ function parseConversationLabel(value?: string | null) {
   return `${chatType} · ${chatId}`
 }
 
-function targetSnapshotLabel(target?: ConnectorTargetSnapshot | null) {
-  if (!target) return ''
-  return String(target.label || '').trim() || `${target.chat_type} · ${target.chat_id}`
+function shortChatId(value?: string | null, keep = 8) {
+  const normalized = String(value || '').trim()
+  if (!normalized) return ''
+  if (normalized.length <= keep) return normalized
+  return normalized.slice(-keep)
 }
 
-function recentConversationLabel(item?: ConnectorRecentConversation | null) {
-  if (!item) return ''
-  return String(item.label || '').trim() || `${item.chat_type} · ${item.chat_id}`
+function compactConnectorTargetOption(args: {
+  profileLabel?: string | null
+  chatType?: string | null
+  chatId?: string | null
+  fallbackLabel?: string | null
+  duplicatedProfileLabel?: boolean
+}) {
+  const profileLabel = String(args.profileLabel || '').trim()
+  const chatType = String(args.chatType || '').trim()
+  const chatId = String(args.chatId || '').trim()
+  if (profileLabel) {
+    if (!args.duplicatedProfileLabel) {
+      return profileLabel
+    }
+    return [profileLabel, chatType || 'direct', shortChatId(chatId)].filter(Boolean).join(' · ')
+  }
+  return clampText(String(args.fallbackLabel || '').trim() || [chatType, shortChatId(chatId)].filter(Boolean).join(' · '), 44)
 }
 
 function resolveStartConnectorChoice(snapshot: ConnectorSnapshot): StartConnectorChoice {
   const catalogEntry = connectorCatalogByName.get(snapshot.name as (typeof connectorCatalog)[number]['name'])
-  const recentConversation = Array.isArray(snapshot.recent_conversations) ? snapshot.recent_conversations[0] : null
-  const discoveredTarget = Array.isArray(snapshot.discovered_targets) ? snapshot.discovered_targets[0] : null
-  const defaultTarget = snapshot.default_target || null
-  const lastConversationId = String(snapshot.last_conversation_id || '').trim() || null
+  const normalizedConnectorTargets = normalizeConnectorTargets(snapshot)
+  const profileLabelCounts = normalizedConnectorTargets.reduce<Record<string, number>>((acc, target) => {
+    const key = String(target.profile_label || '').trim()
+    if (!key) return acc
+    acc[key] = (acc[key] || 0) + 1
+    return acc
+  }, {})
+  const normalizedTargets = normalizedConnectorTargets.map((target) => ({
+      conversationId: target.conversation_id,
+      targetLabel: connectorTargetLabel(target),
+      compactLabel: compactConnectorTargetOption({
+        profileLabel: target.profile_label,
+        chatType: target.chat_type,
+        chatId: target.chat_id,
+        fallbackLabel: connectorTargetLabel(target),
+        duplicatedProfileLabel: Boolean(target.profile_label && profileLabelCounts[String(target.profile_label).trim()] > 1),
+      }),
+      detailLabel: [target.chat_type, shortChatId(target.chat_id)].filter(Boolean).join(' · '),
+      sourceKind: target.is_default
+        ? ('default' as const)
+        : target.source === 'recent_activity' || target.source === 'recent_inbound' || target.source === 'outbound_delivery'
+          ? ('recent' as const)
+          : target.source === 'recent_runtime_activity'
+            ? ('last' as const)
+            : ('discovered' as const),
+      boundQuestId: target.bound_quest_id || null,
+      boundQuestTitle: target.bound_quest_title || null,
+      warning: target.warning || null,
+    }))
 
-  if (defaultTarget?.conversation_id) {
-    return {
-      name: snapshot.name,
-      label: catalogEntry?.label || titleCaseConnector(snapshot.name),
-      subtitle: catalogEntry?.subtitle || '',
-      transport: String(snapshot.transport || snapshot.display_mode || snapshot.mode || '').trim(),
-      connectionState: String(snapshot.connection_state || '').trim(),
-      conversationId: defaultTarget.conversation_id,
-      targetLabel: targetSnapshotLabel(defaultTarget),
-      sourceKind: 'default',
-    }
-  }
-
-  if (recentConversation?.conversation_id) {
-    return {
-      name: snapshot.name,
-      label: catalogEntry?.label || titleCaseConnector(snapshot.name),
-      subtitle: catalogEntry?.subtitle || '',
-      transport: String(snapshot.transport || snapshot.display_mode || snapshot.mode || '').trim(),
-      connectionState: String(snapshot.connection_state || '').trim(),
-      conversationId: recentConversation.conversation_id,
-      targetLabel: recentConversationLabel(recentConversation),
-      sourceKind: 'recent',
-    }
-  }
-
-  if (lastConversationId) {
-    return {
-      name: snapshot.name,
-      label: catalogEntry?.label || titleCaseConnector(snapshot.name),
-      subtitle: catalogEntry?.subtitle || '',
-      transport: String(snapshot.transport || snapshot.display_mode || snapshot.mode || '').trim(),
-      connectionState: String(snapshot.connection_state || '').trim(),
-      conversationId: lastConversationId,
-      targetLabel: parseConversationLabel(lastConversationId),
-      sourceKind: 'last',
-    }
-  }
-
-  if (discoveredTarget?.conversation_id) {
-    return {
-      name: snapshot.name,
-      label: catalogEntry?.label || titleCaseConnector(snapshot.name),
-      subtitle: catalogEntry?.subtitle || '',
-      transport: String(snapshot.transport || snapshot.display_mode || snapshot.mode || '').trim(),
-      connectionState: String(snapshot.connection_state || '').trim(),
-      conversationId: discoveredTarget.conversation_id,
-      targetLabel: targetSnapshotLabel(discoveredTarget),
-      sourceKind: 'discovered',
+  if (normalizedTargets.length === 0) {
+    const recentConversation = Array.isArray(snapshot.recent_conversations) ? snapshot.recent_conversations[0] : null
+    const lastConversationId = String(snapshot.last_conversation_id || '').trim() || null
+    if (recentConversation?.conversation_id) {
+      normalizedTargets.push({
+        conversationId: recentConversation.conversation_id,
+        targetLabel: recentConversationLabel(recentConversation),
+        compactLabel: compactConnectorTargetOption({
+          profileLabel: recentConversation.profile_label,
+          chatType: recentConversation.chat_type,
+          chatId: recentConversation.chat_id,
+          fallbackLabel: recentConversationLabel(recentConversation),
+        }),
+        detailLabel: [recentConversation.chat_type, shortChatId(recentConversation.chat_id)].filter(Boolean).join(' · '),
+        sourceKind: 'recent',
+        boundQuestId: null,
+        boundQuestTitle: null,
+        warning: null,
+      })
+    } else if (lastConversationId) {
+      normalizedTargets.push({
+        conversationId: lastConversationId,
+        targetLabel: parseConversationLabel(lastConversationId),
+        compactLabel: clampText(parseConversationLabel(lastConversationId), 44),
+        detailLabel: clampText(lastConversationId, 36),
+        sourceKind: 'last',
+        boundQuestId: null,
+        boundQuestTitle: null,
+        warning: null,
+      })
     }
   }
 
@@ -521,9 +556,7 @@ function resolveStartConnectorChoice(snapshot: ConnectorSnapshot): StartConnecto
     subtitle: catalogEntry?.subtitle || '',
     transport: String(snapshot.transport || snapshot.display_mode || snapshot.mode || '').trim(),
     connectionState: String(snapshot.connection_state || '').trim(),
-    conversationId: null,
-    targetLabel: '',
-    sourceKind: 'unavailable',
+    targets: normalizedTargets,
   }
 }
 
@@ -673,6 +706,7 @@ function ConnectorChoiceField({
   autoModeBody,
   selectedHint,
   sourceLabels,
+  locale,
   onOpenSettings,
   onChange,
 }: {
@@ -680,7 +714,7 @@ function ConnectorChoiceField({
   help?: string
   hint?: string
   items: StartConnectorChoice[]
-  value: string | null
+  value: Record<string, string | null>
   loading?: boolean
   error?: string | null
   emptyTitle: string
@@ -691,13 +725,15 @@ function ConnectorChoiceField({
   autoModeLabel: string
   autoModeBody: string
   selectedHint: string
-  sourceLabels: Record<StartConnectorChoice['sourceKind'], string>
+  sourceLabels: Record<'default' | 'recent' | 'last' | 'discovered' | 'unavailable', string>
+  locale: 'en' | 'zh'
   onOpenSettings: () => void
-  onChange: (next: string | null) => void
+  onChange: (connectorName: string, next: string | null) => void
 }) {
   const enabledItems = items
-  const selectableItems = enabledItems.filter((item) => Boolean(item.conversationId))
-  const hasUnavailable = enabledItems.some((item) => !item.conversationId)
+  const selectableItems = enabledItems.filter((item) => item.targets.length > 0)
+  const hasUnavailable = enabledItems.some((item) => item.targets.length === 0)
+  const selectedCount = Object.values(value).filter(Boolean).length
 
   return (
     <InlineField label={label} help={help} hint={hint}>
@@ -724,78 +760,68 @@ function ConnectorChoiceField({
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="divide-y divide-[rgba(45,42,38,0.08)] dark:divide-[rgba(45,42,38,0.08)]">
             {enabledItems.map((item) => {
-              const active = Boolean(item.conversationId) && item.conversationId === value
-              const available = Boolean(item.conversationId)
+              const selectedConversationId = value[item.name] || null
+              const available = item.targets.length > 0
+              const selectedTarget = item.targets.find((target) => target.conversationId === selectedConversationId) || null
               const catalogEntry = connectorCatalogByName.get(item.name as (typeof connectorCatalog)[number]['name'])
               const Icon = catalogEntry?.icon || Bot
 
               return (
-                <button
+                <div
                   key={item.name}
-                  type="button"
-                  disabled={!available}
-                  onClick={() => onChange(active ? null : item.conversationId)}
-                  className={cn(
-                    'relative min-h-[132px] rounded-[18px] border px-4 py-4 text-left transition',
-                    'disabled:cursor-not-allowed disabled:opacity-60',
-                    active
-                      ? 'border-[rgba(126,77,42,0.34)] bg-[rgba(126,77,42,0.08)] shadow-[0_14px_26px_-22px_rgba(90,56,35,0.55)]'
-                      : 'border-[rgba(45,42,38,0.08)] bg-white/62 hover:border-[rgba(45,42,38,0.14)] hover:bg-white/84 dark:border-[rgba(45,42,38,0.08)] dark:bg-white/72 dark:hover:border-[rgba(45,42,38,0.14)] dark:hover:bg-white/88'
-                  )}
+                  className="grid grid-cols-1 gap-3 py-3 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,210px)_minmax(0,1fr)] sm:items-start"
                 >
-                  <span
-                    className={cn(
-                      'absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full border transition',
-                      active
-                        ? 'border-[rgba(126,77,42,0.78)] bg-[rgba(126,77,42,0.12)] text-[rgba(126,77,42,0.92)]'
-                        : 'border-[rgba(107,103,97,0.34)] bg-white/72 text-transparent dark:bg-white/82'
-                    )}
-                    aria-hidden
-                  >
-                    {active ? <ArrowUpRight className="h-3.5 w-3.5" /> : null}
-                  </span>
-
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-[rgba(45,42,38,0.08)] bg-white/82 text-[rgba(56,52,47,0.9)] dark:border-[rgba(45,42,38,0.08)] dark:bg-white/88">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border border-[rgba(45,42,38,0.08)] bg-white/82 text-[rgba(56,52,47,0.9)] dark:border-[rgba(45,42,38,0.08)] dark:bg-white/88">
                       <Icon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-xs font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">
+                      <div className="truncate text-xs font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">
                         {item.label}
                       </div>
-                      <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[rgba(107,103,97,0.78)] dark:text-[rgba(107,103,97,0.78)]">
-                        {item.transport || item.connectionState || 'connector'}
+                      <div className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-[rgba(107,103,97,0.78)] dark:text-[rgba(107,103,97,0.78)]">
+                        {item.connectionState || item.transport || 'connector'}
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-4">
-                    <div className="text-[11px] font-medium text-[rgba(56,52,47,0.9)] dark:text-[rgba(56,52,47,0.9)]">
-                      {available ? item.targetLabel : sourceLabels.unavailable}
+                  <div className="min-w-0 space-y-1.5">
+                    <select
+                      value={selectedConversationId || ''}
+                      onChange={(event) => onChange(item.name, event.target.value || null)}
+                      className={cn(selectClassName, 'w-full min-w-0')}
+                      disabled={!available}
+                    >
+                      <option value="">{autoModeLabel}</option>
+                      {item.targets.map((target) => (
+                        <option key={target.conversationId} value={target.conversationId}>
+                          {target.compactLabel}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="text-[11px] leading-5 text-[rgba(107,103,97,0.78)] dark:text-[rgba(107,103,97,0.78)]">
+                      {!available
+                        ? unavailableBody
+                        : selectedTarget
+                          ? selectedTarget.boundQuestId
+                            ? `${sourceLabels[selectedTarget.sourceKind]} · ${selectedTarget.boundQuestId}${selectedTarget.boundQuestTitle ? ` · ${clampText(selectedTarget.boundQuestTitle, 28)}` : ''}`
+                            : `${sourceLabels[selectedTarget.sourceKind]} · ${selectedTarget.detailLabel}`
+                          : autoModeBody}
                     </div>
-                    <div className="mt-1 text-[11px] leading-5 text-[rgba(107,103,97,0.78)] dark:text-[rgba(107,103,97,0.78)]">
-                      {sourceLabels[item.sourceKind]}
-                    </div>
-                    {active ? (
-                      <div className="mt-3 text-[11px] leading-5 text-[rgba(86,82,77,0.9)] dark:text-[rgba(86,82,77,0.9)]">
-                        {selectedHint}
-                      </div>
-                    ) : null}
                   </div>
-                </button>
+                </div>
               )
             })}
           </div>
 
-          <div className="rounded-[14px] border border-[rgba(45,42,38,0.08)] bg-white/60 px-3 py-3 dark:border-[rgba(45,42,38,0.08)] dark:bg-white/70">
-            <div className="text-[11px] font-medium text-[rgba(56,52,47,0.9)] dark:text-[rgba(56,52,47,0.9)]">
-              {value ? enabledItems.find((item) => item.conversationId === value)?.label || autoModeLabel : autoModeLabel}
-            </div>
-            <div className="mt-1 text-[11px] leading-5 text-[rgba(107,103,97,0.78)] dark:text-[rgba(107,103,97,0.78)]">
-              {value ? selectedHint : autoModeBody}
-            </div>
+          <div className="px-1 text-[11px] leading-5 text-[rgba(107,103,97,0.78)] dark:text-[rgba(107,103,97,0.78)]">
+            {selectedCount > 0
+              ? locale === 'zh'
+                ? `已选择 ${selectedCount} 个 connector。${selectedHint}`
+                : `${selectedCount} connector(s) selected. ${selectedHint}`
+              : `${autoModeLabel}. ${autoModeBody}`}
           </div>
 
           {hasUnavailable && selectableItems.length === 0 ? (
@@ -934,7 +960,7 @@ export function CreateProjectDialog({
     title: string
     goal: string
     quest_id?: string
-    preferred_connector_conversation_id?: string
+    requested_connector_bindings?: Array<{ connector: string; conversation_id?: string | null }>
     requested_baseline_ref?: { baseline_id: string; variant_id?: string | null } | null
     startup_contract?: Record<string, unknown> | null
   }) => Promise<void>
@@ -956,7 +982,11 @@ export function CreateProjectDialog({
   const [connectors, setConnectors] = useState<ConnectorSnapshot[]>([])
   const [connectorsLoading, setConnectorsLoading] = useState(false)
   const [connectorsError, setConnectorsError] = useState<string | null>(null)
-  const [selectedConnectorConversationId, setSelectedConnectorConversationId] = useState<string | null>(null)
+  const [connectorAvailability, setConnectorAvailability] = useState<ConnectorAvailabilitySnapshot | null>(null)
+  const [connectorAvailabilityLoading, setConnectorAvailabilityLoading] = useState(false)
+  const [connectorAvailabilityResolved, setConnectorAvailabilityResolved] = useState(false)
+  const [connectorAvailabilityError, setConnectorAvailabilityError] = useState<string | null>(null)
+  const [selectedConnectorBindings, setSelectedConnectorBindings] = useState<Record<string, string | null>>({})
   const [showConnectorRecommendation, setShowConnectorRecommendation] = useState(false)
   const [connectorRecommendationHandled, setConnectorRecommendationHandled] = useState(false)
   const referenceTemplates = useMemo(() => listReferenceStartResearchTemplates(), [])
@@ -1033,9 +1063,11 @@ export function CreateProjectDialog({
     setManualOverride(false)
     setQuestIdManualOverride(false)
     setSuggestedQuestId('')
-    setSelectedConnectorConversationId(null)
+    setSelectedConnectorBindings({})
     setShowConnectorRecommendation(false)
     setConnectorRecommendationHandled(false)
+    setConnectorAvailability(null)
+    setConnectorAvailabilityResolved(false)
   }, [initialGoal, locale, open])
 
   const setField = <K extends keyof StartResearchTemplate>(
@@ -1073,14 +1105,28 @@ export function CreateProjectDialog({
   }, [open])
 
   useEffect(() => {
-    if (!open) return
-    if (connectorsLoading) return
-    if (connectorsError) return
-    if (connectorRecommendationHandled) return
-    if (connectors.length > 0) return
+    if (
+      !shouldRecommendStartResearchConnectorBinding({
+        open,
+        availabilityResolved: connectorAvailabilityResolved,
+        availabilityLoading: connectorAvailabilityLoading,
+        availabilityError: connectorAvailabilityError,
+        connectorRecommendationHandled,
+        availability: connectorAvailability,
+      })
+    ) {
+      return
+    }
     setShowConnectorRecommendation(true)
     setConnectorRecommendationHandled(true)
-  }, [connectorRecommendationHandled, connectors.length, connectorsError, connectorsLoading, open])
+  }, [
+    connectorAvailability,
+    connectorAvailabilityError,
+    connectorAvailabilityLoading,
+    connectorAvailabilityResolved,
+    connectorRecommendationHandled,
+    open,
+  ])
 
   useEffect(() => {
     if (!open) return
@@ -1100,7 +1146,37 @@ export function CreateProjectDialog({
         setConnectorsError(caught instanceof Error ? caught.message : 'Failed to load connectors.')
       })
       .finally(() => {
-        if (active) setConnectorsLoading(false)
+        if (active) {
+          setConnectorsLoading(false)
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    let active = true
+    setConnectorAvailabilityLoading(true)
+    setConnectorAvailabilityResolved(false)
+    setConnectorAvailabilityError(null)
+    void client
+      .connectorsAvailability()
+      .then((payload) => {
+        if (!active) return
+        setConnectorAvailability(payload)
+      })
+      .catch((caught) => {
+        if (!active) return
+        setConnectorAvailability(null)
+        setConnectorAvailabilityError(caught instanceof Error ? caught.message : 'Failed to load connector availability.')
+      })
+      .finally(() => {
+        if (active) {
+          setConnectorAvailabilityLoading(false)
+          setConnectorAvailabilityResolved(true)
+        }
       })
     return () => {
       active = false
@@ -1169,9 +1245,16 @@ export function CreateProjectDialog({
     [connectors]
   )
 
-  const selectedConnectorChoice = useMemo(
-    () => connectorChoices.find((item) => item.conversationId === selectedConnectorConversationId) || null,
-    [connectorChoices, selectedConnectorConversationId]
+  const selectedConnectorTargets = useMemo(
+    () =>
+      connectorChoices.flatMap((item) => {
+        const selectedConversationId = selectedConnectorBindings[item.name] || null
+        if (!selectedConversationId) return []
+        const target = item.targets.find((candidate) => candidate.conversationId === selectedConversationId)
+        if (!target) return []
+        return [{ connector: item.label, target }]
+      }),
+    [connectorChoices, selectedConnectorBindings]
   )
 
   const templateOptions = useMemo(
@@ -1180,11 +1263,28 @@ export function CreateProjectDialog({
   )
 
   useEffect(() => {
-    if (!selectedConnectorConversationId) return
-    if (!connectorChoices.some((item) => item.conversationId === selectedConnectorConversationId)) {
-      setSelectedConnectorConversationId(null)
-    }
-  }, [connectorChoices, selectedConnectorConversationId])
+    setSelectedConnectorBindings((current) => {
+      const next: Record<string, string | null> = {}
+      let changed = false
+      for (const item of connectorChoices) {
+        const currentValue = current[item.name] || null
+        const availableIds = new Set(item.targets.map((target) => target.conversationId))
+        if (currentValue && availableIds.has(currentValue)) {
+          next[item.name] = currentValue
+          continue
+        }
+        next[item.name] = null
+        if ((current[item.name] || null) !== null) {
+          changed = true
+        }
+      }
+      const currentKeys = Object.keys(current)
+      if (!changed && currentKeys.length === Object.keys(next).length) {
+        return current
+      }
+      return next
+    })
+  }, [connectorChoices])
 
   useEffect(() => {
     if (!open || manualOverride) return
@@ -1335,6 +1435,12 @@ export function CreateProjectDialog({
       : null
     const derivedFields = resolveStartResearchContractFields(saved)
     const timeBudget = Number(derivedFields.time_budget_hours)
+    const requestedConnectorBindings = connectorChoices
+      .map((item) => ({
+        connector: item.name,
+        conversation_id: selectedConnectorBindings[item.name] || null,
+      }))
+      .filter((item) => Boolean(item.conversation_id))
     const startupContract = {
       schema_version: 3,
       user_language: saved.user_language,
@@ -1360,7 +1466,7 @@ export function CreateProjectDialog({
       title: saved.title,
       goal: finalPrompt,
       quest_id: questIdManualOverride ? saved.quest_id || undefined : undefined,
-      preferred_connector_conversation_id: selectedConnectorConversationId || undefined,
+      requested_connector_bindings: requestedConnectorBindings,
       requested_baseline_ref: requestedBaselineRef,
       startup_contract: startupContract,
     })
@@ -1444,7 +1550,7 @@ export function CreateProjectDialog({
                   help={t.connectorDeliveryHelp}
                   hint={t.connectorDeliveryHint}
                   items={connectorChoices}
-                  value={selectedConnectorConversationId}
+                  value={selectedConnectorBindings}
                   loading={connectorsLoading}
                   error={connectorsError}
                   emptyTitle={t.connectorEmptyTitle}
@@ -1462,8 +1568,11 @@ export function CreateProjectDialog({
                     discovered: t.connectorSourceDiscovered,
                     unavailable: t.connectorSourceUnavailable,
                   }}
+                  locale={locale}
                   onOpenSettings={handleOpenConnectorSettings}
-                  onChange={setSelectedConnectorConversationId}
+                  onChange={(connectorName, next) =>
+                    setSelectedConnectorBindings((current) => ({ ...current, [connectorName]: next }))
+                  }
                 />
               </SectionCard>
 
@@ -1559,7 +1668,9 @@ export function CreateProjectDialog({
                           <div>{selectedBaselineEntry.summary ? clampText(String(selectedBaselineEntry.summary), 120) : (locale === 'zh' ? '未提供概要。' : 'No summary provided.')}</div>
                           <div className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 sm:grid-cols-2">
                             <div>{locale === 'zh' ? '状态' : 'Status'}: {formatBaselineStatus(selectedBaselineEntry.status, locale)}</div>
-                            <div>{locale === 'zh' ? '来源项目' : 'Source project'}: {selectedBaselineEntry.source_quest_id || (locale === 'zh' ? '未知' : 'unknown')}</div>
+                            <div className="truncate" title={selectedBaselineEntry.source_quest_id || undefined}>
+                              {locale === 'zh' ? '来源项目' : 'Source project'}: {selectedBaselineEntry.source_quest_id || (locale === 'zh' ? '未知' : 'unknown')}
+                            </div>
                             <div>{locale === 'zh' ? '主指标' : 'Primary metric'}: {resolveBaselineMetricLabel(selectedBaselineEntry, locale)}</div>
                             <div>{locale === 'zh' ? '确认时间' : 'Confirmed'}: {formatBaselineTimestamp(selectedBaselineEntry.confirmed_at || selectedBaselineEntry.updated_at, locale)}</div>
                           </div>
@@ -1790,7 +1901,10 @@ export function CreateProjectDialog({
           <div className="mb-3 shrink-0 grid grid-cols-2 gap-2 px-1 sm:grid-cols-3 lg:px-0 xl:grid-cols-6">
             <div className="rounded-lg border border-[rgba(45,42,38,0.09)] bg-[rgba(244,239,233,0.55)] px-3 py-2 text-[11px] dark:border-[rgba(45,42,38,0.09)] dark:bg-[rgba(244,239,233,0.65)]">
               <div className="text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.repoLabel}</div>
-              <div className="mt-1 font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">
+              <div
+                className="mt-1 truncate font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]"
+                title={displayedQuestId || (suggestedQuestIdLoading ? t.repoLoading : t.repoAutoAssigned)}
+              >
                 {displayedQuestId || (suggestedQuestIdLoading ? t.repoLoading : t.repoAutoAssigned)}
               </div>
             </div>
@@ -1803,10 +1917,28 @@ export function CreateProjectDialog({
             <div className="rounded-lg border border-[rgba(45,42,38,0.09)] bg-[rgba(244,239,233,0.55)] px-3 py-2 text-[11px] dark:border-[rgba(45,42,38,0.09)] dark:bg-[rgba(244,239,233,0.65)]">
               <div className="text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.connectorSummaryLabel}</div>
               <div className="mt-1 font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">
-                {selectedConnectorChoice?.label || t.connectorSummaryAuto}
+                {selectedConnectorTargets.length > 0
+                  ? locale === 'zh'
+                    ? `已选 ${selectedConnectorTargets.length} 个`
+                    : `${selectedConnectorTargets.length} selected`
+                  : t.connectorSummaryAuto}
               </div>
-              <div className="mt-1 text-[10px] leading-4 text-[rgba(107,103,97,0.78)] dark:text-[rgba(107,103,97,0.78)]">
-                {selectedConnectorChoice?.targetLabel || t.connectorAutoModeBody}
+              <div
+                className="mt-1 truncate text-[10px] leading-4 text-[rgba(107,103,97,0.78)] dark:text-[rgba(107,103,97,0.78)]"
+                title={
+                  selectedConnectorTargets.length > 0
+                    ? selectedConnectorTargets
+                        .map((item) => `${item.connector} · ${item.target.compactLabel}`)
+                        .join(' / ')
+                    : t.connectorAutoModeBody
+                }
+              >
+                {selectedConnectorTargets.length > 0
+                  ? selectedConnectorTargets
+                      .slice(0, 2)
+                      .map((item) => `${item.connector} · ${item.target.compactLabel}`)
+                      .join(' / ')
+                  : t.connectorAutoModeBody}
               </div>
             </div>
             <div className="hidden rounded-lg border border-[rgba(45,42,38,0.09)] bg-[rgba(244,239,233,0.55)] px-3 py-2 text-[11px] sm:block dark:border-[rgba(45,42,38,0.09)] dark:bg-[rgba(244,239,233,0.65)]">

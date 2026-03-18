@@ -147,11 +147,57 @@ export interface ConnectorSnapshot {
   ignored_count?: number
   binding_count?: number
   target_count?: number
+  bindings?: ConnectorBindingSnapshot[]
+  known_targets?: ConnectorTargetSnapshot[]
   recent_conversations?: ConnectorRecentConversation[]
   recent_events?: ConnectorRecentEvent[]
   default_target?: ConnectorTargetSnapshot | null
   discovered_targets?: ConnectorTargetSnapshot[]
+  profiles?: ConnectorProfileSnapshot[]
   details?: Record<string, unknown>
+}
+
+export interface ConnectorProfileSnapshot {
+  profile_id: string
+  label?: string | null
+  bot_name?: string | null
+  app_id?: string | null
+  main_chat_id?: string | null
+  default_conversation_id?: string | null
+  last_conversation_id?: string | null
+  connection_state?: string | null
+  auth_state?: string | null
+  last_error?: string | null
+  discovered_targets?: ConnectorTargetSnapshot[]
+  recent_conversations?: ConnectorRecentConversation[]
+  bindings?: ConnectorBindingSnapshot[]
+  target_count?: number
+  binding_count?: number
+}
+
+export interface ConnectorBindingSnapshot {
+  conversation_id: string
+  quest_id?: string | null
+  quest_title?: string | null
+  updated_at?: string | null
+  profile_id?: string | null
+  profile_label?: string | null
+}
+
+export interface ConnectorAvailabilitySnapshot {
+  has_enabled_external_connector: boolean
+  has_bound_external_connector: boolean
+  should_recommend_binding: boolean
+  preferred_connector_name?: string | null
+  preferred_conversation_id?: string | null
+  available_connectors: Array<{
+    name: string
+    enabled: boolean
+    connection_state?: string | null
+    binding_count?: number
+    target_count?: number
+    has_delivery_target?: boolean
+  }>
 }
 
 export interface ConnectorRecentConversation {
@@ -159,6 +205,9 @@ export interface ConnectorRecentConversation {
   connector?: string
   chat_type: string
   chat_id: string
+  chat_id_raw?: string | null
+  profile_id?: string | null
+  profile_label?: string | null
   label?: string | null
   source?: string | null
   sender_id?: string | null
@@ -174,6 +223,8 @@ export interface ConnectorRecentEvent {
   conversation_id?: string | null
   chat_type?: string | null
   chat_id?: string | null
+  profile_id?: string | null
+  profile_label?: string | null
   label?: string | null
   kind?: string | null
   message?: string | null
@@ -188,12 +239,21 @@ export interface ConnectorTargetSnapshot {
   connector?: string
   chat_type: string
   chat_id: string
+  chat_id_raw?: string | null
+  profile_id?: string | null
+  profile_label?: string | null
   label?: string | null
   source?: string | null
   sources?: string[]
   quest_id?: string | null
   updated_at?: string | null
   is_default?: boolean
+  selectable?: boolean
+  is_bound?: boolean
+  bound_quest_id?: string | null
+  bound_quest_title?: string | null
+  warning?: string | null
+  first_seen_at?: string | null
 }
 
 export interface SystemUpdateResult {

@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ DEFAULT_LOG_TAIL_LIMIT = 200
 DEFAULT_POLL_INTERVAL_SECONDS = 0.35
 TERMINAL_STATUSES = {"completed", "failed", "terminated"}
 DEFAULT_TERMINAL_SESSION_ID = "terminal-main"
+BASH_WATCHDOG_AFTER_SECONDS = 1800
 INPUT_ESCAPE_SEQUENCE_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[@-_]")
 
 
@@ -87,6 +89,48 @@ def _parse_progress_marker(line: str) -> dict[str, Any] | None:
     if not isinstance(payload, dict):
         return None
     return payload
+
+
+def _parse_timestamp(value: object) -> datetime | None:
+    normalized = _normalize_string(value)
+    if not normalized:
+        return None
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _age_seconds(value: object, *, now: datetime | None = None) -> int | None:
+    parsed = _parse_timestamp(value)
+    if parsed is None:
+        return None
+    current = now or datetime.now(UTC)
+    return max(0, int((current - parsed).total_seconds()))
+
+
+def _latest_timestamp(*values: object) -> str | None:
+    latest_raw: str | None = None
+    latest_dt: datetime | None = None
+    for value in values:
+        normalized = _normalize_string(value)
+        parsed = _parse_timestamp(normalized)
+        if parsed is None:
+            continue
+        if latest_dt is None or parsed >= latest_dt:
+            latest_dt = parsed
+            latest_raw = normalized
+    return latest_raw
+
+
+def _compact_command(command: object, *, max_length: int = 140) -> str:
+    normalized = " ".join(str(command or "").split())
+    if len(normalized) <= max_length:
+        return normalized
+    return normalized[: max(0, max_length - 3)].rstrip() + "..."
 
 
 class BashExecService:
@@ -224,7 +268,44 @@ class BashExecService:
         payload["status"] = _coerce_session_status(payload.get("status"))
         payload["last_progress"] = payload.get("last_progress") or read_json(self.progress_path(quest_root, str(payload.get("bash_id") or "")), None)
         payload["kind"] = str(payload.get("kind") or "exec")
+        payload = self._enrich_watchdog_fields(payload)
         return payload
+
+    @staticmethod
+    def _enrich_watchdog_fields(payload: dict[str, Any]) -> dict[str, Any]:
+        current = datetime.now(UTC)
+        last_progress = payload.get("last_progress")
+        last_progress_at = None
+        if isinstance(last_progress, dict):
+            last_progress_at = _normalize_string(last_progress.get("ts")) or None
+        last_output_at = _normalize_string(payload.get("last_output_at")) or None
+        latest_signal_at = _latest_timestamp(last_output_at, last_progress_at, payload.get("started_at"))
+        payload["last_progress_at"] = last_progress_at
+        payload["run_age_seconds"] = _age_seconds(payload.get("started_at"), now=current)
+        payload["status_age_seconds"] = _age_seconds(payload.get("updated_at"), now=current)
+        payload["silent_seconds"] = _age_seconds(last_output_at or payload.get("started_at"), now=current)
+        payload["progress_age_seconds"] = _age_seconds(last_progress_at, now=current)
+        payload["latest_signal_at"] = latest_signal_at
+        payload["signal_age_seconds"] = _age_seconds(latest_signal_at, now=current)
+        payload["watchdog_after_seconds"] = BASH_WATCHDOG_AFTER_SECONDS
+        payload["watchdog_overdue"] = (
+            payload.get("status") in {"running", "terminating"}
+            and isinstance(payload.get("signal_age_seconds"), int)
+            and int(payload["signal_age_seconds"]) >= BASH_WATCHDOG_AFTER_SECONDS
+        )
+        return payload
+
+    @staticmethod
+    def format_history_line(session: dict[str, Any]) -> str:
+        timestamp = (
+            _normalize_string(session.get("started_at"))
+            or _normalize_string(session.get("updated_at"))
+            or _normalize_string(session.get("finished_at"))
+            or "unknown-time"
+        )
+        command = _compact_command(session.get("command"))
+        bash_id = _normalize_string(session.get("bash_id") or session.get("id")) or "unknown-id"
+        return f"{timestamp} | {command} | {bash_id}"
 
     @staticmethod
     def _summary_session_payload(meta: dict[str, Any]) -> dict[str, Any]:
@@ -233,6 +314,7 @@ class BashExecService:
             "command": meta.get("command"),
             "kind": meta.get("kind") or "exec",
             "label": meta.get("label"),
+            "comment": meta.get("comment"),
             "workdir": meta.get("workdir"),
             "status": _coerce_session_status(meta.get("status")),
             "exit_code": meta.get("exit_code"),
@@ -241,6 +323,8 @@ class BashExecService:
             "finished_at": meta.get("finished_at"),
             "updated_at": meta.get("updated_at"),
             "last_progress": meta.get("last_progress"),
+            "last_output_at": meta.get("last_output_at"),
+            "last_output_seq": meta.get("last_output_seq"),
         }
 
     @staticmethod
@@ -469,6 +553,7 @@ class BashExecService:
         *,
         limit: int = DEFAULT_LOG_TAIL_LIMIT,
         before_seq: int | None = None,
+        after_seq: int | None = None,
         order: str = "asc",
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         if not self.meta_path(quest_root, bash_id).exists():
@@ -487,10 +572,13 @@ class BashExecService:
             else:
                 time.sleep(0.03)
             entries = read_jsonl(self.log_path(quest_root, bash_id))
+        latest_seq = int(entries[-1].get("seq") or 0) if entries else 0
         normalized_before = before_seq if isinstance(before_seq, int) and before_seq > 0 else None
+        normalized_after = after_seq if isinstance(after_seq, int) and after_seq >= 0 else None
+        if normalized_after is not None:
+            entries = [entry for entry in entries if int(entry.get("seq") or 0) > normalized_after]
         if normalized_before is not None:
             entries = [entry for entry in entries if int(entry.get("seq") or 0) < normalized_before]
-        latest_seq = int(entries[-1].get("seq") or 0) if entries else 0
         normalized_limit = max(1, limit)
         truncated = len(entries) > normalized_limit
         selected = entries[-normalized_limit:]
@@ -501,6 +589,8 @@ class BashExecService:
             "tail_limit": normalized_limit,
             "tail_start_seq": tail_start_seq if truncated else tail_start_seq,
             "latest_seq": latest_seq or None,
+            "after_seq": normalized_after,
+            "before_seq": normalized_before,
         }
         return selected, meta
 
@@ -521,7 +611,15 @@ class BashExecService:
                 return session
             time.sleep(max(0.1, poll_interval))
 
-    def request_stop(self, quest_root: Path, bash_id: str, *, reason: str | None = None, user_id: str | None = None) -> dict[str, Any]:
+    def request_stop(
+        self,
+        quest_root: Path,
+        bash_id: str,
+        *,
+        reason: str | None = None,
+        user_id: str | None = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
         session = self.get_session(quest_root, bash_id)
         status = _normalize_string(session.get("status")).lower()
         if status in TERMINAL_STATUSES:
@@ -530,6 +628,7 @@ class BashExecService:
             "reason": _normalize_string(reason) or "user_stop",
             "user_id": _normalize_string(user_id) or _normalize_string(session.get("agent_id")) or "agent",
             "requested_at": utc_now(),
+            "force": bool(force),
         }
         _atomic_write_json(self.stop_request_path(quest_root, bash_id), request_payload)
         meta = read_json(self.meta_path(quest_root, bash_id), {})
@@ -540,12 +639,18 @@ class BashExecService:
         self._write_meta(quest_root, bash_id, meta)
         runtime = self._terminal_runtime_manager.get_runtime(quest_root, bash_id)
         if runtime is not None:
-            runtime.stop(reason=request_payload["reason"], force=False)
+            runtime.stop(reason=request_payload["reason"], force=bool(force))
         else:
             process_group_id = meta.get("process_group_id")
+            process_pid = meta.get("process_pid")
             if isinstance(process_group_id, int) and process_group_id > 0:
                 try:
-                    os.killpg(process_group_id, signal.SIGTERM)
+                    os.killpg(process_group_id, signal.SIGKILL if force else signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+            elif isinstance(process_pid, int) and process_pid > 0:
+                try:
+                    os.kill(process_pid, signal.SIGKILL if force else signal.SIGTERM)
                 except ProcessLookupError:
                     pass
         return self._session_payload(quest_root, meta)
@@ -561,6 +666,7 @@ class BashExecService:
         workdir_display: str,
         timeout_seconds: int | None,
         env_keys: list[str],
+        comment: str | dict[str, Any] | None = None,
         kind: str = "exec",
     ) -> dict[str, Any]:
         quest_root = context.require_quest_root().resolve()
@@ -582,6 +688,7 @@ class BashExecService:
             "agent_instance_id": agent_instance_id,
             "started_by_user_id": started_by_user_id,
             "stopped_by_user_id": None,
+            "comment": comment,
             "command": command,
             "workdir": workdir_display,
             "cwd": str(cwd),
@@ -592,6 +699,8 @@ class BashExecService:
             "exit_code": None,
             "stop_reason": None,
             "last_progress": None,
+            "last_output_at": None,
+            "last_output_seq": None,
             "started_at": timestamp,
             "finished_at": None,
             "updated_at": timestamp,
@@ -638,6 +747,7 @@ class BashExecService:
         workdir: str | None = None,
         env: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
+        comment: str | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not _normalize_string(command):
             raise ValueError("command_required")
@@ -656,6 +766,7 @@ class BashExecService:
             workdir_display=workdir_display,
             timeout_seconds=timeout_seconds,
             env_keys=sorted(env_payload),
+            comment=comment,
             kind="exec",
         )
         self.terminal_log_path(quest_root, bash_id).touch()
@@ -668,6 +779,7 @@ class BashExecService:
                 "bash_id": bash_id,
                 "quest_id": meta["quest_id"],
                 "command": command,
+                "comment": comment,
                 "workdir": workdir_display,
                 "mode": mode,
                 "started_at": meta["started_at"],
@@ -725,6 +837,8 @@ class BashExecService:
             "exit_code": None,
             "stop_reason": None,
             "last_progress": None,
+            "last_output_at": None,
+            "last_output_seq": None,
             "started_at": timestamp,
             "finished_at": None,
             "updated_at": timestamp,
@@ -1054,6 +1168,9 @@ class BashExecService:
             "bash_id": session["bash_id"],
             "log_path": session.get("log_path"),
             "status": session.get("status"),
+            "kind": session.get("kind"),
+            "comment": session.get("comment"),
+            "label": session.get("label"),
             "command": session.get("command"),
             "workdir": session.get("workdir"),
             "started_at": session.get("started_at"),
@@ -1061,6 +1178,17 @@ class BashExecService:
             "exit_code": session.get("exit_code"),
             "stop_reason": session.get("stop_reason"),
             "last_progress": session.get("last_progress"),
+            "last_progress_at": session.get("last_progress_at"),
+            "last_output_at": session.get("last_output_at"),
+            "last_output_seq": session.get("last_output_seq"),
+            "run_age_seconds": session.get("run_age_seconds"),
+            "status_age_seconds": session.get("status_age_seconds"),
+            "silent_seconds": session.get("silent_seconds"),
+            "progress_age_seconds": session.get("progress_age_seconds"),
+            "latest_signal_at": session.get("latest_signal_at"),
+            "signal_age_seconds": session.get("signal_age_seconds"),
+            "watchdog_after_seconds": session.get("watchdog_after_seconds"),
+            "watchdog_overdue": session.get("watchdog_overdue"),
         }
         if include_log:
             result["log"] = self.read_terminal_log(quest_root, str(session["bash_id"]))

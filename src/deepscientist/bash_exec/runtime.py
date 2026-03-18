@@ -390,6 +390,9 @@ class TerminalRuntime:
             progress.setdefault("ts", timestamp)
             _atomic_write_json(self.meta_path.parent / "progress.json", progress)
             meta["last_progress"] = progress
+        if stream not in {"system", "prompt"}:
+            meta["last_output_at"] = timestamp
+            meta["last_output_seq"] = seq
         meta["latest_seq"] = seq
         meta["updated_at"] = timestamp
         _atomic_write_json(self.meta_path, meta)

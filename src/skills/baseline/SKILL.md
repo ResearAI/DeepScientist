@@ -13,7 +13,7 @@ It absorbs the essential old DeepScientist reproducer discipline into one stage 
 - Treat `artifact.interact(...)` as the main long-lived communication thread across TUI, web, and bound connectors.
 - If `artifact.interact(...)` returns queued user requirements, treat them as the highest-priority user instruction bundle before continuing baseline work.
 - Immediately follow any non-empty mailbox poll with another `artifact.interact(...)` update that confirms receipt; if the request is directly answerable, answer there, otherwise say the current subtask is paused, give a short plan plus nearest report-back point, and handle that request first.
-- Emit `artifact.interact(kind='progress', reply_mode='threaded', ...)` only when there is real user-visible progress: the first meaningful signal of long work, a meaningful checkpoint, or an occasional keepalive during truly long work. Do not update by tool-call cadence.
+- Emit `artifact.interact(kind='progress', reply_mode='threaded', ...)` when there is real user-visible progress: the first meaningful signal of long work, a meaningful checkpoint, or a concise keepalive if active work has drifted beyond roughly 10 to 30 tool calls without a user-visible update.
 - Keep progress updates chat-like and easy to understand: say what changed, what it means, and what happens next.
 - Default to plain-language summaries. Do not mention file paths, artifact ids, branch/worktree ids, session ids, raw commands, or raw logs unless the user asks or needs them to act.
 - Message templates are references only. Adapt to the actual context and vary wording so updates feel natural and non-robotic.
@@ -42,16 +42,20 @@ It absorbs the essential old DeepScientist reproducer discipline into one stage 
 
 ## Priority workflow
 
-The baseline stage should follow this priority order and should not reorder it casually:
+Default to the lightest baseline path that can still establish a trustworthy comparison.
+Do not front-load a full reproduction dossier when a faster truth-finding step would tell you whether the route is even viable.
+
+The ordinary baseline order is:
 
 1. confirm quest binding and current baseline state
-2. acquire or validate the baseline workspace
-3. analyze the code, paper, and resource constraints
-4. choose the route: attach, import, reproduce, or repair
-5. write down the concrete execution plan
-6. execute only after the plan is concrete enough
-7. verify before accepting
-8. archive, publish, or attach the result when appropriate
+2. look for the cheapest trustworthy route in order: attach, import, reproduce, repair
+3. capture the minimum viable contract: task, dataset or split, metric, source identity, expected command path, and main risks
+4. run a bounded smoke test as soon as that contract is concrete enough
+5. only after the smoke test is credible, expand setup notes and launch the real run
+6. verify before accepting
+7. archive, publish, or attach the result when appropriate
+
+Escalate to the heavier baseline path only when the baseline is ambiguous, broken, multi-variant, paper-to-repo mismatched, or likely to be reused beyond the current quest.
 
 If the quest is not yet bound to a stable baseline context, do not pretend the stage is ready just because some code exists locally.
 
@@ -75,16 +79,17 @@ Do not casually skip these gates.
 
 ## Phase routing rule
 
-Treat the baseline stage as a strict internal sub-workflow.
-At any moment, the work should be clearly in one of:
+Treat `analysis`, `setup`, `execution`, and `verification` as logical control gates, not paperwork walls.
+At any moment, the work should have one dominant phase among:
 
 - `analysis`
 - `setup`
 - `execution`
 - `verification`
 
-Do not blur several phases together.
-Finish the current phase, update its durable notes, then move to the next phase intentionally.
+Keep the dominant phase explicit, but allow small backtracks and lightweight overlap when they reduce wasted work.
+Do not delay an early smoke test just because a fuller write-up is not done yet.
+Before a real long run, make sure the minimum viable contract is explicit and the active phase is still easy to reconstruct.
 
 ## Use when
 
@@ -140,14 +145,15 @@ Do not treat memory alone as sufficient evidence for baseline readiness.
 The baseline line should also maintain a durable working-record area outside the execution surface.
 Recommended quest-visible records include:
 
-- `analysis_plan.md`
+- `analysis_plan.md` or a compact equivalent section in `execution.md`
 - `setup.md`
 - `execution.md`
 - `verification.md`
-- `STRUCTURE.md`
-- `REPRO_CHECKLIST.md`
+- `STRUCTURE.md` only when the workspace layout is non-obvious or later reuse depends on it
+- `REPRO_CHECKLIST.md` only when the route is complex, repair-heavy, multi-variant, or publication-facing
 
-These should live in a quest-visible baseline artifact area so later stages can read them without replaying the whole reproduction process.
+For a simple attach/import flow or a straightforward reproduce flow, do not stall just to precreate every one of these files.
+Start with the smallest durable note that preserves the route, command path, target outputs, and main risks; expand it only after the route proves real.
 
 ## Required durable outputs
 
@@ -163,20 +169,25 @@ The baseline stage should usually leave behind:
 ## Stable execution contract
 
 To keep baseline work stable across different quests, do not stop at loose prose.
-Use the same durable structure every time unless the quest has a strong reason to differ.
+But also do not confuse stability with ceremony.
+Use the lightest durable structure that keeps the baseline auditable and reusable.
 
 Minimum stability rules:
 
-- every phase should leave one clearly named durable note
+- before the first real run, leave one durable note with the chosen route, expected command path, target outputs, and main risks
+- after each smoke test or real run, record what actually happened and whether the route still looks viable
+- before acceptance, leave a clear verification note and baseline gate decision
 - every route selection should leave one explicit reasoned decision record
 - every accepted baseline should leave one accepted baseline artifact
 - every blocked baseline line should leave one blocked report and one next-step decision
 - every handoff should name the active baseline reference and trusted metric set explicitly
+- do not require every optional checklist or template before the first smoke test
+- if one rolling note is enough for a simple baseline line, use it
 
 Recommended phase-to-output mapping:
 
-- `analysis` -> `analysis_plan.md` plus optional route decision artifact
-- `setup` -> `setup.md`
+- `analysis` -> a brief `analysis_plan.md` or equivalent compact route note, plus optional route decision artifact
+- `setup` -> `setup.md` when setup choices are non-trivial
 - `execution` -> `execution.md` plus progress artifacts when long-running
 - `verification` -> `verification.md` plus accepted baseline artifact and `artifact.confirm_baseline(...)`, or a blocked report plus `artifact.waive_baseline(...)` when skipping is intentional
 
@@ -348,8 +359,16 @@ Before running anything substantial, determine:
 - expected paper or repo numbers, if any
 - local resource constraints
 
-Do not stop at a loose reproduction intent.
-Run a structured baseline codebase audit and capture at least:
+For straightforward baseline work, start with a quick viability pass:
+
+- find the real run or evaluation entrypoint
+- identify the dataset/split and metric contract
+- identify likely environment blockers
+- define the cheapest credible smoke test
+
+Escalate from that quick pass to a fuller baseline codebase audit when the command path is unclear, the repo is large or confusing, the paper and code diverge materially, repair mode is active, or custom code changes look likely.
+
+When the fuller audit is necessary, capture at least:
 
 - major modules and files
 - end-to-end data flow
@@ -396,7 +415,7 @@ At minimum, the plan should capture:
 - key risks
 - verification targets
 
-When possible, structure `analysis_plan.md` with headings close to:
+When the analysis note becomes substantial, structure `analysis_plan.md` with headings close to:
 
 - executive summary
 - codebase analysis
@@ -439,6 +458,10 @@ Prepare the selected route:
 - reproduce: prepare the baseline work directory, commands, config pointers, and environment notes
 - repair: identify the precise broken point before rerunning blindly
 
+For a fast-path reproduction, setup can stay lightweight.
+Confirm the working directory, environment, config, output paths, smoke command, and long-run command, then move forward.
+Do not manufacture a fresh workspace tree or copy the repo just to satisfy a template if the existing layout is already workable and auditable.
+
 Capture:
 
 - baseline identifier
@@ -456,8 +479,8 @@ Setup should also confirm:
 - required dependencies or environments are known
 - the execution plan is realistic for the detected hardware
 
-Setup should establish a clear baseline workspace layout.
-Recommended structure:
+If a dedicated baseline workspace is needed, establish a clear layout.
+One workable structure is:
 
 ```text
 <baseline_root>/
@@ -471,7 +494,7 @@ Recommended structure:
     <run_id>/
 ```
 
-And the quest-visible audit area should contain at least:
+If the baseline becomes long-lived, shared, or non-obvious, the quest-visible audit area may contain:
 
 ```text
 <quest_root>/
@@ -511,8 +534,10 @@ Execution rules:
 - if a run is long, emit progress artifacts at meaningful checkpoints
 - if setup required code changes, checkpoint only explainable, minimal changes
 
-Execution should rely on explicit scripts or command paths where possible.
-If a wrapper or entry script is needed, it should support most of the following:
+Execution should rely on existing explicit scripts or command paths where possible.
+Prefer the smallest runnable command that proves the baseline route.
+Do not build a new wrapper, registry, or result-export scaffold unless existing commands are missing, repeated reruns justify it, or later automation clearly needs it.
+If a wrapper or entry script is truly needed, it should support most of the following:
 
 - run mode for missing combinations
 - print-only mode that summarizes existing results without rerunning everything
@@ -549,10 +574,18 @@ If a result backup is useful for audit or recovery, create it explicitly rather 
 
 Long-running execution rules:
 
+- before a substantial baseline reproduction, run a bounded smoke test first so command paths, output locations, and metric plumbing are validated cheaply
+- once the smoke test passes, launch the real baseline reproduction with `bash_exec(mode='detach', ...)` and normally leave `timeout_seconds` unset for the long run itself
+- when monitoring that detached run, prefer `bash_exec(mode='read', id=..., tail_limit=..., order='desc')` so you inspect the newest log evidence first
+- after the first read, prefer incremental checks with `bash_exec(mode='read', id=..., after_seq=last_seen_seq, tail_limit=..., order='asc')` so you only inspect newly appended evidence
+- if you need to recover ids or confirm the newest session quickly, use `bash_exec(mode='history')` or `bash_exec(mode='list')` rather than guessing
+- include a structured `comment` on long-running bash sessions with fields such as `stage`, `goal`, `action`, `expected_signal`, and `next_check`
+- use `silent_seconds`, `progress_age_seconds`, `signal_age_seconds`, and `watchdog_overdue` from `bash_exec(mode='list'|'read', ...)` as the default staleness checks
+- when the reproduction code is under your control, prefer a throttled `tqdm` progress reporter and, when feasible, pair it with periodic `__DS_PROGRESS__` JSON lines carrying phase and ETA
 - if a command is expected to run for a long time, monitor it as a real background task rather than assuming success
 - do not write final summaries or accepted metrics until the command has actually completed
 - verify that the expected result files exist before treating the run as finished
-- if a task fails, diagnose and either retry with a documented fix or record the failure durably
+- if a task is invalid, wedged, or failed, stop it with `bash_exec(mode='kill', id=..., wait=true, timeout_seconds=...)`; if it must die immediately, add `force=true`, then diagnose the reason and either retry with a documented fix or record the failure durably
 
 Recommended monitoring cadence for long-running work:
 
@@ -563,7 +596,7 @@ Recommended monitoring cadence for long-running work:
 - fifth check after about 1800 seconds
 - after that, keep checking about every 1800 seconds while the run is still active
 
-The exact mechanism should prefer `bash_exec(mode='await' | 'detach' | 'read' | 'list' | 'kill', ...)`, but the behavioral rule stays the same:
+The exact mechanism should prefer `bash_exec(mode='await' | 'detach' | 'read' | 'list' | 'history' | 'kill', ...)`, with `read` usually using a tailed or incremental window during monitoring, but the behavioral rule stays the same:
 do not report completion until the run is actually done and the outputs are real.
 After each meaningful check, notify the user through `artifact.interact(kind='progress', ...)` with current status, latest evidence, and the next monitoring point.
 Do this after every completed wait cycle for important long-running work; do not skip several sleep windows without reporting.
@@ -670,6 +703,8 @@ If variants exist, also include:
 ## Durable note templates
 
 Use compact but structured notes so later stages do not need to reconstruct baseline state from chat history.
+The templates below are references, not prerequisites for the first smoke test.
+For simple baseline lines, keep them short and fill only the sections that matter.
 
 ### `analysis_plan.md`
 

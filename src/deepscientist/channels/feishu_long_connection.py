@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..bridges.connectors import FeishuConnectorBridge
+from ..connector_runtime import format_conversation_id, parse_conversation_id
 from ..shared import read_json, utc_now, write_json
 
 
@@ -29,17 +30,25 @@ class FeishuLongConnectionService:
         config: dict[str, Any],
         on_event: Callable[[dict[str, Any]], None],
         log: Callable[[str, str], None] | None = None,
+        profile_id: str | None = None,
+        profile_label: str | None = None,
+        encode_profile_id: bool = False,
     ) -> None:
         self.home = home
         self.config = config
         self.on_event = on_event
         self.log = log or self._default_log
+        self.profile_id = str(profile_id or "").strip() or None
+        self.profile_label = str(profile_label or "").strip() or None
+        self._encode_profile_id = bool(encode_profile_id and self.profile_id)
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._async_stop: asyncio.Event | None = None
         self._client: Any = None
         self._root = home / "logs" / "connectors" / "feishu"
+        if self.profile_id:
+            self._root = self._root / "profiles" / self.profile_id
         self._runtime_path = self._root / "runtime.json"
 
     def start(self) -> bool:
@@ -85,7 +94,7 @@ class FeishuLongConnectionService:
         self._thread = threading.Thread(
             target=self._run,
             daemon=True,
-            name="deepscientist-feishu-long-connection",
+            name=f"deepscientist-feishu-long-connection-{self.profile_id or 'default'}",
         )
         self._thread.start()
         return True
@@ -201,15 +210,40 @@ class FeishuLongConnectionService:
             config=self.config,
         )
         for event in result.events:
-            self.on_event(event)
+            normalized = self._normalize_event(event)
+            self.on_event(normalized)
             self._write_state(
                 connected=True,
                 connection_state="connected",
                 auth_state="ready",
                 last_event_at=utc_now(),
-                last_conversation_id=event.get("conversation_id"),
+                last_conversation_id=normalized.get("conversation_id"),
                 updated_at=utc_now(),
             )
+
+    def _normalize_event(self, event: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(event)
+        chat_type = str(normalized.get("chat_type") or "direct").strip().lower() or "direct"
+        group_id = str(normalized.get("group_id") or "").strip()
+        direct_id = str(normalized.get("direct_id") or "").strip()
+        chat_id = group_id if chat_type == "group" else direct_id
+        if not chat_id:
+            parsed = parse_conversation_id(normalized.get("conversation_id"))
+            if parsed is not None:
+                chat_type = str(parsed.get("chat_type") or chat_type).strip().lower() or chat_type
+                chat_id = str(parsed.get("chat_id") or "").strip()
+        normalized["conversation_id"] = self._conversation_id(chat_type, chat_id or "unknown")
+        normalized["profile_id"] = self.profile_id
+        normalized["profile_label"] = self.profile_label
+        return normalized
+
+    def _conversation_id(self, chat_type: str, chat_id: str) -> str:
+        return format_conversation_id(
+            "feishu",
+            chat_type,
+            chat_id,
+            profile_id=self.profile_id if self._encode_profile_id else None,
+        )
 
     @staticmethod
     def _sdk_bundle() -> dict[str, Any] | None:
@@ -239,6 +273,10 @@ class FeishuLongConnectionService:
         state = read_json(self._runtime_path, {}) or {}
         if not isinstance(state, dict):
             state = {}
+        if self.profile_id:
+            state["profile_id"] = self.profile_id
+        if self.profile_label:
+            state["profile_label"] = self.profile_label
         state.update(patch)
         write_json(self._runtime_path, state)
 

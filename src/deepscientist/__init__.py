@@ -5,4 +5,4 @@ __all__ = ["__version__"]
 try:
     __version__ = _package_version("deepscientist")
 except PackageNotFoundError:  # pragma: no cover - source checkout fallback
-    __version__ = "1.5.2"
+    __version__ = "1.5.3"

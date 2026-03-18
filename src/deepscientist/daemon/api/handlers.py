@@ -205,18 +205,11 @@ npm --prefix src/ui run build</pre>
     def connectors(self) -> list[dict]:
         return self.app.list_connector_statuses()
 
+    def connectors_availability(self) -> dict:
+        return self.app.connector_availability_summary()
+
     def baselines(self) -> list[dict]:
         return self.app.artifact_service.baselines.list_entries()
-
-    def bridge_webhook(self, connector: str, *, method: str, path: str, raw_body: bytes, headers: dict[str, str], body: dict) -> tuple[int, dict, bytes | str] | dict:
-        return self.app.handle_bridge_webhook(
-            connector,
-            method=method,
-            path=path,
-            raw_body=raw_body,
-            headers=headers,
-            body=body,
-        )
 
     def qq_bindings(self) -> list[dict]:
         return self.app.list_qq_bindings()
@@ -246,12 +239,33 @@ npm --prefix src/ui run build</pre>
         preferred_connector_conversation_id = (
             str(body.get("preferred_connector_conversation_id") or "").strip() or None
         )
+        requested_connector_bindings = (
+            [dict(item) for item in body.get("requested_connector_bindings") if isinstance(item, dict)]
+            if isinstance(body.get("requested_connector_bindings"), list)
+            else []
+        )
+        force_connector_rebind_raw = body.get("force_connector_rebind")
+        force_connector_rebind = bool(force_connector_rebind_raw) and str(force_connector_rebind_raw).strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
         requested_baseline_ref = body.get("requested_baseline_ref")
         startup_contract = body.get("startup_contract")
         auto_start = body.get("auto_start") is True
         initial_message = str(body.get("initial_message") or "").strip()
         if not goal:
             return {"ok": False, "message": "Quest goal is required."}
+        if requested_connector_bindings and not force_connector_rebind:
+            conflicts = self.app.preview_connector_binding_conflicts(requested_connector_bindings)
+            if conflicts:
+                return 409, {
+                    "ok": False,
+                    "conflict": True,
+                    "message": "One or more selected connector targets are already bound to another quest.",
+                    "conflicts": conflicts,
+                }
         try:
             snapshot = self.app.create_quest(
                 goal=goal,
@@ -259,6 +273,8 @@ npm --prefix src/ui run build</pre>
                 quest_id=quest_id,
                 source=source,
                 preferred_connector_conversation_id=preferred_connector_conversation_id,
+                requested_connector_bindings=requested_connector_bindings,
+                force_connector_rebind=force_connector_rebind,
                 requested_baseline_ref=requested_baseline_ref if isinstance(requested_baseline_ref, dict) else None,
                 startup_contract=startup_contract if isinstance(startup_contract, dict) else None,
             )
@@ -386,9 +402,19 @@ npm --prefix src/ui run build</pre>
         }
 
     def quest_bindings(self, quest_id: str, body: dict) -> dict | tuple[int, dict]:
+        requested_bindings = (
+            [dict(item) for item in body.get("bindings") if isinstance(item, dict)]
+            if isinstance(body.get("bindings"), list)
+            else []
+        )
         conversation_id = str(body.get("conversation_id") or body.get("source") or "").strip() or None
+        connector_name = str(body.get("connector") or "").strip() or None
         force_raw = body.get("force")
         force = bool(force_raw) and str(force_raw).strip().lower() not in {"0", "false", "no", "off"}
+        if requested_bindings:
+            return self.app.update_quest_bindings(quest_id, requested_bindings, force=force)
+        if connector_name:
+            return self.app.update_quest_connector_binding(quest_id, connector_name, conversation_id, force=force)
         return self.app.update_quest_binding(quest_id, conversation_id, force=force)
 
     def quest_session(self, quest_id: str) -> dict:
@@ -455,6 +481,7 @@ npm --prefix src/ui run build</pre>
     def bash_sessions(self, quest_id: str, path: str) -> list[dict]:
         query = self.parse_query(path)
         status = ((query.get("status") or [""])[0] or "").strip() or None
+        kind = ((query.get("kind") or [""])[0] or "").strip() or None
         chat_session_id = ((query.get("chat_session_id") or [""])[0] or "").strip() or None
         limit_raw = ((query.get("limit") or ["200"])[0] or "200").strip()
         try:
@@ -475,6 +502,7 @@ npm --prefix src/ui run build</pre>
         return self.app.bash_exec_service.list_sessions(
             quest_root,
             status=status,
+            kind=kind,
             agent_ids=agent_ids or None,
             agent_instance_ids=agent_instance_ids or None,
             chat_session_id=chat_session_id,
@@ -492,12 +520,14 @@ npm --prefix src/ui run build</pre>
         query = self.parse_query(path)
         limit_raw = ((query.get("limit") or ["200"])[0] or "200").strip()
         before_seq_raw = ((query.get("before_seq") or [""])[0] or "").strip()
+        after_seq_raw = ((query.get("after_seq") or [""])[0] or "").strip()
         order = ((query.get("order") or ["asc"])[0] or "asc").strip().lower()
         try:
             limit = max(1, min(int(limit_raw), 1000))
         except ValueError:
             limit = 200
         before_seq = int(before_seq_raw) if before_seq_raw.isdigit() else None
+        after_seq = int(after_seq_raw) if after_seq_raw.isdigit() else None
         quest_root = self.app.quest_service._quest_root(quest_id)
         try:
             entries, meta = self.app.bash_exec_service.read_log_entries(
@@ -505,6 +535,7 @@ npm --prefix src/ui run build</pre>
                 bash_id,
                 limit=limit,
                 before_seq=before_seq,
+                after_seq=after_seq,
                 order=order,
             )
         except FileNotFoundError:
@@ -521,15 +552,21 @@ npm --prefix src/ui run build</pre>
 
     def bash_stop(self, quest_id: str, bash_id: str, body: dict) -> dict | tuple[int, dict]:
         quest_root = self.app.quest_service._quest_root(quest_id)
+        wait = bool(body.get("wait"))
+        timeout_seconds_raw = body.get("timeout_seconds")
+        timeout_seconds = timeout_seconds_raw if isinstance(timeout_seconds_raw, int) and timeout_seconds_raw > 0 else None
         try:
             session = self.app.bash_exec_service.request_stop(
                 quest_root,
                 bash_id,
                 reason=str(body.get("reason") or "").strip() or None,
                 user_id="web-react",
+                force=bool(body.get("force")),
             )
         except FileNotFoundError:
             return 404, {"success": False, "status": "not_found"}
+        if wait:
+            session = self.app.bash_exec_service.wait_for_session(quest_root, bash_id, timeout_seconds=timeout_seconds)
         return {
             "success": True,
             "status": session.get("status"),

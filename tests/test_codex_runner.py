@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import time
 from pathlib import Path
@@ -97,6 +98,29 @@ def test_resolve_runner_binary_supports_env_override_for_codex(monkeypatch, temp
     monkeypatch.setenv("DEEPSCIENTIST_CODEX_BINARY", str(fake_codex))
 
     assert resolve_runner_binary("codex", runner_name="codex") == str(fake_codex)
+
+
+def test_resolve_runner_binary_prefers_package_local_codex_before_path(monkeypatch, temp_home: Path) -> None:
+    repo_root = temp_home / "repo"
+    package_bin = repo_root / "node_modules" / ".bin"
+    package_bin.mkdir(parents=True, exist_ok=True)
+    package_name = "codex.cmd" if sys.platform.startswith("win") else "codex"
+    package_codex = package_bin / package_name
+    package_codex.write_text("@echo off\r\nexit /b 0\r\n" if sys.platform.startswith("win") else "#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    package_codex.chmod(0o755)
+
+    path_bin = temp_home / "path-bin"
+    path_bin.mkdir(parents=True, exist_ok=True)
+    path_codex = path_bin / package_name
+    path_codex.write_text("@echo off\r\nexit /b 0\r\n" if sys.platform.startswith("win") else "#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    path_codex.chmod(0o755)
+
+    monkeypatch.setenv("DEEPSCIENTIST_REPO_ROOT", str(repo_root))
+    monkeypatch.setenv("PATH", str(path_bin))
+    monkeypatch.delenv("DEEPSCIENTIST_CODEX_BINARY", raising=False)
+    monkeypatch.delenv("DS_CODEX_BINARY", raising=False)
+
+    assert resolve_runner_binary("codex", runner_name="codex") == str(package_codex)
 
 
 def test_codex_runner_build_command_uses_resolved_codex_binary(monkeypatch, temp_home: Path) -> None:

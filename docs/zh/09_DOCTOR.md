@@ -4,14 +4,10 @@
 
 ## 推荐使用流程
 
-1. 先安装 `uv`，再安装 DeepScientist 和 Codex：
+1. 先安装 DeepScientist：
 
    ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
-
-   ```bash
-   npm install -g @openai/codex @researai/deepscientist
+   npm install -g @researai/deepscientist
    ```
 
 2. 先直接尝试启动：
@@ -47,10 +43,10 @@
 
 ### 没有安装 Codex
 
-运行：
+重新安装 DeepScientist，让随包的 Codex 依赖一起装好：
 
 ```bash
-npm install -g @openai/codex
+npm install -g @researai/deepscientist
 ```
 
 ### 已安装 Codex，但还没有登录
@@ -65,7 +61,7 @@ codex
 
 ### 没有安装 `uv`
 
-运行：
+正常情况下，第一次运行 `ds` 会自动在本地安装 `uv`。如果自动安装失败，再手动执行：
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -130,7 +126,7 @@ conda activate ds311
 ds
 ```
 
-如果你不手动切换，`uv` 也可以在 DeepScientist home 下自动准备受管 Python 运行时。
+如果你不手动切换，`ds` 也可以在 DeepScientist home 下自动准备受管的 `uv` + Python 运行时。
 
 ### Git 用户身份没有配置
 

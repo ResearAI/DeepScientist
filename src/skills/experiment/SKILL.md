@@ -12,7 +12,7 @@ Use this skill for the main evidence-producing runs of the quest.
 - Treat `artifact.interact(...)` as the main long-lived communication thread across TUI, web, and bound connectors.
 - If `artifact.interact(...)` returns queued user requirements, treat them as the highest-priority user instruction bundle before continuing the run plan.
 - Immediately follow any non-empty mailbox poll with another `artifact.interact(...)` update that confirms receipt; if the request is directly answerable, answer there, otherwise say the current subtask is paused, give a short plan plus nearest report-back point, and handle that request first.
-- Emit `artifact.interact(kind='progress', reply_mode='threaded', ...)` only when there is real user-visible progress: the first meaningful signal of long work, a meaningful checkpoint, or an occasional keepalive during truly long work. Do not update by tool-call cadence.
+- Emit `artifact.interact(kind='progress', reply_mode='threaded', ...)` when there is real user-visible progress: the first meaningful signal of long work, a meaningful checkpoint, or a concise keepalive if active work has drifted beyond roughly 10 to 30 tool calls without a user-visible update.
 - Keep progress updates chat-like and easy to understand: say what changed, what it means, and what happens next.
 - Default to plain-language summaries. Do not mention file paths, artifact ids, branch/worktree ids, session ids, raw commands, or raw logs unless the user asks or needs them to act.
 - Keep ordinary subtask completions concise. When a main experiment actually finishes or reaches a stage-significant checkpoint, upgrade to a richer `artifact.interact(kind='milestone', reply_mode='threaded', ...)` report rather than another short progress line.
@@ -377,9 +377,14 @@ Last-known-good rule:
 
 For commands that may run longer than a few minutes:
 
-- launch with `bash_exec(mode='detach', ...)`
+- before the real long run, execute a bounded smoke test or pilot that validates command paths, outputs, and basic metrics
+- once the smoke test passes, launch the real run with `bash_exec(mode='detach', ...)` and normally leave `timeout_seconds` unset for that long run
 - monitor through durable logs rather than only live terminal output
-- use `bash_exec(mode='list')` and `bash_exec(mode='read', id=...)` to monitor or revisit managed commands
+- use `bash_exec(mode='list')` and `bash_exec(mode='read', id=..., tail_limit=..., order='desc')` to monitor or revisit managed commands while focusing on the newest evidence first
+- after the first read, prefer `bash_exec(mode='read', id=..., after_seq=last_seen_seq, tail_limit=..., order='asc')` so later checks only fetch new evidence
+- if you need to recover ids or sanity-check the active session ordering, use `bash_exec(mode='history')`
+- launch important runs with a structured `comment` such as `{stage, goal, action, expected_signal, next_check}`
+- use `silent_seconds`, `progress_age_seconds`, `signal_age_seconds`, and `watchdog_overdue` from `bash_exec(mode='list'|'read', ...)` as your default watchdog signals
 - use an explicit wait-and-check loop such as:
   - wait about `60s`, then inspect logs
   - wait about `120s`, then inspect logs
@@ -387,9 +392,10 @@ For commands that may run longer than a few minutes:
   - wait about `600s`, then inspect logs
   - wait about `1800s`, then inspect logs
   - then keep checking about every `1800s` while the run is still active
-- if needed, use shell `sleep` between checks or an equivalent bounded `bash_exec(mode='await', id=..., timeout_seconds=...)`
+- if needed, use an explicit bounded wait such as `bash_exec(command='sleep 60', mode='await', timeout_seconds=70)` or `bash_exec(mode='await', id=..., timeout_seconds=...)` between checks
 - after every completed sleep / await cycle, inspect logs and send `artifact.interact(kind='progress', ...)` with the latest real status, latest evidence, the next checkpoint, and the estimated next reply time
 - after the first meaningful signal and then at real checkpoints (e.g., completion, or roughly every ~30 minutes if still running), keep those progress updates going rather than waiting silently
+- if the run is clearly invalid, wedged, or superseded, stop it with `bash_exec(mode='kill', id=..., wait=true, timeout_seconds=...)`; if it must die immediately, add `force=true`, record the reason, fix the issue, and relaunch cleanly
 - do not report completion until logs and output files both confirm completion
 
 Always preserve the managed `bash_exec` log and export it into the experiment artifact directory when the run artifact is written.
@@ -404,7 +410,7 @@ Long loops should emit structured progress markers rather than noisy raw progres
 - do not paste raw progress lines into summaries
 - when possible include `eta` in seconds and `next_reply_at` or `next_check_at` so web/TUI can show the next expected update
 
-If the codebase uses `tqdm` or similar tooling, disable or redirect the native bar and emit concise structured progress instead.
+If you control the code, prefer a throttled `tqdm`-style progress reporter for the run itself and pair it with concise structured `__DS_PROGRESS__` lines when feasible so monitoring remains machine-readable.
 
 ### 6. Validate the outputs
 

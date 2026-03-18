@@ -10,6 +10,8 @@ from urllib.error import URLError
 from urllib.parse import parse_qs
 from urllib.request import Request, urlopen
 
+from ..connector_runtime import parse_conversation_id
+
 
 @dataclass
 class BridgeWebhookResult:
@@ -52,19 +54,6 @@ class BaseConnectorBridge:
         }
 
     def deliver(self, payload: dict[str, Any], config: dict[str, Any]) -> dict[str, Any] | None:
-        relay_url = str(config.get("relay_url") or "").strip()
-        if relay_url:
-            envelope = {
-                "bridge_version": "deepscientist-connector-bridge/v1",
-                "connector": self.name,
-                "payload": self.format_outbound(payload, config),
-                "normalized_payload": payload,
-            }
-            headers = {"Content-Type": "application/json; charset=utf-8"}
-            token = str(config.get("relay_auth_token") or "").strip()
-            if token:
-                headers["Authorization"] = f"Bearer {token}"
-            return self._post_json(relay_url, envelope, headers=headers)
         return self.deliver_direct(payload, config)
 
     def deliver_direct(self, payload: dict[str, Any], config: dict[str, Any]) -> dict[str, Any] | None:
@@ -72,18 +61,20 @@ class BaseConnectorBridge:
 
     @staticmethod
     def extract_target(conversation_id: Any) -> dict[str, str]:
-        raw = str(conversation_id or "").strip()
-        parts = raw.split(":", 2)
-        if len(parts) == 3:
+        parsed = parse_conversation_id(conversation_id)
+        if parsed is not None:
             return {
-                "connector": parts[0],
-                "chat_type": parts[1],
-                "chat_id": parts[2],
+                "connector": str(parsed.get("connector") or ""),
+                "chat_type": str(parsed.get("chat_type") or ""),
+                "chat_id": str(parsed.get("chat_id") or ""),
+                "profile_id": str(parsed.get("profile_id") or ""),
             }
+        raw = str(conversation_id or "").strip()
         return {
             "connector": "",
             "chat_type": "",
             "chat_id": raw,
+            "profile_id": "",
         }
 
     @staticmethod

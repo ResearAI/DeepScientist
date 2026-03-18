@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.request import Request, urlopen
 
+from ..connector_runtime import format_conversation_id
 from ..shared import read_json, utc_now, write_json
 
 
@@ -17,14 +18,22 @@ class TelegramPollingService:
         config: dict[str, Any],
         on_event: Callable[[dict[str, Any]], None],
         log: Callable[[str, str], None] | None = None,
+        profile_id: str | None = None,
+        profile_label: str | None = None,
+        encode_profile_id: bool = False,
     ) -> None:
         self.home = home
         self.config = config
         self.on_event = on_event
         self.log = log or self._default_log
+        self.profile_id = str(profile_id or "").strip() or None
+        self.profile_label = str(profile_label or "").strip() or None
+        self._encode_profile_id = bool(encode_profile_id and self.profile_id)
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._root = home / "logs" / "connectors" / "telegram"
+        if self.profile_id:
+            self._root = self._root / "profiles" / self.profile_id
         self._runtime_path = self._root / "runtime.json"
 
     def start(self) -> bool:
@@ -59,7 +68,7 @@ class TelegramPollingService:
         self._thread = threading.Thread(
             target=self._run,
             daemon=True,
-            name="deepscientist-telegram-polling",
+            name=f"deepscientist-telegram-polling-{self.profile_id or 'default'}",
         )
         self._thread.start()
         return True
@@ -219,11 +228,21 @@ class TelegramPollingService:
             "sender_id": sender_id,
             "sender_name": sender_name,
             "message_id": str(message.get("message_id") or "").strip(),
-            "conversation_id": f"telegram:{chat_type}:{chat_id}",
+            "conversation_id": self._conversation_id(chat_type, chat_id),
+            "profile_id": self.profile_id,
+            "profile_label": self.profile_label,
             "text": normalized_text,
             "mentioned": mentioned,
             "raw_event": update,
         }
+
+    def _conversation_id(self, chat_type: str, chat_id: str) -> str:
+        return format_conversation_id(
+            "telegram",
+            chat_type,
+            chat_id,
+            profile_id=self.profile_id if self._encode_profile_id else None,
+        )
 
     @staticmethod
     def _normalize_command_target(text: str, *, bot_name: str) -> str:
@@ -272,6 +291,10 @@ class TelegramPollingService:
         state = read_json(self._runtime_path, {}) or {}
         if not isinstance(state, dict):
             state = {}
+        if self.profile_id:
+            state["profile_id"] = self.profile_id
+        if self.profile_label:
+            state["profile_label"] = self.profile_label
         state.update(patch)
         write_json(self._runtime_path, state)
 

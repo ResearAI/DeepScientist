@@ -258,8 +258,8 @@ prune_tree() {
 }
 
 build_ui() {
-  if [ -f "$1/src/ui/dist/index.html" ]; then
-    print_step "Using prebuilt web UI bundle from source tree"
+  if should_use_prebuilt_bundle "$1/src/ui" "$1/src/ui/dist" "index.html" "${DEEPSCIENTIST_FORCE_UI_BUILD:-}"; then
+    print_step "Using up-to-date web UI bundle from source tree"
     return
   fi
   print_step "Building web UI in install tree"
@@ -274,14 +274,123 @@ install_root_runtime() {
 }
 
 build_tui() {
-  if [ -f "$1/src/tui/dist/index.js" ] || [ -f "$1/src/tui/dist/index.cjs" ] || [ -d "$1/src/tui/dist/components" ]; then
-    print_step "Using prebuilt TUI bundle from source tree"
+  local tui_entry=""
+  if [ -f "$1/src/tui/dist/index.js" ]; then
+    tui_entry="index.js"
+  elif [ -f "$1/src/tui/dist/index.cjs" ]; then
+    tui_entry="index.cjs"
+  elif [ -d "$1/src/tui/dist/components" ]; then
+    tui_entry="components"
+  fi
+  if [ -n "$tui_entry" ] && should_use_prebuilt_bundle "$1/src/tui" "$1/src/tui/dist" "$tui_entry" "${DEEPSCIENTIST_FORCE_TUI_BUILD:-}"; then
+    print_step "Using up-to-date TUI bundle from source tree"
     return
   fi
   print_step "Building TUI in install tree"
   npm --prefix "$1/src/tui" install --include=dev --no-audit --no-fund
   npm --prefix "$1/src/tui" run build
   npm --prefix "$1/src/tui" prune --omit=dev --no-audit --no-fund
+}
+
+truthy_env() {
+  case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+should_use_prebuilt_bundle() {
+  local source_root="$1"
+  local dist_root="$2"
+  local dist_entry="$3"
+  local force_value="${4:-}"
+
+  if truthy_env "$force_value"; then
+    return 1
+  fi
+
+  if [ ! -e "$dist_root/$dist_entry" ]; then
+    return 1
+  fi
+
+  local freshness_output=""
+  if command -v python3 >/dev/null 2>&1; then
+    freshness_output="$(python3 - "$source_root" "$dist_root" <<'PY'
+from pathlib import Path
+import sys
+
+source_root = Path(sys.argv[1])
+dist_root = Path(sys.argv[2])
+ignore_names = {"dist", "node_modules", ".git", "__pycache__"}
+
+if not source_root.exists() or not dist_root.exists():
+    print("stale")
+    raise SystemExit(0)
+
+def iter_files(root: Path):
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        if any(part in ignore_names for part in path.relative_to(root).parts):
+            continue
+        yield path
+
+source_mtime = 0.0
+for path in iter_files(source_root):
+    source_mtime = max(source_mtime, path.stat().st_mtime)
+
+dist_mtime = 0.0
+for path in dist_root.rglob("*"):
+    if not path.is_file():
+        continue
+    dist_mtime = max(dist_mtime, path.stat().st_mtime)
+
+print("fresh" if dist_mtime >= source_mtime else "stale")
+PY
+)"
+  elif command -v python >/dev/null 2>&1; then
+    freshness_output="$(python - "$source_root" "$dist_root" <<'PY'
+from pathlib import Path
+import sys
+
+source_root = Path(sys.argv[1])
+dist_root = Path(sys.argv[2])
+ignore_names = {"dist", "node_modules", ".git", "__pycache__"}
+
+if not source_root.exists() or not dist_root.exists():
+    print("stale")
+    raise SystemExit(0)
+
+def iter_files(root: Path):
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        if any(part in ignore_names for part in path.relative_to(root).parts):
+            continue
+        yield path
+
+source_mtime = 0.0
+for path in iter_files(source_root):
+    source_mtime = max(source_mtime, path.stat().st_mtime)
+
+dist_mtime = 0.0
+for path in dist_root.rglob("*"):
+    if not path.is_file():
+        continue
+    dist_mtime = max(dist_mtime, path.stat().st_mtime)
+
+print("fresh" if dist_mtime >= source_mtime else "stale")
+PY
+)"
+  else
+    return 1
+  fi
+
+  [ "$freshness_output" = "fresh" ]
 }
 
 write_install_wrappers() {
@@ -292,6 +401,10 @@ write_install_wrappers() {
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+HOME_DIR="\$(cd "\$SCRIPT_DIR/../.." && pwd)"
+if [ -z "\${DEEPSCIENTIST_HOME:-}" ]; then
+  export DEEPSCIENTIST_HOME="\$HOME_DIR"
+fi
 NODE_BIN="\${DEEPSCIENTIST_NODE:-node}"
 exec "\$NODE_BIN" "\$SCRIPT_DIR/ds.js" "\$@"
 EOF
@@ -308,6 +421,9 @@ write_global_wrapper() {
   cat >"$target_path" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
+if [ -z "\${DEEPSCIENTIST_HOME:-}" ]; then
+  export DEEPSCIENTIST_HOME="$BASE_DIR"
+fi
 exec "$INSTALL_DIR/bin/$command_name" "\$@"
 EOF
   chmod +x "$target_path"
@@ -356,9 +472,7 @@ printf 'Run: %s\n' "$BIN_DIR/ds"
 printf 'Start web workspace: %s\n' "$BIN_DIR/ds --web"
 printf 'Default start: %s\n' "$BIN_DIR/ds"
 printf 'When `ds` starts, it prints the local Web URL and opens it automatically when supported.\n'
-if ! command -v uv >/dev/null 2>&1; then
-  printf 'Note: DeepScientist now uses `uv` to manage its local Python runtime. Install uv before the first `ds` start if needed.\n'
-fi
+printf 'If `uv` is missing, the first `ds` start will bootstrap a local copy automatically under the DeepScientist home.\n'
 if [ "$WITH_TINYTEX" -eq 1 ]; then
   print_step "Installing TinyTeX pdflatex runtime"
   "$INSTALL_DIR/bin/ds" latex install-runtime

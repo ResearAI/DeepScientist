@@ -14,6 +14,7 @@ import { formatProgressLabel, formatProgressMeta, getProgressPercent } from '@/l
 import {
   BASH_CARRIAGE_RETURN_PREFIX,
   isBashProgressMarker,
+  parseBashProgressMarker,
   parseBashStatusMarker,
   splitBashLogLine,
   type BashStatusMarker,
@@ -517,6 +518,10 @@ function McpBashExecSessionView({
   const handleLogLine = useCallback(
     (line: string) => {
       if (isBashProgressMarker(line)) {
+        const nextProgress = parseBashProgressMarker(line)
+        if (nextProgress) {
+          setProgress(nextProgress)
+        }
         return
       }
       const marker = parseBashStatusMarker(line)

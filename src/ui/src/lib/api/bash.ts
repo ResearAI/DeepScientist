@@ -10,6 +10,7 @@ export async function listBashSessions(
   projectId: string,
   params?: {
     status?: string
+    kind?: string
     agentInstanceIds?: string[]
     agentIds?: string[]
     chatSessionId?: string
@@ -19,6 +20,7 @@ export async function listBashSessions(
   const response = await apiClient.get(`/api/quests/${projectId}/bash/sessions`, {
     params: {
       status: params?.status,
+      kind: params?.kind,
       agent_instance_ids: params?.agentInstanceIds?.length
         ? params.agentInstanceIds.join(',')
         : undefined,
@@ -41,6 +43,7 @@ export async function getBashLogs(
   params?: {
     limit?: number
     beforeSeq?: number | null
+    afterSeq?: number | null
     order?: 'asc' | 'desc'
   }
 ) {
@@ -48,6 +51,7 @@ export async function getBashLogs(
     params: {
       limit: params?.limit,
       before_seq: params?.beforeSeq ?? undefined,
+      after_seq: params?.afterSeq ?? undefined,
       order: params?.order ?? undefined,
     },
   })
@@ -61,13 +65,27 @@ export async function getBashLogs(
     tailLimit: parseHeaderNumber(headers['x-bash-log-tail-limit']),
     tailStartSeq: parseHeaderNumber(headers['x-bash-log-tail-start-seq']),
     latestSeq: parseHeaderNumber(headers['x-bash-log-latest-seq']),
+    afterSeq: params?.afterSeq ?? null,
+    beforeSeq: params?.beforeSeq ?? null,
   }
   return { entries: response.data as BashLogEntry[], meta }
 }
 
-export async function stopBashSession(projectId: string, bashId: string, reason?: string) {
+export async function stopBashSession(
+  projectId: string,
+  bashId: string,
+  input?: {
+    reason?: string
+    wait?: boolean
+    force?: boolean
+    timeoutSeconds?: number
+  }
+) {
   const response = await apiClient.post(`/api/quests/${projectId}/bash/sessions/${bashId}/stop`, {
-    reason,
+    reason: input?.reason,
+    wait: input?.wait,
+    force: input?.force,
+    timeout_seconds: input?.timeoutSeconds,
   })
   return response.data as BashStopResponse
 }

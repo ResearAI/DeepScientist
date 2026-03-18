@@ -87,7 +87,7 @@ class PromptBuilder:
     ) -> str:
         snapshot = self.quest_service.snapshot(quest_id)
         runtime_config = self.config_manager.load_named("config")
-        connectors_config = self.config_manager.load_named("connectors")
+        connectors_config = self.config_manager.load_named_normalized("connectors")
         quest_root = Path(snapshot["quest_root"])
         active_anchor = str(snapshot.get("active_anchor") or skill_id)
         default_locale = str(runtime_config.get("default_locale") or "zh-CN")
@@ -260,6 +260,11 @@ class PromptBuilder:
                     "- qq_surface_rule: QQ is a milestone-report surface, not a full artifact browser.",
                     "- qq_default_mode: keep outbound replies concise, respectful, text-first, and progress-aware.",
                     "- qq_detail_rule: do not proactively dump file inventories, path lists, or low-level file details unless the user explicitly asked for them.",
+                    "- qq_length_rule: for ordinary QQ progress replies, normally use only 2 to 4 short sentences, or 3 very short bullets at most.",
+                    "- qq_summary_first_rule: start with the user-facing conclusion, then the immediate meaning, then the next action; do not make the user reverse-engineer the status from telemetry.",
+                    "- qq_internal_signal_rule: omit worker names, heartbeat timestamps, retry counters, pending/running/completed counts, file names, and monitor-window narration unless that detail is necessary for a user decision or to explain a real risk.",
+                    "- qq_translation_rule: translate internal actions into user value, for example say that you organized the baseline record for easier comparison later instead of listing the files you touched.",
+                    "- qq_eta_rule: for baseline reproduction, main experiments, analysis experiments, and other important long-running research phases, include a rough ETA for the next meaningful result, next step, or next update; if the runtime is uncertain, say that directly and still give the next check-in window.",
                     f"- qq_auto_send_main_experiment_png: {bool(qq_config.get('auto_send_main_experiment_png', True))}",
                     f"- qq_auto_send_analysis_summary_png: {bool(qq_config.get('auto_send_analysis_summary_png', True))}",
                     f"- qq_auto_send_slice_png: {bool(qq_config.get('auto_send_slice_png', False))}",
@@ -385,6 +390,14 @@ class PromptBuilder:
                 [
                     "- blocking_decision_active: false",
                     "- must_continue_rule: unless there is a real blocking user decision, keep advancing the quest automatically from durable state",
+                ]
+            )
+        bash_running_count = int(((snapshot.get("counts") or {}).get("bash_running_count")) or 0)
+        if bash_running_count > 0:
+            lines.extend(
+                [
+                    f"- active_bash_run_count: {bash_running_count}",
+                    "- long_run_watchdog_rule: while an important long-running bash_exec session is active, never let more than 30 minutes pass without inspecting real logs/status and sending a concise artifact.interact progress update if the run is still ongoing",
                 ]
             )
         if str(turn_reason or "").strip() == "auto_continue":
@@ -733,8 +746,12 @@ class PromptBuilder:
             "- interaction_protocol: first message may be plain conversation; after that, treat artifact.interact threads and mailbox polls as the main continuity spine across TUI, web, and connectors",
             "- mailbox_protocol: artifact.interact(include_recent_inbound_messages=True) is the queued human-message mailbox; when it returns user text, treat that input as higher priority than background subtasks until it has been acknowledged",
             "- acknowledgment_protocol: after artifact.interact returns any human message, immediately call artifact.interact(...) again to confirm receipt; if answerable, answer directly, otherwise state the short plan, nearest checkpoint, and that the current background subtask is paused",
-            "- progress_protocol: emit artifact.interact(kind='progress', reply_mode='threaded', ...) only at real human-meaningful checkpoints, after the first meaningful signal from long-running work, and then only occasional keepalives during truly long work, usually about every 20 to 30 minutes",
-            "- long_run_reporting_protocol: for long-running bash_exec monitoring loops, report after each completed sleep/await cycle with real evidence plus the next planned check time and estimated next reply time",
+            "- progress_protocol: emit artifact.interact(kind='progress', reply_mode='threaded', ...) at real human-meaningful checkpoints; if no natural checkpoint appears during active user-relevant work, send a concise keepalive before you drift beyond roughly 10 to 30 tool calls without a user-visible update",
+            "- smoke_then_detach_protocol: for baseline reproduction, main experiments, and analysis experiments, first validate the command path with a bounded smoke test; once the smoke test passes, launch the real long run with bash_exec(mode='detach', ...) and usually leave timeout_seconds unset rather than guessing a fake deadline",
+            "- long_run_reporting_protocol: for long-running bash_exec monitoring loops, inspect real logs or status after each completed sleep/await cycle and at least once every 30 minutes at worst, then report real evidence plus the next planned check time and estimated next reply time",
+            "- long_run_watchdog_protocol: for baseline reproduction, baseline-running stages, main experiments, and other important detached runs, do not let more than 30 minutes pass without a real progress inspection and, if the run is still active, a user-visible artifact.interact progress update",
+            "- tail_monitoring_protocol: when monitoring a detached run, prefer bash_exec(mode='read', id=..., tail_limit=..., order='desc') so you inspect the newest evidence first instead of re-reading full logs every time",
+            "- managed_recovery_protocol: if a detached baseline, main-experiment, or analysis run is clearly invalid, wedged, or superseded, stop it with bash_exec(mode='kill', id=...), document the reason, fix the issue, and relaunch cleanly instead of letting a bad run linger",
             "- timeout_protocol: before using bash_exec(mode='await', ...), estimate whether the command can finish within the selected wait window; if runtime is uncertain or likely longer, use bash_exec(mode='detach', ...) and monitor, or set timeout_seconds intentionally",
             "- blocking_protocol: use reply_mode='blocking' only for true unresolved user decisions; ordinary progress updates should stay threaded and non-blocking",
             "- credential_blocking_protocol: if continuation requires user-supplied external credentials or secrets such as an API key, GitHub key/token, or Hugging Face key/token, emit one structured blocking decision request that asks the user to provide the credential or choose an alternative route; do not invent placeholders or silently skip the blocked step",
@@ -743,6 +760,16 @@ class PromptBuilder:
             "- stop_notice_protocol: if work must pause or stop, send a user-visible notice that explains why, confirms preserved context, and states that any new message or `/resume` will continue from the same quest",
             "- respect_protocol: write user-facing updates as natural, respectful, easy-to-follow chat; do not sound like a formal status report or internal tool log",
             "- omission_protocol: for ordinary user-facing updates, omit file paths, artifact ids, branch/worktree ids, session ids, raw commands, raw logs, and internal tool names unless the user asked for them or needs them to act",
+            "- compaction_protocol: ordinary artifact.interact progress updates should usually fit in 2 to 4 short sentences and should not read like a monitoring transcript or execution diary",
+            "- tool_call_keepalive_protocol: for active multi-step work outside long detached experiment waits, if you have spent roughly 10 to 30 tool calls without a user-visible checkpoint, send one concise artifact.interact progress update before continuing",
+            "- human_progress_shape_protocol: ordinary progress updates should usually make three things explicit in human language: the current task, the main difficulty or latest real progress, and the concrete next measure you will take",
+            "- eta_visibility_protocol: for baseline reproduction, main experiments, analysis experiments, and other important long-running phases, progress updates should also make the expected time to the next meaningful result, next milestone, or next user-visible update explicit; use roughly 10 to 30 minutes as the normal update window, and if the ETA is unreliable, say that and give a realistic next check-in window instead",
+            "- teammate_voice_protocol: write like a calm capable teammate using natural first-person phrasing when helpful, for example 'I'm working on ...', 'The main issue right now is ...', 'Next I'll ...'; do not sound like a dashboard or incident log",
+            "- tqdm_progress_protocol: when you control the experiment code for baseline reproduction, main experiments, or analysis experiments, instrument long loops with a throttled tqdm-style progress reporter when feasible and also prefer periodic __DS_PROGRESS__ JSON markers so monitoring stays both human-readable and machine-usable",
+            "- translation_protocol: convert internal actions into user-facing meaning; describe what was finished and why it matters instead of naming every touched file, counter, timestamp, or subprocess",
+            "- detail_gate_protocol: include exact counters, worker labels, timestamps, retry counts, or file names only when the user explicitly asked for them, when they change the recommended action, or when they are the only honest way to explain a real blocker",
+            "- monitoring_summary_protocol: for long-running monitoring loops, summarize the frontier state in plain language such as still progressing, temporarily stalled, recovered, or needs intervention; do not narrate each watch window unless the boundary itself matters",
+            "- preflight_rewrite_protocol: before sending artifact.interact, quickly self-check whether the draft reads like a monitoring log, file inventory, or internal diary; if it mentions watch windows, heartbeats, retry counters, raw counts, timestamps, or multiple file names without being necessary for user action, rewrite it into conclusion -> meaning -> next step first",
             "- non_research_mode_protocol: if the user message looks like a non-research request, ask for a second confirmation before engaging stage skills or research workflow; after completion, leave one blocking standby interaction instead of repeatedly pinging",
             "- workspace_discipline: read and modify code inside current_workspace_root; treat quest_root as the canonical repo identity and durable runtime root",
             "- binary_safety: do not open or rewrite large binary assets unless truly necessary; prefer summaries, metadata, and targeted inspection first",

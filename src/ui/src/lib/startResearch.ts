@@ -1,3 +1,5 @@
+import type { ConnectorAvailabilitySnapshot } from '@/types'
+
 export type ResearchScope = 'baseline_only' | 'baseline_plus_direction' | 'full_research'
 export type BaselineMode =
   | 'existing'
@@ -144,13 +146,31 @@ export function defaultStartResearchTemplate(language: 'en' | 'zh'): StartResear
   }
 }
 
+export function shouldRecommendStartResearchConnectorBinding(input: {
+  open: boolean
+  availabilityResolved: boolean
+  availabilityLoading: boolean
+  availabilityError?: string | null
+  connectorRecommendationHandled: boolean
+  availability: ConnectorAvailabilitySnapshot | null
+}) {
+  if (!input.open) return false
+  if (!input.availabilityResolved) return false
+  if (input.availabilityLoading) return false
+  if (input.availabilityError) return false
+  if (input.connectorRecommendationHandled) return false
+  return Boolean(input.availability?.should_recommend_binding)
+}
+
 export function listReferenceStartResearchTemplates(): StartResearchTemplateEntry[] {
   const timestamp = '2026-03-17T00:00:00.000Z'
   const zhTemplate: StartResearchTemplate = {
-    title: '示例 · 复现 P-and-B 并探索更高效的推理控制',
+    title: '示例 · 在指定 Qwen 端点上复现 P-and-B 并探索更优的 token 控制',
     quest_id: '',
     goal: [
       '请复现 P-and-B（Planning and Budgeting）论文与官方仓库中的核心 baseline，并在严格保持评测任务一致的前提下，继续探索更高质量、更省 token、且具有学术洞见的改进方向。',
+      '',
+      '本课题默认使用用户指定的单一推理接口与单一模型：`http://127.0.0.1:8004/v1`、API key `1234`、模型 `/model/Qwen3.5-35B-A3B`（实验中记录为 `Qwen3.5-35B-A3B`）。不需要横向测试其他模型，而是围绕这一固定端点完成 baseline 复现、分析与改进。',
       '',
       '要求先完整恢复并验证官方 baseline，再沿着文献调研与实验结果提出新方向。所有新 idea 都必须建立在充分的相关工作阅读、对失败模式的分析，以及对当前最佳 baseline 的清晰理解之上。',
       '',
@@ -161,14 +181,19 @@ export function listReferenceStartResearchTemplates(): StartResearchTemplateEntr
     baseline_urls: 'https://github.com/junhongmit/P-and-B',
     paper_urls: 'https://arxiv.org/abs/2505.16122',
     runtime_constraints: [
-      '- 使用用户提供的 OpenAI-compatible 推理接口与单一指定模型。',
-      '- 在不破坏服务稳定性的前提下，尽量提高并发吞吐；若需要修改并发、超时或重试逻辑，必须记录原因。',
+      '- 推理接口 base URL 固定为 `http://127.0.0.1:8004/v1`。',
+      '- API key 固定为 `1234`。',
+      '- 模型固定为 `/model/Qwen3.5-35B-A3B`，在实验记录中统一写作 `Qwen3.5-35B-A3B`。',
+      '- 只围绕这一组 endpoint + key + model 完成研究；不要横向测试其他模型。',
+      '- `max_tokens`、任务定义与主要评测协议默认保持官方设置；只有在明确证据表明当前上限不够时，才允许做最小幅度调整并记录原因。',
+      '- 最大并发数量按 `96` 设计，可以使用最多 `96` 个并发 worker / 异步请求；如需调整并发、超时或重试逻辑，必须记录原因。',
+      '- 在不破坏服务稳定性的前提下，尽量占满 API 服务器吞吐。',
       '- 除非有充分证据证明必须调整，否则优先保持官方 baseline 的任务定义、主要超参数与评测协议不变。',
       '- 不允许伪造实验结果；失败、异常、中断和退化结果都必须如实记录。',
     ].join('\n'),
     objectives: [
       '1. 恢复并验证官方 baseline，形成可复用的可信起点。',
-      '2. 记录关键指标、token 开销、长尾失败模式与主要观察结论。',
+      '2. 在固定的 Qwen3.5-35B-A3B 端点上记录关键指标、token 开销、长尾失败模式与主要观察结论。',
       '3. 基于文献与实验结果提出至少一个有研究价值的改进方向。',
       '4. 形成足以支持论文写作的实验与分析材料。',
     ].join('\n'),
@@ -184,10 +209,12 @@ export function listReferenceStartResearchTemplates(): StartResearchTemplateEntr
   }
 
   const enTemplate: StartResearchTemplate = {
-    title: 'Example · Reproduce P-and-B and explore more efficient reasoning control',
+    title: 'Example · Reproduce P-and-B on the specified Qwen endpoint and explore better token control',
     quest_id: '',
     goal: [
       'Please reproduce the core baselines from the P-and-B (Planning and Budgeting) paper and official repository, then continue exploring stronger and more token-efficient reasoning-control ideas while keeping the task definition and evaluation protocol faithful to the original work.',
+      '',
+      'This project assumes one fixed inference setup from the start: base URL `http://127.0.0.1:8004/v1`, API key `1234`, and model `/model/Qwen3.5-35B-A3B` (record experiment results as `Qwen3.5-35B-A3B`). Do not broaden into multi-model benchmarking; the task is to understand and improve the method on this designated endpoint.',
       '',
       'The workflow should first restore and verify the official baselines, then move into literature-grounded idea generation and evidence-driven experimentation. Every new idea must be justified by careful reading of related work, analysis of failure modes, and a clear understanding of the current best baseline.',
       '',
@@ -198,14 +225,19 @@ export function listReferenceStartResearchTemplates(): StartResearchTemplateEntr
     baseline_urls: 'https://github.com/junhongmit/P-and-B',
     paper_urls: 'https://arxiv.org/abs/2505.16122',
     runtime_constraints: [
-      '- Use the user-provided OpenAI-compatible inference endpoint and the single designated model.',
-      '- Keep throughput high without destabilizing the service; if concurrency, timeout, or retry settings are changed, record the reason explicitly.',
+      '- Fix the inference base URL to `http://127.0.0.1:8004/v1`.',
+      '- Fix the API key to `1234`.',
+      '- Fix the model to `/model/Qwen3.5-35B-A3B`, and normalize experiment records to `Qwen3.5-35B-A3B`.',
+      '- Use only this endpoint + key + model combination; do not turn the project into a multi-model benchmark.',
+      '- Keep `max_tokens`, task definition, and the main evaluation protocol aligned with the official setup unless there is concrete evidence that the token cap itself is blocking valid runs; if changed, record the reason explicitly.',
+      '- Design for up to `96` concurrent workers / async requests; if concurrency, timeout, or retry settings are changed, record the reason explicitly.',
+      '- Keep throughput high without destabilizing the service, and try to saturate the available API capacity safely.',
       '- Preserve the official task setup, major hyperparameters, and evaluation protocol unless there is concrete evidence that an adaptation is necessary.',
       '- Never fabricate results; failed, interrupted, degraded, or inconclusive runs must be recorded honestly.',
     ].join('\n'),
     objectives: [
       '1. Restore and verify the official baseline as a trustworthy reusable starting point.',
-      '2. Record key metrics, token costs, long-tail failure modes, and main observations.',
+      '2. On the fixed Qwen3.5-35B-A3B endpoint, record key metrics, token costs, long-tail failure modes, and main observations.',
       '3. Propose at least one research-worthy improvement direction grounded in literature and experimental evidence.',
       '4. Produce experiment and analysis assets that are strong enough to support paper writing.',
     ].join('\n'),

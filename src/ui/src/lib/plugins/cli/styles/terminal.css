@@ -375,6 +375,9 @@
 
 .cli-progress-inline {
   padding: 2px 4px 0;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
 }
 
 .cli-inline-terminal-bare .cli-progress-inline {
@@ -398,6 +401,11 @@
   border-radius: 999px;
   background: var(--cli-progress-track);
   overflow: hidden;
+}
+
+.cli-progress-inline .cli-progress-track {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .cli-progress-track-pulse {
@@ -428,9 +436,27 @@
   color: var(--cli-progress-text);
 }
 
+.cli-progress-inline .cli-progress-meta {
+  min-width: 0;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+
 .cli-progress-label {
   font-weight: 600;
   color: var(--cli-progress-text-strong);
+}
+
+.cli-progress-inline .cli-progress-label,
+.cli-progress-inline .cli-progress-percent,
+.cli-progress-inline .cli-progress-extra {
+  white-space: nowrap;
+}
+
+.cli-progress-inline .cli-progress-extra {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cli-progress-percent {
@@ -441,6 +467,27 @@
 
 .cli-progress-extra {
   opacity: 0.75;
+}
+
+.ds-studio-bash-shell .cli-inline-terminal-body {
+  width: 100%;
+  min-width: 0;
+}
+
+.ds-studio-bash-shell .cli-terminal,
+.ds-studio-bash-shell .cli-inline-terminal-read,
+.ds-studio-bash-shell .cli-inline-terminal-note {
+  border-radius: 0;
+}
+
+.ds-studio-bash-shell .cli-terminal {
+  box-shadow: inset 0 0 0 1px var(--cli-terminal-border);
+}
+
+.ds-studio-bash-shell .cli-terminal .xterm,
+.ds-studio-bash-shell .cli-terminal .xterm-screen,
+.ds-studio-bash-shell .cli-terminal .xterm-helpers {
+  width: 100%;
 }
 
 @keyframes cliProgressIndeterminate {

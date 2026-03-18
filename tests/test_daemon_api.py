@@ -127,7 +127,7 @@ def test_daemon_update_status_uses_launcher_json_contract(
             stdout=json.dumps(
                 {
                     "ok": True,
-                    "current_version": "1.5.2",
+                    "current_version": "1.5.3",
                     "latest_version": "1.5.3",
                     "update_available": True,
                     "can_self_update": True,
@@ -756,6 +756,43 @@ def test_update_quest_binding_keeps_only_one_external_connector_per_quest(temp_h
     assert any(item["conversation_id"] == "telegram:direct:tg-single" for item in app.list_connector_bindings("telegram"))
 
 
+def test_update_quest_bindings_supports_per_connector_batch_selection(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create("batch connector binding quest")
+    quest_id = quest["quest_id"]
+
+    first = app.update_quest_bindings(
+        quest_id,
+        [
+            {"connector": "qq", "conversation_id": "qq:direct:OPENID_BATCH"},
+            {"connector": "telegram", "conversation_id": "telegram:direct:tg-batch"},
+        ],
+        force=True,
+    )
+    assert isinstance(first, dict)
+    assert first["ok"] is True
+    sources = app.quest_service.binding_sources(quest_id)
+    assert "qq:direct:OPENID_BATCH" in sources
+    assert "telegram:direct:tg-batch" in sources
+
+    second = app.update_quest_bindings(
+        quest_id,
+        [
+            {"connector": "qq", "conversation_id": "qq:direct:OPENID_BATCH_2"},
+            {"connector": "telegram", "conversation_id": "telegram:direct:tg-batch"},
+        ],
+        force=True,
+    )
+    assert isinstance(second, dict)
+    assert second["ok"] is True
+    sources = app.quest_service.binding_sources(quest_id)
+    assert "qq:direct:OPENID_BATCH" not in sources
+    assert "qq:direct:OPENID_BATCH_2" in sources
+    assert "telegram:direct:tg-batch" in sources
+
+
 def test_bash_exec_handlers_expose_sessions_logs_and_stop(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
@@ -786,6 +823,8 @@ def test_bash_exec_handlers_expose_sessions_logs_and_stop(temp_home: Path) -> No
 
     sessions = app.handlers.bash_sessions(quest_id, f"/api/quests/{quest_id}/bash/sessions")
     assert any(item["bash_id"] == bash_id for item in sessions)
+    exec_sessions = app.handlers.bash_sessions(quest_id, f"/api/quests/{quest_id}/bash/sessions?kind=exec")
+    assert any(item["bash_id"] == bash_id for item in exec_sessions)
 
     detail = app.handlers.bash_session(quest_id, bash_id)
     assert isinstance(detail, dict)
@@ -800,10 +839,19 @@ def test_bash_exec_handlers_expose_sessions_logs_and_stop(temp_home: Path) -> No
     assert headers["Content-Type"] == "application/json; charset=utf-8"
     entries = json.loads(payload.decode("utf-8"))
     assert any("alpha" in str(entry.get("line") or "") for entry in entries)
+    latest_seq = int(headers["X-Bash-Log-Latest-Seq"] or 0)
+    status2, _headers2, payload2 = app.handlers.bash_logs(
+        quest_id,
+        bash_id,
+        f"/api/quests/{quest_id}/bash/sessions/{bash_id}/logs?limit=20&after_seq={latest_seq}",
+    )
+    assert status2 == 200
+    assert isinstance(json.loads(payload2.decode("utf-8")), list)
 
-    stop_payload = app.handlers.bash_stop(quest_id, bash_id, {"reason": "pytest-stop"})
+    stop_payload = app.handlers.bash_stop(quest_id, bash_id, {"reason": "pytest-stop", "force": True, "wait": True, "timeout_seconds": 10})
     assert isinstance(stop_payload, dict)
     assert stop_payload["success"] is True
+    assert stop_payload["status"] == "terminated"
 
     final = app.bash_exec_service.wait_for_session(quest_root, bash_id, timeout_seconds=10)
     assert final["status"] == "terminated"

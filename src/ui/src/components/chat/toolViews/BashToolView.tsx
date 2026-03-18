@@ -10,7 +10,12 @@ import { useBashLogStream } from '@/lib/hooks/useBashLogStream'
 import { EnhancedTerminal } from '@/lib/plugins/cli/components/EnhancedTerminal'
 import { useChatScrollState } from '@/lib/plugins/ai-manus/lib/chat-scroll-context'
 import type { BashProgress, BashSessionStatus } from '@/lib/types/bash'
-import { isBashProgressMarker, parseBashStatusMarker, splitBashLogLine } from '@/lib/utils/bash-log'
+import {
+  isBashProgressMarker,
+  parseBashProgressMarker,
+  parseBashStatusMarker,
+  splitBashLogLine,
+} from '@/lib/utils/bash-log'
 import { formatProgressLabel, formatProgressMeta, getProgressPercent } from '@/lib/utils/bash-progress'
 import type { ToolViewProps } from './types'
 import '@/lib/plugins/cli/styles/terminal.css'
@@ -179,6 +184,10 @@ export function BashToolView({
   const handleLogLine = useCallback(
     (line: string) => {
       if (isBashProgressMarker(line)) {
+        const nextProgress = parseBashProgressMarker(line)
+        if (nextProgress) {
+          setProgress(nextProgress)
+        }
         return
       }
       const marker = parseBashStatusMarker(line)
@@ -429,7 +438,9 @@ export function BashToolView({
     if (!projectId || !bashId) return
     setStopLoading(true)
     try {
-      await stopBashSession(projectId, bashId, stopNote.trim() || undefined)
+      await stopBashSession(projectId, bashId, {
+        reason: stopNote.trim() || undefined,
+      })
       setStopDialogOpen(false)
       setStopNote('')
       addToast({

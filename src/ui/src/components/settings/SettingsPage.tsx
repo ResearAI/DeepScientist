@@ -136,6 +136,25 @@ function scrollSettingsAnchor(root: HTMLElement | null, anchorId: string) {
   return true
 }
 
+function qqMainChatSignature(value: unknown) {
+  if (!value || typeof value !== 'object') {
+    return ''
+  }
+  const payload = value as Record<string, unknown>
+  const directMainChatId = String(payload.main_chat_id || '').trim()
+  const profileChatIds = Array.isArray(payload.profiles)
+    ? payload.profiles
+        .filter((item) => item && typeof item === 'object')
+        .map((item) => {
+          const profile = item as Record<string, unknown>
+          return `${String(profile.profile_id || '').trim()}:${String(profile.main_chat_id || '').trim()}`
+        })
+        .filter((item) => item !== ':')
+        .sort()
+    : []
+  return [directMainChatId, ...profileChatIds].filter(Boolean).join('|')
+}
+
 export function SettingsPage({
   requestedConfigName,
   requestedConnectorName,
@@ -270,15 +289,15 @@ export function SettingsPage({
           nextStructured.qq && typeof nextStructured.qq === 'object'
             ? (nextStructured.qq as Record<string, unknown>)
             : {}
-        const nextMainChatId = String(nextQq.main_chat_id || '').trim()
+        const nextMainChatSignature = qqMainChatSignature(nextQq)
 
-        if (next.revision !== document?.revision || nextMainChatId !== lastKnownQqMainChatIdRef.current) {
+        if (next.revision !== document?.revision || nextMainChatSignature !== lastKnownQqMainChatIdRef.current) {
           setDocument(next)
           setStructuredDraft(nextStructured)
-          if (!lastKnownQqMainChatIdRef.current && nextMainChatId) {
+          if (!lastKnownQqMainChatIdRef.current && nextMainChatSignature) {
             setSaveMessage(t.qqAutoBound)
           }
-          lastKnownQqMainChatIdRef.current = nextMainChatId
+          lastKnownQqMainChatIdRef.current = nextMainChatSignature
         }
       } catch {
         return
@@ -289,7 +308,7 @@ export function SettingsPage({
       structuredDraft.qq && typeof structuredDraft.qq === 'object'
         ? (structuredDraft.qq as Record<string, unknown>)
         : {}
-    lastKnownQqMainChatIdRef.current = String(currentQq.main_chat_id || '').trim()
+    lastKnownQqMainChatIdRef.current = qqMainChatSignature(currentQq)
 
     void poll()
     const timer = window.setInterval(() => {
@@ -529,12 +548,14 @@ export function SettingsPage({
                       <button
                         key={connector.name}
                         type="button"
-                        onClick={() =>
+                        onClick={() => {
+                          setSelectedName('connectors')
+                          setSaveMessage('')
                           navigate({
                             pathname: settingsConfigPath('connectors', connector.name),
                             hash: '',
                           })
-                        }
+                        }}
                         className="flex w-full items-center justify-between gap-3 rounded-[16px] border border-black/[0.06] bg-white/[0.4] px-3 py-2 text-left text-sm transition hover:border-black/[0.12] hover:text-foreground dark:border-white/[0.08] dark:bg-white/[0.03]"
                       >
                         <span className="flex min-w-0 items-center gap-2">

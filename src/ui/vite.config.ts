@@ -22,12 +22,30 @@ export default defineConfig(({ mode }) => {
       },
     },
     resolve: {
-      alias: {
-        '@': resolve(__dirname, 'src'),
-        'next/navigation': resolve(__dirname, 'src/compat/next-navigation.ts'),
-        'next/link': resolve(__dirname, 'src/compat/next-link.tsx'),
-        'next/dynamic': resolve(__dirname, 'src/compat/next-dynamic.tsx'),
-      },
+      alias: [
+        { find: /^@\//, replacement: `${resolve(__dirname, 'src')}/` },
+        {
+          find: /^@reduxjs\/toolkit$/,
+          replacement: resolve(__dirname, 'node_modules/@reduxjs/toolkit/dist/redux-toolkit.legacy-esm.js'),
+        },
+        {
+          find: /^react-redux$/,
+          replacement: resolve(__dirname, 'node_modules/react-redux/dist/react-redux.mjs'),
+        },
+        { find: /^motion-dom$/, replacement: resolve(__dirname, 'node_modules/motion-dom/dist/cjs/index.js') },
+        { find: /^@xterm\/xterm$/, replacement: resolve(__dirname, 'node_modules/@xterm/xterm/lib/xterm.js') },
+        {
+          find: /^@xterm\/addon-webgl$/,
+          replacement: resolve(__dirname, 'node_modules/@xterm/addon-webgl/lib/addon-webgl.js'),
+        },
+        {
+          find: /^@xterm\/xterm\/css\/xterm\.css$/,
+          replacement: resolve(__dirname, 'node_modules/@xterm/xterm/css/xterm.css'),
+        },
+        { find: /^next\/navigation$/, replacement: resolve(__dirname, 'src/compat/next-navigation.ts') },
+        { find: /^next\/link$/, replacement: resolve(__dirname, 'src/compat/next-link.tsx') },
+        { find: /^next\/dynamic$/, replacement: resolve(__dirname, 'src/compat/next-dynamic.tsx') },
+      ],
     },
     server: {
       host: '0.0.0.0',

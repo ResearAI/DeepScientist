@@ -4,6 +4,14 @@
 - connector_contract_scope: loaded only when QQ is the active or bound external connector for this quest
 - connector_contract_goal: use `artifact.interact(...)` as the main durable user-visible thread on QQ instead of exposing raw internal runner or tool chatter
 - qq_reply_style: keep QQ replies concise, milestone-first, respectful, and easy to scan on a phone
+- qq_reply_length_rule: for ordinary QQ progress updates, normally use only 2 to 4 short sentences, or 3 short bullets at most
+- qq_summary_first_rule: start with the conclusion the user cares about, then what it means, then the next action
+- qq_progress_shape_rule: make the current task, the main difficulty or latest real progress, and the next concrete measure explicit whenever possible
+- qq_eta_rule: for baseline reproduction, main experiments, analysis experiments, and other important long-running research phases, include a rough ETA for the next meaningful result or the next update; if uncertain, say that and still give the next check-in window
+- qq_tool_call_keepalive_rule: for ordinary active work, if roughly 10 to 30 tool calls pass without a user-visible checkpoint, send one concise QQ progress update before continuing
+- qq_internal_detail_rule: omit worker names, heartbeat timestamps, retry counters, pending/running/completed counts, file names, and monitor-window narration unless the user asked for them or the detail changes the recommended action
+- qq_translation_rule: convert internal execution and file-management work into user value, such as saying the baseline record is now organized for easier later comparison instead of listing touched files
+- qq_preflight_rule: before sending a QQ progress update, rewrite it if it still sounds like a monitoring log, execution diary, or file inventory
 - qq_operator_surface_rule: treat QQ as an operator surface for coordination and milestone delivery, not as a full artifact browser
 - qq_default_text_rule: plain text is the default and safest QQ mode
 - qq_absolute_path_rule: when you request native QQ image or file delivery via an attachment `path`, prefer an absolute path
@@ -39,12 +47,44 @@
 
 ## Examples
 
+### 0. Bad vs good QQ progress update
+
+Bad:
+
+```text
+我刚结束新的 60 秒监控窗，当前还是 15 pending / 2 running / 3 completed。local-gptoss + tare + GSM8K_DSPy 的 heartbeat 已推进到 00:07:10 UTC，local-qwen + atare + BBH_tracking_shuffled_objects_five_objects 也推进到 00:06:38 UTC。我已经同步更新 status、summary、execution 和 inventory，接下来继续看下一段 120 秒恢复窗。
+```
+
+Why bad:
+
+- it forces the user to infer the conclusion from telemetry
+- it exposes internal counters, timestamps, worker labels, and file actions that usually do not help the user
+- it reads like a monitoring transcript, not like a collaborator update
+
+Good:
+
+```text
+公开 baseline 还在继续推进，暂时不需要额外修补。当前主要情况是整体在往前走，但其中一条线仍然更慢、更不稳定。接下来我会继续盯下一轮结果，预计 20 到 30 分钟内会有下一次关键判断；如果更早出现完成、再次卡住，或者需要干预，我会提前同步给您。
+```
+
+Why good:
+
+- it starts with the conclusion the user actually needs
+- it keeps the meaningful risk but removes unnecessary internal telemetry
+- it tells the user exactly what will happen next
+
+English-style reference shape:
+
+```text
+I'm working on {current task}. The main issue right now is {difficulty or risk}, but {latest real progress or current judgment}. Next I'll {concrete next measure}. You should hear from me again in about {ETA}, or sooner if {important condition} happens.
+```
+
 ### 1. Plain-text QQ progress update
 
 ```python
 artifact.interact(
     kind="progress",
-    message="主实验第一轮已经跑完，结果稳定。我正在继续做消融，下一次会同步关键变化。",
+    message="主实验第一轮已经跑完，结果目前比较稳定。接下来我会继续补消融，确认这个提升是不是稳得住。下一次我只同步关键变化给您。",
     reply_mode="threaded",
 )
 ```
@@ -56,7 +96,7 @@ Use the normal `artifact.interact(...)` call. When DeepScientist already knows t
 ```python
 artifact.interact(
     kind="progress",
-    message="我已经看完您刚才提到的那篇论文，正在整理它和当前 baseline 的核心差异，稍后给您一个更完整的结论。",
+    message="我已经看完您刚才提到的那篇论文，也确认了它和当前 baseline 的核心差异。接下来我会把真正影响路线选择的部分整理出来，再给您一个更完整的结论。",
     reply_mode="threaded",
 )
 ```

@@ -382,8 +382,8 @@ export const connectorGuideCatalog: Record<ConnectorName, ConnectorGuideEntry> =
         zh: '关键凭据是 `app_id` 和 `app_secret`。',
       },
       {
-        en: 'Legacy webhook verification fields are only needed if you intentionally keep callback mode.',
-        zh: '只有在你刻意保留 callback 模式时，才需要旧式 webhook 校验字段。',
+        en: 'Only `app_id` and `app_secret` are required for the native Feishu setup.',
+        zh: '原生飞书接入只需要 `app_id` 和 `app_secret`。',
       },
     ],
     links: [
@@ -456,8 +456,8 @@ export const connectorGuideCatalog: Record<ConnectorName, ConnectorGuideEntry> =
             zh: '先确认租户 token 交换在“校验”里成功。',
           },
           {
-            en: 'Keep verification token and encrypt key empty unless you still use legacy webhooks.',
-            zh: '除非仍在使用旧式 webhook，否则不要提前填写 verification token 和 encrypt key。',
+            en: 'After the first real chat lands, use the discovered target instead of typing ids manually.',
+            zh: '第一条真实聊天到达后，优先使用自动发现目标，不要手填 id。',
           },
         ],
         fieldKeys: ['dm_policy', 'allow_from', 'group_policy', 'group_allow_from', 'groups', 'auto_bind_dm_to_active_quest'],
@@ -472,16 +472,16 @@ export const connectorGuideCatalog: Record<ConnectorName, ConnectorGuideEntry> =
     requiredFieldKeys: ['auth_method', 'session_dir'],
     overviewChecks: [
       {
-        en: 'Recommended transport is `local_session`; Meta Cloud API is kept only as a legacy fallback.',
-        zh: '推荐传输方式是 `local_session`；Meta Cloud API 只作为旧式兜底保留。',
+        en: 'Required transport is `local_session`; this page no longer walks through Meta Cloud callbacks.',
+        zh: '必选传输方式是 `local_session`；本页不再引导 Meta Cloud 回调方案。',
       },
       {
         en: 'For local session, the main choices are auth method and session directory.',
         zh: '对于本地会话，主要需要决定认证方式与 session 目录。',
       },
       {
-        en: 'If you intentionally use Meta Cloud, fill the legacy fields only after the local path is ruled out.',
-        zh: '只有在明确不走本地路径时，才去填写 Meta Cloud 的旧式字段。',
+        en: 'Complete QR or pairing login first, then wait for the first real message to discover the target id.',
+        zh: '先完成二维码或配对码登录，再等待第一条真实消息来发现目标 id。',
       },
     ],
     links: [
@@ -501,8 +501,8 @@ export const connectorGuideCatalog: Record<ConnectorName, ConnectorGuideEntry> =
         id: 'platform',
         title: { en: 'Step 1. Choose the local session path', zh: 'Step 1. 选择本地会话路径' },
         description: {
-          en: 'Start with `local_session`. Only open the Meta Cloud docs if you intentionally need the legacy fallback.',
-          zh: '先走 `local_session`。只有你明确需要旧式兜底时，才去看 Meta Cloud 文档。',
+          en: 'Start with `local_session`, choose the login method, and decide where the local auth state should be stored.',
+          zh: '先走 `local_session`，选择登录方式，并决定本地认证状态保存在哪个目录。',
         },
         image: {
           assetPath: 'images/connectors/whatsapp-setup-overview.svg',
@@ -522,8 +522,8 @@ export const connectorGuideCatalog: Record<ConnectorName, ConnectorGuideEntry> =
             zh: '除非你需要独立 profile，否则保持默认 session 目录。',
           },
           {
-            en: 'Treat Meta Cloud fields as advanced fallback, not the default.',
-            zh: '把 Meta Cloud 字段当成高级兜底，而不是默认方案。',
+            en: 'Make sure the machine can keep the session directory on disk between restarts.',
+            zh: '确保这台机器重启后仍能保留 session 目录里的本地状态。',
           },
         ],
       },
@@ -554,8 +554,8 @@ export const connectorGuideCatalog: Record<ConnectorName, ConnectorGuideEntry> =
             zh: '第一条入站消息到达后，优先直接使用自动发现目标。',
           },
           {
-            en: 'Only fill Meta Cloud fields if you explicitly switch transport to the legacy mode.',
-            zh: '只有明确切到旧式 transport 时，才需要填写 Meta Cloud 字段。',
+            en: 'If login has not completed yet, finish QR or pairing first before expecting a discovered id.',
+            zh: '如果登录还没完成，就先完成二维码或配对流程，再等待自动发现的 id。',
           },
         ],
         fieldKeys: ['dm_policy', 'allow_from', 'group_policy', 'group_allow_from', 'groups', 'auto_bind_dm_to_active_quest'],

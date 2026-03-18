@@ -13,14 +13,10 @@ The screenshots in this guide use the current live web UI at `deepscientist.cc:2
 
 ## 1. Install
 
-Install `uv`, then install Codex and DeepScientist globally:
+Install DeepScientist globally:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-```bash
-npm install -g @openai/codex @researai/deepscientist
+npm install -g @researai/deepscientist
 ```
 
 If you plan to compile LaTeX locally later, you can also install the lightweight PDF runtime:
@@ -39,7 +35,31 @@ ds
 
 DeepScientist now uses `uv` to manage a locked local Python runtime. If a conda environment is active and already provides Python `>=3.11`, `ds` will prefer that environment automatically. Otherwise `uv` will provision a managed Python under the DeepScientist home.
 
+If `uv` is missing on your machine, `ds` will bootstrap a local copy automatically during the first start. The npm package also ships with the Codex CLI dependency, so you do not need a separate `npm install -g @openai/codex`. You may still need to run `codex` once later to finish login.
+
 By default, the DeepScientist home is `~/DeepScientist` on macOS and Linux, and `%USERPROFILE%\\DeepScientist` on Windows. You can override it with `ds --home <path>`.
+
+If you want to use the current working directory as the DeepScientist home directly, run:
+
+```bash
+ds --hero
+```
+
+This is equivalent to `ds --home "$PWD"`.
+
+If you install from a source checkout and want another default base path for the bundled CLI tree, use:
+
+```bash
+bash install.sh --dir /data/DeepScientist
+```
+
+If you already have a populated DeepScientist home and need to move it to another path later, use:
+
+```bash
+ds migrate /data/DeepScientist
+```
+
+The migration command prints the absolute source and target paths, stops the managed daemon, asks for a double confirmation, verifies the copied tree, updates launcher wrappers, and removes the old path only after the migration succeeds.
 
 By default, the web UI is served at:
 

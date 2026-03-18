@@ -32,6 +32,7 @@ export type BashSession = {
   stopped_by_user_id?: string | null
   kind?: string
   label?: string | null
+  comment?: string | Record<string, unknown> | null
   command: string
   workdir: string
   cwd?: string
@@ -41,6 +42,17 @@ export type BashSession = {
   exit_code?: number | null
   stop_reason?: string | null
   last_progress?: BashProgress | null
+  last_progress_at?: string | null
+  last_output_at?: string | null
+  last_output_seq?: number | null
+  run_age_seconds?: number | null
+  status_age_seconds?: number | null
+  silent_seconds?: number | null
+  progress_age_seconds?: number | null
+  latest_signal_at?: string | null
+  signal_age_seconds?: number | null
+  watchdog_after_seconds?: number | null
+  watchdog_overdue?: boolean | null
   started_at: string
   finished_at?: string | null
   updated_at?: string
@@ -77,9 +89,12 @@ export type BashLogMeta = {
   tailLimit?: number | null
   tailStartSeq?: number | null
   latestSeq?: number | null
+  afterSeq?: number | null
+  beforeSeq?: number | null
 }
 
 export type BashStopResponse = {
   success: boolean
   status: string
+  session?: BashSession
 }
