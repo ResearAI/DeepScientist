@@ -1,6 +1,6 @@
 {
   "name": "@researai/deepscientist",
-  "version": "1.5.8",
+  "version": "1.5.9",
   "description": "Local-first research operating system with a Python runtime and npm launcher",
   "license": "MIT",
   "files": [
