@@ -113,6 +113,8 @@ DeepScientist 灵活且易于使用，支持：
   说明 daemon、工作区、canvas 和 connector 视图之间的关系。
 - [07 Memory 与 MCP](./07_MEMORY_AND_MCP.md)
   说明 memory、artifact 和内置 MCP 的行为。
+- [16 External Controller 指南](./16_EXTERNAL_CONTROLLER_GUIDE.md)
+  说明如何在不改 core runtime 的前提下，基于 mailbox 和 `quest_control` 构建可选的外层治理控制器。
 
 ## 如果你遇到了问题
 
