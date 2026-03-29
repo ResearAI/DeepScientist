@@ -729,6 +729,15 @@ class PromptBuilder:
                 return value
         return "none"
 
+    @staticmethod
+    def _publishability_gate_mode(snapshot: dict) -> str:
+        startup_contract = snapshot.get("startup_contract")
+        if isinstance(startup_contract, dict):
+            value = str(startup_contract.get("publishability_gate_mode") or "").strip().lower()
+            if value in {"off", "warn", "enforce"}:
+                return value
+        return "enforce"
+
     def _research_delivery_policy_block(self, snapshot: dict) -> str:
         need_research_paper = self._need_research_paper(snapshot)
         launch_mode = self._launch_mode(snapshot)
@@ -736,6 +745,7 @@ class PromptBuilder:
         baseline_execution_policy = self._baseline_execution_policy(snapshot)
         review_followup_policy = self._review_followup_policy(snapshot)
         manuscript_edit_mode = self._manuscript_edit_mode(snapshot)
+        publishability_gate_mode = self._publishability_gate_mode(snapshot)
         lines = [
             f"- need_research_paper: {need_research_paper}",
             f"- launch_mode: {launch_mode}",
@@ -743,6 +753,7 @@ class PromptBuilder:
             f"- review_followup_policy: {review_followup_policy if custom_profile == 'review_audit' else 'n/a'}",
             f"- baseline_execution_policy: {baseline_execution_policy if launch_mode == 'custom' else 'n/a'}",
             f"- manuscript_edit_mode: {manuscript_edit_mode if custom_profile in {'review_audit', 'revision_rebuttal'} else 'n/a'}",
+            f"- publishability_gate_mode: {publishability_gate_mode if need_research_paper else 'n/a'}",
             f"- delivery_mode: {'paper_required' if need_research_paper else 'algorithm_first'}",
             "- requested_skill_rule: stage-specific execution detail lives in the requested skill; this block only adds runtime launch policy.",
             "- idea_stage_rule: every accepted idea submission should normally create a new branch/worktree and a new user-visible research node.",
@@ -839,8 +850,27 @@ class PromptBuilder:
                     "- delivery_goal: the quest should normally continue until at least one paper-like deliverable exists.",
                     "- main_result_rule: a strong main experiment is evidence, not the endpoint; usually continue into analysis, writing, or strengthening work.",
                     "- paper_branch_rule: writing should normally continue on a dedicated `paper/*` branch/worktree derived from the evidence line rather than mutating the evidence branch itself.",
+                ]
+            )
+            if publishability_gate_mode != "off":
+                lines.extend(
+                    [
+                        "- publishability_gate_rule: at minimum after scout closes, after the first meaningful main result, and before any paper-facing branch, explicitly judge whether the current line still has a credible path to a strong publishable paper; if not, record `stop` or `branch` durably and pivot instead of continuing by inertia.",
+                        "- weak_line_stop_rule: do not keep spending budget on lines whose remaining story is only trivial metric movement, unstable claims, or packaging without clear reviewer-facing value.",
+                    ]
+                )
+                if publishability_gate_mode == "warn":
+                    lines.append(
+                        "- publishability_gate_advisory_rule: treat the publishability gate as an advisory checkpoint; surface the judgment clearly before `write`, but do not treat it as a hard write-admission contract unless some other quest policy says so."
+                    )
+                else:
+                    lines.append(
+                        "- paper_branch_admission_rule: a paper-like draft is not itself success; only open or continue `write` when the line still passes the publishability gate."
+                    )
+            lines.extend(
+                [
                     "- review_gate_rule: before declaring a substantial paper/draft task done, open `review` for an independent skeptical audit; if that audit finds serious gaps, route to `analysis-campaign`, `baseline`, `scout`, or `write` instead of stopping.",
-                    "- stop_rule: do not stop with only an improved algorithm or isolated run logs unless the user explicitly narrows scope.",
+                    "- stop_rule: do not stop with only an improved algorithm or isolated run logs unless the user explicitly narrows scope, but also do not force weak lines to continue merely to produce a paper-like artifact.",
                 ]
             )
         else:
@@ -861,6 +891,7 @@ class PromptBuilder:
         bound_conversations = snapshot.get("bound_conversations") or []
         need_research_paper = self._need_research_paper(snapshot)
         decision_policy = self._decision_policy(snapshot)
+        publishability_gate_mode = self._publishability_gate_mode(snapshot)
         launch_mode = self._launch_mode(snapshot)
         custom_profile = self._custom_profile(snapshot)
         lines = [
@@ -868,6 +899,7 @@ class PromptBuilder:
             f"- current_turn_language_bias: {'zh' if chinese_turn else 'en'}",
             f"- bound_conversation_count: {len(bound_conversations)}",
             f"- decision_policy: {decision_policy}",
+            f"- publishability_gate_mode: {publishability_gate_mode if need_research_paper else 'n/a'}",
             f"- launch_mode: {launch_mode}",
             f"- custom_profile: {custom_profile if launch_mode == 'custom' else 'n/a'}",
             "- collaboration_mode: long-horizon, continuity-first, artifact-aware",
@@ -918,9 +950,14 @@ class PromptBuilder:
                 ]
             )
         if need_research_paper:
-            lines.append(
-                "- completion_protocol: for full_research and similarly end-to-end quests, do not self-stop after one stage or one launched detached run; keep advancing until a paper-like deliverable exists unless the user explicitly stops or narrows scope"
-            )
+            if publishability_gate_mode == "off":
+                lines.append(
+                    "- completion_protocol: for full_research and similarly end-to-end quests, do not self-stop after one stage or one launched detached run; keep advancing until a paper-like deliverable exists unless the user explicitly stops or narrows scope"
+                )
+            else:
+                lines.append(
+                    "- completion_protocol: for full_research and similarly end-to-end quests, do not self-stop after one stage or one launched detached run; keep advancing until either a credible paper-like deliverable exists or a durable publishability-gate decision concludes that the current line should stop or branch."
+                )
         else:
             lines.append(
                 "- completion_protocol: when `startup_contract.need_research_paper` is false, the quest goal is the strongest justified algorithmic result; keep iterating from measured main-experiment results and do not self-route into paper work by default"

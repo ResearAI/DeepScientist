@@ -120,8 +120,11 @@ Before writing seriously, confirm:
 - the claims you intend to write are backed by durable artifacts
 - the code/diff path is available for method fidelity checks
 - the evaluation contract is explicit
+- if `startup_contract.publishability_gate_mode = enforce`, the current line still passes an explicit publishability gate
+- if `startup_contract.publishability_gate_mode = warn`, the current line has at least been judged for publishability and any remaining weakness is being treated consciously rather than ignored
 
 If major claims lack evidence, surface the gap first.
+If `startup_contract.publishability_gate_mode = off`, do not invent a fake gate requirement that the quest did not ask for.
 
 ## Truth sources
 

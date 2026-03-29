@@ -329,6 +329,20 @@ type StartResearchContractFields = {
 - `user_gated`
   - 只有真正依赖用户偏好时，才允许阻塞式决策请求
 
+**高级 startup-contract 字段：`publishability_gate_mode`**
+
+这是一个可选的 paper-mode 策略字段，适合直接编辑 startup contract 的高级用户。
+当前它还没有作为单独的表单控件暴露在启动对话框里。
+
+- `off`
+  - 关闭默认的显式 publishability gate 要求
+- `warn`
+  - 在 paper 路由前仍然要求做 publishability 判断，但默认按建议性检查处理
+- `enforce`
+  - 在继续 paper-facing 写作前，要求先通过一次显式 publishability gate
+
+如果不填写，DeepScientist 会沿用当前默认的 paper delivery runtime 策略。
+
 ### 启动模式
 
 **`launch_mode`**

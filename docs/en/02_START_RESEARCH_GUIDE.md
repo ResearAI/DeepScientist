@@ -319,6 +319,20 @@ This is the main public knob for round depth.
 - `user_gated`
   - the agent may raise a blocking decision only when continuation truly depends on the user
 
+**Advanced startup-contract field: `publishability_gate_mode`**
+
+This is an optional paper-mode policy field for users who create or edit startup contracts directly.
+It is not currently exposed as a first-class dialog control.
+
+- `off`
+  - disable the default explicit publishability-gate requirement
+- `warn`
+  - keep publishability judgment visible before paper routing, but treat it as advisory
+- `enforce`
+  - require an explicit publishability gate before paper-facing writing continues
+
+If omitted, DeepScientist follows the default runtime paper-delivery policy.
+
 ### Launch mode
 
 **`launch_mode`**
