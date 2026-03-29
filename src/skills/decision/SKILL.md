@@ -43,6 +43,23 @@ It is a cross-cutting control skill that should be used whenever the quest must 
 - a user preference-sensitive choice remains
 - a blocker needs an explicit route
 
+## Publishability gate
+
+When `startup_contract.need_research_paper = true`, treat publishability as a first-class route question, not just a writing question.
+
+Interpret `startup_contract.publishability_gate_mode` as follows when present:
+
+- `off`
+  - do not force an explicit publishability gate by default
+  - still surface clear weakness if the line looks bad, but do not require a dedicated gate checkpoint before `write`
+- `warn`
+  - run an explicit publishability judgment before `write` when the evidence looks mixed
+  - treat the judgment as advisory unless another quest policy makes it stricter
+- `enforce`
+  - do not route into `write` or a paper-facing branch until the line has passed an explicit publishability gate
+
+If the field is missing, follow the default runtime policy injected by the prompt builder.
+
 ## Required decision record
 
 Every consequential decision should make clear:
