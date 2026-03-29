@@ -119,6 +119,7 @@ For detailed install, troubleshooting, PDF compile, and other launch modes, use:
 - [QQ Connector Guide (English)](docs/en/03_QQ_CONNECTOR_GUIDE.md)
 - [Lingzhu / Rokid Guide (English)](docs/en/04_LINGZHU_CONNECTOR_GUIDE.md)
 - [Memory and MCP Guide (English)](docs/en/07_MEMORY_AND_MCP.md)
+- [External Controller Guide (English)](docs/en/19_EXTERNAL_CONTROLLER_GUIDE.md)
 - [Settings Reference (English)](docs/en/01_SETTINGS_REFERENCE.md)
 - [Codex Provider Setup (English)](docs/en/15_CODEX_PROVIDER_SETUP.md)
 
