@@ -2428,6 +2428,26 @@ class DaemonApp:
         return active_anchor if active_anchor in STANDARD_SKILLS else "decision"
 
     @staticmethod
+    def _turn_skill_stage_gate(snapshot: dict, candidate_skill: str) -> str:
+        skill = str(candidate_skill or "").strip()
+        baseline_gate = str(snapshot.get("baseline_gate") or "pending").strip().lower() or "pending"
+        startup_contract = snapshot.get("startup_contract") if isinstance(snapshot.get("startup_contract"), dict) else {}
+        raw_need_research_paper = startup_contract.get("need_research_paper")
+        need_research_paper = raw_need_research_paper if isinstance(raw_need_research_paper, bool) else True
+        active_idea_id = str(snapshot.get("active_idea_id") or "").strip()
+
+        if (
+            baseline_gate == "pending"
+            and skill in {"idea", "optimize", "experiment", "analysis-campaign", "write", "review", "rebuttal", "finalize"}
+        ):
+            return "baseline"
+
+        if skill == "experiment" and not active_idea_id:
+            return "idea" if need_research_paper else "optimize"
+
+        return skill
+
+    @staticmethod
     def _turn_skill_for(
         snapshot: dict,
         latest_user_message: dict | None,
@@ -2461,16 +2481,28 @@ class DaemonApp:
                 ):
                     return "decision"
                 if str(item.get("reply_mode") or "") == "threaded":
-                    return DaemonApp._continuation_anchor_for(snapshot)
+                    return DaemonApp._turn_skill_stage_gate(
+                        snapshot,
+                        DaemonApp._continuation_anchor_for(snapshot),
+                    )
         if turn_mode in {"answering", "command_execution", "recovering"}:
             return "decision"
         if str(turn_reason or "").strip() == "auto_continue" or latest_user_message is None:
-            return DaemonApp._continuation_anchor_for(snapshot)
+            return DaemonApp._turn_skill_stage_gate(
+                snapshot,
+                DaemonApp._continuation_anchor_for(snapshot),
+            )
         continuation_policy = str(snapshot.get("continuation_policy") or "auto").strip().lower() or "auto"
         if continuation_policy == "wait_for_user_or_resume":
-            return DaemonApp._continuation_anchor_for(snapshot)
+            return DaemonApp._turn_skill_stage_gate(
+                snapshot,
+                DaemonApp._continuation_anchor_for(snapshot),
+            )
         active_anchor = str(snapshot.get("active_anchor") or "").strip()
-        return active_anchor if active_anchor in STANDARD_SKILLS else "decision"
+        return DaemonApp._turn_skill_stage_gate(
+            snapshot,
+            active_anchor if active_anchor in STANDARD_SKILLS else "decision",
+        )
 
     def _latest_user_message(self, quest_id: str) -> dict | None:
         for item in reversed(self.quest_service.history(quest_id, limit=200)):

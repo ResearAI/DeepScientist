@@ -25,6 +25,7 @@ from deepscientist.connector.connector_profiles import list_connector_profiles
 from deepscientist.connector_runtime import format_conversation_id
 from deepscientist.daemon.api.router import match_route
 from deepscientist.daemon.app import DaemonApp
+from deepscientist.prompts.builder import classify_turn_intent
 from deepscientist.home import ensure_home_layout
 from deepscientist.connector.lingzhu_support import generate_lingzhu_auth_ak, lingzhu_passive_conversation_id
 from deepscientist.mcp.context import McpContext
@@ -188,6 +189,53 @@ def test_handlers_workflow_includes_optimization_frontier_when_available(temp_ho
     workflow = _wait_for_projection_ready(lambda: app.handlers.workflow(quest_id))
     assert workflow["optimization_frontier"]["mode"] in {"explore", "exploit", "fusion", "stop"}
     assert workflow["optimization_frontier"]["candidate_backlog"]["candidate_brief_count"] == 1
+
+
+def test_classify_turn_intent_prefers_continue_stage_for_structured_bootstrap() -> None:
+    message = """
+Project Bootstrap
+- Project title: AMD
+
+Primary Research Request
+Please optimize the current system.
+
+Research Goals
+- Improve the result.
+
+Research Contract
+- What matters most is reaching rank 1.
+
+Mandatory Working Rules
+- Keep progressing automatically.
+""".strip()
+
+    assert classify_turn_intent(message) == "continue_stage"
+
+
+def test_turn_skill_for_rejects_experiment_without_durable_idea_in_algorithm_first() -> None:
+    snapshot = {
+        "active_anchor": "experiment",
+        "baseline_gate": "confirmed",
+        "active_idea_id": None,
+        "startup_contract": {
+            "need_research_paper": False,
+        },
+    }
+
+    assert DaemonApp._turn_skill_for(snapshot, None, turn_reason="auto_continue", turn_mode="stage_execution") == "optimize"
+
+
+def test_turn_skill_for_rejects_experiment_without_durable_idea_in_paper_mode() -> None:
+    snapshot = {
+        "active_anchor": "experiment",
+        "baseline_gate": "confirmed",
+        "active_idea_id": None,
+        "startup_contract": {
+            "need_research_paper": True,
+        },
+    }
+
+    assert DaemonApp._turn_skill_for(snapshot, None, turn_reason="auto_continue", turn_mode="stage_execution") == "idea"
 
 
 def _wait_for_json(url: str, *, timeout: float = 10.0) -> dict | list:

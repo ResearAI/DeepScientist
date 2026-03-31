@@ -1279,3 +1279,33 @@ def test_prompt_builder_prefers_beginner_friendly_abstract_user_updates(temp_hom
     assert "novice_context_protocol:" in prompt
     assert "omit file paths, file names" in prompt
     assert "translate them into user-facing meaning such as baseline record, draft, experiment result, or supplementary run" in prompt
+
+
+def test_prompt_builder_does_not_misclassify_structured_bootstrap_as_direct_question(temp_home: Path) -> None:
+    builder, snapshot = _make_builder(temp_home)
+    bootstrap_message = """
+Project Bootstrap
+- Project title: AMD
+
+Primary Research Request
+Please optimize the current system.
+
+Research Goals
+- Improve the result.
+
+Research Contract
+- What matters most is reaching rank 1.
+
+Mandatory Working Rules
+- Keep progressing automatically.
+""".strip()
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="baseline",
+        user_message=bootstrap_message,
+        model="gpt-5.4",
+    )
+
+    assert "turn_intent: continue_stage" in prompt
+    assert "turn_mode: stage_execution" in prompt

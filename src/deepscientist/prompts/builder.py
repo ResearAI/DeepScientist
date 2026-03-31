@@ -76,6 +76,24 @@ def classify_turn_intent(user_message: str) -> str:
     if not text:
         return "continue_stage"
     normalized = " ".join(text.split()).lower()
+    structured_bootstrap_markers = (
+        "project bootstrap",
+        "primary research request",
+        "research goals",
+        "baseline context",
+        "reference papers",
+        "operational constraints",
+        "research delivery mode",
+        "decision handling mode",
+        "launch mode",
+        "research contract",
+        "mandatory working rules",
+    )
+    structured_hit_count = sum(1 for marker in structured_bootstrap_markers if marker in normalized)
+    if structured_hit_count >= 2:
+        return "continue_stage"
+    if normalized.startswith("/new ") or normalized.startswith("/new\n"):
+        return "continue_stage"
     question_markers = ["?", "？", "现在进展", "全局", "多久", "什么情况", "在哪", "在哪里", "how long", "what", "where"]
     if any(marker in normalized for marker in question_markers):
         return "answer_user_question_first"
