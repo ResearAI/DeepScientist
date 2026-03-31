@@ -73,6 +73,8 @@ This page is the shortest path to the right document.
   Explains how the daemon, workspace, canvas, and connector views fit together.
 - [07 Memory and MCP](./07_MEMORY_AND_MCP.md)
   Explains memory, artifacts, and built-in MCP behavior.
+- [19 External Controller Guide](./19_EXTERNAL_CONTROLLER_GUIDE.md)
+  Shows how to build optional outer-orchestration guards on top of mailbox and `quest_control` without patching core runtime code.
 
 ## If something is broken
 
