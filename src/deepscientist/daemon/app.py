@@ -1866,6 +1866,9 @@ class DaemonApp:
                 return
             pending_user_count = int(snapshot.get("pending_user_message_count") or 0)
             if pending_user_count > 0:
+                with self._turn_lock:
+                    state = self._turn_state.setdefault(quest_id, {"running": False, "pending": False})
+                    state.pop("recovery_pending", None)
                 self.schedule_turn(quest_id, reason=turn_reason)
                 return
 
@@ -1987,13 +1990,11 @@ class DaemonApp:
         turn_state = self._refresh_turn_worker_state(quest_id)
         with self._turn_lock:
             state = self._turn_state.setdefault(quest_id, {"running": False, "pending": False})
-            if state.get("recovery_pending") and state.get("running"):
+            if state.get("recovery_pending"):
                 return {
                     "snapshot": snapshot,
                     "blocked": True,
                 }
-            if state.get("recovery_pending") and not state.get("running"):
-                state.pop("recovery_pending", None)
         details = self._stalled_running_turn_details(
             quest_id,
             snapshot=snapshot,
@@ -2008,97 +2009,108 @@ class DaemonApp:
 
         active_run_id = str(snapshot.get("active_run_id") or "").strip()
         runner_name = self._runner_name_for(snapshot)
-        interrupted = False
-        try:
-            runner = self.get_runner(runner_name)
-        except KeyError:
-            runner = None
-        if runner is not None and hasattr(runner, "interrupt"):
-            interrupted = bool(getattr(runner, "interrupt")(quest_id))
         with self._turn_lock:
             state = self._turn_state.setdefault(quest_id, {"running": False, "pending": False})
+            if state.get("recovery_pending"):
+                return {
+                    "snapshot": snapshot,
+                    "blocked": True,
+                }
             state["pending"] = False
             state["stop_requested"] = True
             state["recovery_pending"] = True
-        stopped_bash_session_ids = self._stop_active_bash_exec_sessions(
-            quest_id,
-            run_id=active_run_id or None,
-            reason="stalled_turn_recovery",
-            user_id="auto:stalled-turn-recovery",
-        )
-        turn_state = self._wait_for_turn_worker_exit(
-            quest_id,
-            timeout_seconds=_STALLED_RUNNING_TURN_INTERRUPT_TIMEOUT_SECONDS,
-        )
-        if turn_state.get("running"):
-            self._ensure_recovery_resume_watch(quest_id, turn_reason="queued_user_messages")
+        interrupted = False
+        try:
+            try:
+                runner = self.get_runner(runner_name)
+            except KeyError:
+                runner = None
+            if runner is not None and hasattr(runner, "interrupt"):
+                interrupted = bool(getattr(runner, "interrupt")(quest_id))
+            stopped_bash_session_ids = self._stop_active_bash_exec_sessions(
+                quest_id,
+                run_id=active_run_id or None,
+                reason="stalled_turn_recovery",
+                user_id="auto:stalled-turn-recovery",
+            )
+            turn_state = self._wait_for_turn_worker_exit(
+                quest_id,
+                timeout_seconds=_STALLED_RUNNING_TURN_INTERRUPT_TIMEOUT_SECONDS,
+            )
+            if turn_state.get("running"):
+                self._ensure_recovery_resume_watch(quest_id, turn_reason="queued_user_messages")
+                self.logger.log(
+                    "warning",
+                    "quest.turn_state_recovery_pending",
+                    quest_id=quest_id,
+                    abandoned_run_id=active_run_id or None,
+                    reason=turn_reason,
+                    silent_seconds=int(details.get("silent_seconds") or 0),
+                    pending_user_message_count=int(details.get("pending_user_count") or 0),
+                    interrupted=interrupted,
+                )
+                return {
+                    "snapshot": snapshot,
+                    "blocked": True,
+                }
+
+            previous_status = (
+                str(snapshot.get("runtime_status") or snapshot.get("status") or snapshot.get("display_status") or "running").strip()
+                or "running"
+            )
+            normalized_status = "active" if previous_status == "running" else previous_status
+            summary = (
+                f"Recovered stalled running turn `{active_run_id}` after "
+                f"{int(details.get('silent_seconds') or 0)} seconds without tool activity while "
+                f"{int(details.get('pending_user_count') or 0)} queued user message(s) were waiting."
+            )
+            if interrupted:
+                summary = f"{summary} The active runner process was interrupted."
+            if stopped_bash_session_ids:
+                summary = f"{summary} Stopped {len(stopped_bash_session_ids)} bash_exec session(s)."
+            quest_root = self.quest_service._quest_root(quest_id)
+            append_jsonl(
+                quest_root / ".ds" / "events.jsonl",
+                {
+                    "event_id": generate_id("evt"),
+                    "type": "quest.turn_state_reconciled",
+                    "quest_id": quest_id,
+                    "abandoned_run_id": active_run_id or None,
+                    "previous_status": previous_status,
+                    "status": normalized_status,
+                    "completed_at": None,
+                    "exit_code": None,
+                    "summary": summary,
+                    "recovery_kind": "stalled_live_turn",
+                    "interrupted": interrupted,
+                    "stopped_bash_session_ids": stopped_bash_session_ids,
+                    "created_at": utc_now(),
+                },
+            )
             self.logger.log(
                 "warning",
-                "quest.turn_state_recovery_pending",
+                "quest.turn_state_reconciled",
                 quest_id=quest_id,
                 abandoned_run_id=active_run_id or None,
-                reason=turn_reason,
-                silent_seconds=int(details.get("silent_seconds") or 0),
-                pending_user_message_count=int(details.get("pending_user_count") or 0),
+                previous_status=previous_status,
+                status=normalized_status,
+                recovery_kind="stalled_live_turn",
                 interrupted=interrupted,
+                stopped_bash_session_count=len(stopped_bash_session_ids),
             )
+            snapshot = self.quest_service.mark_turn_finished(quest_id, status=normalized_status)
+            with self._turn_lock:
+                state = self._turn_state.setdefault(quest_id, {"running": False, "pending": False})
+                state.pop("recovery_pending", None)
             return {
                 "snapshot": snapshot,
-                "blocked": True,
+                "blocked": False,
             }
-
-        previous_status = (
-            str(snapshot.get("runtime_status") or snapshot.get("status") or snapshot.get("display_status") or "running").strip()
-            or "running"
-        )
-        normalized_status = "active" if previous_status == "running" else previous_status
-        summary = (
-            f"Recovered stalled running turn `{active_run_id}` after "
-            f"{int(details.get('silent_seconds') or 0)} seconds without tool activity while "
-            f"{int(details.get('pending_user_count') or 0)} queued user message(s) were waiting."
-        )
-        if interrupted:
-            summary = f"{summary} The active runner process was interrupted."
-        if stopped_bash_session_ids:
-            summary = f"{summary} Stopped {len(stopped_bash_session_ids)} bash_exec session(s)."
-        quest_root = self.quest_service._quest_root(quest_id)
-        append_jsonl(
-            quest_root / ".ds" / "events.jsonl",
-            {
-                "event_id": generate_id("evt"),
-                "type": "quest.turn_state_reconciled",
-                "quest_id": quest_id,
-                "abandoned_run_id": active_run_id or None,
-                "previous_status": previous_status,
-                "status": normalized_status,
-                "completed_at": None,
-                "exit_code": None,
-                "summary": summary,
-                "recovery_kind": "stalled_live_turn",
-                "interrupted": interrupted,
-                "stopped_bash_session_ids": stopped_bash_session_ids,
-                "created_at": utc_now(),
-            },
-        )
-        self.logger.log(
-            "warning",
-            "quest.turn_state_reconciled",
-            quest_id=quest_id,
-            abandoned_run_id=active_run_id or None,
-            previous_status=previous_status,
-            status=normalized_status,
-            recovery_kind="stalled_live_turn",
-            interrupted=interrupted,
-            stopped_bash_session_count=len(stopped_bash_session_ids),
-        )
-        snapshot = self.quest_service.mark_turn_finished(quest_id, status=normalized_status)
-        with self._turn_lock:
-            state = self._turn_state.setdefault(quest_id, {"running": False, "pending": False})
-            state.pop("recovery_pending", None)
-        return {
-            "snapshot": snapshot,
-            "blocked": False,
-        }
+        except Exception:
+            with self._turn_lock:
+                state = self._turn_state.setdefault(quest_id, {"running": False, "pending": False})
+                state.pop("recovery_pending", None)
+            raise
 
     def control_quest(self, quest_id: str, *, action: str, source: str = "local") -> dict:
         normalized_action = str(action or "").strip().lower()

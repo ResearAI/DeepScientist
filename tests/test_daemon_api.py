@@ -4834,6 +4834,130 @@ def test_stalled_live_turn_recovery_pending_respects_later_control_action(
     assert state.get("pending") is False
     assert runner.requests == []
 
+
+def test_schedule_turn_recovers_stalled_live_turn_only_once_under_concurrency(
+    temp_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create("concurrent stalled live turn recovery schedule quest")
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+    app.quest_service.set_continuation_state(quest_root, policy="none")
+    app.quest_service.append_message(
+        quest_id,
+        role="user",
+        content="Recover the queued message once the stalled turn is cleared.",
+        source="web-react",
+    )
+
+    stale_run_id = "run-stalled-live-concurrent-001"
+    _mark_turn_started_with_retry(app, quest_id, run_id=stale_run_id, status="running")
+
+    release_worker = threading.Event()
+
+    def _old_worker() -> None:
+        while not release_worker.is_set():
+            time.sleep(0.02)
+
+    old_worker = threading.Thread(target=_old_worker, daemon=True, name=f"pytest-stalled-concurrent-{quest_id}")
+    old_worker.start()
+
+    class RecoveryRunner:
+        binary = ""
+
+        def __init__(self) -> None:
+            self.interrupt_calls: list[str] = []
+
+        def interrupt(self, target_quest_id: str) -> bool:
+            self.interrupt_calls.append(target_quest_id)
+            release_worker.set()
+            time.sleep(0.2)
+            return True
+
+    runner = RecoveryRunner()
+    app.runners["codex"] = runner
+    app._turn_state[quest_id] = {
+        "running": True,
+        "pending": False,
+        "stop_requested": False,
+        "reason": "user_message",
+        "worker": old_worker,
+    }
+
+    def _fake_stalled_running_turn_details(
+        target_quest_id: str,
+        *,
+        snapshot: dict | None = None,
+        turn_state: dict[str, object] | None = None,
+        turn_reason: str,
+    ) -> dict[str, int] | None:
+        if target_quest_id != quest_id or turn_reason != "user_message":
+            return None
+        if not dict(turn_state or {}).get("running"):
+            return None
+        return {
+            "pending_user_count": int((snapshot or {}).get("pending_user_message_count") or 1),
+            "silent_seconds": _STALLED_RUNNING_TURN_INACTIVITY_SECONDS,
+        }
+
+    monkeypatch.setattr(app, "_stalled_running_turn_details", _fake_stalled_running_turn_details)
+
+    barrier = threading.Barrier(3)
+    payloads: list[dict[str, object]] = []
+    errors: list[Exception] = []
+    run_turn_calls: list[str] = []
+
+    def _fake_run_quest_turn(target_quest_id: str) -> None:
+        run_turn_calls.append(target_quest_id)
+
+    monkeypatch.setattr(app, "_run_quest_turn", _fake_run_quest_turn)
+
+    def _schedule_turn() -> None:
+        barrier.wait()
+        try:
+            payloads.append(app.schedule_turn(quest_id, reason="user_message"))
+        except Exception as exc:  # pragma: no cover - exercised only on failure
+            errors.append(exc)
+
+    workers = [threading.Thread(target=_schedule_turn, daemon=True) for _ in range(2)]
+    for worker in workers:
+        worker.start()
+    barrier.wait()
+    for worker in workers:
+        worker.join(timeout=2)
+
+    assert errors == []
+    assert len(payloads) == 2
+    assert sum(1 for item in payloads if item["started"] is True) == 1
+    assert sum(1 for item in payloads if item["reason"] == "stalled_turn_recovery_pending") == 1
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if len(run_turn_calls) == 1 and not old_worker.is_alive():
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError("concurrent stalled live turn recovery did not finish exactly one replacement turn")
+
+    assert runner.interrupt_calls == [quest_id]
+    assert run_turn_calls == [quest_id]
+
+    events = [
+        item
+        for item in app.quest_service.events(quest_id)["events"]
+        if item.get("type") == "quest.turn_state_reconciled"
+        and item.get("abandoned_run_id") == stale_run_id
+        and item.get("recovery_kind") == "stalled_live_turn"
+    ]
+    assert len(events) == 1
+
+    state = dict(app._turn_state.get(quest_id) or {})
+    assert state.get("recovery_pending") is None
+    assert state.get("recovery_watch_active") is None
+
 def test_run_quest_turn_clears_active_run_when_assistant_append_fails(
     temp_home: Path,
     monkeypatch: pytest.MonkeyPatch,
