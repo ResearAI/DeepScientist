@@ -1,25 +1,16 @@
 <h1 align="center">
   <img src="assets/branding/logo.svg" alt="DeepScientist logo" width="92" />
-  <br />
   DeepScientist
 </h1>
 
 <p align="center">
-  <strong>让 AI 真正替你做科研，而不是只陪你聊科研。</strong>
-</p>
-
-<p align="center">
-  DeepScientist 是一个本地优先的 AI 科研工作区：读论文、复现 Baseline、跑实验、整理结果、撰写论文，尽量在同一套系统里完成。
-</p>
-
-<p align="center">
-  <strong>一条命令，把你的专属 AI 科学家装进电脑。</strong>
+  DeepScientist 是一个本地优先的 AI 科研工作室，15 分钟把你的专属 AI Scientist 装到自己的机器上。
 </p>
 
 <p align="center">
   <a href="https://github.com/ResearAI/DeepScientist">GitHub</a> |
+  <a href="README.md">English README</a> |
   <a href="docs/zh/README.md">中文文档</a> |
-  <a href="docs/en/README.md">English Docs</a> |
   <a href="https://openreview.net/forum?id=cZFgsLq8Gs">论文</a> |
   <a href="https://deepscientist.cc/">官网</a>
 </p>
@@ -46,16 +37,17 @@
   <a href="docs/zh/15_CODEX_PROVIDER_SETUP.md">模型配置</a>
 </p>
 
-![DeepScientist 工作区预览](assets/home.png)
-
+![deepscientist_install](https://github.com/user-attachments/assets/d8244944-4f70-4e08-94e3-002b74ce70fb)
 
 如果你也受够了刷论文、修 Baseline、追实验日志、熬夜补写作，欢迎先点一颗 Star，再继续往下看它到底能替你省掉多少科研体力活。
 
 ---
 
+https://github.com/user-attachments/assets/3c7abb44-2b25-4477-a011-10a3154d6d76
+
 ## 还在把时间花在科研体力活上吗？
 
-很多研究者真正被消耗掉的，不是“想不到 idea”，而是这些每天重复出现的体力活：
+很多研究者真正被消耗掉的，不是“想不到 idea”，而是这些每天重复出现的低杠杆工作：
 
 - 新论文一直在来，但真正能沉淀成下一步研究计划的很少
 - Baseline 拉下来之后，环境、依赖、数据、脚本问题能卡掉大半天
@@ -80,7 +72,7 @@ DeepScientist 想解决的，就是这件事：
 | 一旦跑偏，人类很难接手 | 任何时候都可以中断、接管、改计划、改代码、继续跑 |
 | 本轮结束就结束了 | 失败路线、有效路线、复现经验都能变成下一轮的输入 |
 
-一句话概括：
+## 关于
 
 > DeepScientist 不是一次性跑完的 Agent demo，而是一个真正面向长期科研工作的系统。
 
@@ -158,17 +150,115 @@ DeepScientist 最容易让人持续使用的原因有四个：
 - 已提供 npm 安装路径：[`@researai/deepscientist`](https://www.npmjs.com/package/@researai/deepscientist)
 - 已提供中文、英文文档，以及 Web / TUI / Connector 使用入口
 
-![DeepScientist 工作区预览](assets/start.png)
+> [TODO asset] 如果后面再补一条公开案例，比如“复现 baseline + 连续推进多轮实验 + 整理出论文包”，这里的说服力会更强。
 
+## 产品预览
+
+### 架构总览
+
+<p align="center">
+  <img src="assets/readme/architecture-promo.png" alt="DeepScientist architecture overview" width="92%" />
+</p>
+
+### 示例输出
+
+<table>
+<tr>
+<td width="50%">
+<img src="assets/readme/paper-output-1.png" alt="DeepScientist generated paper example 1" width="100%" />
+</td>
+<td width="50%">
+<img src="assets/readme/paper-output-2.png" alt="DeepScientist generated paper example 2" width="100%" />
+</td>
+</tr>
+<tr>
+<td valign="top">
+<b>论文输出示例 1</b><br/>
+ 论文级交付物可以直接保存在 quest 内部，而不是散落在外部工具里。
+</td>
+<td valign="top">
+<b>论文输出示例 2</b><br/>
+ DeepScientist 可以把工作一路带到写作、审稿、图表打磨和导出。
+</td>
+</tr>
+</table>
+
+### 工作区预览
+
+<table>
+<tr>
+<td width="33%">
+<img src="assets/readme/start-research-promo.png" alt="Start Research dialog" width="100%" />
+</td>
+<td width="33%">
+<img src="assets/readme/canvas-promo.png" alt="Canvas workspace preview" width="100%" />
+</td>
+<td width="33%">
+<img src="assets/readme/studio-details-promo.png" alt="Studio and details workspace preview" width="100%" />
+</td>
+</tr>
+<tr>
+<td valign="top">
+<b>Start Research</b><br/>
+ 从论文、仓库或自然语言目标快速启动一个 quest。
+</td>
+<td valign="top">
+<b>Canvas</b><br/>
+ 以可视化方式查看分支、Baseline 和累积起来的研究结构。
+</td>
+<td valign="top">
+<b>Studio + Details</b><br/>
+ 在同一工作区里查看指标、trace 和项目状态。
+</td>
+</tr>
+</table>
+
+### 进度汇报
+
+<p align="center">
+  <img src="assets/readme/progress-reporting-promo.png" alt="DeepScientist progress reporting example" width="88%" />
+</p>
+
+### 长时间运行后的项目面板
+
+![DeepScientist 项目面板](assets/readme/projects-surface.png)
+
+## 谁最适合用 DeepScientist？
+
+- 想复现论文并继续往上推结果的研究生和工程师
+- 需要长期跑实验、消融和结构化结果分析的实验室或研究团队
+- 想把代码、实验、笔记、写作统一放在一个工作区的人
+- 不想把未发表的 idea 和中间产物直接丢到纯云端流程里的用户
+- 想在服务器跑任务，但通过 Web、TUI 或消息入口跟进进展的人
+
+## DeepScientist 背后的核心理念
+
+我们认为，一个真正适合科研工作的系统，至少应该满足这些原则：
+
+- 一题一仓库，而不是让所有状态在短对话里蒸发
+- 分支和 worktree 应该自然表达研究路线，而不是被硬塞进聊天历史
+- 失败路线应该被保留、总结和复用，而不是被覆盖
+- 人类研究者始终保有接管权，而不是被锁在流程外
+- 研究过程应该可审阅、可检查、可追责，而不是只剩“模型说它做了”
+
+如果这正是你想要的工作方式，那 DeepScientist 值得现在就试。
 
 ## 30 秒开始上手
 
 如果你现在就想试一下，最短路径如下：
 
+平台说明：DeepScientist 完整支持 Linux 和 macOS。Windows 原生支持目前仍然是实验性的，强烈建议优先使用 WSL2。
+
 ```bash
 npm install -g @researai/deepscientist
 codex --login
 ds --here
+```
+
+如需停止当前本地托管 daemon 和所有运行中的 agent：
+
+```bash
+ds --stop
 ```
 
 如果 `codex --login` 不可用，先单独运行一次：
@@ -177,10 +267,26 @@ ds --here
 codex
 ```
 
-启动后，默认打开：
+如果安装 DeepScientist 后系统里仍然提示找不到 `codex`，不要假设 bundled 依赖已经正确链接，直接走显式修复路径：
+
+```bash
+npm install -g @openai/codex
+which codex
+codex --login
+```
+
+如果 `which codex` 仍然没有输出，就先修好 npm global bin 路径，再重试 `codex --login` 和 `ds doctor`。
+
+启动后，默认本地地址是：
 
 ```text
 http://127.0.0.1:20999
+```
+
+本地浏览器访问密码现在默认关闭。如果你希望本次启动启用本地访问密码，请这样启动：
+
+```bash
+ds --auth true
 ```
 
 然后你只需要做三件事：
@@ -209,7 +315,7 @@ http://127.0.0.1:20999
 
 ### 我主要在服务器和终端里工作
 
-- [05 TUI 端到端指南](docs/zh/05_TUI_GUIDE.md)
+- [05 TUI 指南](docs/zh/05_TUI_GUIDE.md)
 
 ### 我想接自己的模型或外部协作面
 
@@ -220,28 +326,39 @@ http://127.0.0.1:20999
 - [WhatsApp Connector 指南](docs/zh/17_WHATSAPP_CONNECTOR_GUIDE.md)
 - [Feishu Connector 指南](docs/zh/18_FEISHU_CONNECTOR_GUIDE.md)
 
-### 我想先理解它的底层设计
+### 我想先理解它的系统设计
 
 - [文档总览](docs/zh/README.md)
 - [核心架构说明](docs/zh/13_CORE_ARCHITECTURE_GUIDE.md)
 - [Prompt、Skills 与 MCP 指南](docs/zh/14_PROMPT_SKILLS_AND_MCP_GUIDE.md)
 
-## 产品界面预览
+## 自主科研系统
 
-### 首页 / 项目入口
+### 端到端自主科研系统
 
-![DeepScientist 首页](assets/home.png)
+| 系统 | 类型 | E2E | Research Map | Workshop | 持续生长 | 渠道协作 | 图表 / Rebuttal / Review |
+|---|---|---|---|---|---|---|---|
+| [autoresearch](https://github.com/karpathy/autoresearch) | 开源 |  |  | ✓ |  |  |  |
+| [RD-Agent](https://github.com/microsoft/RD-Agent) | 开源 |  |  |  | ✓ |  |  |
+| [Agent Laboratory](https://github.com/SamuelSchmidgall/AgentLaboratory) | 开源 | ✓ |  | ✓ | ✓ |  |  |
+| [AI-Scientist](https://github.com/SakanaAI/AI-Scientist) | 开源 | ✓ |  |  |  |  |  |
+| [AI-Scientist-v2](https://github.com/SakanaAI/AI-Scientist-v2) | 开源 | ✓ |  |  |  |  |  |
+| [AutoResearchClaw](https://github.com/aiming-lab/AutoResearchClaw) | 开源 | ✓ |  |  | ✓ | ✓ |  |
+| [ClawPhD](https://github.com/ZhihaoAIRobotic/ClawPhD) | 开源 |  |  | ✓ |  | ✓ |  |
+| [Dr. Claw](https://github.com/OpenLAIR/dr-claw) | 开源 | ✓ |  | ✓ |  | ✓ |  |
+| [FARS](https://analemma.ai/fars/) | 闭源 | ✓ |  |  |  |  |  |
+| [EvoScientist](https://github.com/EvoScientist/EvoScientist) | 开源 | ✓ |  | ✓ | ✓ | ✓ |  |
+| [ScienceClaw](https://github.com/beita6969/ScienceClaw) | 开源 |  |  |  | ✓ | ✓ |  |
+| [claude-scholar](https://github.com/Galaxy-Dawn/claude-scholar) | 开源 | ✓ |  | ✓ | ✓ |  |  |
+| [Research-Claw](https://github.com/wentorai/Research-Claw) | 开源 | ✓ |  | ✓ | ✓ | ✓ |  |
+| [DeepScientist](https://github.com/ResearAI/DeepScientist) | 开源 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-### 长时间运行后的项目面板
+## 文档
 
-![DeepScientist 项目面板](assets/branding/projects.png)
+- [中文文档总览](docs/zh/README.md)
+- [English Docs Index](docs/en/README.md)
 
-### 外部配置连接交互（如微信）
-![DeepScientist 项目面板](assets/wechat.png)
-
-
-
-## ResearAI 相关项目
+## 更多 ResearAI 项目
 
 如果你喜欢 DeepScientist，也可以一起看看 ResearAI 的其他项目：
 
@@ -251,6 +368,17 @@ http://127.0.0.1:20999
 | [AutoFigure-Edit](https://github.com/ResearAI/AutoFigure-Edit) | 生成可编辑矢量论文图 |
 | [DeepReviewer-v2](https://github.com/ResearAI/DeepReviewer-v2) | 论文审稿与修改建议 |
 | [Awesome-AI-Scientist](https://github.com/ResearAI/Awesome-AI-Scientist) | AI Scientist 项目导航 |
+
+## NLPCC 2026 AISB Challenge
+
+如果你想在真实场景里 benchmark 或继续扩展 AI scientist 系统，NLPCC 2026 AISB shared task 是一个自然的下一站：
+
+- [Registration](http://tcci.ccf.org.cn/conference/2026/shared-tasks/)
+- [Task Repository](https://github.com/ResearAI/NLPCC-2026-Task9-AISB)
+
+<p align="center">
+  <img src="assets/readme/aisb-poster.jpeg" alt="NLPCC 2026 AISB shared task poster" width="88%" />
+</p>
 
 ## 面向开发者与维护者
 
@@ -262,7 +390,7 @@ http://127.0.0.1:20999
 
 ## 引用
 
-本项目目前由 Yixuan Weng、Shichen Li、Weixu Zhao、Qiyao Sun、Zhen Lin 和 Minjun Zhu 共同贡献。如果您觉得我们的工作有价值，请引用：
+如果 DeepScientist 对你的研究或工程工作有帮助，请引用：
 
 ```bibtex
 @inproceedings{
@@ -275,8 +403,12 @@ url={https://openreview.net/forum?id=cZFgsLq8Gs}
 }
 ```
 
-## 证书
-
-[Apache License 2.0](LICENSE)
-
 如果这正是你一直想要的科研工作流，欢迎给项目点一颗 Star。每一个 Star，都会帮 DeepScientist 更快地被更多真正需要它的研究者看到。
+
+## 社区
+
+欢迎加入微信讨论群。
+
+<p align="center">
+  <img src="assets/readme/wechat.jpg" alt="DeepScientist WeChat group" width="360" />
+</p>

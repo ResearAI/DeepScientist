@@ -58,6 +58,7 @@ ds --stop
 含义：
 
 - `ds`：启动 daemon，打印本地 Web 地址，尝试打开浏览器，然后退出。
+  如果你是用 `ds --auth true` 启动，DeepScientist 也会同时打印这次启动生成的本地浏览器密码。
 - `ds --tui`：启动 daemon，并进入终端工作区。
 - `ds --both`：同时开 Web 和 TUI。
 - `ds --status`：查看 daemon 状态。
@@ -70,6 +71,11 @@ ds --stop
 - 当前是 `request mode` 还是 `quest mode`
 - 当前本地 Web 地址
 - 当前有哪些 quest 可以切换
+
+如果本地浏览器密码模式是开启的，那么终端里打印出来的 Web 地址就是你应该优先使用的地址。
+
+- 第一次优先打开终端里打印的完整 URL
+- 当 TUI 已经拿到本地密码 token 时，`Ctrl+O` 重新打开 Web 也会带上同一个 token
 
 如果欢迎区显示的是 `request mode`，说明你还没有绑定 quest。
 

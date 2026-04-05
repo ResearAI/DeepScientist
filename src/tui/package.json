@@ -1,6 +1,6 @@
 {
   "name": "deepscientist-tui",
-  "version": "1.5.15",
+  "version": "1.5.16",
   "private": true,
   "type": "module",
   "main": "dist/index.js",

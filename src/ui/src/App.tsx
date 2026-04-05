@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 
+import { AuthProvider } from '@/components/auth/AuthProvider'
 import { DocsPage } from '@/components/docs/DocsPage'
 import { OnboardingOverlay } from '@/components/onboarding/OnboardingOverlay'
 import { SettingsPage, type ConfigDocumentName } from '@/components/settings/SettingsPage'
@@ -90,11 +91,20 @@ function SettingsRoutePage() {
   )
 }
 
+function LandingDialogRedirect(props: {
+  dialog: 'quests' | 'copilot' | 'autonomous'
+}) {
+  return <Navigate to="/" replace state={{ landingDialog: props.dialog }} />
+}
+
 function AppRoutes() {
   return (
     <>
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/projects" element={<LandingDialogRedirect dialog="quests" />} />
+        <Route path="/projects/new/auto" element={<LandingDialogRedirect dialog="autonomous" />} />
+        <Route path="/projects/new/copilot" element={<LandingDialogRedirect dialog="copilot" />} />
         <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
         <Route path="/tutorial/demo/:scenarioId" element={<Navigate to="/projects/demo-memory" replace />} />
         <Route path="/docs/*" element={<DocsRoutePage />} />
@@ -120,9 +130,11 @@ function resolveRouterBasename(): string {
 export default function App() {
   return (
     <I18nProvider>
-      <BrowserRouter basename={resolveRouterBasename()}>
-        <AppRoutes />
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter basename={resolveRouterBasename()}>
+          <AppRoutes />
+        </BrowserRouter>
+      </AuthProvider>
     </I18nProvider>
   )
 }

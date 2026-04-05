@@ -6,30 +6,21 @@ from pathlib import Path
 
 from ..connector_runtime import normalize_conversation_id, parse_conversation_id
 from ..config import ConfigManager
+from ..home import repo_root
 from ..memory import MemoryService
 from ..memory.frontmatter import load_markdown_document
 from ..quest import QuestService
 from ..registries import BaselineRegistry
 from ..shared import read_json, read_text, read_yaml
+from ..skills import SkillInstaller, companion_skill_ids, stage_skill_ids
 
-STANDARD_SKILLS = (
-    "scout",
-    "baseline",
-    "idea",
-    "optimize",
-    "experiment",
-    "analysis-campaign",
-    "write",
-    "finalize",
-    "decision",
-)
+# Backward-compatible snapshots for modules or tests that still import these names directly.
+# Runtime routing should call `current_standard_skills(...)` / `current_companion_skills(...)`.
+STANDARD_SKILLS = stage_skill_ids(repo_root())
 
-COMPANION_SKILLS = (
-    "figure-polish",
-    "intake-audit",
-    "review",
-    "rebuttal",
-)
+_AUTO_CONTINUE_MONITOR_INTERVAL_SECONDS = 240
+
+COMPANION_SKILLS = companion_skill_ids(repo_root())
 
 STAGE_MEMORY_PLAN = {
     "scout": {
@@ -71,6 +62,14 @@ STAGE_MEMORY_PLAN = {
 }
 
 
+def current_standard_skills(repo_root_path: Path | None = None) -> tuple[str, ...]:
+    return stage_skill_ids(repo_root_path or repo_root())
+
+
+def current_companion_skills(repo_root_path: Path | None = None) -> tuple[str, ...]:
+    return companion_skill_ids(repo_root_path or repo_root())
+
+
 def classify_turn_intent(user_message: str) -> str:
     text = str(user_message or "").strip()
     if not text:
@@ -104,13 +103,15 @@ def classify_turn_intent(user_message: str) -> str:
 
 
 class PromptBuilder:
-    def __init__(self, repo_root: Path, home: Path) -> None:
+    def __init__(self, repo_root: Path, home: Path, *, prompt_version_selection: str | None = None) -> None:
         self.repo_root = repo_root
         self.home = home
         self.quest_service = QuestService(home)
         self.memory_service = MemoryService(home)
         self.baseline_registry = BaselineRegistry(home)
         self.config_manager = ConfigManager(home)
+        self.skill_installer = SkillInstaller(repo_root, home)
+        self.prompt_version_selection = str(prompt_version_selection or "").strip() or None
 
     def build(
         self,
@@ -128,9 +129,14 @@ class PromptBuilder:
         runtime_config = self.config_manager.load_named("config")
         connectors_config = self.config_manager.load_named_normalized("connectors")
         quest_root = Path(snapshot["quest_root"])
+        self.skill_installer.sync_quest_prompts(quest_root)
         active_anchor = str(snapshot.get("active_anchor") or skill_id)
         default_locale = str(runtime_config.get("default_locale") or "en-US")
-        system_block = self._prompt_fragment("system.md", quest_root=quest_root)
+        workspace_mode = self._workspace_mode(snapshot)
+        system_block = self._prompt_fragment(
+            "system_copilot.md" if workspace_mode == "copilot" else "system.md",
+            quest_root=quest_root,
+        )
         shared_interaction_block = self._prompt_fragment(
             Path("contracts") / "shared_interaction.md",
             quest_root=quest_root,
@@ -159,7 +165,7 @@ class PromptBuilder:
             f"conversation_id: quest:{quest_id}",
             f"default_locale: {default_locale}",
             "built_in_mcp_namespaces: memory, artifact, bash_exec",
-            "mcp_namespace_note: any shell-like command execution must use bash_exec, including curl/python/bash/node and similar CLI tools; do not use transient shell snippets.",
+            "mcp_namespace_note: **any shell-like command execution must use `bash_exec(...)`, including curl/python/bash/node/git/npm/uv and similar CLI tools; do not use native `shell_command` / `command_execution`.**",
             "",
             "Canonical stage skills root:",
             str((self.repo_root / "src" / "skills").resolve()),
@@ -228,6 +234,14 @@ class PromptBuilder:
                 "",
                 "## Recovery Resume Packet",
                 self._recovery_resume_block(snapshot=snapshot, turn_reason=turn_reason),
+                "",
+                "## Resume Context Spine",
+                self._resume_context_spine_block(
+                    quest_id=quest_id,
+                    quest_root=quest_root,
+                    snapshot=snapshot,
+                    turn_reason=turn_reason,
+                ),
                 "",
                 "## Interaction Style",
                 self._interaction_style_block(default_locale=default_locale, user_message=user_message, snapshot=snapshot),
@@ -486,8 +500,14 @@ class PromptBuilder:
                 ]
             )
         if str(turn_reason or "").strip() == "auto_continue":
-            lines.append(
-                "- auto_continue_rule: this turn has no new user message; continue from the active requirements, durable artifacts, and current quest state instead of replaying the previous user message"
+            lines.extend(
+                [
+                    "- auto_continue_rule: this turn has no new user message; continue from the active requirements, durable artifacts, current quest state, and resume context spine instead of replaying the previous user message",
+                    f"- auto_continue_interval_rule: when a real long-running external task is already active, background-progress auto-continue becomes a low-frequency monitoring pass, about every {_AUTO_CONTINUE_MONITOR_INTERVAL_SECONDS} seconds rather than sub-minute polling",
+                    "- auto_continue_fast_prepare_rule: in autonomous mode before a real external long-running task exists, auto-continue may advance quickly, around 0.2 seconds between turns, so the agent can keep preparing or launching the real work without idling",
+                    "- autonomous_prepare_rule: in autonomous mode, if no real long-running external task is active yet, use the next turns to keep preparing, launching, or durably deciding the next real unit of work instead of parking idly",
+                    "- copilot_park_rule: in copilot mode, once the current requested unit is complete, it is normal to park and wait for the next user message or `/resume` instead of continuing autonomously",
+                ]
             )
         else:
             lines.append(
@@ -614,6 +634,76 @@ class PromptBuilder:
             lines.append(f"- remaining_attachment_count: {len(attachments) - 6}")
         return "\n".join(lines)
 
+    def _resume_context_spine_block(self, *, quest_id: str, quest_root: Path, snapshot: dict, turn_reason: str) -> str:
+        if str(turn_reason or "").strip() != "auto_continue":
+            return "- none"
+        lines = [
+            "- resume_spine_rule: on auto_continue turns, first continue from the latest durable user requirement, the latest assistant checkpoint, the latest run summary, and recent memory cues instead of reconstructing intent from scratch",
+        ]
+        bash_running_count = int(((snapshot.get("counts") or {}).get("bash_running_count")) or 0)
+        latest_bash_session = (
+            dict((snapshot.get("summary") or {}).get("latest_bash_session") or {})
+            if isinstance((snapshot.get("summary") or {}).get("latest_bash_session"), dict)
+            else {}
+        )
+        lines.append(f"- active_bash_exec_run_count: {bash_running_count}")
+        if latest_bash_session:
+            command_preview = " ".join(str(latest_bash_session.get("command") or "").split())
+            if len(command_preview) > 180:
+                command_preview = command_preview[:177].rstrip() + "..."
+            lines.append(
+                f"- latest_bash_exec_session: bash_id={str(latest_bash_session.get('bash_id') or 'none')} | "
+                f"status={str(latest_bash_session.get('status') or 'unknown')} | "
+                f"command={command_preview or 'none'}"
+            )
+        latest_user = self._latest_user_message(quest_id)
+        if latest_user is not None:
+            preview = " ".join(str(latest_user.get("content") or "").split())
+            if len(preview) > 320:
+                preview = preview[:317].rstrip() + "..."
+            lines.append(
+                f"- latest_user_message: {str(latest_user.get('created_at') or 'unknown')} | "
+                f"source={str(latest_user.get('source') or 'unknown')} | "
+                f"reply_to={str(latest_user.get('reply_to_interaction_id') or 'none')} | "
+                f"preview={preview or 'none'}"
+            )
+        latest_assistant = self._latest_assistant_message(quest_id)
+        if latest_assistant is not None:
+            preview = " ".join(str(latest_assistant.get("content") or "").split())
+            if len(preview) > 360:
+                preview = preview[:357].rstrip() + "..."
+            lines.append(
+                f"- latest_assistant_checkpoint: {str(latest_assistant.get('created_at') or 'unknown')} | "
+                f"skill={str(latest_assistant.get('skill_id') or 'none')} | "
+                f"run_id={str(latest_assistant.get('run_id') or 'none')} | "
+                f"preview={preview or 'none'}"
+            )
+        latest_run = self._latest_run_result(quest_root)
+        if latest_run is not None:
+            preview = " ".join(str(latest_run.get("preview") or "").split())
+            if len(preview) > 360:
+                preview = preview[:357].rstrip() + "..."
+            lines.append(
+                f"- latest_run_result: {str(latest_run.get('completed_at') or 'unknown')} | "
+                f"run_id={str(latest_run.get('run_id') or 'none')} | "
+                f"exit_code={latest_run.get('exit_code') if latest_run.get('exit_code') is not None else 'none'} | "
+                f"preview={preview or 'none'}"
+            )
+        recent_memory = self.memory_service.list_recent(scope="quest", quest_root=quest_root, limit=3)
+        if recent_memory:
+            lines.append("- recent_memory_cues:")
+            for item in recent_memory:
+                title = str(item.get("title") or "memory").strip() or "memory"
+                card_type = str(item.get("type") or "memory").strip() or "memory"
+                excerpt = " ".join(str(item.get("excerpt") or "").split())
+                if len(excerpt) > 200:
+                    excerpt = excerpt[:197].rstrip() + "..."
+                lines.append(f"  - [{card_type}] {title}: {excerpt or 'no excerpt'}")
+        else:
+            lines.append("- recent_memory_cues: none")
+        lines.append("- resume_spine_conflict_rule: if these spine items conflict with newer durable files or artifacts, trust the newer durable state and update the summary rather than replaying the older plan verbatim")
+        return "\n".join(lines)
+
     def _retry_recovery_block(self, retry_context: dict | None) -> str:
         if not isinstance(retry_context, dict) or not retry_context:
             return "- none"
@@ -726,6 +816,19 @@ class PromptBuilder:
     def _prompt_path(self, relative_path: str | Path, *, quest_root: Path | None = None) -> Path:
         normalized = Path(relative_path)
         if quest_root is not None:
+            selected_version = str(self.prompt_version_selection or "").strip()
+            if selected_version and selected_version not in {"latest", "current", "active"}:
+                selected_root = self.skill_installer.resolve_prompt_version_root(quest_root, selected_version)
+                if selected_root is None:
+                    raise FileNotFoundError(
+                        f"Prompt version `{selected_version}` is unavailable for quest `{quest_root.name}`."
+                    )
+                selected_path = selected_root / normalized
+                if not selected_path.exists():
+                    raise FileNotFoundError(
+                        f"Prompt version `{selected_version}` does not include `{normalized.as_posix()}` for quest `{quest_root.name}`."
+                    )
+                return selected_path
             quest_path = quest_root / ".codex" / "prompts" / normalized
             if quest_path.exists():
                 return quest_path
@@ -737,16 +840,45 @@ class PromptBuilder:
                 return item
         return None
 
+    def _latest_assistant_message(self, quest_id: str) -> dict | None:
+        for item in reversed(self.quest_service.history(quest_id, limit=120)):
+            if str(item.get("role") or "") == "assistant":
+                return item
+        return None
+
+    @staticmethod
+    def _latest_run_result(quest_root: Path) -> dict[str, object] | None:
+        runs_root = quest_root / ".ds" / "runs"
+        if not runs_root.exists():
+            return None
+        candidates = [path for path in runs_root.glob("*/result.json") if path.is_file()]
+        if not candidates:
+            return None
+        latest = max(candidates, key=lambda path: path.stat().st_mtime)
+        payload = read_json(latest, {})
+        if not isinstance(payload, dict):
+            return None
+        preview = (
+            str(payload.get("output_text") or "").strip()
+            or str(payload.get("stderr_text") or "").strip()
+        )
+        return {
+            "run_id": latest.parent.name,
+            "completed_at": str(payload.get("completed_at") or "").strip() or None,
+            "exit_code": payload.get("exit_code"),
+            "preview": preview,
+        }
+
     def _skill_paths_block(self) -> str:
         lines = []
-        for skill_id in STANDARD_SKILLS:
+        for skill_id in current_standard_skills(self.repo_root):
             primary = (self.repo_root / "src" / "skills" / skill_id / "SKILL.md").resolve()
             lines.append(f"- {skill_id}: primary={primary}")
         return "\n".join(lines)
 
     def _companion_skill_paths_block(self) -> str:
         lines = []
-        for skill_id in COMPANION_SKILLS:
+        for skill_id in current_companion_skills(self.repo_root):
             primary = (self.repo_root / "src" / "skills" / skill_id / "SKILL.md").resolve()
             lines.append(f"- {skill_id}: primary={primary}")
         return "\n".join(lines)
@@ -759,6 +891,18 @@ class PromptBuilder:
             if isinstance(value, bool):
                 return value
         return True
+
+    @staticmethod
+    def _workspace_mode(snapshot: dict) -> str:
+        value = str(snapshot.get("workspace_mode") or "").strip().lower()
+        if value in {"copilot", "autonomous"}:
+            return value
+        startup_contract = snapshot.get("startup_contract")
+        if isinstance(startup_contract, dict):
+            value = str(startup_contract.get("workspace_mode") or "").strip().lower()
+            if value in {"copilot", "autonomous"}:
+                return value
+        return "autonomous"
 
     @staticmethod
     def _decision_policy(snapshot: dict) -> str:
@@ -824,6 +968,18 @@ class PromptBuilder:
         return "none"
 
     def _research_delivery_policy_block(self, snapshot: dict) -> str:
+        if self._workspace_mode(snapshot) == "copilot":
+            return "\n".join(
+                [
+                    "- workspace_mode: copilot",
+                    "- delivery_goal: complete the user-requested unit of work instead of forcing the full research graph by default.",
+                    "- task_scope_rule: arbitrary research tasks such as reading, coding, debugging, experiment design, run inspection, analysis, writing, and planning can all be handled directly in this mode.",
+                    "- autonomy_boundary: only expand into longer autonomous continuation when the user explicitly asks for end-to-end or unattended progress.",
+                    "- routing_rule: open only the skills actually needed for the current request.",
+                    "- durability_rule: keep important plan, evidence, decisions, and outputs durable in quest files or artifacts so later turns can resume cleanly.",
+                    "- completion_rule: after the requested unit is complete, summarize what changed and stop instead of auto-continuing.",
+                ]
+            )
         need_research_paper = self._need_research_paper(snapshot)
         launch_mode = self._launch_mode(snapshot)
         standard_profile = self._standard_profile(snapshot)
@@ -1029,6 +1185,30 @@ class PromptBuilder:
     def _interaction_style_block(self, *, default_locale: str, user_message: str, snapshot: dict) -> str:
         normalized_locale = str(default_locale or "").lower()
         chinese_turn = normalized_locale.startswith("zh") or bool(re.search(r"[\u4e00-\u9fff]", user_message))
+        if self._workspace_mode(snapshot) == "copilot":
+            lines = [
+                f"- configured_default_locale: {default_locale}",
+                f"- current_turn_language_bias: {'zh' if chinese_turn else 'en'}",
+                "- collaboration_mode: user-directed copilot",
+                "- freeform_task_rule: if the user asks for a concrete research task, solve that task directly before introducing stage-routing language.",
+                "- requested_skill_hint_rule: in copilot mode, treat `requested_skill` as a lightweight routing hint, not as an instruction to default into `decision` for ordinary direct tasks.",
+                "- response_pattern: say what changed -> say what it means -> say what happens next",
+                "- mailbox_protocol: artifact.interact(include_recent_inbound_messages=True) remains the queued human-message mailbox and should be checked whenever human continuity matters.",
+                "- planning_rule: before non-trivial execution, make the immediate plan explicit and keep the first step small.",
+                "- tool_rule: use memory for durable recall, artifact for quest state and git-aware research operations, and bash_exec for terminal execution.",
+                "- copilot_sop_rule: classify the request first, choose the narrowest correct tool path, execute the smallest useful unit, persist the important result, then answer plainly.",
+                "- shell_tool_mandate: **for any shell, CLI, Python, bash, node, git, npm, uv, or environment command execution, use `bash_exec(...)`; do not use native `shell_command` or Codex `command_execution`.**",
+                "- git_tool_mandate: for git work inside the current quest repository or worktree, prefer `artifact.git(...)` before raw shell git commands.",
+                "- git_test_rule: if the user wants a generic git smoke test rather than a quest-repo mutation, use `bash_exec(...)` in an isolated scratch repository.",
+                "- decision_entry_rule: use `decision` only for real route, scope, cost, branch, or scientific-direction judgments; do not default to it for ordinary repo, code, environment, or execution tasks.",
+                "- stop_rule: once the current requested unit is done, send a concise update and wait for the next message or `/resume`.",
+                "- escalation_rule: if a route change materially affects cost, scope, or scientific direction, ask before proceeding.",
+            ]
+            if chinese_turn:
+                lines.append("- tone_hint: 使用自然、礼貌、专业的中文，先解释结论，再说明下一步。")
+            else:
+                lines.append("- tone_hint: use concise, natural, professional English and lead with the conclusion.")
+            return "\n".join(lines)
         bound_conversations = snapshot.get("bound_conversations") or []
         need_research_paper = self._need_research_paper(snapshot)
         decision_policy = self._decision_policy(snapshot)
@@ -1047,6 +1227,7 @@ class PromptBuilder:
             "- response_pattern: say what changed -> say what it means -> say what happens next",
             "- interaction_protocol: first message may be plain conversation; after that, treat artifact.interact threads and mailbox polls as the main continuity spine across TUI, web, and connectors",
             "- shared_interaction_contract_precedence: use the shared interaction contract as the default user-facing cadence; the rules below add runtime-specific execution behavior instead of restating the same chat cadence",
+            "- shell_tool_mandate: **native `shell_command` / `command_execution` is forbidden; all shell-like execution must use `bash_exec(...)`.**",
             "- mailbox_protocol: artifact.interact(include_recent_inbound_messages=True) is the queued human-message mailbox; when it returns user text, treat that input as higher priority than background subtasks until it has been acknowledged",
             "- acknowledgment_protocol: after artifact.interact returns any human message, immediately send one substantive artifact.interact(...) follow-up; if the active connector runtime already emitted a transport-level receipt acknowledgement, do not send a redundant receipt-only message; if answerable, answer directly, otherwise state the short plan, nearest checkpoint, and that the current background subtask is paused",
             "- subtask_boundary_protocol: send a user-visible update whenever the active subtask changes materially, especially across intake -> audit, audit -> experiment planning, experiment planning -> run launch, run result -> drafting, or drafting -> review/rebuttal",
@@ -1055,6 +1236,10 @@ class PromptBuilder:
             "- long_run_reporting_protocol: inspect real logs/status after each meaningful await cycle and at least once every 30 minutes at worst, but only send a user-visible update when there is a human-meaningful delta, blocker, recovery, route change, or the visibility bound would otherwise be exceeded",
             "- intervention_threshold_protocol: do not kill or restart a run merely because a short watch window passed without final completion; intervene only on explicit failure, clear invalidity, process exit, or no meaningful delta across a sufficiently long observation window",
             "- timeout_protocol: before using bash_exec(mode='await', ...), estimate whether the command can finish within the selected wait window; if runtime is uncertain or likely longer, use bash_exec(mode='detach', ...) and monitor instead of guessing a fake deadline",
+            f"- auto_continue_monitoring_protocol: if the runtime schedules background-progress auto_continue turns while a real external task is already active, treat them as low-frequency monitoring passes roughly every {_AUTO_CONTINUE_MONITOR_INTERVAL_SECONDS} seconds rather than as a fast polling loop",
+            "- auto_continue_prepare_protocol: in autonomous mode before a real long-running external task exists, rapid auto-continue passes around 0.2 seconds apart are acceptable only for active preparation, launch, or durable route closure work; they are not a substitute for starting the real task",
+            "- long_run_ownership_protocol: real long-running execution should stay alive in detached bash_exec sessions or the runtime process it launched; do not rely on repeated model turns to simulate continuous execution",
+            "- auto_continue_resume_protocol: on auto_continue turns, read the resume context spine first and continue from the latest durable user requirement, latest assistant checkpoint, latest run summary, recent memory cues, and current bash_exec state before changing route",
             "- blocking_protocol: use reply_mode='blocking' only for true unresolved user decisions; ordinary progress updates should stay threaded and non-blocking",
             "- credential_blocking_protocol: if continuation requires user-supplied external credentials or secrets such as an API key, GitHub key/token, or Hugging Face key/token, emit one structured blocking decision request that asks the user to provide the credential or choose an alternative route; do not invent placeholders or silently skip the blocked step",
             "- credential_wait_protocol: if that credential request remains unanswered, keep the quest waiting rather than self-resolving; if you are resumed without new credentials and no other work is possible, a long low-frequency park such as `bash_exec(command='sleep 3600', mode='await', timeout_seconds=3700)` is acceptable to avoid busy-looping",
@@ -1212,13 +1397,51 @@ class PromptBuilder:
         plan = STAGE_MEMORY_PLAN.get(stage, STAGE_MEMORY_PLAN["decision"])
         quest_kinds = ", ".join(plan.get("quest", ())) or "none"
         global_kinds = ", ".join(plan.get("global", ())) or "none"
-        return "\n".join(
-            [
-                f"- stage_memory_rule: for `{stage}`, prefer quest memory kinds [{quest_kinds}] and global memory kinds [{global_kinds}] when memory lookup is needed.",
-                "- memory_lookup_tool: call memory.list_recent(...) to recover context after pause/restart and memory.search(...) before repeating prior work.",
-                "- memory_injection_rule: memory is intentionally not pre-expanded here; pull only the cards that matter now.",
-            ]
-        )
+        lines = [
+            f"- stage_memory_rule: for `{stage}`, prefer quest memory kinds [{quest_kinds}] and global memory kinds [{global_kinds}] when memory lookup is needed.",
+            "- memory_lookup_tool: call memory.list_recent(...) to recover context after pause/restart and memory.search(...) before repeating prior work.",
+            "- memory_injection_rule: keep the injected memory compact, but do not drop all continuity on auto_continue turns; reuse a few recent durable cues directly when they materially anchor the next action.",
+        ]
+        selected: list[dict] = []
+        seen_paths: set[str] = set()
+        for kind in plan.get("quest", ())[:2]:
+            for card in self.memory_service.list_recent(scope="quest", quest_root=quest_root, limit=2, kind=kind)[:1]:
+                self._append_priority_memory(
+                    selected,
+                    seen_paths,
+                    card=card,
+                    scope="quest",
+                    quest_root=quest_root,
+                    reason=f"recent quest memory for stage `{stage}`",
+                )
+        for kind in plan.get("global", ())[:2]:
+            for card in self.memory_service.list_recent(scope="global", limit=2, kind=kind)[:1]:
+                self._append_priority_memory(
+                    selected,
+                    seen_paths,
+                    card=card,
+                    scope="global",
+                    quest_root=quest_root,
+                    reason=f"recent global memory for stage `{stage}`",
+                )
+        for query in self._memory_queries(user_message)[:2]:
+            for scope in ("quest", "global"):
+                for card in self.memory_service.search(
+                    query,
+                    scope=scope if scope == "global" else "quest",
+                    quest_root=quest_root if scope == "quest" else None,
+                    limit=1,
+                ):
+                    self._append_priority_memory(
+                        selected,
+                        seen_paths,
+                        card=card,
+                        scope=scope,
+                        quest_root=quest_root,
+                        reason=f"matched current-turn query `{query}`",
+                    )
+        lines.extend(["- selected_memory:", self._format_priority_memory(selected)])
+        return "\n".join(lines)
 
     def _append_priority_memory(
         self,

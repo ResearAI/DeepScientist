@@ -109,6 +109,14 @@ async function shouldUseLocalQuestProject(projectId: string): Promise<boolean> {
 }
 
 function mapQuestSummaryToProject(summary: QuestSummary): Project {
+  const startupContract =
+    summary.startup_contract && typeof summary.startup_contract === 'object'
+      ? (summary.startup_contract as Record<string, unknown>)
+      : null
+  const projectDisplay =
+    startupContract?.project_display && typeof startupContract.project_display === 'object'
+      ? (startupContract.project_display as Record<string, unknown>)
+      : null
   return {
     id: summary.quest_id,
     name: summary.title || summary.quest_id,
@@ -127,6 +135,11 @@ function mapQuestSummaryToProject(summary: QuestSummary): Project {
       pending_decisions: summary.pending_decisions || [],
       counts: summary.counts || {},
       paths: summary.paths || {},
+      workspace_mode: summary.workspace_mode || startupContract?.workspace_mode || null,
+      project_display: projectDisplay || {
+        template: 'blank',
+        accent_color: 'graphite',
+      },
     },
     storage_used: 0,
     file_count:

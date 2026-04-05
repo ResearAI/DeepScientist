@@ -326,8 +326,15 @@ type StartResearchContractFields = {
 
 - `autonomous`
   - 普通路线由 agent 自行决定
+  - 一轮结束后默认继续：如果真实长时间外部任务还没跑起来，就继续准备或启动；一旦真实长任务已经在跑，后台监控应切成低频，而不是亚分钟轮询
 - `user_gated`
   - 只有真正依赖用户偏好时，才允许阻塞式决策请求
+
+关于 workspace mode 的实际含义：
+
+- DeepScientist 还会区分用户导向的 `copilot` 模式和默认的 `autonomous` 模式。
+- 在 `copilot` 下，当前请求单元完成后通常应该停驻，等待下一条用户消息或 `/resume`。
+- 在 `autonomous` 下，不能因为“当前还没有长任务在跑”就停住；系统应继续推进，直到下一个真实长任务被准备好或启动起来。
 
 ### 启动模式
 

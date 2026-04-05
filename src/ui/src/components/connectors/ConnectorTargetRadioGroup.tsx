@@ -67,14 +67,24 @@ export function ConnectorTargetRadioGroup({
             </span>
 
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-foreground">{item.connectorLabel}</span>
+              <span className="block truncate text-sm font-semibold text-foreground" title={item.connectorLabel}>
+                {item.connectorLabel}
+              </span>
               {showTargetId ? (
-                <span className="mt-1 block break-all font-mono text-[11px] leading-5 text-muted-foreground">
+                <span
+                  className="mt-1 block truncate font-mono text-[11px] leading-5 text-muted-foreground"
+                  title={item.targetId}
+                >
                   {item.targetId}
                 </span>
               ) : null}
               {item.boundQuestLabel ? (
-                <span className="mt-3 block text-[11px] leading-5 text-muted-foreground">{item.boundQuestLabel}</span>
+                <span
+                  className="mt-3 block truncate text-[11px] leading-5 text-muted-foreground"
+                  title={item.boundQuestLabel}
+                >
+                  {item.boundQuestLabel}
+                </span>
               ) : null}
             </span>
 

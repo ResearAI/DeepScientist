@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { resolveDemoProject } from '@/demo/projects'
 import { getProject, type Project } from '@/lib/api/projects'
 import { useI18n } from '@/lib/i18n/useI18n'
+import { scheduleCommonPluginPreload } from '@/lib/plugin/init'
 
 function AtmosphereFrame({ children }: { children: ReactNode }) {
   return (
@@ -38,6 +39,13 @@ export function ProjectWorkspacePage() {
     document.body.classList.add('font-project')
     return () => document.body.classList.remove('font-project')
   }, [])
+
+  useEffect(() => {
+    if (!projectId) {
+      return
+    }
+    return scheduleCommonPluginPreload()
+  }, [projectId])
 
   useEffect(() => {
     if (!projectId) {

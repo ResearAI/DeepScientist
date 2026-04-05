@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepscientist"
-version = "1.5.15"
+version = "1.5.16"
 description = "DeepScientist Core skeleton"
 readme = "README.md"
 requires-python = ">=3.11"

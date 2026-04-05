@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { PluginComponentProps } from "@/lib/types/plugin";
 import { cn } from "@/lib/utils";
+import { client as questClient } from "@/lib/api";
 import { listFiles, getFileContent, updateFileContent } from "@/lib/api/files";
 import { useFileTreeStore } from "@/lib/stores/file-tree";
 import { ProjectSyncClient } from "@/lib/plugins/notebook/lib/project-sync";
@@ -296,6 +297,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const [buildError, setBuildError] = React.useState<string | null>(null);
   const [buildErrors, setBuildErrors] = React.useState<LatexBuildError[]>([]);
   const [compiler, setCompiler] = React.useState<LatexCompiler>("pdflatex");
+  const [currentBranch, setCurrentBranch] = React.useState<string | null>(null);
   const [pdfObjectUrl, setPdfObjectUrl] = React.useState<string | null>(null);
   const [logText, setLogText] = React.useState<string | null>(null);
   const [zoomScale, setZoomScale] = React.useState<number>(1);
@@ -403,6 +405,35 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       cancelled = true;
     };
   }, [projectId, viewReadOnly]);
+
+  React.useEffect(() => {
+    if (!projectId) {
+      setCurrentBranch(null);
+      return;
+    }
+    let cancelled = false;
+    void questClient
+      .session(projectId)
+      .then((payload) => {
+        if (cancelled) return;
+        const snapshot = payload?.snapshot;
+        const branch =
+          typeof snapshot?.current_workspace_branch === "string" && snapshot.current_workspace_branch.trim()
+            ? snapshot.current_workspace_branch.trim()
+            : typeof snapshot?.branch === "string" && snapshot.branch.trim()
+              ? snapshot.branch.trim()
+              : null;
+        setCurrentBranch(branch);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCurrentBranch(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   // Load folder file list.
   React.useEffect(() => {
@@ -1494,7 +1525,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     [activeFileId, activeFileName, files, flushPendingJump, focusBuildIssue]
   );
 
-  const handleAskCopilotForIssue = React.useCallback(
+  const handleAskDeepScientistForIssue = React.useCallback(
     (issue: LatexBuildError) => {
       const focusedIssue = focusBuildIssue(issue);
       const severityLabel =
@@ -1503,51 +1534,34 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         focusedIssue?.line && focusedIssue.resourceName
           ? `${focusedIssue.resourceName}:${focusedIssue.line}`
           : focusedIssue?.resourceName || issue.path || activeFileName || "main.tex";
+      const fileLabel =
+        focusedIssue?.resourcePath ||
+        focusedIssue?.resourceName ||
+        issue.path ||
+        activeFileName ||
+        "main.tex";
+      const lineLabel =
+        typeof focusedIssue?.line === "number" && Number.isFinite(focusedIssue.line)
+          ? String(Math.max(1, focusedIssue.line))
+          : t("issue_unknown_line");
       const prompt = t("issue_action_prompt", {
         severity: severityLabel,
+        branch: currentBranch || t("issue_unknown_branch"),
+        file: fileLabel,
+        line: lineLabel,
         location: issueLocation,
         message: issue.message,
       });
       window.dispatchEvent(
-        new CustomEvent("ds:copilot:run", {
+        new CustomEvent("ds:copilot:prefill", {
           detail: {
             text: prompt,
             focus: true,
-            submit: true,
           },
         })
       );
     },
-    [activeFileName, focusBuildIssue, t]
-  );
-
-  const handleFixIssueWithAi = React.useCallback(
-    (issue: LatexBuildError) => {
-      if (!latexFolderId || effectiveReadOnly) return;
-      const focusedIssue = focusBuildIssue(issue);
-      const severityLabel =
-        issue.severity === "warning" ? t("warning_badge") : t("error_badge");
-      const issueLocation =
-        focusedIssue?.line && focusedIssue.resourceName
-          ? `${focusedIssue.resourceName}:${focusedIssue.line}`
-          : focusedIssue?.resourceName || issue.path || activeFileName || "main.tex";
-      const promptText = t("issue_fix_prompt", {
-        severity: severityLabel,
-        location: issueLocation,
-        message: issue.message,
-      });
-      window.dispatchEvent(
-        new CustomEvent("ds:copilot:fix-with-ai", {
-          detail: {
-            folderId: latexFolderId,
-            buildId,
-            focusedError: focusedIssue,
-            promptText,
-          },
-        })
-      );
-    },
-    [activeFileName, buildId, effectiveReadOnly, focusBuildIssue, latexFolderId, t]
+    [activeFileName, currentBranch, focusBuildIssue, t]
   );
 
   const renderBuildIssueRow = React.useCallback(
@@ -1600,34 +1614,21 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
           <div className="flex shrink-0 items-center gap-1 pt-1">
             <button
               type="button"
-              onClick={() => handleAskCopilotForIssue(issue)}
+              onClick={() => handleAskDeepScientistForIssue(issue)}
               className="rounded-md border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.05] px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-black/5 dark:hover:bg-white/[0.08]"
-              title={t("issue_action_ask_copilot")}
+              title={t("issue_action_ask_deepscientist")}
             >
-              {t("issue_action_ask_copilot")}
+              {t("issue_action_ask_deepscientist")}
             </button>
-            {!effectiveReadOnly && latexFolderId ? (
-              <button
-                type="button"
-                onClick={() => handleFixIssueWithAi(issue)}
-                className="rounded-md border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.05] px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-black/5 dark:hover:bg-white/[0.08]"
-                title={t("issue_action_fix_with_ai")}
-              >
-                {t("issue_action_fix_with_ai")}
-              </button>
-            ) : null}
           </div>
         </div>
       );
     },
     [
       activeFileId,
-      effectiveReadOnly,
       files,
-      handleAskCopilotForIssue,
+      handleAskDeepScientistForIssue,
       handleBuildIssueClick,
-      handleFixIssueWithAi,
-      latexFolderId,
       t,
     ]
   );

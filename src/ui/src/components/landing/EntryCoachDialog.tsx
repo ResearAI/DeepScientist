@@ -148,7 +148,7 @@ export function EntryCoachDialog({
                     : 'text-[rgba(86,82,77,0.82)] hover:bg-white'
                 )}
               >
-                {locale === 'zh' ? '中文' : 'Chinese'}
+                中文
               </button>
               <button
                 type="button"
@@ -160,7 +160,7 @@ export function EntryCoachDialog({
                     : 'text-[rgba(86,82,77,0.82)] hover:bg-white'
                 )}
               >
-                {locale === 'zh' ? '英文' : 'English'}
+                English
               </button>
             </div>
             <button

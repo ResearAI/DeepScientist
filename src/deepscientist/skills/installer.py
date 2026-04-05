@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import re
 import shutil
 from pathlib import Path
 from uuid import uuid4
@@ -7,6 +9,10 @@ from uuid import uuid4
 from ..memory.frontmatter import load_markdown_document
 from ..shared import ensure_dir, read_json, utc_now, write_json
 from .registry import discover_skill_bundles
+
+_PROMPT_SYNC_STATE_FILENAME = ".deepscientist-prompt-sync.json"
+_PROMPT_VERSIONS_DIRNAME = "prompt_versions"
+_PROMPT_VERSIONS_INDEX_FILENAME = "index.json"
 
 
 class SkillInstaller:
@@ -40,9 +46,9 @@ class SkillInstaller:
             "notes": [],
         }
 
-    def sync_quest(self, quest_root: Path) -> dict:
+    def sync_quest(self, quest_root: Path, *, installed_version: str | None = None) -> dict:
+        prompt_sync = self.sync_quest_prompts(quest_root, installed_version=installed_version)
         prompts_root = ensure_dir(quest_root / ".codex" / "prompts")
-        self._sync_prompt_tree(prompts_root)
         codex_root = ensure_dir(quest_root / ".codex" / "skills")
         claude_root = ensure_dir(quest_root / ".claude" / "agents")
         copied_codex: list[str] = []
@@ -61,12 +67,13 @@ class SkillInstaller:
         self._prune_bundle_targets(claude_root, expected_claude)
         return {
             "prompts": [str(path) for path in sorted(prompts_root.rglob("*")) if path.is_file()],
+            "prompt_sync": prompt_sync,
             "codex": copied_codex,
             "claude": copied_claude,
             "notes": [],
         }
 
-    def sync_existing_quests(self) -> dict:
+    def sync_existing_quests(self, *, installed_version: str | None = None) -> dict:
         quests_root = self.home / "quests"
         synced: list[dict[str, object]] = []
         if not quests_root.exists():
@@ -79,13 +86,15 @@ class SkillInstaller:
                 continue
             if not (quest_root / "quest.yaml").exists():
                 continue
-            result = self.sync_quest(quest_root)
+            result = self.sync_quest(quest_root, installed_version=installed_version)
             synced.append(
                 {
                     "quest_id": quest_root.name,
                     "quest_root": str(quest_root),
                     "codex_count": len(result.get("codex") or []),
                     "claude_count": len(result.get("claude") or []),
+                    "prompt_backup_id": (result.get("prompt_sync") or {}).get("backup_id"),
+                    "prompt_fingerprint": (result.get("prompt_sync") or {}).get("prompt_fingerprint"),
                 }
             )
         return {
@@ -127,10 +136,192 @@ class SkillInstaller:
             summary["global"] = self.sync_global()
             summary["global_synced"] = True
         if sync_existing_quests_enabled:
-            summary["existing_quests"] = self.sync_existing_quests()
+            summary["existing_quests"] = self.sync_existing_quests(installed_version=normalized_version)
             summary["existing_quests_synced"] = True
         self._write_release_sync_state(summary)
         return summary
+
+    def sync_quest_prompts(
+        self,
+        quest_root: Path,
+        *,
+        installed_version: str | None = None,
+    ) -> dict[str, object]:
+        prompts_root = ensure_dir(quest_root / ".codex" / "prompts")
+        source_root = self.repo_root / "src" / "prompts"
+        normalized_version = self._normalized_installed_version(installed_version)
+        previous_state = self._read_prompt_sync_state(prompts_root)
+        current_fingerprint = self._prompt_tree_fingerprint(prompts_root, exclude_state_file=True)
+        source_fingerprint = self._prompt_tree_fingerprint(source_root, exclude_state_file=False)
+        backup_id: str | None = None
+        updated = False
+
+        if current_fingerprint != source_fingerprint:
+            if current_fingerprint:
+                backup_id = self._backup_prompt_tree(
+                    quest_root,
+                    prompts_root=prompts_root,
+                    installed_version=str(previous_state.get("installed_version") or normalized_version),
+                    prompt_fingerprint=current_fingerprint,
+                )
+            self._sync_prompt_tree(prompts_root)
+            updated = True
+
+        prompt_state = {
+            "installed_version": normalized_version,
+            "prompt_fingerprint": self._prompt_tree_fingerprint(prompts_root, exclude_state_file=True),
+            "synced_at": utc_now(),
+            "backup_id": backup_id,
+            "source_root": str(source_root),
+        }
+        write_json(self._prompt_sync_state_path(prompts_root), prompt_state)
+        return {
+            "updated": updated,
+            "backup_id": backup_id,
+            "prompt_fingerprint": prompt_state["prompt_fingerprint"],
+            "installed_version": normalized_version,
+            "source_root": str(source_root),
+            "active_root": str(prompts_root),
+            "versions_root": str(self._prompt_versions_root(quest_root)),
+        }
+
+    def list_prompt_versions(self, quest_root: Path) -> list[dict[str, object]]:
+        payload = read_json(self._prompt_versions_index_path(quest_root), {})
+        versions = payload.get("versions") if isinstance(payload.get("versions"), list) else []
+        return [dict(item) for item in versions if isinstance(item, dict)]
+
+    def resolve_prompt_version_root(self, quest_root: Path, selection: str) -> Path | None:
+        normalized = str(selection or "").strip()
+        if not normalized:
+            return None
+        exact_root = self._prompt_versions_root(quest_root) / normalized
+        if exact_root.exists():
+            return exact_root
+        candidates = [
+            dict(item)
+            for item in self.list_prompt_versions(quest_root)
+            if str(item.get("installed_version") or "").strip() == normalized
+        ]
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: str(item.get("created_at") or ""))
+        selected_path = Path(str(candidates[-1].get("path") or "")).expanduser()
+        return selected_path if selected_path.exists() else None
+
+    @staticmethod
+    def _normalized_installed_version(installed_version: str | None) -> str:
+        normalized = str(installed_version or "").strip()
+        if normalized:
+            return normalized
+        from .. import __version__
+
+        return str(__version__ or "").strip() or "unknown"
+
+    def _backup_prompt_tree(
+        self,
+        quest_root: Path,
+        *,
+        prompts_root: Path,
+        installed_version: str,
+        prompt_fingerprint: str,
+    ) -> str:
+        versions_root = ensure_dir(self._prompt_versions_root(quest_root))
+        backup_id = ""
+        target_root: Path | None = None
+        for _attempt in range(8):
+            backup_id = self._unique_prompt_backup_id(
+                versions_root,
+                installed_version=installed_version,
+                prompt_fingerprint=prompt_fingerprint,
+            )
+            target_root = versions_root / backup_id
+            try:
+                shutil.copytree(prompts_root, target_root)
+                break
+            except FileExistsError:
+                # Another sync run may have created the same backup directory between
+                # name selection and copy. Regenerate a fresh id and retry.
+                continue
+        else:
+            raise FileExistsError(
+                f"Failed to allocate a unique prompt backup directory under `{versions_root}` after multiple attempts."
+            )
+        assert target_root is not None
+        entry = {
+            "backup_id": backup_id,
+            "installed_version": str(installed_version or "").strip() or "unknown",
+            "prompt_fingerprint": prompt_fingerprint,
+            "created_at": utc_now(),
+            "path": str(target_root),
+        }
+        versions = self.list_prompt_versions(quest_root)
+        versions = [item for item in versions if str(item.get("backup_id") or "").strip() != backup_id]
+        versions.append(entry)
+        versions.sort(key=lambda item: str(item.get("created_at") or ""))
+        write_json(self._prompt_versions_index_path(quest_root), {"versions": versions})
+        return backup_id
+
+    @staticmethod
+    def _prompt_versions_root(quest_root: Path) -> Path:
+        return ensure_dir(quest_root / ".codex" / _PROMPT_VERSIONS_DIRNAME)
+
+    @staticmethod
+    def _prompt_versions_index_path(quest_root: Path) -> Path:
+        return SkillInstaller._prompt_versions_root(quest_root) / _PROMPT_VERSIONS_INDEX_FILENAME
+
+    @staticmethod
+    def _prompt_sync_state_path(prompts_root: Path) -> Path:
+        return prompts_root / _PROMPT_SYNC_STATE_FILENAME
+
+    def _read_prompt_sync_state(self, prompts_root: Path) -> dict[str, object]:
+        payload = read_json(self._prompt_sync_state_path(prompts_root), {})
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _sanitize_prompt_label(value: str) -> str:
+        normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "").strip()).strip("-")
+        return normalized or "unknown"
+
+    def _unique_prompt_backup_id(
+        self,
+        versions_root: Path,
+        *,
+        installed_version: str,
+        prompt_fingerprint: str,
+    ) -> str:
+        version_label = self._sanitize_prompt_label(installed_version)
+        timestamp_label = self._sanitize_prompt_label(
+            utc_now().replace(":", "").replace("+00:00", "Z")
+        )
+        fingerprint_label = (str(prompt_fingerprint or "").strip() or "unknown")[:12]
+        base = f"{version_label}__prompts-{fingerprint_label}__{timestamp_label}"
+        candidate = base
+        counter = 2
+        while (versions_root / candidate).exists():
+            candidate = f"{base}__{counter}"
+            counter += 1
+        return candidate
+
+    @staticmethod
+    def _prompt_tree_fingerprint(root: Path, *, exclude_state_file: bool) -> str:
+        if not root.exists():
+            return ""
+        files = [
+            path
+            for path in sorted(root.rglob("*"))
+            if path.is_file()
+            and not (exclude_state_file and path.name == _PROMPT_SYNC_STATE_FILENAME)
+        ]
+        if not files:
+            return ""
+        hasher = hashlib.sha256()
+        for path in files:
+            relative = path.relative_to(root).as_posix()
+            hasher.update(relative.encode("utf-8"))
+            hasher.update(b"\0")
+            hasher.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii"))
+            hasher.update(b"\0")
+        return hasher.hexdigest()
 
     def _sync_claude_projection(self, bundle, target_root: Path) -> Path:
         target = target_root / f"deepscientist-{bundle.skill_id}.md"

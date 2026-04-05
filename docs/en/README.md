@@ -4,6 +4,8 @@ DeepScientist is not just a long-running autonomous scientific discovery system.
 
 2 minutes to install. 2 minutes to bind Weixin. 2 minutes to launch. Extremely fast and easy to use.
 
+Local Web access now starts without a password gate by default. If you want a generated 16-character browser password for one launch, run `ds --auth true`; DeepScientist then prints the password in the terminal and the browser can reuse the stored login after the first successful entry.
+
 It is also a workshop-style collaboration environment: let it keep moving autonomously, or step in anytime to collaborate, edit code, run the terminal yourself, or keep notes and plans in a Notion-style workspace.
 
 Use DeepScientist anywhere: on the server through TUI, in the browser through Web, on the phone through Weixin or QQ, and even on glasses through Rokid Glasses.
@@ -30,6 +32,10 @@ This page is the shortest path to the right document.
 
 - [00 Quick Start](./00_QUICK_START.md)
   Start here if you want to install DeepScientist, launch it locally, and create your first project.
+- [20 Workspace Modes Guide](./20_WORKSPACE_MODES_GUIDE.md)
+  Read this if you want to choose correctly between Copilot and Autonomous before creating a project.
+- [19 Local Browser Auth](./19_LOCAL_BROWSER_AUTH.md)
+  Read this if you want to understand the local password prompt, where to find the password, and how to disable it.
 - [05 TUI Guide](./05_TUI_GUIDE.md)
   Read this if your main surface is the terminal and you want one end-to-end path through `ds --tui`, quests, connectors, and cross-surface work.
 - [15 Codex Provider Setup](./15_CODEX_PROVIDER_SETUP.md)
@@ -43,6 +49,8 @@ This page is the shortest path to the right document.
 
 - [02 Start Research Guide](./02_START_RESEARCH_GUIDE.md)
   Explains the current frontend fields, derived contract fields, and practical examples.
+- [20 Workspace Modes Guide](./20_WORKSPACE_MODES_GUIDE.md)
+  Use this when the main question is not “how do I fill the form?” but “should this project start as Copilot or Autonomous?”.
 - [01 Settings Reference](./01_SETTINGS_REFERENCE.md)
   Use this when you need to configure runners, connectors, runtime defaults, or home paths.
 - [11 License And Risk Notice](./11_LICENSE_AND_RISK.md)
@@ -91,3 +99,11 @@ This page is the shortest path to the right document.
   High-level system contracts and repository structure.
 - [91 Development](./91_DEVELOPMENT.md)
   Maintainer-facing workflow and implementation notes.
+
+## Community
+
+Welcome to join the WeChat group for discussion.
+
+<p align="center">
+  <img src="../../assets/readme/wechat.jpg" alt="DeepScientist WeChat group" width="360" />
+</p>

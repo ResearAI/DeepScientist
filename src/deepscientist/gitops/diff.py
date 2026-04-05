@@ -113,6 +113,67 @@ def list_branch_canvas(repo: Path, *, quest_id: str) -> dict[str, Any]:
     }
 
 
+def list_commit_canvas(repo: Path, *, quest_id: str, limit: int = 80) -> dict[str, Any]:
+    resolved_limit = max(1, min(int(limit), 200))
+    head = head_commit(repo)
+    current_ref = current_branch(repo)
+    commits = _git_commit_canvas_log(repo, limit=resolved_limit)
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    seen_shas = {item["sha"] for item in commits if str(item.get("sha") or "").strip()}
+
+    for commit in commits:
+        sha = str(commit.get("sha") or "").strip()
+        if not sha:
+            continue
+        detail = commit_detail(repo, sha=sha)
+        parents = [str(item).strip() for item in (detail.get("parents") or []) if str(item).strip()]
+        files = detail.get("files") or []
+        changed_paths = [
+            str(item.get("path") or "").strip()
+            for item in files
+            if str(item.get("path") or "").strip()
+        ]
+        node = {
+            "sha": sha,
+            "short_sha": str(detail.get("short_sha") or commit.get("short_sha") or sha[:7]).strip(),
+            "parents": parents,
+            "subject": str(detail.get("subject") or commit.get("subject") or "").strip() or sha[:7],
+            "body_preview": _body_preview(str(detail.get("body") or "").strip()),
+            "authored_at": str(detail.get("authored_at") or commit.get("authored_at") or "").strip() or None,
+            "author_name": str(detail.get("author_name") or commit.get("author_name") or "").strip() or None,
+            "branch_refs": _normalize_branch_refs(commit.get("decorations")),
+            "current": bool(head and sha == head),
+            "active_workspace": bool(head and sha == head),
+            "changed_paths": changed_paths,
+            "file_count": int(detail.get("file_count") or len(files)),
+            "added": int(((detail.get("stats") or {}) if isinstance(detail.get("stats"), dict) else {}).get("added") or 0),
+            "removed": int(((detail.get("stats") or {}) if isinstance(detail.get("stats"), dict) else {}).get("removed") or 0),
+            "compare_base": parents[0] if parents else None,
+            "compare_head": sha,
+            "selection_type": "git_commit_node",
+        }
+        nodes.append(node)
+        for parent in parents:
+            if parent in seen_shas:
+                edges.append(
+                    {
+                        "from": parent,
+                        "to": sha,
+                        "relation": "parent",
+                    }
+                )
+
+    return {
+        "quest_id": quest_id,
+        "workspace_mode": "copilot",
+        "head": head,
+        "current_ref": current_ref,
+        "nodes": nodes,
+        "edges": edges,
+    }
+
+
 def compare_refs(repo: Path, *, base: str, head: str) -> dict[str, Any]:
     _require_ref(repo, base)
     _require_ref(repo, head)
@@ -773,6 +834,74 @@ def _git_log(repo: Path, *, revspec: str, limit: int = 30) -> list[dict[str, Any
             }
         )
     return commits
+
+
+def _git_commit_canvas_log(repo: Path, *, limit: int = 80) -> list[dict[str, Any]]:
+    result = _git_stdout(
+        repo,
+        [
+            "log",
+            "--all",
+            "--topo-order",
+            "--date=iso-strict",
+            f"-n{limit}",
+            "--decorate=short",
+            "--pretty=format:%H%x1f%h%x1f%P%x1f%ad%x1f%an%x1f%s%x1f%b%x1f%D",
+        ],
+    )
+    commits: list[dict[str, Any]] = []
+    for line in result.splitlines():
+        if not line.strip():
+            continue
+        sha, short_sha, parents_raw, authored_at, author_name, subject, body, decorations = (
+            line.split("\x1f") + ["", "", "", "", "", "", "", ""]
+        )[:8]
+        commits.append(
+            {
+                "sha": sha.strip(),
+                "short_sha": short_sha.strip(),
+                "parents": [item for item in parents_raw.strip().split() if item],
+                "authored_at": authored_at.strip(),
+                "author_name": author_name.strip(),
+                "subject": subject.strip(),
+                "body": body.strip(),
+                "decorations": decorations.strip(),
+            }
+        )
+    return commits
+
+
+def _normalize_branch_refs(raw: Any) -> list[str]:
+    text = str(raw or "").strip()
+    if not text:
+        return []
+    refs: list[str] = []
+    for part in text.split(","):
+        cleaned = part.strip()
+        if not cleaned:
+            continue
+        if cleaned.startswith("HEAD -> "):
+            cleaned = cleaned[len("HEAD -> ") :].strip()
+        if cleaned.startswith("tag: "):
+            continue
+        if cleaned.startswith("origin/"):
+            continue
+        if cleaned == "HEAD":
+            continue
+        refs.append(cleaned)
+    return refs
+
+
+def _body_preview(body: str, *, max_lines: int = 3, max_chars: int = 220) -> str | None:
+    if not body:
+        return None
+    lines = [line.strip() for line in body.splitlines() if line.strip()]
+    if not lines:
+        return None
+    preview = " ".join(lines[:max_lines]).strip()
+    if len(preview) > max_chars:
+        preview = preview[: max_chars - 1].rstrip() + "…"
+    return preview or None
 
 
 def _normalize_patch_lines(patch: str) -> list[str]:

@@ -46,6 +46,7 @@ import {
   openDemoDocument,
 } from '@/demo/adapter'
 import { isDemoProjectId } from '@/demo/projects'
+import { authHeaders } from '@/lib/auth'
 
 type ConfigStructuredPayload = Record<string, unknown>
 
@@ -86,15 +87,23 @@ async function parseResponseBody(response: Response): Promise<Record<string, unk
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
+    ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders(init?.headers),
     },
-    ...init,
   })
   return parseResponse<T>(response)
 }
 
 export const client = {
+  authLogin: (token: string) =>
+    api<{ ok: boolean; authenticated: boolean; auth_enabled: boolean; token_masked?: string | null }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+  authToken: () =>
+    api<{ ok: boolean; auth_enabled: boolean; token?: string | null; token_masked?: string | null }>('/api/auth/token'),
   systemUpdateStatus: () => api<SystemUpdateStatus>('/api/system/update'),
   systemUpdateAction: (action: 'install_latest' | 'remind_later' | 'skip_version') =>
     api<Record<string, unknown>>('/api/system/update', {

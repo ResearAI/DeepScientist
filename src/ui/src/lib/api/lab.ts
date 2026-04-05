@@ -1763,7 +1763,9 @@ function buildLocalBranchGraphNodes(
   }
 
   const nodes: LabQuestGraphNode[] = [baselineNode, ...realNodes]
-  if (baselineGate === 'pending') {
+  const workspaceMode = String(summary.workspace_mode || '').trim().toLowerCase()
+  const allowOperationalNodesWithoutBaseline = workspaceMode === 'copilot'
+  if (baselineGate === 'pending' && !allowOperationalNodesWithoutBaseline) {
     return [baselineNode]
   }
 
@@ -1828,7 +1830,9 @@ export function resolveLocalBaselineAnchorNode(
   summaryBranch?: string | null
 ): LabQuestGraphNode | null {
   const operationalNodes = nodes.filter(
-    (node) => node.node_kind !== 'baseline_root' && node.node_kind !== 'placeholder'
+    (node) =>
+      node.node_kind !== 'baseline_root' &&
+      node.node_kind !== 'placeholder'
   )
   if (!operationalNodes.length) return null
 

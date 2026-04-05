@@ -1,6 +1,7 @@
 ---
 name: finalize
 description: Use when the quest is ready to consolidate final claims, limitations, recommendations, summary state, and graph exports before stopping or archiving.
+skill_role: stage
 ---
 
 # Finalize

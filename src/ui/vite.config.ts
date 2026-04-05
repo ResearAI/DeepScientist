@@ -2,19 +2,52 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'node:path'
 
+function resolveManualChunk(id: string) {
+  const normalizedId = id.replace(/\\/g, '/')
+  if (!normalizedId.includes('/node_modules/')) {
+    return undefined
+  }
+  if (normalizedId.includes('monaco-editor') || normalizedId.includes('@monaco-editor')) {
+    return 'plugin-monaco'
+  }
+  if (normalizedId.includes('/pdfjs-dist/') || normalizedId.includes('/unpdf/')) {
+    return 'plugin-pdf'
+  }
+  if (
+    normalizedId.includes('/novel/') ||
+    normalizedId.includes('/@tiptap/') ||
+    normalizedId.includes('/yjs/') ||
+    normalizedId.includes('/y-protocols/') ||
+    normalizedId.includes('/prosemirror-') ||
+    normalizedId.includes('/lowlight/')
+  ) {
+    return 'plugin-notebook'
+  }
+  if (normalizedId.includes('/@xterm/') || normalizedId.includes('/xterm/')) {
+    return 'plugin-terminal'
+  }
+  return undefined
+}
+
 export default defineConfig(({ mode }) => {
   const proxyTarget =
     process.env.VITE_PROXY_TARGET || process.env.VITE_API_URL || 'http://127.0.0.1:20999'
 
   return {
     base: '/ui/',
+    publicDir: false,
     plugins: [react()],
     build: {
       outDir: 'dist',
       emptyOutDir: true,
       target: 'esnext',
-      minify: false,
+      minify: mode === 'development' ? false : 'esbuild',
       reportCompressedSize: false,
+      rollupOptions: {
+        output: {
+          manualChunks: resolveManualChunk,
+        },
+      },
     },
     optimizeDeps: {
       esbuildOptions: {

@@ -13,6 +13,7 @@ export function EnhancedTerminal({
   onInput,
   onBinary,
   onResize,
+  resizeKey,
   onReady,
   onProgress,
   searchOpen,
@@ -26,6 +27,7 @@ export function EnhancedTerminal({
   onInput: (data: string) => void
   onBinary?: (data: string) => void
   onResize: (cols: number, rows: number) => void
+  resizeKey?: string | number | null
   onReady: (handlers: {
     write: (data: string, onComplete?: () => void) => void
     clear: () => void
@@ -104,10 +106,12 @@ export function EnhancedTerminal({
     }
   }, [fitAddonRef, terminalRef])
 
-  useTerminalResize(containerRef, (cols, rows) => {
+  const handleResize = useCallback((cols: number, rows: number) => {
     fit()
     onResize(cols, rows)
-  }, getSize)
+  }, [fit, onResize])
+
+  useTerminalResize(containerRef, handleResize, getSize, resizeKey)
 
   const handleSearch = useCallback(
     (query: string) => {

@@ -24,7 +24,7 @@ from ..artifact.metrics import build_baseline_compare_payload, build_metrics_tim
 from ..config import ConfigManager
 from ..connector_runtime import conversation_identity_key, normalize_conversation_id, parse_conversation_id
 from ..file_lock import advisory_file_lock
-from ..gitops import current_branch, export_git_graph, head_commit, init_repo, list_branch_canvas
+from ..gitops import current_branch, export_git_graph, head_commit, init_repo, list_branch_canvas, list_commit_canvas
 from ..home import repo_root
 from ..registries import BaselineRegistry
 from ..shared import append_jsonl, ensure_dir, generate_id, iter_jsonl, read_json, read_jsonl, read_jsonl_tail, read_text, read_yaml, resolve_within, run_command, sha256_text, slugify, utc_now, write_json, write_text, write_yaml
@@ -172,6 +172,127 @@ def _iter_jsonl_records_safely(
                     yield payload
 
 
+def _parse_jsonl_record_line_safely(
+    raw_line: bytes,
+    *,
+    oversized_line_bytes: int = _EVENTS_OVERSIZED_LINE_BYTES,
+) -> dict[str, Any] | None:
+    raw = bytes(raw_line).strip()
+    if not raw:
+        return None
+    line_bytes = len(raw)
+    if line_bytes > oversized_line_bytes:
+        return _oversized_event_placeholder(
+            prefix=raw[:_OVERSIZED_EVENT_PREFIX_BYTES],
+            line_bytes=line_bytes,
+        )
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _tail_jsonl_records_safely(
+    path: Path,
+    *,
+    limit: int,
+    oversized_line_bytes: int = _EVENTS_OVERSIZED_LINE_BYTES,
+) -> tuple[list[tuple[int, dict[str, Any]]], int]:
+    normalized_limit = max(int(limit or 0), 0)
+    if normalized_limit <= 0 or not path.exists():
+        return [], 0
+    total = _count_jsonl_lines_fast(path)
+    if total <= 0:
+        return [], 0
+
+    raw_tail = _read_jsonl_tail_lines_fast(path, normalized_limit)
+    if not raw_tail:
+        return [], total
+
+    cursor_start = max(total - len(raw_tail) + 1, 1)
+    parsed: list[tuple[int, dict[str, Any]]] = []
+    for cursor, raw_line in enumerate(raw_tail, start=cursor_start):
+        payload = _parse_jsonl_record_line_safely(
+            raw_line,
+            oversized_line_bytes=oversized_line_bytes,
+        )
+        if isinstance(payload, dict):
+            parsed.append((cursor, payload))
+    return parsed, total
+
+
+def _count_jsonl_lines_fast(path: Path, *, chunk_size: int = 1024 * 1024) -> int:
+    if not path.exists():
+        return 0
+    total = 0
+    last_byte = b""
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(chunk_size)
+            if not chunk:
+                break
+            total += chunk.count(b"\n")
+            last_byte = chunk[-1:]
+    if total == 0 and last_byte:
+        return 1
+    if last_byte not in {b"", b"\n"}:
+        total += 1
+    return total
+
+
+def _read_jsonl_tail_lines_fast(path: Path, limit: int, *, chunk_size: int = 1024 * 1024) -> list[bytes]:
+    normalized_limit = max(int(limit or 0), 0)
+    if normalized_limit <= 0 or not path.exists():
+        return []
+
+    size = path.stat().st_size
+    if size <= 0:
+        return []
+
+    lines: deque[bytes] = deque()
+    remainder = b""
+    with path.open("rb") as handle:
+        position = size
+        while position > 0 and len(lines) < normalized_limit:
+            read_size = min(chunk_size, position)
+            position -= read_size
+            handle.seek(position)
+            chunk = handle.read(read_size)
+            payload = chunk + remainder
+            parts = payload.split(b"\n")
+            remainder = parts[0]
+            for raw_line in reversed(parts[1:]):
+                stripped = raw_line.rstrip(b"\r")
+                if not stripped.strip():
+                    continue
+                lines.appendleft(stripped)
+                if len(lines) >= normalized_limit:
+                    break
+        if len(lines) < normalized_limit and remainder.strip():
+            lines.appendleft(remainder.rstrip(b"\r"))
+    return list(lines)[-normalized_limit:]
+
+
+def _iter_jsonl_records_from_offset_safely(
+    path: Path,
+    *,
+    start_offset: int,
+    oversized_line_bytes: int = _EVENTS_OVERSIZED_LINE_BYTES,
+):
+    if not path.exists():
+        return
+    with path.open("rb") as handle:
+        handle.seek(max(int(start_offset or 0), 0))
+        for raw_line in handle:
+            payload = _parse_jsonl_record_line_safely(
+                raw_line,
+                oversized_line_bytes=oversized_line_bytes,
+            )
+            if isinstance(payload, dict):
+                yield payload
+
+
 class QuestService:
     def __init__(self, home: Path, skill_installer: SkillInstaller | None = None) -> None:
         self.home = home
@@ -182,6 +303,7 @@ class QuestService:
         self._file_cache: dict[str, dict[str, Any]] = {}
         self._jsonl_cache_lock = threading.Lock()
         self._jsonl_cache: dict[str, dict[str, Any]] = {}
+        self._jsonl_tail_cache: dict[str, dict[str, Any]] = {}
         self._snapshot_cache_lock = threading.Lock()
         self._snapshot_cache: dict[str, dict[str, Any]] = {}
         self._codex_history_cache_lock = threading.Lock()
@@ -288,6 +410,13 @@ class QuestService:
         return quest_root / ".ds" / "lab_canvas_state.json"
 
     def _default_research_state(self, quest_root: Path) -> dict[str, Any]:
+        quest_yaml = self.read_quest_yaml(quest_root)
+        startup_contract = (
+            dict(quest_yaml.get("startup_contract") or {})
+            if isinstance(quest_yaml.get("startup_contract"), dict)
+            else {}
+        )
+        workspace_mode = str(startup_contract.get("workspace_mode") or "").strip().lower() or "quest"
         return {
             "version": 1,
             "active_idea_id": None,
@@ -304,7 +433,7 @@ class QuestService:
             "paper_parent_worktree_root": None,
             "paper_parent_run_id": None,
             "next_pending_slice_id": None,
-            "workspace_mode": "quest",
+            "workspace_mode": workspace_mode,
             "last_flow_type": None,
             "updated_at": utc_now(),
         }
@@ -354,7 +483,7 @@ class QuestService:
                 continue
             current[key] = str(value) if isinstance(value, Path) else value
         payload = self.write_research_state(quest_root, current)
-        self.schedule_projection_refresh(quest_root, kinds=("details", "canvas"))
+        self.schedule_projection_refresh(quest_root, kinds=("details", "canvas", "git_canvas"))
         return payload
 
     def read_lab_canvas_state(self, quest_root: Path) -> dict[str, Any]:
@@ -971,6 +1100,8 @@ class QuestService:
             return self._details_projection_state(quest_root)
         if kind == "canvas":
             return self._canvas_projection_state(quest_root)
+        if kind == "git_canvas":
+            return self._canvas_projection_state(quest_root)
         raise ValueError(f"Unsupported projection kind `{kind}`.")
 
     def _projection_source_signature(self, quest_root: Path, kind: str) -> str:
@@ -1434,6 +1565,17 @@ class QuestService:
         update_progress(2, "Computing branch canvas")
         return list_branch_canvas(quest_root, quest_id=quest_root.name)
 
+    def _build_git_canvas_projection_payload(
+        self,
+        quest_root: Path,
+        *,
+        source_signature: str,
+        update_progress: Any,
+    ) -> dict[str, Any]:
+        update_progress(1, "Scanning commit history")
+        update_progress(2, "Computing commit canvas")
+        return list_commit_canvas(quest_root, quest_id=quest_root.name)
+
     def _build_projection_payload(
         self,
         quest_root: Path,
@@ -1450,6 +1592,12 @@ class QuestService:
             )
         if kind == "canvas":
             return self._build_canvas_projection_payload(
+                quest_root,
+                source_signature=source_signature,
+                update_progress=update_progress,
+            )
+        if kind == "git_canvas":
+            return self._build_git_canvas_projection_payload(
                 quest_root,
                 source_signature=source_signature,
                 update_progress=update_progress,
@@ -1486,6 +1634,17 @@ class QuestService:
             },
         }
 
+    def _placeholder_git_canvas_payload(self, quest_id: str, quest_root: Path) -> dict[str, Any]:
+        research_state = self.read_research_state(quest_root)
+        return {
+            "quest_id": quest_id,
+            "workspace_mode": str(research_state.get("workspace_mode") or "copilot").strip() or "copilot",
+            "head": head_commit(quest_root),
+            "current_ref": current_branch(quest_root),
+            "nodes": [],
+            "edges": [],
+        }
+
     def _projected_payload(self, quest_id: str, kind: str) -> dict[str, Any]:
         quest_root = self._quest_root(quest_id)
         source_signature = self._projection_source_signature(quest_root, kind)
@@ -1510,11 +1669,12 @@ class QuestService:
             else None
         )
         if payload is None:
-            payload = (
-                self._placeholder_workflow_payload(quest_id, quest_root)
-                if kind == "details"
-                else self._placeholder_canvas_payload(quest_id, quest_root)
-            )
+            if kind == "details":
+                payload = self._placeholder_workflow_payload(quest_id, quest_root)
+            elif kind == "git_canvas":
+                payload = self._placeholder_git_canvas_payload(quest_id, quest_root)
+            else:
+                payload = self._placeholder_canvas_payload(quest_id, quest_root)
         payload["projection_status"] = status
         return payload
 
@@ -1535,8 +1695,8 @@ class QuestService:
     ) -> None:
         resolved_kinds = [
             str(kind).strip()
-            for kind in (kinds or ("details", "canvas"))
-            if str(kind).strip() in {"details", "canvas"}
+            for kind in (kinds or ("details", "canvas", "git_canvas"))
+            if str(kind).strip() in {"details", "canvas", "git_canvas"}
         ]
         if not resolved_kinds:
             return
@@ -1562,6 +1722,9 @@ class QuestService:
 
     def git_branch_canvas(self, quest_id: str) -> dict[str, Any]:
         return self._projected_payload(quest_id, "canvas")
+
+    def git_commit_canvas(self, quest_id: str) -> dict[str, Any]:
+        return self._projected_payload(quest_id, "git_canvas")
 
     def _active_baseline_attachment(self, quest_root: Path, workspace_root: Path) -> dict[str, Any] | None:
         attachments: list[dict[str, Any]] = []
@@ -2602,7 +2765,7 @@ class QuestService:
         )
         write_text(quest_root / "brief.md", initial_brief(goal))
         write_text(quest_root / "plan.md", initial_plan())
-        write_text(quest_root / "status.md", initial_status())
+        write_text(quest_root / "status.md", initial_status(startup_contract))
         write_text(quest_root / "SUMMARY.md", initial_summary())
         write_text(quest_root / ".gitignore", gitignore())
         self._write_active_user_requirements(
@@ -2790,6 +2953,7 @@ class QuestService:
             "research_head_worktree_root": research_state.get("research_head_worktree_root"),
             "current_workspace_branch": research_state.get("current_workspace_branch"),
             "current_workspace_root": research_state.get("current_workspace_root"),
+            "workspace_mode": research_state.get("workspace_mode") or "quest",
             "active_idea_id": research_state.get("active_idea_id"),
             "active_baseline_id": active_baseline_id,
             "active_baseline_variant_id": active_baseline_variant_id,
@@ -2876,8 +3040,8 @@ class QuestService:
             }
         return items
 
-    @staticmethod
     def _read_jsonl_cursor_slice(
+        self,
         path: Path,
         *,
         after: int = 0,
@@ -2886,7 +3050,10 @@ class QuestService:
         tail: bool = False,
     ) -> tuple[list[tuple[int, dict[str, Any]]], int, bool]:
         normalized_limit = max(int(limit or 0), 0)
+        cache_key = self._cache_key_for_path(path)
         if not path.exists():
+            with self._jsonl_cache_lock:
+                self._jsonl_tail_cache.pop(cache_key, None)
             return [], 0, False
         if normalized_limit <= 0:
             total = sum(1 for _ in _iter_jsonl_records_safely(path))
@@ -2905,11 +3072,71 @@ class QuestService:
             return list(window), total, has_more
 
         if tail:
-            window = deque(maxlen=normalized_limit)
-            total = 0
-            for payload in _iter_jsonl_records_safely(path):
-                total += 1
-                window.append((total, payload))
+            state = self._path_state(path)
+            cached_tail: dict[str, Any] | None = None
+            with self._jsonl_cache_lock:
+                candidate = self._jsonl_tail_cache.get(cache_key)
+                if isinstance(candidate, dict):
+                    cached_tail = dict(candidate)
+
+            if cached_tail and cached_tail.get("state") == state:
+                cached_limit = int(cached_tail.get("limit") or 0)
+                cached_records = list(cached_tail.get("records") or [])
+                cached_total = int(cached_tail.get("total") or 0)
+                if cached_limit >= normalized_limit and cached_records:
+                    window = cached_records[-normalized_limit:]
+                    has_more = cached_total > len(window)
+                    return window, cached_total, has_more
+
+            if (
+                cached_tail
+                and state is not None
+                and cached_tail.get("state")
+                and tuple(cached_tail.get("state"))[0] == state[0]
+                and state[2] >= tuple(cached_tail.get("state"))[2]
+            ):
+                cached_state = tuple(cached_tail.get("state"))
+                cached_limit = int(cached_tail.get("limit") or 0)
+                cached_total = int(cached_tail.get("total") or 0)
+                max_limit = max(normalized_limit, cached_limit)
+                window = deque(
+                    list(cached_tail.get("records") or []),
+                    maxlen=max_limit,
+                )
+                appended_records = list(
+                    _iter_jsonl_records_from_offset_safely(
+                        path,
+                        start_offset=int(cached_state[2]),
+                    )
+                )
+                if appended_records:
+                    next_cursor = cached_total + 1
+                    for payload in appended_records:
+                        window.append((next_cursor, payload))
+                        next_cursor += 1
+                    total = cached_total + len(appended_records)
+                else:
+                    total = cached_total
+                stored_records = list(window)
+                with self._jsonl_cache_lock:
+                    self._jsonl_tail_cache[cache_key] = {
+                        "state": state,
+                        "limit": max_limit,
+                        "total": total,
+                        "records": stored_records,
+                    }
+                selected = stored_records[-normalized_limit:]
+                has_more = total > len(selected)
+                return selected, total, has_more
+
+            window, total = _tail_jsonl_records_safely(path, limit=normalized_limit)
+            with self._jsonl_cache_lock:
+                self._jsonl_tail_cache[cache_key] = {
+                    "state": state,
+                    "limit": normalized_limit,
+                    "total": total,
+                    "records": list(window),
+                }
             has_more = total > len(window)
             return list(window), total, has_more
 
@@ -2944,6 +3171,14 @@ class QuestService:
             return str(path.resolve())
         except FileNotFoundError:
             return str(path.absolute())
+
+    def jsonl_tail_cache_entry(self, path: Path) -> dict[str, Any] | None:
+        cache_key = self._cache_key_for_path(path)
+        with self._jsonl_cache_lock:
+            candidate = self._jsonl_tail_cache.get(cache_key)
+            if isinstance(candidate, dict):
+                return dict(candidate)
+        return None
 
     def _read_cached_path(
         self,
@@ -3610,10 +3845,11 @@ class QuestService:
             normalized_anchor = str(active_anchor).strip()
             if not normalized_anchor:
                 raise ValueError("`active_anchor` cannot be empty.")
-            from ..prompts.builder import STANDARD_SKILLS
+            from ..prompts.builder import current_standard_skills
 
-            if normalized_anchor not in STANDARD_SKILLS:
-                allowed = ", ".join(STANDARD_SKILLS)
+            available_stage_skills = current_standard_skills(repo_root())
+            if normalized_anchor not in available_stage_skills:
+                allowed = ", ".join(available_stage_skills)
                 raise ValueError(f"Unsupported active anchor `{normalized_anchor}`. Allowed values: {allowed}.")
             if quest_data.get("active_anchor") != normalized_anchor:
                 quest_data["active_anchor"] = normalized_anchor
@@ -3670,10 +3906,11 @@ class QuestService:
             normalized_anchor = str(active_anchor or "").strip()
             if not normalized_anchor:
                 raise ValueError("`active_anchor` cannot be empty.")
-            from ..prompts.builder import STANDARD_SKILLS
+            from ..prompts.builder import current_standard_skills
 
-            if normalized_anchor not in STANDARD_SKILLS:
-                allowed = ", ".join(STANDARD_SKILLS)
+            available_stage_skills = current_standard_skills(repo_root())
+            if normalized_anchor not in available_stage_skills:
+                allowed = ", ".join(available_stage_skills)
                 raise ValueError(f"Unsupported active anchor `{normalized_anchor}`. Allowed values: {allowed}.")
             if quest_data.get("active_anchor") != normalized_anchor:
                 quest_data["active_anchor"] = normalized_anchor
@@ -4830,10 +5067,11 @@ class QuestService:
             if continuation_anchor is not _UNSET:
                 normalized_anchor = str(continuation_anchor or "").strip() or None
                 if normalized_anchor is not None:
-                    from ..prompts.builder import STANDARD_SKILLS
+                    from ..prompts.builder import current_standard_skills
 
-                    if normalized_anchor not in STANDARD_SKILLS:
-                        allowed = ", ".join(STANDARD_SKILLS)
+                    available_stage_skills = current_standard_skills(repo_root())
+                    if normalized_anchor not in available_stage_skills:
+                        allowed = ", ".join(available_stage_skills)
                         raise ValueError(
                             f"Unsupported continuation anchor `{normalized_anchor}`. Allowed values: {allowed}."
                         )
@@ -5134,6 +5372,7 @@ class QuestService:
         connector_hints: dict[str, Any] | None = None,
         created_at: str | None = None,
         counts_as_visible: bool = True,
+        deliver_to_bound_conversations: bool | None = None,
     ) -> dict[str, Any]:
         timestamp = created_at or utc_now()
         payload = {
@@ -5150,6 +5389,11 @@ class QuestService:
             "reply_mode": reply_mode,
             "surface_actions": [dict(item) for item in (surface_actions or []) if isinstance(item, dict)],
             "connector_hints": dict(connector_hints) if isinstance(connector_hints, dict) else {},
+            "deliver_to_bound_conversations": (
+                bool(deliver_to_bound_conversations)
+                if deliver_to_bound_conversations is not None
+                else None
+            ),
             "created_at": timestamp,
         }
         append_jsonl(self._interaction_journal_path(quest_root), payload)

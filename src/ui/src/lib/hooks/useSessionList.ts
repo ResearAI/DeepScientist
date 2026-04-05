@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getApiBaseUrl } from '@/lib/api/client'
 import { refreshAccessToken } from '@/lib/api/auth'
+import { handleUnauthorizedAuth, readRequestAuthContext, type RequestAuthMode } from '@/lib/auth'
 import { listSessionSummaries, type SessionListItem } from '@/lib/api/sessions'
-import { redirectToLanding } from '@/lib/navigation'
 
 export type SessionStreamStatus =
   | 'idle'
@@ -79,29 +79,15 @@ export function useSessionList(options: {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     }
-    let authMode: 'user' | 'none' = 'none'
-
-    if (typeof window === 'undefined') return { headers, authMode }
-
-    const userToken = window.localStorage.getItem('ds_access_token')
-
-    if (userToken) {
-      headers.Authorization = `Bearer ${userToken}`
-      authMode = 'user'
+    const { token, mode } = readRequestAuthContext()
+    if (token) {
+      headers.Authorization = `Bearer ${token}`
     }
-
-    return { headers, authMode }
+    return { headers, authMode: mode }
   }, [])
 
-  const handleUnauthorized = useCallback((headers: Record<string, string>) => {
-    if (typeof window === 'undefined') return
-    const userToken = window.localStorage.getItem('ds_access_token')
-    const hasUserToken = Boolean(userToken)
-
-    if (hasUserToken) {
-      window.localStorage.removeItem('ds_access_token')
-      redirectToLanding('session_expired')
-    }
+  const handleUnauthorized = useCallback((authMode: RequestAuthMode) => {
+    handleUnauthorizedAuth(authMode, 'session_expired')
   }, [])
 
   const parseEventBlock = (block: string) => {
@@ -195,7 +181,7 @@ export function useSessionList(options: {
             }
           }
           updateConnection({ status: 'error', error: 'unauthorized' })
-          handleUnauthorized(headers)
+          handleUnauthorized(authMode)
           return
         }
 

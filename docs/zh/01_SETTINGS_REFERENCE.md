@@ -52,6 +52,7 @@ daemon:
 ui:
   host: 0.0.0.0
   port: 20999
+  auth_enabled: false
   auto_open_browser: true
   default_mode: both
 logging:
@@ -172,6 +173,17 @@ acp:
 - 作用：本地 UI 服务监听端口。
 - 何时修改：端口冲突时。
 
+**`ui.auth_enabled`**
+
+- 类型：`boolean`
+- 默认值：`false`
+- 页面标签：`Require local password`
+- 作用：为 Web 工作区和所有 `/api/*` 路由启用本地 16 位浏览器访问密码。
+- 行为：
+  - `true`：`ds` 会在终端打印这次启动生成的密码；如果浏览器里没有有效登录态，就必须先输入密码；登录成功后会在浏览器中持久化。
+  - `false`：关闭本地密码门禁，保持普通本地地址直连行为。
+- CLI 覆盖：`ds --auth true` 或 `ds --auth false`
+
 **`ui.auto_open_browser`**
 
 - 类型：`boolean`
@@ -274,6 +286,7 @@ acp:
 - 默认值：`true`
 - 页面标签：`Sync project skills on create`
 - 作用：创建项目时，把技能镜像到项目本地 `.codex/skills` / `.claude/agents`。
+- Prompt 说明：同时会初始化 quest 本地的受管 prompt 镜像 `.codex/prompts/`。
 
 **`skills.sync_quest_on_open`**
 
@@ -281,6 +294,26 @@ acp:
 - 默认值：`true`
 - 页面标签：`Sync project skills on open`
 - 作用：打开已有项目时刷新本地技能镜像。
+- Prompt 说明：会刷新当前 DeepScientist home 下已发现 quest 的本地技能与 prompt 镜像。
+
+受管 prompt 行为：
+
+- `.codex/prompts/` 现在应被视为“当前 active prompt 树”的受管副本，而不是长期手工维护的 override。
+- 每次真实 runner turn 开始前，DeepScientist 都会把 quest 本地 active prompt 树和仓库当前 `src/prompts/` 做比较，并自动修复漂移。
+- 如果 active prompt 树与仓库源不同，系统会先把旧树备份到 `.codex/prompt_versions/<backup_id>/`，再写入新的 active 副本。
+- 这个运行前同步是针对“本次 turn 实际使用的 quest_root”执行的，所以即使 quest 不在默认 `home/quests` 下面，也仍然会更新。
+- 运行时覆盖：`ds daemon --prompt-version latest` 使用当前受管 active prompt；`ds daemon --prompt-version <official_version>` 会优先选择该正式版本号下最新的一份 prompt 备份。
+- 如果你不是想用“这个正式版本下最新的一份”，而是想精确回放某一次备份，也仍然可以直接传 `.codex/prompt_versions/` 里的精确目录名。
+- 同样的覆盖也支持一次性 CLI run：`ds run --prompt-version <official_version> ...`。
+
+受管 auto-continue 行为：
+
+- `workspace_mode = copilot`
+  - 完成当前请求单元后，DeepScientist 通常停驻，等待下一条用户消息或 `/resume`
+- `workspace_mode = autonomous`
+  - 如果真实外部长任务还没跑起来，就继续用后续 turns 做准备、启动或耐久路由
+  - 一旦真实外部长任务已经在跑，auto-continue 就切成低频巡检，默认大约每 `240` 秒一轮
+- auto-continue prompt 现在还会带上一个紧凑的 resume spine：最近用户消息、最近 assistant checkpoint、最近 run 摘要、少量 memory cues，以及当前 `bash_exec` 状态
 
 ### Connector policy
 

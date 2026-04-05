@@ -32,6 +32,8 @@ DEFAULT_POLL_INTERVAL_SECONDS = 0.35
 TERMINAL_STATUSES = {"completed", "failed", "terminated"}
 DEFAULT_TERMINAL_SESSION_ID = "terminal-main"
 BASH_WATCHDOG_AFTER_SECONDS = 1800
+SUMMARY_RECENT_SESSION_LIMIT = 256
+SUMMARY_RUNNING_SESSION_LIMIT = 64
 INPUT_ESCAPE_SEQUENCE_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[@-_]")
 
 
@@ -373,6 +375,65 @@ class BashExecService:
             str(session.get("bash_id") or ""),
         )
 
+    @classmethod
+    def _normalize_summary_session_list(
+        cls,
+        sessions: Any,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        max_items = max(0, int(limit or 0))
+        if max_items <= 0:
+            return []
+        normalized: dict[str, dict[str, Any]] = {}
+        for raw in sessions or []:
+            if not isinstance(raw, dict):
+                continue
+            compact = cls._summary_session_payload(raw)
+            bash_id = _normalize_string(compact.get("bash_id"))
+            if not bash_id:
+                continue
+            normalized[bash_id] = compact
+        ordered = sorted(normalized.values(), key=cls._summary_sort_key, reverse=True)
+        return ordered[:max_items]
+
+    @classmethod
+    def _merge_summary_session_list(
+        cls,
+        sessions: Any,
+        compact: dict[str, Any],
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        bash_id = _normalize_string(compact.get("bash_id"))
+        merged = cls._normalize_summary_session_list(sessions, limit=max(1, int(limit or 0)) + 1)
+        merged = [
+            item
+            for item in merged
+            if _normalize_string(item.get("bash_id")) != bash_id
+        ]
+        if bash_id:
+            merged.append(cls._summary_session_payload(compact))
+        merged.sort(key=cls._summary_sort_key, reverse=True)
+        return merged[: max(1, int(limit or 0))]
+
+    @classmethod
+    def _remove_summary_session(
+        cls,
+        sessions: Any,
+        bash_id: str,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        normalized_bash_id = _normalize_string(bash_id)
+        if not normalized_bash_id:
+            return cls._normalize_summary_session_list(sessions, limit=limit)
+        return [
+            item
+            for item in cls._normalize_summary_session_list(sessions, limit=limit)
+            if _normalize_string(item.get("bash_id")) != normalized_bash_id
+        ][: max(1, int(limit or 0))]
+
     @staticmethod
     def _is_active_status(value: object) -> bool:
         return _coerce_session_status(value) in {"running", "terminating"}
@@ -382,8 +443,30 @@ class BashExecService:
             "session_count": 0,
             "running_count": 0,
             "latest_session": None,
+            "recent_sessions": [],
+            "running_sessions": [],
             "updated_at": utc_now(),
         }
+
+    def _normalize_summary_payload(self, summary: Any) -> dict[str, Any]:
+        merged = {**self._default_summary(), **(summary if isinstance(summary, dict) else {})}
+        latest_session = merged.get("latest_session")
+        if isinstance(latest_session, dict):
+            compact_latest = self._summary_session_payload(latest_session)
+            merged["latest_session"] = compact_latest if _normalize_string(compact_latest.get("bash_id")) else None
+        else:
+            merged["latest_session"] = None
+        merged["session_count"] = max(0, int(merged.get("session_count") or 0))
+        merged["running_count"] = max(0, int(merged.get("running_count") or 0))
+        merged["recent_sessions"] = self._normalize_summary_session_list(
+            merged.get("recent_sessions"),
+            limit=SUMMARY_RECENT_SESSION_LIMIT,
+        )
+        merged["running_sessions"] = self._normalize_summary_session_list(
+            merged.get("running_sessions"),
+            limit=SUMMARY_RUNNING_SESSION_LIMIT,
+        )
+        return merged
 
     def _refresh_summary_cache(self, quest_root: Path, summary: dict[str, Any]) -> dict[str, Any]:
         path = self.summary_path(quest_root)
@@ -397,7 +480,7 @@ class BashExecService:
             )
         else:
             state = None
-        payload = dict(summary)
+        payload = self._normalize_summary_payload(summary)
         with self._summary_cache_lock:
             self._summary_cache[cache_key] = {
                 "state": state,
@@ -423,38 +506,109 @@ class BashExecService:
         summary = read_json(path, None)
         if not isinstance(summary, dict):
             return None
-        merged = {**self._default_summary(), **summary}
+        merged = self._normalize_summary_payload(summary)
         return self._refresh_summary_cache(quest_root, merged)
 
     def _write_summary(self, quest_root: Path, summary: dict[str, Any]) -> dict[str, Any]:
-        normalized = {**self._default_summary(), **summary, "updated_at": utc_now()}
+        normalized = self._normalize_summary_payload(summary)
+        normalized["updated_at"] = utc_now()
         _atomic_write_json(self.summary_path(quest_root), normalized)
         return self._refresh_summary_cache(quest_root, normalized)
+
+    def _hydrate_summary_from_index(
+        self,
+        quest_root: Path,
+        summary: dict[str, Any],
+    ) -> dict[str, Any]:
+        needs_recent_sessions = not bool(summary.get("recent_sessions"))
+        needs_running_sessions = int(summary.get("running_count") or 0) > 0 and not bool(summary.get("running_sessions"))
+        if not needs_recent_sessions and not needs_running_sessions:
+            return summary
+
+        index_path = self.index_path(quest_root)
+        if not index_path.exists():
+            return summary
+
+        candidate_ids: list[str] = []
+        seen_ids: set[str] = set()
+        max_candidates = max(SUMMARY_RECENT_SESSION_LIMIT, SUMMARY_RUNNING_SESSION_LIMIT * 4)
+        for entry in reversed(read_jsonl(index_path)):
+            bash_id = _normalize_string((entry or {}).get("bash_id") if isinstance(entry, dict) else "")
+            if not bash_id or bash_id in seen_ids:
+                continue
+            seen_ids.add(bash_id)
+            candidate_ids.append(bash_id)
+            if len(candidate_ids) >= max_candidates:
+                break
+
+        if not candidate_ids:
+            return summary
+
+        recent_sessions: list[dict[str, Any]] = []
+        running_sessions: list[dict[str, Any]] = []
+        for bash_id in candidate_ids:
+            meta = read_json(self.meta_path(quest_root, bash_id), {})
+            if not isinstance(meta, dict) or not meta:
+                continue
+            compact = self._summary_session_payload(meta)
+            recent_sessions.append(compact)
+            if self._is_active_status(meta.get("status")):
+                running_sessions.append(compact)
+
+        if not recent_sessions and not running_sessions:
+            return summary
+
+        updated_summary = dict(summary)
+        if needs_recent_sessions and recent_sessions:
+            updated_summary["recent_sessions"] = self._normalize_summary_session_list(
+                recent_sessions,
+                limit=SUMMARY_RECENT_SESSION_LIMIT,
+            )
+            if updated_summary["recent_sessions"] and not isinstance(updated_summary.get("latest_session"), dict):
+                updated_summary["latest_session"] = updated_summary["recent_sessions"][0]
+        if needs_running_sessions:
+            updated_summary["running_sessions"] = self._normalize_summary_session_list(
+                running_sessions,
+                limit=SUMMARY_RUNNING_SESSION_LIMIT,
+            )
+        return self._write_summary(quest_root, updated_summary)
 
     def _rebuild_summary(self, quest_root: Path) -> dict[str, Any]:
         summary = self._default_summary()
         latest_session: dict[str, Any] | None = None
         session_count = 0
         running_count = 0
+        recent_sessions: list[dict[str, Any]] = []
+        running_sessions: list[dict[str, Any]] = []
         for meta_path in self.sessions_root(quest_root).glob("*/meta.json"):
             meta = read_json(meta_path, {})
             if not isinstance(meta, dict) or not meta:
                 continue
             session_count += 1
+            compact = self._summary_session_payload(meta)
+            recent_sessions.append(compact)
             if self._is_active_status(meta.get("status")):
                 running_count += 1
-            compact = self._summary_session_payload(meta)
+                running_sessions.append(compact)
             if latest_session is None or self._summary_sort_key(compact) >= self._summary_sort_key(latest_session):
                 latest_session = compact
         summary["session_count"] = session_count
         summary["running_count"] = running_count
         summary["latest_session"] = latest_session
+        summary["recent_sessions"] = self._normalize_summary_session_list(
+            recent_sessions,
+            limit=SUMMARY_RECENT_SESSION_LIMIT,
+        )
+        summary["running_sessions"] = self._normalize_summary_session_list(
+            running_sessions,
+            limit=SUMMARY_RUNNING_SESSION_LIMIT,
+        )
         return self._write_summary(quest_root, summary)
 
     def summary(self, quest_root: Path) -> dict[str, Any]:
         loaded = self._load_summary_from_disk(quest_root)
         if loaded is not None:
-            return loaded
+            return self._hydrate_summary_from_index(quest_root, loaded)
         return self._rebuild_summary(quest_root)
 
     def _write_meta(self, quest_root: Path, bash_id: str, meta: dict[str, Any]) -> dict[str, Any]:
@@ -481,6 +635,23 @@ class BashExecService:
             or self._summary_sort_key(compact) >= self._summary_sort_key(latest_session)
         ):
             summary["latest_session"] = compact
+        summary["recent_sessions"] = self._merge_summary_session_list(
+            summary.get("recent_sessions"),
+            compact,
+            limit=SUMMARY_RECENT_SESSION_LIMIT,
+        )
+        if new_running:
+            summary["running_sessions"] = self._merge_summary_session_list(
+                summary.get("running_sessions"),
+                compact,
+                limit=SUMMARY_RUNNING_SESSION_LIMIT,
+            )
+        else:
+            summary["running_sessions"] = self._remove_summary_session(
+                summary.get("running_sessions"),
+                str(compact.get("bash_id") or ""),
+                limit=SUMMARY_RUNNING_SESSION_LIMIT,
+            )
         return self._write_summary(quest_root, summary)
 
     def reconcile_session(self, quest_root: Path, bash_id: str) -> dict[str, Any]:
@@ -540,10 +711,59 @@ class BashExecService:
         normalized_agent_instance_ids = {item for item in (agent_instance_ids or []) if item}
         normalized_agent_ids = {item for item in (agent_ids or []) if item}
         normalized_chat_session = _normalize_string(chat_session_id)
-        if normalized_status in {"running", "terminating"}:
-            summary = self.summary(quest_root)
-            if int(summary.get("running_count") or 0) <= 0:
-                return []
+        summary = self.summary(quest_root)
+        if normalized_status in {"running", "terminating"} and int(summary.get("running_count") or 0) <= 0:
+            return []
+        can_use_summary_fast_path = (
+            not normalized_agent_instance_ids
+            and not normalized_agent_ids
+            and not normalized_chat_session
+        )
+        if can_use_summary_fast_path:
+            candidate_compacts: list[dict[str, Any]] | None = None
+            if normalized_status in {"running", "terminating"}:
+                running_sessions = self._normalize_summary_session_list(
+                    summary.get("running_sessions"),
+                    limit=SUMMARY_RUNNING_SESSION_LIMIT,
+                )
+                filtered_running = [
+                    item
+                    for item in running_sessions
+                    if (not normalized_kind or _normalize_string(item.get("kind")).lower() == normalized_kind)
+                    and (not normalized_status or _normalize_string(item.get("status")).lower() == normalized_status)
+                ]
+                running_count = int(summary.get("running_count") or 0)
+                if len(filtered_running) >= max(1, limit) or running_count <= len(running_sessions):
+                    candidate_compacts = filtered_running
+            elif not normalized_status:
+                recent_sessions = self._normalize_summary_session_list(
+                    summary.get("recent_sessions"),
+                    limit=SUMMARY_RECENT_SESSION_LIMIT,
+                )
+                if not normalized_kind:
+                    if len(recent_sessions) >= max(1, limit) or int(summary.get("session_count") or 0) <= len(recent_sessions):
+                        candidate_compacts = recent_sessions
+                else:
+                    filtered_recent = [
+                        item
+                        for item in recent_sessions
+                        if _normalize_string(item.get("kind")).lower() == normalized_kind
+                    ]
+                    if len(filtered_recent) >= max(1, limit) or int(summary.get("session_count") or 0) <= len(recent_sessions):
+                        candidate_compacts = filtered_recent
+            if candidate_compacts is not None:
+                resolved_sessions: list[dict[str, Any]] = []
+                for compact in candidate_compacts:
+                    bash_id = _normalize_string(compact.get("bash_id"))
+                    if not bash_id:
+                        continue
+                    try:
+                        resolved_sessions.append(self.reconcile_session(quest_root, bash_id))
+                    except FileNotFoundError:
+                        continue
+                    if len(resolved_sessions) >= max(1, limit):
+                        break
+                return resolved_sessions[: max(1, limit)]
         sessions: list[dict[str, Any]] = []
         for bash_id in self._list_session_ids(quest_root):
             try:
@@ -571,6 +791,11 @@ class BashExecService:
             if self.meta_path(quest_root, normalized).exists():
                 return normalized
             raise FileNotFoundError(f"Unknown bash session `{normalized}`.")
+        summary = self.summary(quest_root)
+        latest_session = summary.get("latest_session")
+        latest_bash_id = _normalize_string((latest_session or {}).get("bash_id") if isinstance(latest_session, dict) else "")
+        if latest_bash_id and self.meta_path(quest_root, latest_bash_id).exists():
+            return latest_bash_id
         sessions = self.list_sessions(quest_root, limit=1)
         if not sessions:
             raise FileNotFoundError("No bash session found.")

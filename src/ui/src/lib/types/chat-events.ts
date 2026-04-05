@@ -67,6 +67,9 @@ export interface EventMetadata {
   bash_mode?: string
   bash_command?: string
   bash_workdir?: string
+  quest_event_type?: string
+  quest_run_id?: string
+  quest_skill_id?: string
   quest_node_id?: string
   group_message_id?: string
   reply_state?: string

@@ -36,7 +36,7 @@ const pythonCommands = new Set([
 const UPDATE_PACKAGE_NAME = String(packageJson.name || '@researai/deepscientist').trim() || '@researai/deepscientist';
 const UPDATE_CHECK_TTL_MS = 12 * 60 * 60 * 1000;
 
-const optionsWithValues = new Set(['--home', '--host', '--port', '--quest-id', '--mode', '--proxy', '--codex-profile', '--codex']);
+const optionsWithValues = new Set(['--home', '--host', '--port', '--quest-id', '--mode', '--proxy', '--codex-profile', '--codex', '--auth']);
 
 function buildCodexOverrideEnv({ yolo = true, profile = null, binary = null } = {}) {
   const normalizedProfile = typeof profile === 'string' ? profile.trim() : '';
@@ -75,6 +75,33 @@ function parseBooleanFlagValue(rawValue) {
   if (['1', 'true', 'yes', 'on', 'y'].includes(normalized)) return true;
   if (['0', 'false', 'no', 'off', 'n'].includes(normalized)) return false;
   return null;
+}
+
+function parseCodexCliVersion(text) {
+  const match = String(text || '').match(/codex-cli\s+(\d+)\.(\d+)\.(\d+)/i);
+  if (!match) {
+    return null;
+  }
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function formatCodexCliVersion(version) {
+  if (!Array.isArray(version) || version.length !== 3) {
+    return '';
+  }
+  return version.join('.');
+}
+
+function compareCodexCliVersion(left, right) {
+  const leftParts = Array.isArray(left) ? left : [0, 0, 0];
+  const rightParts = Array.isArray(right) ? right : [0, 0, 0];
+  for (let index = 0; index < 3; index += 1) {
+    const delta = Number(leftParts[index] || 0) - Number(rightParts[index] || 0);
+    if (delta !== 0) {
+      return delta;
+    }
+  }
+  return 0;
 }
 
 function parseYoloArg(args, index, currentValue = true) {
@@ -130,6 +157,7 @@ Usage:
 Launcher flags:
   --host <host>         Bind host for the local web daemon
   --port <port>         Bind port for the local web daemon
+  --auth [true|false]   Require a 16-character local browser password. Default is false
   --tui                 Start the terminal workspace only
   --both                Start web + terminal workspace together
   --no-browser          Do not auto-open the browser
@@ -190,6 +218,47 @@ function expandUserPath(rawPath) {
 function normalizeProxyUrl(rawValue) {
   const value = String(rawValue || '').trim();
   return value || null;
+}
+
+function normalizeLegacyHostFlagArgs(argv) {
+  const args = [];
+  let warned = false;
+  let legacyValue = null;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--ip') {
+      warned = true;
+      legacyValue = argv[index + 1] || legacyValue;
+      args.push('--host');
+      if (argv[index + 1]) {
+        args.push(argv[index + 1]);
+        index += 1;
+      }
+      continue;
+    }
+    if (typeof arg === 'string' && arg.startsWith('--ip=')) {
+      warned = true;
+      legacyValue = arg.slice('--ip='.length) || legacyValue;
+      args.push('--host', arg.slice('--ip='.length));
+      continue;
+    }
+    args.push(arg);
+  }
+
+  if (!warned) {
+    return { args, warnings: [] };
+  }
+
+  const normalizedValue = String(legacyValue || '').trim();
+  const bindHint =
+    normalizedValue && ['0.0.0.0', '::', '[::]'].includes(normalizedValue)
+      ? ' Note: bind-all addresses such as 0.0.0.0 are valid for `--host`, but local browser access still uses 127.0.0.1.'
+      : '';
+  return {
+    args,
+    warnings: [`Launcher note: \`--ip\` is deprecated. Use \`--host\` instead.${bindHint}`],
+  };
 }
 
 function applyLauncherProxy(proxyUrl) {
@@ -562,6 +631,20 @@ function bindUiUrl(host, port) {
   return `http://${formatHttpHost(normalized)}:${port}`;
 }
 
+function generateBrowserAuthToken() {
+  return crypto.randomBytes(8).toString('hex');
+}
+
+function appendBrowserAuthToken(url, authToken) {
+  const normalized = typeof authToken === 'string' ? authToken.trim() : '';
+  if (!normalized) {
+    return url;
+  }
+  const target = new URL(url);
+  target.searchParams.set('token', normalized);
+  return target.toString();
+}
+
 function normalizeMode(value) {
   const normalized = String(value || '')
     .trim()
@@ -586,6 +669,66 @@ function parseBooleanSetting(rawValue, fallback = false) {
     return false;
   }
   return fallback;
+}
+
+function shouldCompileRuntimeBytecode() {
+  return parseBooleanSetting(process.env.DEEPSCIENTIST_RUNTIME_COMPILE_BYTECODE, false);
+}
+
+function readRequiredOptionValue(args, index, optionName) {
+  const value = args[index + 1];
+  if (!value || String(value).startsWith('--')) {
+    return {
+      ok: false,
+      error: `Missing value for ${optionName}.`,
+    };
+  }
+  return {
+    ok: true,
+    value,
+  };
+}
+
+function parseStrictBooleanOption(rawValue, optionName) {
+  const parsed = parseBooleanFlagValue(rawValue);
+  if (parsed === null) {
+    return {
+      ok: false,
+      error: `Invalid value for ${optionName}: ${rawValue}. Use true or false.`,
+    };
+  }
+  return {
+    ok: true,
+    value: parsed,
+  };
+}
+
+function parseStrictPortOption(rawValue, optionName) {
+  const port = Number(rawValue);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    return {
+      ok: false,
+      error: `Invalid value for ${optionName}: ${rawValue}. Expected an integer between 1 and 65535.`,
+    };
+  }
+  return {
+    ok: true,
+    value: port,
+  };
+}
+
+function parseStrictModeOption(rawValue, optionName) {
+  const normalized = String(rawValue || '').trim().toLowerCase();
+  if (!['web', 'tui', 'both'].includes(normalized)) {
+    return {
+      ok: false,
+      error: `Invalid value for ${optionName}: ${rawValue}. Expected one of: web, tui, both.`,
+    };
+  }
+  return {
+    ok: true,
+    value: normalized,
+  };
 }
 
 function supportsAnsi() {
@@ -621,6 +764,64 @@ function colorize(code, text) {
     return text;
   }
   return `${code}${text}\u001B[0m`;
+}
+
+function readCodexProviderMetadata(configDir, profile) {
+  const normalizedProfile = String(profile || '').trim();
+  const expandedDir = expandUserPath(configDir || path.join(os.homedir(), '.codex'));
+  const configPath = path.join(expandedDir, 'config.toml');
+  if (!normalizedProfile || !fs.existsSync(configPath)) {
+    return {
+      provider: null,
+      model: null,
+      envKey: null,
+      baseUrl: null,
+      wireApi: null,
+      requiresOpenAiAuth: null,
+    };
+  }
+  const text = fs.readFileSync(configPath, 'utf8');
+  const profileBlock = text.match(new RegExp(`\\[profiles\\.${normalizedProfile.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\]([\\s\\S]*?)(?:\\n\\[|$)`));
+  const provider = profileBlock?.[1]?.match(/^\s*model_provider\s*=\s*["']([^"']+)["']/m)?.[1]?.trim() || text.match(/^\s*model_provider\s*=\s*["']([^"']+)["']/m)?.[1]?.trim() || null;
+  const model = profileBlock?.[1]?.match(/^\s*model\s*=\s*["']([^"']+)["']/m)?.[1]?.trim() || text.match(/^\s*model\s*=\s*["']([^"']+)["']/m)?.[1]?.trim() || null;
+  if (!provider) {
+    return {
+      provider: null,
+      model,
+      envKey: null,
+      baseUrl: null,
+      wireApi: null,
+      requiresOpenAiAuth: null,
+    };
+  }
+  const providerBlock = text.match(new RegExp(`\\[model_providers\\.${provider.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\]([\\s\\S]*?)(?:\\n\\[|$)`));
+  const providerText = providerBlock?.[1] || '';
+  const envKey = providerText.match(/^\s*env_key\s*=\s*["']([^"']+)["']/m)?.[1]?.trim() || null;
+  const baseUrl = providerText.match(/^\s*base_url\s*=\s*["']([^"']+)["']/m)?.[1]?.trim() || null;
+  const wireApi = providerText.match(/^\s*wire_api\s*=\s*["']([^"']+)["']/m)?.[1]?.trim() || null;
+  const requiresOpenAiAuthRaw = providerText.match(/^\s*requires_openai_auth\s*=\s*(true|false)\s*$/m)?.[1] || null;
+  const requiresOpenAiAuth = requiresOpenAiAuthRaw === null ? null : requiresOpenAiAuthRaw === 'true';
+  return {
+    provider,
+    model,
+    envKey,
+    baseUrl,
+    wireApi,
+    requiresOpenAiAuth,
+  };
+}
+
+function installedCodexCliVersion(binaryPath) {
+  const resolved = resolveExecutableOnPath(binaryPath || 'codex') || binaryPath || 'codex';
+  try {
+    const result = spawnSync(resolved, ['--version'], syncSpawnOptions({ encoding: 'utf8' }));
+    if (result.status !== 0) {
+      return null;
+    }
+    return parseCodexCliVersion(`${result.stdout || ''}\n${result.stderr || ''}`);
+  } catch {
+    return null;
+  }
 }
 
 const OFFICIAL_REPOSITORY_URL = 'https://github.com/ResearAI/DeepScientist';
@@ -685,7 +886,7 @@ function pythonVersionText(probe) {
   return version;
 }
 
-function renderLaunchHints({ home, url, bindUrl, pythonSelection, yolo }) {
+function renderLaunchHints({ home, url, bindUrl, pythonSelection, yolo, authEnabled, authToken }) {
   const runtimeRows = [
     ['Version', packageJson.version],
     ['Home', truncateMiddle(home)],
@@ -694,6 +895,9 @@ function renderLaunchHints({ home, url, bindUrl, pythonSelection, yolo }) {
     ['Python', truncateMiddle(pythonVersionText(pythonSelection))],
     ['Codex mode', yolo ? 'YOLO (never + danger-full-access)' : 'Default (on-request + workspace-write)'],
   ];
+  if (authEnabled && authToken) {
+    runtimeRows.splice(4, 0, ['Auth token', authToken]);
+  }
   if (pythonSelection && pythonSelection.sourceLabel) {
     runtimeRows.push(['Python source', pythonSelection.sourceLabel]);
   }
@@ -706,6 +910,7 @@ function renderLaunchHints({ home, url, bindUrl, pythonSelection, yolo }) {
     ['ds --yolo --port 20999 --here', 'Start in ./DeepScientist under the current directory with YOLO Codex access'],
     ['ds --port 21000', 'Change the web port'],
     ['ds --host 0.0.0.0 --port 21000', 'Bind on all interfaces'],
+    ['ds --auth true', 'Enable the local browser password for this launch'],
     ['ds --here', 'Use ./DeepScientist under the current directory as home'],
     ['ds --both', 'Start web + TUI together'],
     ['ds --tui', 'Start the terminal workspace only'],
@@ -729,6 +934,8 @@ function printLaunchCard({
   home,
   pythonSelection,
   yolo,
+  authEnabled,
+  authToken,
 }) {
   const width = Math.max(72, Math.min(process.stdout.columns || 100, 108));
   const divider = colorize('\u001B[38;5;245m', '─'.repeat(Math.max(36, width - 6)));
@@ -787,13 +994,18 @@ function printLaunchCard({
   console.log(centerText(colorize('\u001B[1m', workspaceMode), width));
   console.log(centerText(urlLabel, width));
   console.log(centerText(divider, width));
+  if (authEnabled && authToken) {
+    console.log('');
+    console.log(centerText(colorize('\u001B[1;38;5;214m', authToken), width));
+    console.log('');
+  }
   console.log(centerText(browserLine, width));
   console.log(centerText(nextStep, width));
   console.log(centerText('Run ds --stop to stop the managed daemon.', width));
   console.log(centerText('Need to move this installation later? Use ds migrate /new/path.', width));
   console.log(centerText(officialRepositoryLine(), width));
   console.log('');
-  renderLaunchHints({ home, url, bindUrl, pythonSelection, yolo });
+  renderLaunchHints({ home, url, bindUrl, pythonSelection, yolo, authEnabled, authToken });
 }
 
 function escapeHtml(value) {
@@ -1020,6 +1232,7 @@ function parseLauncherArgs(argv) {
   let daemonOnly = false;
   let skipUpdateCheck = false;
   let yolo = true;
+  let auth = null;
   let codexProfile = null;
   let codexBinary = null;
 
@@ -1040,21 +1253,71 @@ function parseLauncherArgs(argv) {
     else if (arg === '--open-browser') openBrowser = true;
     else if (arg === '--daemon-only') daemonOnly = true;
     else if (arg === '--skip-update-check') skipUpdateCheck = true;
+    else if (arg === '--here') continue;
     else {
       const parsedYolo = parseYoloArg(args, index, yolo);
       if (parsedYolo.matched) {
         yolo = parsedYolo.value;
         index += Math.max(0, parsedYolo.consumed - 1);
-      } else if (arg === '--codex-profile' && args[index + 1]) codexProfile = args[++index];
-      else if (arg === '--codex' && args[index + 1]) codexBinary = args[++index];
-      else if (arg === '--host' && args[index + 1]) host = args[++index];
-      else if (arg === '--port' && args[index + 1]) port = Number(args[++index]);
-      else if (arg === '--home' && args[index + 1]) home = path.resolve(args[++index]);
-      else if (arg === '--proxy' && args[index + 1]) proxy = args[++index];
-      else if (arg === '--quest-id' && args[index + 1]) questId = args[++index];
-      else if (arg === '--mode' && args[index + 1]) mode = normalizeMode(args[++index]);
+      } else if (arg === '--auth') {
+        const next = readRequiredOptionValue(args, index, '--auth');
+        if (!next.ok) return { help: false, error: next.error };
+        const parsed = parseStrictBooleanOption(next.value, '--auth');
+        if (!parsed.ok) return { help: false, error: parsed.error };
+        auth = parsed.value;
+        index += 1;
+      } else if (typeof arg === 'string' && arg.startsWith('--auth=')) {
+        const parsed = parseStrictBooleanOption(arg.slice('--auth='.length), '--auth');
+        if (!parsed.ok) return { help: false, error: parsed.error };
+        auth = parsed.value;
+      } else if (arg === '--codex-profile') {
+        const next = readRequiredOptionValue(args, index, '--codex-profile');
+        if (!next.ok) return { help: false, error: next.error };
+        codexProfile = next.value;
+        index += 1;
+      } else if (arg === '--codex') {
+        const next = readRequiredOptionValue(args, index, '--codex');
+        if (!next.ok) return { help: false, error: next.error };
+        codexBinary = next.value;
+        index += 1;
+      } else if (arg === '--host') {
+        const next = readRequiredOptionValue(args, index, '--host');
+        if (!next.ok) return { help: false, error: next.error };
+        host = next.value;
+        index += 1;
+      } else if (arg === '--port') {
+        const next = readRequiredOptionValue(args, index, '--port');
+        if (!next.ok) return { help: false, error: next.error };
+        const parsed = parseStrictPortOption(next.value, '--port');
+        if (!parsed.ok) return { help: false, error: parsed.error };
+        port = parsed.value;
+        index += 1;
+      } else if (arg === '--home') {
+        const next = readRequiredOptionValue(args, index, '--home');
+        if (!next.ok) return { help: false, error: next.error };
+        home = path.resolve(next.value);
+        index += 1;
+      } else if (arg === '--proxy') {
+        const next = readRequiredOptionValue(args, index, '--proxy');
+        if (!next.ok) return { help: false, error: next.error };
+        proxy = next.value;
+        index += 1;
+      } else if (arg === '--quest-id') {
+        const next = readRequiredOptionValue(args, index, '--quest-id');
+        if (!next.ok) return { help: false, error: next.error };
+        questId = next.value;
+        index += 1;
+      } else if (arg === '--mode') {
+        const next = readRequiredOptionValue(args, index, '--mode');
+        if (!next.ok) return { help: false, error: next.error };
+        const parsed = parseStrictModeOption(next.value, '--mode');
+        if (!parsed.ok) return { help: false, error: parsed.error };
+        mode = parsed.value;
+        index += 1;
+      }
       else if (arg === '--help' || arg === '-h') return { help: true };
-      else if (!arg.startsWith('--')) return null;
+      else if (arg.startsWith('--')) return { help: false, error: `Unknown launcher flag: ${arg}` };
+      else return { help: false, error: `Unexpected launcher argument: ${arg}` };
     }
   }
 
@@ -1073,8 +1336,10 @@ function parseLauncherArgs(argv) {
     daemonOnly,
     skipUpdateCheck,
     yolo,
+    auth,
     codexProfile,
     codexBinary,
+    error: null,
   };
 }
 
@@ -1148,12 +1413,32 @@ function parseUpdateArgs(argv) {
     else if (arg === '--worker') worker = true;
     else if (arg === '--restart-daemon') restartDaemon = true;
     else if (arg === '--skip-update-check') skipUpdateCheck = true;
-    else if (arg === '--home' && args[index + 1]) home = path.resolve(args[++index]);
-    else if (arg === '--host' && args[index + 1]) host = args[++index];
-    else if (arg === '--port' && args[index + 1]) port = Number(args[++index]);
-    else if (arg === '--proxy' && args[index + 1]) proxy = args[++index];
+    else if (arg === '--home') {
+      const next = readRequiredOptionValue(args, index, '--home');
+      if (!next.ok) return { help: false, error: next.error };
+      home = path.resolve(next.value);
+      index += 1;
+    } else if (arg === '--host') {
+      const next = readRequiredOptionValue(args, index, '--host');
+      if (!next.ok) return { help: false, error: next.error };
+      host = next.value;
+      index += 1;
+    } else if (arg === '--port') {
+      const next = readRequiredOptionValue(args, index, '--port');
+      if (!next.ok) return { help: false, error: next.error };
+      const parsed = parseStrictPortOption(next.value, '--port');
+      if (!parsed.ok) return { help: false, error: parsed.error };
+      port = parsed.value;
+      index += 1;
+    } else if (arg === '--proxy') {
+      const next = readRequiredOptionValue(args, index, '--proxy');
+      if (!next.ok) return { help: false, error: next.error };
+      proxy = next.value;
+      index += 1;
+    }
     else if (arg === '--help' || arg === '-h') return { help: true };
-    else if (!arg.startsWith('--')) return null;
+    else if (arg.startsWith('--')) return { help: false, error: `Unknown update flag: ${arg}` };
+    else return { help: false, error: `Unexpected update argument: ${arg}` };
   }
 
   return {
@@ -1172,6 +1457,7 @@ function parseUpdateArgs(argv) {
     proxy,
     restartDaemon,
     skipUpdateCheck,
+    error: null,
   };
 }
 
@@ -1189,15 +1475,23 @@ function parseMigrateArgs(argv) {
     const arg = args[index];
     if (arg === '--yes') yes = true;
     else if (arg === '--restart') restart = true;
-    else if (arg === '--home' && args[index + 1]) home = path.resolve(expandUserPath(args[++index]));
+    else if (arg === '--home') {
+      const next = readRequiredOptionValue(args, index, '--home');
+      if (!next.ok) return { help: false, error: next.error };
+      home = path.resolve(expandUserPath(next.value));
+      index += 1;
+    }
     else if (arg === '--help' || arg === '-h') return { help: true };
-    else if (arg.startsWith('--')) return null;
+    else if (arg.startsWith('--')) return { help: false, error: `Unknown migrate flag: ${arg}` };
     else if (!target) target = path.resolve(expandUserPath(arg));
-    else return null;
+    else return { help: false, error: `Unexpected migrate argument: ${arg}` };
   }
 
   if (!target) {
-    return null;
+    return {
+      help: false,
+      error: 'Missing migration target path.',
+    };
   }
 
   return {
@@ -1206,6 +1500,7 @@ function parseMigrateArgs(argv) {
     target,
     yes,
     restart,
+    error: null,
   };
 }
 
@@ -2152,13 +2447,17 @@ function ensureUvBinary(home) {
 }
 
 function buildUvRuntimeEnv(home, extraEnv = {}) {
-  return {
+  const env = {
     ...process.env,
     UV_CACHE_DIR: runtimeUvCachePath(home),
     UV_PROJECT_ENVIRONMENT: runtimePythonEnvPath(home),
     UV_PYTHON_INSTALL_DIR: runtimeUvPythonInstallPath(home),
     ...extraEnv,
   };
+  for (const key of ['PYTHONPATH', 'PYTHONHOME', 'VIRTUAL_ENV', '__PYVENV_LAUNCHER__']) {
+    delete env[key];
+  }
+  return env;
 }
 
 function ensureUvLockPresent() {
@@ -2169,6 +2468,43 @@ function ensureUvLockPresent() {
   console.error('DeepScientist is missing `uv.lock` in the installed package.');
   console.error('Reinstall the npm package, or from a source checkout run `uv lock` and try again.');
   process.exit(1);
+}
+
+function buildUvSyncFailureGuidance({ installMode = detectInstallMode(repoRoot), env = process.env } = {}) {
+  const guidance = [];
+  if (installMode === 'source-checkout') {
+    guidance.push('If you changed Python dependencies in a source checkout, run `uv lock` and try again.');
+  } else {
+    guidance.push('This npm install already includes a locked `uv.lock`, so this is usually a local Python or network environment issue rather than a missing lockfile.');
+    guidance.push('Re-run `ds` in a clean shell first. If you have an active conda or virtualenv, try deactivating it before starting DeepScientist.');
+  }
+
+  const hasPythonEnv =
+    Boolean(String(env.VIRTUAL_ENV || '').trim())
+    || Boolean(String(env.CONDA_PREFIX || '').trim())
+    || Boolean(String(env.PYTHONPATH || '').trim())
+    || Boolean(String(env.PYTHONHOME || '').trim());
+  if (hasPythonEnv) {
+    guidance.push('An active Python environment was detected. `VIRTUAL_ENV`, `CONDA_PREFIX`, `PYTHONPATH`, or `PYTHONHOME` can interfere with uv runtime bootstrap.');
+  }
+
+  const hasCustomIndex =
+    Object.keys(env).some((key) => /^PIP_/i.test(key))
+    || Boolean(String(env.UV_INDEX_URL || '').trim())
+    || Boolean(String(env.UV_EXTRA_INDEX_URL || '').trim());
+  if (hasCustomIndex) {
+    guidance.push('Custom package index settings were detected. Check `PIP_*`, `UV_INDEX_URL`, or `UV_EXTRA_INDEX_URL` if uv could not download packages.');
+  }
+
+  const hasProxyOrCert =
+    ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'SSL_CERT_FILE', 'REQUESTS_CA_BUNDLE']
+      .some((key) => Boolean(String(env[key] || '').trim()));
+  if (hasProxyOrCert) {
+    guidance.push('Proxy or certificate overrides were detected. If uv reported TLS, certificate, or download errors above, verify those settings and try again.');
+  }
+
+  guidance.push('Look at the uv error printed above this message. That original uv output is the real failure reason.');
+  return guidance;
 }
 
 function resolveUvVersion(uvBinary) {
@@ -2237,7 +2573,10 @@ function resolveBackgroundPythonExecutable(runtimePython) {
 }
 
 function syncUvProjectEnvironment(home, uvBinary, pythonTarget, editable) {
-  const args = ['sync', '--frozen', '--no-dev', '--compile-bytecode', '--python', pythonTarget];
+  const args = ['sync', '--frozen', '--no-dev', '--python', pythonTarget];
+  if (shouldCompileRuntimeBytecode()) {
+    args.splice(3, 0, '--compile-bytecode');
+  }
   if (!editable) {
     args.push('--no-editable');
   }
@@ -2250,7 +2589,9 @@ function syncUvProjectEnvironment(home, uvBinary, pythonTarget, editable) {
     return;
   }
   console.error('DeepScientist could not sync the locked Python environment with uv.');
-  console.error('If you are working from a source checkout, run `uv lock` after dependency changes and try again.');
+  for (const line of buildUvSyncFailureGuidance()) {
+    console.error(line);
+  }
   process.exit(result.status ?? 1);
 }
 
@@ -2678,9 +3019,25 @@ function decodeSupervisorEnvPayload(rawValue) {
   }
 }
 
-function spawnManagedDaemonProcess({ home, runtimePython, host, port, proxy = null, envOverrides = {}, daemonId = null }) {
+function spawnManagedDaemonProcess({
+  home,
+  runtimePython,
+  host,
+  port,
+  proxy = null,
+  envOverrides = {},
+  daemonId = null,
+  authEnabled = false,
+  authToken = null,
+}) {
   const browserUrl = browserUiUrl(host, port);
   const daemonBindUrl = bindUiUrl(host, port);
+  const resolvedAuthEnabled = authEnabled !== false;
+  const resolvedAuthToken = resolvedAuthEnabled
+    ? (typeof authToken === 'string' && authToken.trim() ? authToken.trim() : generateBrowserAuthToken())
+    : null;
+  const launchUrl = browserUrl;
+  const bindLaunchUrl = daemonBindUrl;
   const logPath = path.join(home, 'logs', 'daemon.log');
   ensureDir(path.dirname(logPath));
   const out = fs.openSync(logPath, 'a');
@@ -2700,6 +3057,9 @@ function spawnManagedDaemonProcess({ home, runtimePython, host, port, proxy = nu
       host,
       '--port',
       String(port),
+      '--auth',
+      resolvedAuthEnabled ? 'true' : 'false',
+      ...(resolvedAuthEnabled && resolvedAuthToken ? ['--auth-token', resolvedAuthToken] : []),
     ],
     detachedSpawnOptions({
       cwd: repoRoot,
@@ -2712,6 +3072,8 @@ function spawnManagedDaemonProcess({ home, runtimePython, host, port, proxy = nu
         DEEPSCIENTIST_LAUNCHER_PATH: launcherPath,
         DS_DAEMON_ID: resolvedDaemonId,
         DS_DAEMON_MANAGED_BY: 'ds-launcher',
+        DS_UI_AUTH_ENABLED: resolvedAuthEnabled ? '1' : '0',
+        ...(resolvedAuthEnabled && resolvedAuthToken ? { DS_UI_AUTH_TOKEN: resolvedAuthToken } : {}),
       },
     })
   );
@@ -2722,10 +3084,14 @@ function spawnManagedDaemonProcess({ home, runtimePython, host, port, proxy = nu
     port,
     url: browserUrl,
     bind_url: daemonBindUrl,
+    launch_url: launchUrl,
+    bind_launch_url: bindLaunchUrl,
     log_path: logPath,
     started_at: new Date().toISOString(),
     home: normalizeHomePath(home),
     daemon_id: resolvedDaemonId,
+    auth_enabled: resolvedAuthEnabled,
+    auth_token: resolvedAuthToken,
   };
   writeDaemonState(home, statePayload);
   return {
@@ -2733,6 +3099,8 @@ function spawnManagedDaemonProcess({ home, runtimePython, host, port, proxy = nu
     statePayload,
     browserUrl,
     bindUrl: daemonBindUrl,
+    launchUrl,
+    bindLaunchUrl,
     logPath,
   };
 }
@@ -2787,19 +3155,54 @@ function parseDaemonSupervisorArgs(argv) {
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (arg === '--home' && args[index + 1]) home = path.resolve(args[++index]);
-    else if (arg === '--runtime-python' && args[index + 1]) runtimePython = args[++index];
-    else if (arg === '--host' && args[index + 1]) host = args[++index];
-    else if (arg === '--port' && args[index + 1]) port = Number(args[++index]);
-    else if (arg === '--proxy' && args[index + 1]) proxy = args[++index];
-    else if (arg === '--daemon-id' && args[index + 1]) daemonId = args[++index];
-    else if (arg === '--env-json' && args[index + 1]) envJson = args[++index];
+    if (arg === '--home') {
+      const next = readRequiredOptionValue(args, index, '--home');
+      if (!next.ok) return { help: false, error: next.error };
+      home = path.resolve(next.value);
+      index += 1;
+    } else if (arg === '--runtime-python') {
+      const next = readRequiredOptionValue(args, index, '--runtime-python');
+      if (!next.ok) return { help: false, error: next.error };
+      runtimePython = next.value;
+      index += 1;
+    } else if (arg === '--host') {
+      const next = readRequiredOptionValue(args, index, '--host');
+      if (!next.ok) return { help: false, error: next.error };
+      host = next.value;
+      index += 1;
+    } else if (arg === '--port') {
+      const next = readRequiredOptionValue(args, index, '--port');
+      if (!next.ok) return { help: false, error: next.error };
+      const parsed = parseStrictPortOption(next.value, '--port');
+      if (!parsed.ok) return { help: false, error: parsed.error };
+      port = parsed.value;
+      index += 1;
+    } else if (arg === '--proxy') {
+      const next = readRequiredOptionValue(args, index, '--proxy');
+      if (!next.ok) return { help: false, error: next.error };
+      proxy = next.value;
+      index += 1;
+    } else if (arg === '--daemon-id') {
+      const next = readRequiredOptionValue(args, index, '--daemon-id');
+      if (!next.ok) return { help: false, error: next.error };
+      daemonId = next.value;
+      index += 1;
+    } else if (arg === '--env-json') {
+      const next = readRequiredOptionValue(args, index, '--env-json');
+      if (!next.ok) return { help: false, error: next.error };
+      envJson = next.value;
+      index += 1;
+    }
     else if (arg === '--help' || arg === '-h') return { help: true };
-    else return null;
+    else if (arg.startsWith('--')) return { help: false, error: `Unknown daemon supervisor flag: ${arg}` };
+    else return { help: false, error: `Unexpected daemon supervisor argument: ${arg}` };
   }
 
   if (!home || !runtimePython || !daemonId || !Number.isFinite(port) || port <= 0) {
-    return null;
+    return {
+      help: false,
+      error: 'Daemon supervisor requires --home, --runtime-python, --daemon-id, and a valid --port.',
+    };
   }
 
   return {
@@ -2811,17 +3214,18 @@ function parseDaemonSupervisorArgs(argv) {
     proxy,
     daemonId,
     envOverrides: decodeSupervisorEnvPayload(envJson),
+    error: null,
   };
 }
 
 async function daemonSupervisorMain(rawArgs) {
   const options = parseDaemonSupervisorArgs(rawArgs);
-  if (!options) {
-    console.error('Invalid daemon supervisor arguments.');
-    process.exit(1);
-  }
   if (options.help) {
     process.exit(0);
+  }
+  if (options.error) {
+    console.error(options.error);
+    process.exit(1);
   }
 
   const home = options.home;
@@ -2849,7 +3253,8 @@ async function daemonSupervisorMain(rawArgs) {
       appendDaemonSupervisorLog(home, `daemon id changed to ${stateDaemonId}; supervisor exiting`);
       return;
     }
-    const health = await fetchHealth(state.url || browserUiUrl(options.host, options.port));
+    const authToken = typeof state.auth_token === 'string' ? state.auth_token.trim() : '';
+    const health = await fetchHealth(state.url || browserUiUrl(options.host, options.port), authToken);
     if (health && health.status === 'ok' && healthMatchesManagedState({ health, state, home })) {
       restartBackoffMs = 1000;
       await sleep(2500);
@@ -2872,6 +3277,8 @@ async function daemonSupervisorMain(rawArgs) {
         port: options.port,
         proxy: options.proxy,
         envOverrides: options.envOverrides,
+        authEnabled: state.auth_enabled !== false,
+        authToken,
       });
       trackedDaemonId = String(restarted.statePayload.daemon_id || '').trim();
       observeManagedDaemonChild(home, restarted.child, trackedDaemonId);
@@ -2896,14 +3303,19 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function isHealthy(url) {
-  const payload = await fetchHealth(url);
+async function isHealthy(url, authToken = null) {
+  const payload = await fetchHealth(url, authToken);
   return Boolean(payload && payload.status === 'ok');
 }
 
-async function fetchHealth(url) {
+async function fetchHealth(url, authToken = null) {
   try {
-    const response = await fetch(`${url}/api/health`);
+    const headers = {};
+    const normalizedAuthToken = typeof authToken === 'string' ? authToken.trim() : '';
+    if (normalizedAuthToken) {
+      headers.Authorization = `Bearer ${normalizedAuthToken}`;
+    }
+    const response = await fetch(`${url}/api/health`, { headers });
     if (!response.ok) {
       return null;
     }
@@ -2953,13 +3365,18 @@ function daemonIdentityError({ url, home, health, state }) {
   ].join('\n');
 }
 
-async function requestDaemonShutdown(url, daemonId) {
+async function requestDaemonShutdown(url, daemonId, authToken = null) {
   try {
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    const normalizedAuthToken = typeof authToken === 'string' ? authToken.trim() : '';
+    if (normalizedAuthToken) {
+      headers.Authorization = `Bearer ${normalizedAuthToken}`;
+    }
     const response = await fetch(`${url}/api/admin/shutdown`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({ source: 'ds-launcher', daemon_id: daemonId || null }),
     });
     if (!response.ok) {
@@ -2969,6 +3386,31 @@ async function requestDaemonShutdown(url, daemonId) {
     return payload.ok !== false;
   } catch {
     return false;
+  }
+}
+
+async function requestDaemonAuthRotate(url, authToken = null) {
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    const normalizedAuthToken = typeof authToken === 'string' ? authToken.trim() : '';
+    if (normalizedAuthToken) {
+      headers.Authorization = `Bearer ${normalizedAuthToken}`;
+    }
+    const response = await fetch(`${url}/api/auth/rotate`, {
+      method: 'POST',
+      headers,
+      body: '{}',
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = await response.json().catch(() => ({}));
+    const token = typeof payload?.token === 'string' ? payload.token.trim() : '';
+    return token || null;
+  } catch {
+    return null;
   }
 }
 
@@ -3005,9 +3447,9 @@ function killManagedProcess(pid, signal) {
   }
 }
 
-async function waitForDaemonStop({ url, pid, attempts = 20, delayMs = 200 }) {
+async function waitForDaemonStop({ url, pid, authToken = null, attempts = 20, delayMs = 200 }) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const healthy = url ? await isHealthy(url) : false;
+    const healthy = url ? await isHealthy(url, authToken) : false;
     const alive = pid ? isPidAlive(pid) : false;
     if (!healthy && !alive) {
       return true;
@@ -3032,7 +3474,8 @@ async function stopDaemon(home) {
   const state = readDaemonState(home);
   const configured = readConfiguredUiAddressFromFile(home);
   const url = state?.url || browserUiUrl(state?.host || configured.host, state?.port || configured.port);
-  const healthBefore = await fetchHealth(url);
+  const authToken = typeof state?.auth_token === 'string' ? state.auth_token.trim() : '';
+  const healthBefore = await fetchHealth(url, authToken);
   const healthyBefore = Boolean(healthBefore && healthBefore.status === 'ok');
   const sameHomeHealthy = healthMatchesHome({ health: healthBefore, home });
   const pid = state?.pid || (sameHomeHealthy ? healthBefore?.pid : null);
@@ -3073,21 +3516,21 @@ async function stopDaemon(home) {
   let stopped = false;
 
   if (healthyBefore) {
-    await requestDaemonShutdown(url, shutdownDaemonId || null);
-    stopped = await waitForDaemonStop({ url, pid, attempts: 20, delayMs: 200 });
+    await requestDaemonShutdown(url, shutdownDaemonId || null, authToken);
+    stopped = await waitForDaemonStop({ url, pid, authToken, attempts: 20, delayMs: 200 });
   }
 
   if (!stopped && pid && isPidAlive(pid)) {
     killManagedProcess(pid, 'SIGTERM');
-    stopped = await waitForDaemonStop({ url, pid, attempts: 30, delayMs: 200 });
+    stopped = await waitForDaemonStop({ url, pid, authToken, attempts: 30, delayMs: 200 });
   }
 
   if (!stopped && pid && isPidAlive(pid)) {
     killManagedProcess(pid, 'SIGKILL');
-    stopped = await waitForDaemonStop({ url, pid, attempts: 20, delayMs: 150 });
+    stopped = await waitForDaemonStop({ url, pid, authToken, attempts: 20, delayMs: 150 });
   }
 
-  const stillHealthy = await isHealthy(url);
+  const stillHealthy = await isHealthy(url, authToken);
   if (!stopped && (stillHealthy || (pid && isPidAlive(pid)))) {
     console.error('DeepScientist daemon is still running after shutdown attempts.');
     process.exit(1);
@@ -3362,19 +3805,23 @@ async function performSelfUpdate(home, options = {}) {
         log_path: installResult.logPath,
       };
     }
+    const restartArgs = [
+      launcherPath,
+      '--home',
+      home,
+      '--host',
+      String(host),
+      '--port',
+      String(port),
+      '--daemon-only',
+      '--no-browser',
+      '--skip-update-check',
+    ];
+    if (daemonState && daemonState.auth_enabled === false) {
+      restartArgs.push('--auth', 'false');
+    }
     spawnDetachedNode(
-      [
-        launcherPath,
-        '--home',
-        home,
-        '--host',
-        String(host),
-        '--port',
-        String(port),
-        '--daemon-only',
-        '--no-browser',
-        '--skip-update-check',
-      ],
+      restartArgs,
       {
         cwd: repoRoot,
         env: process.env,
@@ -3569,17 +4016,88 @@ async function startBackgroundUpdateWorker(home, options = {}) {
   };
 }
 
+async function maybeHandleMiniMaxCodexVersion(home, runtimePython, options = {}) {
+  const configuredRunners = (() => {
+    try {
+      const result = runPythonCli(runtimePython, ['--home', home, 'config', 'show', 'runners'], {
+        capture: true,
+        allowFailure: true,
+      });
+      return String(result.stdout || '');
+    } catch {
+      return '';
+    }
+  })();
+  const profileFromConfig =
+    configuredRunners.match(/^\s*profile:\s*["']?([^"'\n]+)["']?\s*$/m)?.[1]?.trim() || '';
+  const binaryFromConfig =
+    configuredRunners.match(/^\s*binary:\s*["']?([^"'\n]+)["']?\s*$/m)?.[1]?.trim() || 'codex';
+  const configDirFromConfig =
+    configuredRunners.match(/^\s*config_dir:\s*["']?([^"'\n]+)["']?\s*$/m)?.[1]?.trim() || '~/.codex';
+
+  const effectiveProfile = String(options.codexProfile || profileFromConfig || '').trim();
+  if (!effectiveProfile) {
+    return false;
+  }
+  const metadata = readCodexProviderMetadata(configDirFromConfig, effectiveProfile);
+  if (String(metadata.provider || '').trim().toLowerCase() !== 'minimax') {
+    return false;
+  }
+  const version = installedCodexCliVersion(options.codexBinary || binaryFromConfig || 'codex');
+  const expected = [0, 57, 0];
+  if (!version || compareCodexCliVersion(version, expected) === 0) {
+    return false;
+  }
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    console.log(
+      `MiniMax profile \`${effectiveProfile}\` is configured, but installed Codex CLI is ${formatCodexCliVersion(version)}. MiniMax currently requires Codex CLI 0.57.0 for the documented path.`
+    );
+    console.log('Install it manually with `npm install -g @openai/codex@0.57.0` before continuing.');
+    return false;
+  }
+
+  console.log('');
+  console.log(colorize('\u001B[1;38;5;214m', 'MiniMax compatibility check'));
+  console.log(
+    `DeepScientist detected MiniMax profile \`${effectiveProfile}\`, but installed Codex CLI is ${formatCodexCliVersion(version)}.`
+  );
+  console.log('MiniMax currently requires Codex CLI 0.57.0 for the documented DeepScientist path.');
+  const confirmed = await promptYesNo('Reinstall Codex CLI to 0.57.0 now? [y/N]: ', {
+    defaultValue: false,
+  });
+  if (!confirmed) {
+    return false;
+  }
+  const npmBinary = resolveNpmBinary();
+  if (!npmBinary) {
+    console.error('`npm` is unavailable; cannot reinstall Codex CLI automatically.');
+    process.exit(1);
+  }
+  const result = spawnSync(
+    npmBinary,
+    ['install', '-g', '@openai/codex@0.57.0'],
+    syncSpawnOptions({ stdio: 'inherit' })
+  );
+  if (result.status !== 0) {
+    console.error('Failed to reinstall Codex CLI 0.57.0 automatically.');
+    process.exit(result.status ?? 1);
+  }
+  return true;
+}
+
 async function readConfiguredUiAddress(home, runtimePython, fallbackHost, fallbackPort) {
   try {
     const result = runPythonCli(runtimePython, ['--home', home, 'config', 'show', 'config'], { capture: true, allowFailure: true });
     const text = result.stdout || '';
     const hostMatch = text.match(/^\s*host:\s*["']?([^"'\n]+)["']?\s*$/m);
     const portMatch = text.match(/^\s*port:\s*(\d+)\s*$/m);
+    const authMatch = text.match(/^\s*auth_enabled:\s*([^\n]+)\s*$/m);
     const modeMatch = text.match(/^\s*default_mode:\s*["']?([^"'\n]+)["']?\s*$/m);
     const autoOpenMatch = text.match(/^\s*auto_open_browser:\s*([^\n]+)\s*$/m);
     return {
       host: fallbackHost || (hostMatch ? hostMatch[1].trim() : '0.0.0.0'),
       port: fallbackPort || (portMatch ? Number(portMatch[1]) : 20999),
+      authEnabled: parseBooleanSetting(authMatch ? authMatch[1].trim() : false, false),
       defaultMode: normalizeMode(modeMatch ? modeMatch[1].trim() : 'web'),
       autoOpenBrowser: parseBooleanSetting(autoOpenMatch ? autoOpenMatch[1].trim() : true, true),
     };
@@ -3587,6 +4105,7 @@ async function readConfiguredUiAddress(home, runtimePython, fallbackHost, fallba
     return {
       host: fallbackHost || '0.0.0.0',
       port: fallbackPort || 20999,
+      authEnabled: false,
       defaultMode: 'web',
       autoOpenBrowser: true,
     };
@@ -3599,6 +4118,7 @@ function readConfiguredUiAddressFromFile(home, fallbackHost, fallbackPort) {
     return {
       host: fallbackHost || '0.0.0.0',
       port: fallbackPort || 20999,
+      authEnabled: false,
       defaultMode: 'web',
       autoOpenBrowser: true,
     };
@@ -3607,11 +4127,13 @@ function readConfiguredUiAddressFromFile(home, fallbackHost, fallbackPort) {
     const text = fs.readFileSync(configPath, 'utf8');
     const hostMatch = text.match(/^\s*host:\s*["']?([^"'\n]+)["']?\s*$/m);
     const portMatch = text.match(/^\s*port:\s*(\d+)\s*$/m);
+    const authMatch = text.match(/^\s*auth_enabled:\s*([^\n]+)\s*$/m);
     const modeMatch = text.match(/^\s*default_mode:\s*["']?([^"'\n]+)["']?\s*$/m);
     const autoOpenMatch = text.match(/^\s*auto_open_browser:\s*([^\n]+)\s*$/m);
     return {
       host: fallbackHost || (hostMatch ? hostMatch[1].trim() : '0.0.0.0'),
       port: fallbackPort || (portMatch ? Number(portMatch[1]) : 20999),
+      authEnabled: parseBooleanSetting(authMatch ? authMatch[1].trim() : false, false),
       defaultMode: normalizeMode(modeMatch ? modeMatch[1].trim() : 'web'),
       autoOpenBrowser: parseBooleanSetting(autoOpenMatch ? autoOpenMatch[1].trim() : true, true),
     };
@@ -3619,20 +4141,51 @@ function readConfiguredUiAddressFromFile(home, fallbackHost, fallbackPort) {
     return {
       host: fallbackHost || '0.0.0.0',
       port: fallbackPort || 20999,
+      authEnabled: false,
       defaultMode: 'web',
       autoOpenBrowser: true,
     };
   }
 }
 
-async function startDaemon(home, runtimePython, host, port, proxy = null, envOverrides = {}) {
+async function startDaemon(home, runtimePython, host, port, proxy = null, envOverrides = {}, authEnabled = false) {
   const browserUrl = browserUiUrl(host, port);
   const daemonBindUrl = bindUiUrl(host, port);
   const state = readDaemonState(home);
-  const existingHealth = await fetchHealth(browserUrl);
+  const desiredAuthToken = authEnabled ? generateBrowserAuthToken() : null;
+  const launchUrl = browserUrl;
+  const bindLaunchUrl = daemonBindUrl;
+  const existingHealth = await fetchHealth(browserUrl, typeof state?.auth_token === 'string' ? state.auth_token.trim() : '');
   if (existingHealth && existingHealth.status === 'ok') {
     if (state && healthMatchesManagedState({ health: existingHealth, state, home })) {
-      return { url: browserUrl, bindUrl: daemonBindUrl, reused: true };
+      const stateAuthEnabled = state.auth_enabled !== false;
+      const stateAuthToken = typeof state.auth_token === 'string' ? state.auth_token.trim() : '';
+      let resolvedAuthToken = stateAuthToken || null;
+      if (stateAuthEnabled) {
+        const rotatedAuthToken = await requestDaemonAuthRotate(browserUrl, stateAuthToken);
+        if (!rotatedAuthToken) {
+          console.error('Managed daemon is healthy, but the browser auth token could not be rotated.');
+          console.error('Restart the daemon with `ds --restart` if this keeps happening.');
+          process.exit(1);
+        }
+        resolvedAuthToken = rotatedAuthToken;
+        writeDaemonState(home, {
+          ...state,
+          auth_enabled: true,
+          auth_token: rotatedAuthToken,
+          url: browserUrl,
+          bind_url: daemonBindUrl,
+          launch_url: launchUrl,
+          bind_launch_url: bindLaunchUrl,
+        });
+      }
+      return {
+        url: browserUrl,
+        bindUrl: daemonBindUrl,
+        reused: true,
+        authEnabled: stateAuthEnabled,
+        authToken: resolvedAuthToken,
+      };
     }
     console.error(
       state
@@ -3666,11 +4219,13 @@ async function startDaemon(home, runtimePython, host, port, proxy = null, envOve
     port,
     proxy,
     envOverrides,
+    authEnabled,
+    authToken: desiredAuthToken,
   });
   const logPath = startedProcess.logPath;
 
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    const health = await fetchHealth(browserUrl);
+    const health = await fetchHealth(browserUrl, desiredAuthToken);
     if (health && health.status === 'ok') {
       const liveState = readDaemonState(home);
       if (!healthMatchesManagedState({ health, state: liveState, home })) {
@@ -3689,12 +4244,26 @@ async function startDaemon(home, runtimePython, host, port, proxy = null, envOve
       if (supervisorPid) {
         appendDaemonSupervisorLog(home, `supervisor started with pid ${supervisorPid}`);
       }
-      return { url: browserUrl, bindUrl: daemonBindUrl, reused: false };
+      return {
+        url: launchUrl,
+        bindUrl: bindLaunchUrl,
+        reused: false,
+        authEnabled,
+        authToken: desiredAuthToken,
+      };
     }
     await sleep(250);
   }
 
   console.error('DeepScientist daemon failed to become healthy.');
+  console.error(`Expected local URL: ${launchUrl}`);
+  console.error(`Daemon bind URL: ${bindLaunchUrl}`);
+  if (authEnabled && desiredAuthToken) {
+    console.error(`Auth token: ${desiredAuthToken}`);
+  }
+  if (['0.0.0.0', '::', '[::]'].includes(String(host || '').trim())) {
+    console.error(`Hint: ${String(host || '').trim() || '0.0.0.0'} is a bind address. Local browser and health probes use ${browserUrl}.`);
+  }
   const logTail = tailLog(logPath);
   if (logTail) {
     console.error(logTail);
@@ -3778,11 +4347,14 @@ function handleCodexPreflightFailure(error) {
   return true;
 }
 
-function launchTui(url, questId, home, runtimePython) {
+function launchTui(url, questId, home, runtimePython, authToken = null) {
   const entry = ensureNodeBundle('src/tui', 'dist/index.js');
   const args = [entry, '--base-url', url];
   if (questId) {
     args.push('--quest-id', questId);
+  }
+  if (typeof authToken === 'string' && authToken.trim()) {
+    args.push('--auth-token', authToken.trim());
   }
   const child = spawn(process.execPath, args, {
     cwd: repoRoot,
@@ -3801,13 +4373,14 @@ function launchTui(url, questId, home, runtimePython) {
 
 async function updateMain(rawArgs) {
   const options = parseUpdateArgs(rawArgs);
-  if (!options) {
-    printUpdateHelp();
-    process.exit(1);
-  }
   if (options.help) {
     printUpdateHelp();
     process.exit(0);
+  }
+  if (options.error) {
+    console.error(options.error);
+    console.error('Run `ds update --help` for update usage.');
+    process.exit(1);
   }
 
   const home = options.home || resolveHome(rawArgs);
@@ -3923,13 +4496,14 @@ async function updateMain(rawArgs) {
 
 async function migrateMain(rawArgs) {
   const options = parseMigrateArgs(rawArgs);
-  if (!options) {
-    printMigrateHelp();
-    process.exit(1);
-  }
   if (options.help) {
     printMigrateHelp();
     process.exit(0);
+  }
+  if (options.error) {
+    console.error(options.error);
+    console.error('Run `ds migrate --help` for migration usage.');
+    process.exit(1);
   }
 
   const sourceHome = realpathOrSelf(options.home || resolveHome(rawArgs));
@@ -4051,12 +4625,14 @@ async function migrateMain(rawArgs) {
 
 async function launcherMain(rawArgs) {
   const options = parseLauncherArgs(rawArgs);
-  if (!options) {
-    return false;
-  }
   if (options.help) {
     printLauncherHelp();
     process.exit(0);
+  }
+  if (options.error) {
+    console.error(options.error);
+    console.error('Run `ds --help` for launcher usage.');
+    process.exit(1);
   }
 
   const home = options.home || resolveHome(rawArgs);
@@ -4075,8 +4651,10 @@ async function launcherMain(rawArgs) {
   if (options.status) {
     const state = readDaemonState(home);
     const configured = readConfiguredUiAddressFromFile(home, options.host, options.port);
-    const url = state?.url || browserUiUrl(configured.host, configured.port);
-    const health = await fetchHealth(url);
+    const url = state?.launch_url || state?.url || browserUiUrl(configured.host, configured.port);
+    const authToken = typeof state?.auth_token === 'string' ? state.auth_token.trim() : '';
+    const probeUrl = state?.url || browserUiUrl(configured.host, configured.port);
+    const health = await fetchHealth(probeUrl, authToken);
     const healthy = Boolean(health && health.status === 'ok');
     const identityMatch = state ? healthMatchesManagedState({ health, state, home }) : false;
     console.log(
@@ -4105,6 +4683,7 @@ async function launcherMain(rawArgs) {
     binary: options.codexBinary,
   });
   ensureInitialized(home, runtimePython);
+  await maybeHandleMiniMaxCodexVersion(home, runtimePython, options);
   if (await maybeHandleStartupUpdate(home, rawArgs, options)) {
     return true;
   }
@@ -4113,20 +4692,27 @@ async function launcherMain(rawArgs) {
   const configuredUi = await readConfiguredUiAddress(home, runtimePython, options.host, options.port);
   const host = configuredUi.host;
   const port = configuredUi.port;
+  const authEnabled = options.auth === null ? false : options.auth !== false;
   const mode = normalizeMode(options.mode ?? 'web');
   const shouldOpenBrowser = options.daemonOnly
     ? false
     : options.openBrowser === null
       ? configuredUi.autoOpenBrowser !== false && mode !== 'tui'
       : options.openBrowser;
-  if (options.restart) {
+  const existingState = readDaemonState(home);
+  const existingAuthEnabled = existingState ? existingState.auth_enabled !== false : null;
+  const existingAuthToken = typeof existingState?.auth_token === 'string' ? existingState.auth_token.trim() : '';
+  const authStateMismatch = existingState && (
+    existingAuthEnabled !== authEnabled || (authEnabled && !existingAuthToken)
+  );
+  if (options.restart || authStateMismatch) {
     await stopDaemon(home);
   }
 
   step(4, 4, 'Starting local daemon and UI surfaces');
   let started;
   try {
-    started = await startDaemon(home, runtimePython, host, port, options.proxy, codexOverrideEnv);
+    started = await startDaemon(home, runtimePython, host, port, options.proxy, codexOverrideEnv, authEnabled);
   } catch (error) {
     if (handleCodexPreflightFailure(error)) return true;
     throw error;
@@ -4142,6 +4728,8 @@ async function launcherMain(rawArgs) {
     home,
     pythonSelection: pythonRuntime.runtimeProbe,
     yolo: options.yolo,
+    authEnabled: started.authEnabled,
+    authToken: started.authToken,
   });
 
   if (options.daemonOnly) {
@@ -4150,12 +4738,16 @@ async function launcherMain(rawArgs) {
   if (mode === 'web') {
     process.exit(0);
   }
-  launchTui(started.url, options.questId, home, runtimePython);
+  launchTui(browserUiUrl(host, port), options.questId, home, runtimePython, started.authToken);
   return true;
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  const normalizedArgState = normalizeLegacyHostFlagArgs(process.argv.slice(2));
+  const args = normalizedArgState.args;
+  for (const warning of normalizedArgState.warnings) {
+    console.warn(warning);
+  }
   if (args[0] === '--daemon-supervisor') {
     await daemonSupervisorMain(args.slice(1));
     return;
@@ -4169,7 +4761,11 @@ async function main() {
     await migrateMain(args);
     return;
   }
-  if (args.length === 0 || args[0] === 'ui' || (!positional && args[0]?.startsWith('--'))) {
+  if (
+    args.length === 0
+    || args[0] === 'ui'
+    || (args[0]?.startsWith('--') && (!positional || !pythonCommands.has(positional.value)))
+  ) {
     await launcherMain(args);
     return;
   }
@@ -4225,6 +4821,8 @@ module.exports = {
     resolveUvBinary,
     resolveHome,
     parseLauncherArgs,
+    generateBrowserAuthToken,
+    appendBrowserAuthToken,
     normalizeProxyUrl,
     parseMigrateArgs,
     parseLegacyWrapperCandidate,
@@ -4232,12 +4830,14 @@ module.exports = {
     useEditableProjectInstall,
     compareVersions,
     detectInstallMode,
+    buildUvSyncFailureGuidance,
     updateManualCommand,
     buildUpdateStatus,
     parseYesNoAnswer,
     normalizeLauncherRelaunchArgs,
     officialRepositoryLine,
     stripAnsi,
+    normalizeLegacyHostFlagArgs,
   },
 };
 

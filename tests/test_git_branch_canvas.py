@@ -274,6 +274,70 @@ def test_git_branch_canvas_reads_artifacts_from_worktrees(temp_home: Path) -> No
     assert nodes[analysis_branch]["latest_result"]["evaluation_summary"]["next_action"] == "write"
 
 
+def test_git_branch_canvas_supports_copilot_workspace_mode(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create(
+        "copilot branch canvas quest",
+        startup_contract={"workspace_mode": "copilot"},
+    )
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+    artifact = ArtifactService(temp_home)
+    _confirm_local_baseline(artifact, quest_root, baseline_id="baseline-copilot-canvas")
+
+    first_idea = artifact.submit_idea(
+        quest_root,
+        mode="create",
+        title="Copilot adapter route",
+        problem="Need a branch graph even when the quest is parked in copilot mode.",
+        hypothesis="The copilot workspace should still expose the same durable branch graph.",
+        mechanism="Create and promote the first durable idea branch.",
+        decision_reason="Open the first implementation route from copilot mode.",
+    )
+    main_result = artifact.record_main_experiment(
+        quest_root,
+        run_id="main-copilot-001",
+        title="Copilot main run",
+        hypothesis="The copilot branch improved the primary metric.",
+        setup="Use the confirmed baseline recipe.",
+        execution="Ran the main validation sweep once.",
+        results="Accuracy improved over baseline.",
+        conclusion="Use this run as the next durable foundation.",
+        metric_rows=[{"metric_id": "acc", "value": 0.91, "direction": "higher_better"}],
+    )
+    second_idea = artifact.submit_idea(
+        quest_root,
+        mode="create",
+        title="Run-informed copilot route",
+        problem="Need a follow-up branch from the measured main run.",
+        hypothesis="The measured run is the right foundation for the next route.",
+        mechanism="Continue from the best measured run in the same parked workspace.",
+        decision_reason="Continue from the strongest measured branch.",
+        foundation_ref={"kind": "run", "ref": "main-copilot-001"},
+        foundation_reason="Carry forward the strongest measured branch.",
+    )
+
+    app = DaemonApp(temp_home)
+    branches = app.handlers.git_branches(quest_id)
+    nodes = {item["ref"]: item for item in branches["nodes"]}
+    edges = branches["edges"]
+
+    assert branches["workspace_mode"] == "copilot"
+    assert nodes[first_idea["branch"]]["branch_no"] == "001"
+    assert nodes[first_idea["branch"]]["idea_title"] == "Copilot adapter route"
+    assert nodes["run/main-copilot-001"]["latest_main_experiment"]["run_id"] == main_result["run_id"]
+    assert nodes[second_idea["branch"]]["branch_no"] == "002"
+    assert nodes[second_idea["branch"]]["foundation_ref"]["kind"] == "run"
+    assert nodes[second_idea["branch"]]["foundation_ref"]["ref"] == "main-copilot-001"
+    assert nodes[second_idea["branch"]]["foundation_reason"] == "Carry forward the strongest measured branch."
+    assert any(
+        edge["from"] == "run/main-copilot-001" and edge["to"] == second_idea["branch"]
+        for edge in edges
+    )
+
+
 def test_git_branch_canvas_dedupes_mirrored_main_experiment_counts(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
@@ -1143,3 +1207,78 @@ def test_git_branch_canvas_parents_writing_facing_analysis_to_paper_line(temp_ho
     assert nodes[analysis_branch]["paper_line_branch"] == paper_branch
     assert nodes[paper_branch]["workflow_state"]["analysis_state"] == "active"
     assert nodes[paper_branch]["workflow_state"]["writing_state"] == "blocked_by_analysis"
+
+
+def test_git_actions_keep_canvas_as_branch_graph_for_copilot(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("copilot git graph quest")
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+    quest_service.update_research_state(quest_root, workspace_mode="copilot")
+    artifact = ArtifactService(temp_home)
+
+    artifact.git_action(quest_root, action="branch", branch="feature/git-graph")
+    artifact.git_action(quest_root, action="checkout", branch="feature/git-graph")
+    write_text(quest_root / "git-graph.txt", "git graph\n")
+    artifact.git_action(quest_root, action="commit", message="git graph commit", allow_empty=False)
+
+    app = DaemonApp(temp_home)
+    branches = app.handlers.git_branches(quest_id)
+    refs = {item["ref"]: item for item in branches["nodes"]}
+
+    assert set(refs) == {"main", "feature/git-graph"}
+    assert refs["feature/git-graph"]["parent_ref"] == "main"
+    assert refs["feature/git-graph"]["latest_summary"]
+    assert "Committed" in str(refs["feature/git-graph"]["latest_summary"])
+
+
+def test_git_branch_created_from_idea_branch_stays_connected_in_canvas(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("copilot git branch from idea quest")
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+    quest_service.update_research_state(quest_root, workspace_mode="copilot")
+    artifact = ArtifactService(temp_home)
+    _confirm_local_baseline(artifact, quest_root)
+
+    idea = artifact.submit_idea(
+        quest_root,
+        mode="create",
+        title="Connected git branch idea",
+        problem="Verify git branch lineage under an idea branch.",
+        hypothesis="A git-created branch should remain attached to the active idea branch.",
+        mechanism="Use artifact.git(branch=...) from the active idea workspace.",
+        expected_gain="Canvas remains a graph rather than a detached chain.",
+        next_target="experiment",
+    )
+    idea_branch = idea["branch"]
+
+    artifact.git_action(quest_root, action="branch", branch="feature/from-idea")
+
+    app = DaemonApp(temp_home)
+    branches = app.handlers.git_branches(quest_id)
+    refs = {item["ref"]: item for item in branches["nodes"]}
+
+    assert idea_branch in refs
+    assert "feature/from-idea" in refs
+    assert refs["feature/from-idea"]["parent_ref"] == idea_branch
+    assert refs["feature/from-idea"]["parent_branch_recorded"] == idea_branch
+    assert refs["feature/from-idea"]["latest_summary"]
+    assert "Created branch" in str(refs["feature/from-idea"]["latest_summary"])
+
+    stage_view = app.handlers.stage_view(
+        quest_id,
+        body={
+            "selection_type": "branch_node",
+            "selection_ref": "feature/from-idea",
+            "branch_name": "feature/from-idea",
+            "compare_base": idea_branch,
+            "compare_head": "feature/from-idea",
+        },
+    )
+    history_titles = [str(item.get("title") or "") for item in stage_view["sections"]["history"]]
+    assert any("Created branch" in title for title in history_titles)

@@ -19,6 +19,7 @@ import {
 
 import { WebSearchQueryPills, WebSearchResults } from '@/components/chat/toolViews/WebSearchCards'
 import { deriveMcpIdentity } from '@/lib/mcpIdentity'
+import { useI18n } from '@/lib/i18n/useI18n'
 import type { RenderOperationFeedItem } from '@/lib/feedOperations'
 import { useTabsStore } from '@/lib/stores/tabs'
 import { BUILTIN_PLUGINS } from '@/lib/types/plugin'
@@ -189,6 +190,24 @@ function normalizeStatus(value?: string, active = false) {
       'border-emerald-500/18 bg-emerald-500/10 text-emerald-700 dark:border-emerald-300/18 dark:bg-emerald-300/10 dark:text-emerald-200',
     spinning: false,
   }
+}
+
+function normalizeComparableText(value?: string | null) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function selectSecondaryText(primaryText: string, candidates: Array<string | null | undefined>) {
+  const normalizedPrimary = normalizeComparableText(primaryText)
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim()
+    if (!value) continue
+    if (normalizeComparableText(value) === normalizedPrimary) continue
+    return value
+  }
+  return ''
 }
 
 type StudioToolCardModel = {
@@ -486,10 +505,12 @@ function buildFileChangeModel(item: RenderOperationFeedItem, questId: string): S
   const fileChanges = Array.from(deduped.values())
   const title =
     fileChanges.length === 0
-      ? item.subject || 'Code edit'
+      ? active
+        ? 'Updating files'
+        : item.subject || 'Updated files'
       : fileChanges.length === 1
-      ? fileChanges[0].displayPath
-      : `${active ? 'Updating' : 'Updated'} ${fileChanges.length || 0} files`
+        ? `${active ? 'Updating' : 'Updated'} ${fileChanges[0].displayPath}`
+        : `${active ? 'Updating' : 'Updated'} ${fileChanges.length || 0} files`
   const subtitle =
     fileChanges.length > 1
       ? `${fileChanges.length} file changes recorded`
@@ -544,13 +565,13 @@ function buildBashModel(item: RenderOperationFeedItem): StudioToolCardModel {
   const title =
     mode === 'list'
       ? active
-        ? 'Inspecting managed bash sessions'
-        : 'Managed bash sessions'
+        ? 'Checking background terminals'
+        : 'Checked background terminals'
       : mode === 'history'
         ? active
-          ? 'Inspecting bash history'
-          : 'Recent bash history'
-        : truncateText(command, 180)
+          ? 'Reading terminal history'
+          : 'Read terminal history'
+        : `${active ? 'Running' : 'Ran'} ${truncateText(command, 180)}`
   const subtitle =
     mode === 'list'
       ? [typeof listCount === 'number' ? `${listCount} sessions` : '', workdir].filter(Boolean).join(' · ') || null
@@ -626,7 +647,7 @@ function buildWebSearchModel(item: RenderOperationFeedItem): StudioToolCardModel
   return {
     label: 'web search',
     tooltip: 'web_search',
-    title: truncateText(query, 180),
+    title: truncateText(`${active ? 'Searching' : 'Searched'} ${query}`, 180),
     subtitle: subtitle || null,
     Icon: Globe2,
     accentClassName: 'bg-[rgba(121,145,182,0.12)] text-[#58779f] dark:bg-[rgba(121,145,182,0.14)]',
@@ -651,7 +672,12 @@ function buildGenericModel(item: RenderOperationFeedItem): StudioToolCardModel {
   return {
     label: item.toolName || 'tool',
     tooltip: item.toolName || 'tool',
-    title: truncateText(item.subject || item.content || item.toolName || 'Tool call', 180),
+    title: truncateText(
+      item.subject ||
+        item.content ||
+        `${active ? 'Calling' : 'Used'} ${item.toolName || 'tool'}`,
+      180
+    ),
     subtitle: item.toolName && item.subject ? truncateText(item.toolName, 120) : null,
     Icon: Wrench,
     accentClassName: 'bg-black/[0.05] text-foreground dark:bg-white/[0.06]',
@@ -714,6 +740,37 @@ function FallbackOutput({ value }: { value?: string }) {
   )
 }
 
+function ToolCommentPanel({
+  summary,
+  whyNow,
+  next,
+}: {
+  summary?: string | null
+  whyNow?: string | null
+  next?: string | null
+}) {
+  const { t } = useI18n('workspace')
+  const entries = [
+    summary ? { label: t('copilot_trace_summary'), value: summary } : null,
+    whyNow ? { label: t('copilot_trace_why_now'), value: whyNow } : null,
+    next ? { label: t('copilot_trace_next'), value: next } : null,
+  ].filter(Boolean) as Array<{ label: string; value: string }>
+
+  if (entries.length === 0) return null
+
+  return (
+    <div className="border-l-2 border-black/[0.08] pl-3 text-[11px] leading-5 text-muted-foreground dark:border-white/[0.10]">
+      <div className="space-y-1">
+        {entries.map((entry) => (
+          <div key={entry.label} className="break-words [overflow-wrap:anywhere]">
+            <span className="font-medium text-foreground">{entry.label}:</span> {entry.value}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function StudioWebSearchPanel({
   payload,
   isSearching,
@@ -721,12 +778,13 @@ function StudioWebSearchPanel({
   payload: NormalizedWebSearchPayload
   isSearching: boolean
 }) {
+  const { t } = useI18n('workspace')
   return (
     <div className="space-y-2.5">
       {payload.queries.length > 0 ? (
         <div className="space-y-1.5">
           <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-            Queries
+            {t('copilot_trace_queries')}
           </div>
           <WebSearchQueryPills queries={payload.queries} activeQuery={payload.query} compact />
         </div>
@@ -744,10 +802,10 @@ function StudioWebSearchPanel({
         maxItems={5}
         emptyMessage={
           isSearching
-            ? 'Searching the web...'
+            ? t('copilot_trace_searching_web', undefined, 'Searching the web...')
             : payload.queries.length > 0
-              ? 'No structured result cards were returned for this search.'
-              : 'No search results.'
+              ? t('copilot_trace_no_search_cards', undefined, 'No structured result cards were returned for this search.')
+              : t('copilot_trace_no_search_results', undefined, 'No search results.')
         }
       />
     </div>
@@ -763,6 +821,7 @@ function StudioFileChangePanel({
   item: RenderOperationFeedItem
   entries: StudioFileChangeEntry[]
 }) {
+  const { t } = useI18n('workspace')
   const openTab = useTabsStore((state) => state.openTab)
   const canOpenDiff = Boolean(questId && item.runId)
 
@@ -794,7 +853,7 @@ function StudioFileChangePanel({
   if (entries.length === 0) {
     return (
       <div className="text-[12px] leading-6 text-muted-foreground">
-        No structured file changes were recorded for this edit.
+        {t('copilot_trace_no_file_changes', undefined, 'No structured file changes were recorded for this edit.')}
       </div>
     )
   }
@@ -806,7 +865,7 @@ function StudioFileChangePanel({
         return (
           <div
             key={`${entry.path}:${entry.kind || ''}`}
-            className="flex flex-wrap items-center gap-2 rounded-[14px] border border-black/[0.06] bg-white/[0.74] px-3 py-2 dark:border-white/[0.08] dark:bg-white/[0.03]"
+            className="flex flex-wrap items-center gap-2 border-l-2 border-black/[0.08] py-1 pl-3 dark:border-white/[0.10]"
           >
             <span
               className={cn(
@@ -823,9 +882,9 @@ function StudioFileChangePanel({
               type="button"
               disabled={!canOpenDiff}
               onClick={() => handleOpenDiff(entry)}
-              className="inline-flex h-8 items-center rounded-full border border-black/[0.08] bg-white/[0.86] px-3 text-[11px] font-medium text-foreground transition hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[0.10] dark:bg-white/[0.04] dark:hover:bg-white/[0.08]"
+              className="inline-flex h-7 items-center rounded-md border border-black/[0.08] bg-white/[0.86] px-2.5 text-[11px] font-medium text-foreground transition hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[0.10] dark:bg-white/[0.04] dark:hover:bg-white/[0.08]"
             >
-              Open Diff
+              {t('copilot_trace_open_diff', undefined, 'Open Diff')}
             </button>
           </div>
         )
@@ -848,9 +907,22 @@ export function StudioToolCard({
   const expandModeRef = React.useRef<'auto' | 'manual-open' | 'manual-close'>('auto')
   const StatusIcon = model.statusIcon
   const fallbackOutput = model.rawOutput?.trim() || ''
+  const commentPreview =
+    item.comment?.summary?.trim() ||
+    item.comment?.whyNow?.trim() ||
+    item.comment?.next?.trim() ||
+    ''
+  const commentSummary = item.comment?.summary?.trim() || ''
+  const commentWhyNow = item.comment?.whyNow?.trim() || ''
+  const commentNext = item.comment?.next?.trim() || ''
   const showSubtitle = Boolean(model.subtitle && model.subtitle !== model.title)
   const hasStructuredBody = Boolean(
-    showSubtitle || model.webSearch || model.fileChanges || model.lines.length > 0 || model.paths.length > 0
+    showSubtitle ||
+      commentPreview ||
+      model.webSearch ||
+      model.fileChanges ||
+      model.lines.length > 0 ||
+      model.paths.length > 0
   )
 
   React.useEffect(() => {
@@ -873,59 +945,77 @@ export function StudioToolCard({
     })
   }, [])
 
-  const summaryText = model.title || model.subtitle || model.lines[0] || model.label
+  const summaryText = commentSummary || model.title || model.subtitle || model.lines[0] || model.label
+  const secondaryText = selectSecondaryText(summaryText, [
+    commentSummary ? model.title : '',
+    showSubtitle ? model.subtitle : '',
+    commentWhyNow,
+    commentNext,
+    model.lines[0],
+  ])
 
   return (
-    <div className="min-w-0 overflow-hidden rounded-[16px] border border-black/[0.04] bg-black/[0.02] px-3 py-2 dark:border-white/[0.06] dark:bg-white/[0.04]">
+    <div className="min-w-0 overflow-hidden border-l border-black/[0.08] py-1 pl-3 dark:border-white/[0.10]">
       <button
         type="button"
-        className="flex w-full min-w-0 items-center gap-2.5 text-left"
+        className="flex w-full min-w-0 items-start gap-2.5 py-1 text-left"
         onClick={handleToggle}
       >
         <div
           title={model.tooltip}
           aria-label={model.tooltip}
           className={cn(
-            'flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px]',
+            'mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-sm',
             model.accentClassName
           )}
         >
-          <model.Icon className="h-4 w-4" />
+          <model.Icon className="h-3.5 w-3.5" />
         </div>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 space-y-0.5">
           <div
-            className="truncate text-[13px] font-medium leading-5 text-foreground"
+            className="break-words text-[12.5px] font-medium leading-[1.65] text-foreground [overflow-wrap:anywhere]"
             title={summaryText}
           >
             {summaryText}
           </div>
+          {secondaryText ? (
+            <div
+              className="break-words text-[12px] leading-[1.5] text-muted-foreground [overflow-wrap:anywhere]"
+              title={secondaryText}
+            >
+              {secondaryText}
+            </div>
+          ) : null}
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium',
-              model.statusChipClassName
-            )}
-          >
+        <div className="ml-auto flex shrink-0 flex-col items-end gap-0.5 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
             <StatusIcon className={cn('h-3.5 w-3.5', model.statusSpinning && 'animate-spin')} />
             {model.statusLabel}
           </span>
-          {item.createdAt ? <span>{formatTime(item.createdAt)}</span> : null}
-          <ChevronDown
-            className={cn(
-              'h-4 w-4 transition-transform',
-              expanded && 'rotate-180'
-            )}
-          />
+          <div className="flex items-center gap-1.5">
+            {item.createdAt ? <span>{formatTime(item.createdAt)}</span> : null}
+            <ChevronDown
+              className={cn(
+                'h-4 w-4 transition-transform',
+                expanded && 'rotate-180'
+              )}
+            />
+          </div>
         </div>
       </button>
 
       {expanded ? (
-        <div className="ml-[42px] mt-2.5 space-y-2.5 border-t border-black/[0.05] pt-2.5 dark:border-white/[0.06]">
+        <div className="ml-[20px] mt-2 space-y-2 border-l border-black/[0.06] pl-3 dark:border-white/[0.08]">
+          <ToolCommentPanel
+            summary={item.comment?.summary ?? null}
+            whyNow={item.comment?.whyNow ?? null}
+            next={item.comment?.next ?? null}
+          />
+
           {showSubtitle ? (
-            <div className="text-[11px] leading-5 text-muted-foreground">
+            <div className="break-words text-[12px] leading-[1.6] text-muted-foreground [overflow-wrap:anywhere]">
               {model.subtitle}
             </div>
           ) : null}
@@ -935,7 +1025,7 @@ export function StudioToolCard({
           ) : model.fileChanges ? (
             <StudioFileChangePanel questId={questId} item={item} entries={model.fileChanges} />
           ) : model.lines.length > 0 ? (
-            <div className="space-y-1.5 text-[12px] leading-6 text-muted-foreground">
+            <div className="space-y-1.5 text-[12px] leading-[1.6] text-muted-foreground">
               {model.lines.slice(0, 3).map((line, index) => (
                 <div key={`${index}:${line}`} className="break-words [overflow-wrap:anywhere]">
                   {line}

@@ -98,6 +98,34 @@ const getMessageContent = (messageData: Partial<MessageEventData> & { message?: 
   return ''
 }
 
+const findQuestConversationDuplicateIndex = (
+  contentValue: string,
+  messageData: Partial<MessageEventData>,
+  messages: ChatMessageItem[]
+) => {
+  const metadata = messageData.metadata
+  const rawEventType =
+    typeof metadata?.quest_event_type === 'string' ? metadata.quest_event_type : ''
+  if (rawEventType !== 'conversation.message') return -1
+  const runId = typeof metadata?.quest_run_id === 'string' ? metadata.quest_run_id : ''
+  const skillId = typeof metadata?.quest_skill_id === 'string' ? metadata.quest_skill_id : ''
+  const normalizedContent = contentValue.trim()
+  if (!normalizedContent || !runId) return -1
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const candidate = messages[index]
+    if (candidate.type !== 'text_delta') continue
+    const candidateContent = candidate.content as MessageContent
+    if (candidateContent.role !== 'assistant') continue
+    const candidateMeta = candidateContent.metadata
+    if ((candidateContent.content || '').trim() !== normalizedContent) continue
+    if ((candidateMeta?.quest_event_type || '') !== 'runner.agent_message') continue
+    if ((candidateMeta?.quest_run_id || '') !== runId) continue
+    if (skillId && (candidateMeta?.quest_skill_id || '') !== skillId) continue
+    return index
+  }
+  return -1
+}
+
 const applyMessageEvent = (
   event: AgentSSEEvent,
   context: ChatEventReducerContext
@@ -264,6 +292,44 @@ const applyMessageEvent = (
 
   let updatedExisting = false
   if (role === 'assistant') {
+    const duplicateIndex = findQuestConversationDuplicateIndex(
+      contentValue,
+      messageData,
+      context.messagesRef.current
+    )
+    if (duplicateIndex >= 0) {
+      const next = [...context.messagesRef.current]
+      const existing = next[duplicateIndex]
+      if (existing.type === 'text_delta') {
+        const existingContent = existing.content as MessageContent
+        const nextContent: MessageContent = {
+          ...existingContent,
+          role,
+          timestamp,
+          status: 'completed',
+          metadata: {
+            ...(existingContent.metadata ?? {}),
+            ...(messageData.metadata ?? {}),
+          },
+          content: contentValue || existingContent.content,
+        }
+        next[duplicateIndex] = { ...existing, seq: eventSeq, ts: timestamp, content: nextContent }
+        context.updateMessages(next)
+        if (messageKey) {
+          context.assistantMessageIndexRef.current.set(messageKey, existing.id)
+        }
+        if (context.lastAssistantSegmentIdRef) {
+          context.lastAssistantSegmentIdRef.current = existing.id
+        }
+        if (context.startDisplayLock) {
+          context.startDisplayLock(existing.id)
+        }
+        updatedExisting = true
+      }
+    }
+  }
+
+  if (role === 'assistant' && !updatedExisting) {
     const existingId = context.assistantMessageIndexRef.current.get(messageKey)
     if (existingId) {
       const existingIndex = context.messagesRef.current.findIndex((item) => item.id === existingId)

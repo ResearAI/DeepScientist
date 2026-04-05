@@ -1,7 +1,6 @@
 'use client'
 
 import * as React from 'react'
-import { motion } from 'framer-motion'
 import {
   AlertCircle,
   CheckCircle2,
@@ -12,6 +11,7 @@ import {
 } from 'lucide-react'
 
 import { McpBashExecView } from '@/components/chat/toolViews/McpBashExecView'
+import { useI18n } from '@/lib/i18n/useI18n'
 import type { ToolContent } from '@/lib/plugins/ai-manus/types'
 import type { EventMetadata } from '@/lib/types/chat-events'
 import type { BashProgress } from '@/lib/types/bash'
@@ -86,6 +86,24 @@ function summarizeCommand(value?: string) {
   return `${normalized.slice(0, 120)}…${normalized.slice(-28)}`
 }
 
+function normalizeComparableText(value?: string | null) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function selectSecondaryText(primaryText: string, candidates: Array<string | null | undefined>) {
+  const normalizedPrimary = normalizeComparableText(primaryText)
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim()
+    if (!value) continue
+    if (normalizeComparableText(value) === normalizedPrimary) continue
+    return value
+  }
+  return ''
+}
+
 function formatStatusLabel(value: string) {
   return value.replace(/_/g, ' ')
 }
@@ -95,7 +113,27 @@ function describeBashActivity(args: {
   isStopped: boolean
   isRunning: boolean
   workdir: string
+  mode: string
+  commandSummary: string
 }) {
+  if (args.mode === 'list') {
+    return args.isRunning ? 'Checking background terminals' : 'Checked background terminals'
+  }
+  if (args.mode === 'history') {
+    return args.isRunning ? 'Reading terminal history' : 'Read terminal history'
+  }
+  if (args.commandSummary) {
+    if (args.isFailed) {
+      return `Command failed · ${args.commandSummary}`
+    }
+    if (args.isStopped) {
+      return `Command stopped · ${args.commandSummary}`
+    }
+    if (args.isRunning) {
+      return `Running ${args.commandSummary}`
+    }
+    return `Ran ${args.commandSummary}`
+  }
   const location = args.workdir.trim() || '~'
   if (args.isFailed) {
     return 'DeepScientist finished the terminal task with an error.'
@@ -134,6 +172,7 @@ export function QuestBashExecOperation({
   output,
   createdAt,
   metadata,
+  comment,
   isLatest = false,
   expandBehavior = 'latest_or_running',
 }: {
@@ -154,6 +193,7 @@ export function QuestBashExecOperation({
   isLatest?: boolean
   expandBehavior?: 'latest_or_running' | 'latest_only'
 }) {
+  const { t } = useI18n('workspace')
   const timestamp = createdAt ? Date.parse(createdAt) : Date.now()
   const resolvedTimestamp = Number.isFinite(timestamp) ? timestamp : Date.now()
   const parsedArgs = asRecord(parseStructuredValue(args))
@@ -241,35 +281,46 @@ export function QuestBashExecOperation({
           ? rawStatus || 'running'
           : rawStatus || 'completed'
   )
+  const commandSummary = summarizeCommand(command)
   const title = describeBashActivity({
     isFailed,
     isStopped,
     isRunning,
     workdir,
+    mode,
+    commandSummary,
   })
   const progressPercent = getProgressPercent(liveProgress)
   const progressLabel = formatProgressLabel(liveProgress)
   const progressMeta = formatProgressMeta(liveProgress)
   const progressReason = liveStopReason.trim()
+  const commentSummary = comment?.summary?.trim() || ''
+  const commentWhyNow = comment?.whyNow?.trim() || ''
+  const commentNext = comment?.next?.trim() || ''
   const summary =
-    summarizeCommand(command) ||
-    (typeof parsedArgs?.comment === 'string' ? parsedArgs.comment : '') ||
+    commentSummary ||
     title ||
+    commandSummary ||
+    (typeof parsedArgs?.comment === 'string' ? parsedArgs.comment : '') ||
     'bash_exec'
+  const secondaryText = selectSecondaryText(summary, [
+    commentSummary ? title : '',
+    commandSummary,
+    commentWhyNow,
+    commentNext,
+    workdir ? `workdir: ${workdir}` : '',
+  ])
   const compactProgressLabel = formatPercentLabel(progressPercent)
   const progressSummary = [progressLabel, compactProgressLabel, progressMeta || progressReason]
     .filter(Boolean)
     .join(' · ')
   const showProgress = liveProgress != null
   const showProgressSummary = showProgress && Boolean(progressSummary)
+  const collapsedDetailText = selectSecondaryText(summary, [
+    showProgressSummary ? progressSummary : '',
+    secondaryText,
+  ])
   const StatusIcon = isFailed ? AlertCircle : isStopped ? Square : isRunning ? Loader2 : CheckCircle2
-  const statusChipClass = isFailed
-    ? 'border-rose-500/20 bg-rose-500/10 text-rose-700 dark:border-rose-300/20 dark:bg-rose-300/10 dark:text-rose-200'
-    : isStopped
-      ? 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-200'
-      : isRunning
-      ? 'border-black/[0.08] bg-black/[0.04] text-foreground dark:border-white/[0.10] dark:bg-white/[0.06]'
-        : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/10 dark:text-emerald-200'
   const shouldAutoExpandRunning = expandBehavior === 'latest_or_running'
   const [expanded, setExpanded] = React.useState(
     () => isLatest || (shouldAutoExpandRunning && isRunning)
@@ -325,20 +376,15 @@ export function QuestBashExecOperation({
   }
 
   return (
-    <motion.article
-      layout
-      initial={{ opacity: 0, y: 14, scale: 0.985 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -8, scale: 0.992 }}
-      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+    <article
       className={cn(
-        'min-w-0 overflow-hidden rounded-[16px] border border-black/[0.04] bg-black/[0.02] px-3 py-2 dark:border-white/[0.06] dark:bg-white/[0.04]',
-        isRunning && 'ring-1 ring-black/[0.05] dark:ring-white/[0.08]'
+        'min-w-0 overflow-hidden border-l border-black/[0.08] py-1 pl-3 dark:border-white/[0.10]',
+        isRunning && 'border-[#9b8352]/60'
       )}
     >
       <button
         type="button"
-        className="flex w-full min-w-0 flex-col gap-2 text-left"
+        className="flex w-full min-w-0 items-start gap-2.5 py-1 text-left"
         onClick={() => {
           setExpanded((current) => {
             const next = !current
@@ -347,39 +393,34 @@ export function QuestBashExecOperation({
           })
         }}
       >
-        <div className="flex w-full min-w-0 items-center gap-2.5">
-          <div
-            title={toolName?.trim() || 'bash_exec'}
-            aria-label={toolName?.trim() || 'bash_exec'}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-[rgba(151,164,179,0.14)] text-foreground dark:bg-[rgba(231,223,210,0.08)]"
-          >
-            {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <TerminalSquare className="h-4 w-4" />}
-          </div>
+        <div
+          title={toolName?.trim() || 'bash_exec'}
+          aria-label={toolName?.trim() || 'bash_exec'}
+          className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-sm bg-[rgba(151,164,179,0.14)] text-foreground dark:bg-[rgba(231,223,210,0.08)]"
+        >
+          {isRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TerminalSquare className="h-3.5 w-3.5" />}
+        </div>
 
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-medium leading-5 text-foreground" title={summary}>
-              {summary}
-            </div>
+        <div className="min-w-0 flex-1">
+          <div className="break-words text-[12.5px] font-medium leading-[1.65] text-foreground [overflow-wrap:anywhere]" title={summary}>
+            {summary}
           </div>
-
-          <div className="ml-auto flex min-w-0 shrink items-center gap-2 text-[11px] text-muted-foreground">
-            {showProgressSummary ? (
-              <span
-                className="max-w-[220px] shrink truncate font-medium text-muted-foreground"
-                title={progressSummary}
-              >
-                {progressSummary}
-              </span>
-            ) : null}
-            <span
-              className={cn(
-                'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-medium',
-                statusChipClass
-              )}
+          {collapsedDetailText ? (
+            <div
+              className="break-words pt-0.5 text-[12px] leading-[1.5] text-muted-foreground [overflow-wrap:anywhere]"
+              title={collapsedDetailText}
             >
-              <StatusIcon className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')} />
-              {statusLabel}
-            </span>
+              {collapsedDetailText}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="ml-auto flex shrink-0 flex-col items-end gap-0.5 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+            <StatusIcon className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')} />
+            {statusLabel}
+          </span>
+          <div className="flex items-center gap-1.5">
             {createdAt ? <span className="shrink-0 whitespace-nowrap">{formatTime(createdAt)}</span> : null}
             <ChevronDown
               className={cn(
@@ -392,26 +433,52 @@ export function QuestBashExecOperation({
       </button>
 
       {expanded ? (
-        <div className="ds-studio-bash-shell mt-2 overflow-hidden rounded-none border border-black/[0.05] bg-black/[0.03] p-0 dark:border-white/[0.06] dark:bg-white/[0.03]">
-          <McpBashExecView
-            toolContent={toolContent}
-            live={label === 'tool_call' || status === 'running' || status === 'terminating'}
-            sessionId={eventMetadata.session_id}
-            projectId={questId}
-            readOnly={false}
-            panelMode="inline"
-            chrome="bare"
-            preferBashTerminalRender
-            onLiveStateChange={(state) => {
-              setLiveProgress(state.progress)
-              setLiveStatus(state.status)
-              setLiveExitCode(state.exitCode)
-              setLiveStopReason(state.stopReason)
-            }}
-          />
+        <div className="ml-[20px] mt-2 space-y-2 border-l border-black/[0.06] pl-3 dark:border-white/[0.08]">
+          {commentSummary || commentWhyNow || commentNext ? (
+            <div className="border-l-2 border-black/[0.08] pl-3 text-[12px] leading-[1.6] text-muted-foreground dark:border-white/[0.10]">
+              {comment?.summary ? (
+                <div className="break-words [overflow-wrap:anywhere]">
+                  <span className="font-medium text-foreground">{t('copilot_trace_summary')}:</span> {comment.summary}
+                </div>
+              ) : null}
+              {comment?.whyNow ? (
+                <div className="break-words [overflow-wrap:anywhere]">
+                  <span className="font-medium text-foreground">{t('copilot_trace_why_now')}:</span> {comment.whyNow}
+                </div>
+              ) : null}
+              {comment?.next ? (
+                <div className="break-words [overflow-wrap:anywhere]">
+                  <span className="font-medium text-foreground">{t('copilot_trace_next')}:</span> {comment.next}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {!showProgressSummary && progressSummary ? (
+            <div className="text-[12px] leading-[1.5] text-muted-foreground">{progressSummary}</div>
+          ) : null}
+
+          <div className="ds-studio-bash-shell overflow-hidden rounded-[10px] border border-black/[0.05] bg-black/[0.03] p-0 dark:border-white/[0.06] dark:bg-white/[0.03]">
+            <McpBashExecView
+              toolContent={toolContent}
+              live={label === 'tool_call' || status === 'running' || status === 'terminating'}
+              sessionId={eventMetadata.session_id}
+              projectId={questId}
+              readOnly={false}
+              panelMode="inline"
+              chrome="bare"
+              preferBashTerminalRender
+              onLiveStateChange={(state) => {
+                setLiveProgress(state.progress)
+                setLiveStatus(state.status)
+                setLiveExitCode(state.exitCode)
+                setLiveStopReason(state.stopReason)
+              }}
+            />
+          </div>
         </div>
       ) : null}
-    </motion.article>
+    </article>
   )
 }
 

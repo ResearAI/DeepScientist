@@ -1,6 +1,7 @@
 ---
 name: optimize
 description: Use when an algorithm-first quest should manage candidate briefs, optimization frontier, branch promotion, or fusion-aware search instead of the paper-oriented default loop.
+skill_role: stage
 ---
 
 # Optimize

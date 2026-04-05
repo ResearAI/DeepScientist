@@ -313,7 +313,7 @@ function normalizeScopedExplorerSelection(
   const selectionRef =
     String(selection.selection_ref || selection.stage_key || '').trim() || null
   if (!selectionRef) return null
-  if (!['branch_node', 'stage_node', 'baseline_node'].includes(selectionType)) {
+  if (!['branch_node', 'stage_node', 'baseline_node', 'git_commit_node'].includes(selectionType)) {
     return null
   }
   return {
@@ -366,6 +366,7 @@ function isQuestFriendlyTab(
   if (isQuestWorkspaceTab(tab, projectId)) return true
   return [
     BUILTIN_PLUGINS.GIT_DIFF_VIEWER,
+    BUILTIN_PLUGINS.GIT_COMMIT_VIEWER,
     BUILTIN_PLUGINS.NOTEBOOK,
     BUILTIN_PLUGINS.PDF_VIEWER,
     BUILTIN_PLUGINS.PDF_MARKDOWN,
@@ -543,6 +544,10 @@ const resolveExplorerSnapshotRevision = (
   }
   const compareHead = String(selection.compare_head || '').trim()
   if (compareHead) return compareHead
+  const selectionRef = String(selection.selection_ref || '').trim()
+  if (String(selection.selection_type || '') === 'git_commit_node' && selectionRef) {
+    return selectionRef
+  }
   const branchName = String(selection.branch_name || '').trim()
   return branchName || null
 }
@@ -1686,6 +1691,7 @@ function LeftPanel({
   const readOnlyMode = Boolean(readOnly)
   const { addToast } = useToast()
   const openTab = useTabsStore((state) => state.openTab)
+  const tabs = useTabsStore((state) => state.tabs)
   const graphSelection = useLabGraphSelectionStore((state) => state.selection)
   const { createFolder, upload, refresh, loadFiles, isLoading } = useFileTreeStore()
   const refreshArxivLibrary = useArxivStore((state) => state.refresh)
@@ -1735,12 +1741,33 @@ function LeftPanel({
     }
     return getQuestWorkspaceStageSelection(activeTab)
   }, [activeTab, projectId])
+  const latestProjectScopedTabSelection = React.useMemo(() => {
+    const sortedTabs = [...tabs].sort((left, right) => {
+      const leftAccessed = typeof left.lastAccessedAt === 'number' ? left.lastAccessedAt : left.createdAt
+      const rightAccessed = typeof right.lastAccessedAt === 'number' ? right.lastAccessedAt : right.createdAt
+      return rightAccessed - leftAccessed
+    })
+    for (const tab of sortedTabs) {
+      if (!tabMatchesProject(tab, projectId)) continue
+      const selection = normalizeScopedExplorerSelection(getQuestWorkspaceStageSelection(tab))
+      if (selection) {
+        return selection
+      }
+    }
+    return null
+  }, [projectId, tabs])
   const explorerStageSelection = React.useMemo(() => {
     if (activeQuestWorkspaceView === 'stage' && activeQuestStageSelection) {
       return activeQuestStageSelection
     }
-    return activeTabStageSelection || graphSelection || null
-  }, [activeQuestStageSelection, activeQuestWorkspaceView, activeTabStageSelection, graphSelection])
+    return activeTabStageSelection || graphSelection || latestProjectScopedTabSelection || null
+  }, [
+    activeQuestStageSelection,
+    activeQuestWorkspaceView,
+    activeTabStageSelection,
+    graphSelection,
+    latestProjectScopedTabSelection,
+  ])
   const liveScopedExplorerSelection = React.useMemo(
     () => normalizeScopedExplorerSelection(explorerStageSelection),
     [explorerStageSelection]
@@ -1798,10 +1825,18 @@ function LeftPanel({
   }, [loadFiles, localQuestMode, projectId, workspaceTreeSyncKey])
 
   React.useEffect(() => {
-    const effectiveSelection =
-      activeExplorer === 'scope'
-        ? liveScopedExplorerSelection || stickyScopedSelection
-        : null
+    if (explorerModePreference !== 'auto') return
+    if (!localQuestMode) return
+    setActiveExplorer(liveScopedExplorerSelection || stickyScopedSelection ? 'scope' : 'files')
+  }, [explorerModePreference, liveScopedExplorerSelection, localQuestMode, stickyScopedSelection])
+
+  const effectiveScopedExplorerSelection = React.useMemo(
+    () => liveScopedExplorerSelection || stickyScopedSelection || null,
+    [liveScopedExplorerSelection, stickyScopedSelection]
+  )
+
+  React.useEffect(() => {
+    const effectiveSelection = effectiveScopedExplorerSelection
 
     if (!localQuestMode || !effectiveSelection) {
       setScopedExplorerLabel(null)
@@ -1843,7 +1878,31 @@ function LeftPanel({
           removed?: number | null
         }> = []
 
-        if (compareBase && compareHead && effectiveSelection.selection_type !== 'baseline_node') {
+        if (effectiveSelection.selection_type === 'git_commit_node') {
+          const commitSha = String(
+            effectiveSelection.selection_ref || effectiveSelection.compare_head || snapshotRevision || ''
+          ).trim()
+          if (commitSha) {
+            const commit = await questClient.gitCommit(projectId, commitSha)
+            if (cancelled) return
+            const diffPaths = (commit.files || [])
+              .map((item) => normalizeExplorerScopePath(item.path))
+              .filter(Boolean)
+            diffPaths.forEach((item) => scopePathSet.add(item))
+            ;(commit.files || []).forEach((item) => {
+              const normalizedPath = normalizeExplorerScopePath(item.path)
+              if (!normalizedPath) return
+              diffStatusByPath.set(normalizedPath, String(item.status || 'modified'))
+            })
+            nextDiffFiles = (commit.files || []).map((item) => ({
+              path: normalizeExplorerScopePath(item.path),
+              status: item.status || null,
+              oldPath: item.old_path || null,
+              added: typeof item.added === 'number' ? item.added : null,
+              removed: typeof item.removed === 'number' ? item.removed : null,
+            }))
+          }
+        } else if (compareBase && compareHead && effectiveSelection.selection_type !== 'baseline_node') {
           const compare = await questClient.gitCompare(projectId, compareBase, compareHead)
           if (cancelled) return
           const diffPaths = (compare.files || [])
@@ -1870,7 +1929,7 @@ function LeftPanel({
           try {
             explorerPayload = await questClient.explorer(projectId, {
               revision: snapshotRevision,
-              mode: 'ref',
+              mode: effectiveSelection.selection_type === 'git_commit_node' ? 'commit' : 'ref',
             })
             if (cancelled) return
             sourceMode = 'snapshot'
@@ -1923,7 +1982,7 @@ function LeftPanel({
       cancelled = true
     }
   }, [
-    activeExplorer,
+    effectiveScopedExplorerSelection,
     liveScopedExplorerSelection,
     localQuestMode,
     projectId,
@@ -1947,7 +2006,13 @@ function LeftPanel({
       added?: number | null
       removed?: number | null
     }) => {
-      if (!diffCompareBase || !diffCompareHead) return
+      const commitSelection =
+        explorerStageSelection && explorerStageSelection.selection_type === 'git_commit_node'
+          ? explorerStageSelection
+          : null
+      const commitSha = String(
+        commitSelection?.selection_ref || commitSelection?.compare_head || explorerLocation.revision || ''
+      ).trim()
       onExitHome?.()
       openTab({
         pluginId: BUILTIN_PLUGINS.GIT_DIFF_VIEWER,
@@ -1955,13 +2020,16 @@ function LeftPanel({
           type: 'custom',
           customData: {
             projectId,
-            base: diffCompareBase,
-            head: diffCompareHead,
+            resolver: commitSha ? 'git_commit' : 'git',
+            sha: commitSha || null,
+            base: commitSha ? null : diffCompareBase,
+            head: commitSha ? null : diffCompareHead,
             path: item.path,
             status: item.status,
             oldPath: item.oldPath || null,
             added: item.added ?? null,
             removed: item.removed ?? null,
+            snapshotRevision: explorerLocation.revision,
             quest_stage_selection: explorerStageSelection || null,
             scoped_selection_source: 'diff-viewer',
           },
@@ -1969,7 +2037,15 @@ function LeftPanel({
         title: item.path,
       })
     },
-    [diffCompareBase, diffCompareHead, explorerStageSelection, onExitHome, openTab, projectId]
+    [
+      diffCompareBase,
+      diffCompareHead,
+      explorerLocation.revision,
+      explorerStageSelection,
+      onExitHome,
+      openTab,
+      projectId,
+    ]
   )
 
   const openPluginTab = React.useCallback(
@@ -2009,26 +2085,34 @@ function LeftPanel({
         explorerLocation.revision &&
         normalizedPath
       ) {
+        const commitSelection =
+          explorerStageSelection && explorerStageSelection.selection_type === 'git_commit_node'
+            ? explorerStageSelection
+            : null
+        const commitSha = String(
+          commitSelection?.selection_ref || commitSelection?.compare_head || explorerLocation.revision || ''
+        ).trim()
         openTab({
           pluginId: BUILTIN_PLUGINS.GIT_DIFF_VIEWER,
           context: {
             type: 'custom',
             customData: {
               projectId,
-              resolver: 'git',
+              resolver: commitSha ? 'git_commit' : 'git',
+              sha: commitSha || null,
               initialMode: 'snapshot',
               snapshotRevision: explorerLocation.revision,
               snapshotDocumentId: `git::${explorerLocation.revision}::${normalizedPath}`,
               displayPath: normalizedPath,
               path: normalizedPath,
-              base: diffCompareBase,
-              head: diffCompareHead,
+              base: commitSha ? null : diffCompareBase,
+              head: commitSha ? null : diffCompareHead,
               status: diffEntry?.status ?? null,
               oldPath: diffEntry?.oldPath || null,
               added: diffEntry?.added ?? null,
               removed: diffEntry?.removed ?? null,
               allowSnapshot: true,
-              allowDiff: Boolean(diffEntry && diffCompareBase && diffCompareHead),
+              allowDiff: Boolean(diffEntry && (commitSha || (diffCompareBase && diffCompareHead))),
               quest_stage_selection: explorerStageSelection || null,
               scoped_selection_source: 'snapshot-viewer',
             },
@@ -2037,7 +2121,11 @@ function LeftPanel({
         })
         return
       }
-      if (file.type !== 'folder' && diffEntry && diffCompareBase && diffCompareHead) {
+      if (
+        file.type !== 'folder' &&
+        diffEntry &&
+        (String(explorerStageSelection?.selection_type || '') === 'git_commit_node' || (diffCompareBase && diffCompareHead))
+      ) {
         await handleOpenDiffFile(diffEntry)
         return
       }
@@ -2186,7 +2274,9 @@ function LeftPanel({
   const isFilesView = activeExplorer === 'files'
   const isScopeView = activeExplorer === 'scope'
   const showArxivExplorerPanel = Boolean(projectId) && (demoMode || supportsArxiv())
-  const hasScopedExplorer = scopedExplorerNodes.length > 0
+  const hasScopedExplorer = Boolean(
+    effectiveScopedExplorerSelection || scopedExplorerLoading || scopedExplorerNodes.length > 0
+  )
   const hasDiffExplorer = diffFiles.length > 0
   const disableExplorerActions = readOnlyMode
   const disableExplorerMutations = readOnlyMode || localQuestMode
@@ -3910,57 +4000,6 @@ export function WorkspaceLayout({
     }
     window.addEventListener('ds:copilot:run', handler as EventListener)
     return () => window.removeEventListener('ds:copilot:run', handler as EventListener)
-  }, [copilotDock, homeMode, readOnlyMode])
-
-  React.useEffect(() => {
-    if (readOnlyMode) return
-    const handler = (event: Event) => {
-      const detail = (
-        event as CustomEvent<{
-          folderId?: unknown
-          buildId?: unknown
-          focusedError?: unknown
-          promptText?: unknown
-        }>
-      ).detail
-      const folderId = typeof detail?.folderId === 'string' ? detail.folderId : null
-      if (!folderId) return
-      if (!homeMode) {
-        copilotDock.setOpen(true)
-      }
-      const payload = {
-        folderId,
-        buildId: typeof detail?.buildId === 'string' ? detail.buildId : null,
-        focusedError:
-          detail?.focusedError && typeof detail.focusedError === 'object'
-            ? (detail.focusedError as {
-                kind: 'latex_error'
-                tabId?: string
-                fileId?: string
-                resourceId?: string
-                resourcePath?: string
-                resourceName?: string
-                line?: number
-                message: string
-                severity: 'error' | 'warning'
-                excerpt?: string
-              })
-            : null,
-        promptText: typeof detail?.promptText === 'string' ? detail.promptText : null,
-      }
-      const attemptRun = (triesLeft: number) => {
-        const actions = copilotActionsRef.current
-        if (actions?.runFixWithAi) {
-          actions.runFixWithAi(payload)
-          return
-        }
-        if (triesLeft <= 0) return
-        window.setTimeout(() => attemptRun(triesLeft - 1), 320)
-      }
-      window.setTimeout(() => attemptRun(4), 220)
-    }
-    window.addEventListener('ds:copilot:fix-with-ai', handler as EventListener)
-    return () => window.removeEventListener('ds:copilot:fix-with-ai', handler as EventListener)
   }, [copilotDock, homeMode, readOnlyMode])
 
   React.useEffect(() => {

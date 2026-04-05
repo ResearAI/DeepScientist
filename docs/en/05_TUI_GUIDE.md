@@ -58,6 +58,7 @@ ds --stop
 Meaning:
 
 - `ds`: start the daemon, print the local Web URL, try to open the browser, then exit.
+  If you launch with `ds --auth true`, DeepScientist also prints the generated local browser password for that launch.
 - `ds --tui`: start the daemon and enter the terminal workspace.
 - `ds --both`: open Web and TUI together.
 - `ds --status`: inspect daemon status.
@@ -70,6 +71,11 @@ When the TUI opens, the first useful signals are:
 - whether you are in `request mode` or `quest mode`
 - the local Web URL
 - which quests are available to switch to
+
+If local browser auth is enabled, treat that printed Web URL as the source of truth.
+
+- open the exact printed URL first
+- `Ctrl+O` reopens the Web workspace with the same local password token when TUI already has it
 
 If the welcome area says `request mode`, the current terminal session is not bound to a quest yet.
 

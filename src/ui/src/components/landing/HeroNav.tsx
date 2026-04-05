@@ -8,6 +8,7 @@ import { BRAND_LOGO_SMALL_SRC } from '@/lib/constants/assets'
 import { useI18n } from '@/lib/i18n'
 import { useOnboardingStore } from '@/lib/stores/onboarding'
 import { cn } from '@/lib/utils'
+import { LocalAuthTokenButton } from './LocalAuthTokenButton'
 
 export default function HeroNav() {
   const { locale, toggleLocale, t } = useI18n()
@@ -46,6 +47,7 @@ export default function HeroNav() {
 
         <div className="flex items-center gap-2">
           <SystemUpdateButton />
+          <LocalAuthTokenButton />
           <Button
             variant="outline"
             size="sm"
@@ -53,7 +55,7 @@ export default function HeroNav() {
             onClick={toggleLocale}
           >
             <Languages className="mr-2 h-4 w-4" />
-            {locale === 'zh' ? '英文' : 'Chinese'}
+            {locale === 'zh' ? 'English' : '中文'}
           </Button>
           <Button
             variant="outline"

@@ -3,6 +3,7 @@ import { client as questClient } from '@/lib/api'
 type RuntimeFlags = {
   surface?: string
   version?: string
+  homePath?: string
   supports?: {
     productApis?: boolean
     socketIo?: boolean
@@ -99,6 +100,12 @@ export function runtimeVersion(): string | null {
   const injected = readInjectedRuntime()
   const version = typeof injected?.version === 'string' ? injected.version.trim() : ''
   return version || null
+}
+
+export function runtimeHomePath(): string | null {
+  const injected = readInjectedRuntime()
+  const homePath = typeof injected?.homePath === 'string' ? injected.homePath.trim() : ''
+  return homePath || null
 }
 
 export async function hasQuestApi(): Promise<boolean> {

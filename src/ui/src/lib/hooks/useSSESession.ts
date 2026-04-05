@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getApiBaseUrl } from '@/lib/api/client'
 import { getMyToken, refreshAccessToken } from '@/lib/api/auth'
+import { handleUnauthorizedAuth, readRequestAuthContext, type RequestAuthMode } from '@/lib/auth'
 import { recordRequestEvent } from '@/lib/bugbash/repro-recorder'
 import { redactSensitive, sanitizeUrl } from '@/lib/bugbash/sanitize'
-import { redirectToLanding } from '@/lib/navigation'
 import { useChatSessionStore } from '@/lib/stores/session'
 import { appendCachedSessionEvent } from '@/lib/stores/chat-event-cache'
 import type {
@@ -124,7 +124,7 @@ const hasRuntimeObservers = (runtime: SessionStreamRuntime) => {
 let ownerToken: string | null = null
 let ownerTokenPromise: Promise<string | null> | null = null
 
-const resolveOwnerToken = async (authMode: 'user' | 'none') => {
+const resolveOwnerToken = async (authMode: RequestAuthMode) => {
   if (authMode !== 'user') return null
   if (typeof window === 'undefined') return null
   if (ownerToken) return ownerToken
@@ -162,29 +162,15 @@ const buildAuthContext = () => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
-  let authMode: 'user' | 'none' = 'none'
-
-  if (typeof window === 'undefined') return { headers, authMode }
-
-  const userToken = window.localStorage.getItem('ds_access_token')
-
-  if (userToken) {
-    headers.Authorization = `Bearer ${userToken}`
-    authMode = 'user'
+  const { token, mode } = readRequestAuthContext()
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
   }
-
-  return { headers, authMode }
+  return { headers, authMode: mode }
 }
 
-const handleUnauthorized = (headers: Record<string, string>) => {
-  if (typeof window === 'undefined') return
-  const userToken = window.localStorage.getItem('ds_access_token')
-  const hasUserToken = Boolean(userToken)
-
-  if (hasUserToken) {
-    window.localStorage.removeItem('ds_access_token')
-    redirectToLanding('session_expired')
-  }
+const handleUnauthorized = (authMode: RequestAuthMode) => {
+  handleUnauthorizedAuth(authMode, 'session_expired')
 }
 
 const parseEventBlock = (block: string) => {
@@ -443,7 +429,7 @@ const postChat = async (payload: SendChatOptions, projectId: string | null, atte
           return
         }
       }
-      handleUnauthorized(headers)
+      handleUnauthorized(authMode)
       return
     }
     if (!response.ok) {
@@ -502,7 +488,7 @@ const postChat = async (payload: SendChatOptions, projectId: string | null, atte
         return
       }
     }
-    handleUnauthorized(headers)
+    handleUnauthorized(authMode)
     return
   }
 
@@ -669,7 +655,7 @@ const runStream = async (
       }
       updateConnection(runtime, { status: 'error', error: 'unauthorized' }, runId)
       setStreaming(runtime, false, runId)
-      handleUnauthorized(headers)
+      handleUnauthorized(authMode)
       return
     }
 

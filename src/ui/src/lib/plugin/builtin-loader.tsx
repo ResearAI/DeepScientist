@@ -137,6 +137,11 @@ const BUILTIN_PLUGIN_IMPORTS: Record<string, ComponentImportFn> = {
       default: m.default,
     })),
 
+  "@ds/plugin-git-commit-viewer": () =>
+    import("@/lib/plugins/git-commit-viewer/GitCommitViewerPlugin").then((m) => ({
+      default: m.default,
+    })),
+
   // ============================================================
   // Placeholder Plugins - to be implemented
   // ============================================================
@@ -239,6 +244,12 @@ export class BuiltinPluginLoader {
    * Cache of preloaded modules
    */
   private preloadedModules = new Map<string, PluginModule>();
+
+  /**
+   * In-flight plugin module loads keyed by plugin ID.
+   * This prevents duplicate work when preload and first-open race each other.
+   */
+  private loadingModules = new Map<string, Promise<PluginModule | null>>();
 
   /**
    * Get or create a lazy component for a plugin
@@ -389,26 +400,38 @@ export class BuiltinPluginLoader {
       return cached;
     }
 
+    const inFlight = this.loadingModules.get(pluginId);
+    if (inFlight) {
+      return inFlight;
+    }
+
     // Load module
     const importFn = BUILTIN_PLUGIN_IMPORTS[pluginId];
     if (!importFn) {
       return null;
     }
 
-    try {
-      const pluginModule = (await this.getRecoverableImport(
-        pluginId,
-        importFn
-      )()) as PluginModule;
-      this.preloadedModules.set(pluginId, pluginModule);
-      return pluginModule;
-    } catch (error) {
-      console.warn(
-        `[BuiltinPluginLoader] Failed to load module: ${pluginId}`,
-        error
-      );
-      return null;
-    }
+    const loadPromise = (async () => {
+      try {
+        const pluginModule = (await this.getRecoverableImport(
+          pluginId,
+          importFn
+        )()) as PluginModule;
+        this.preloadedModules.set(pluginId, pluginModule);
+        return pluginModule;
+      } catch (error) {
+        console.warn(
+          `[BuiltinPluginLoader] Failed to load module: ${pluginId}`,
+          error
+        );
+        return null;
+      } finally {
+        this.loadingModules.delete(pluginId);
+      }
+    })();
+
+    this.loadingModules.set(pluginId, loadPromise);
+    return loadPromise;
   }
 
   /**
@@ -431,6 +454,7 @@ export class BuiltinPluginLoader {
   clearCache(): void {
     this.lazyComponents.clear();
     this.preloadedModules.clear();
+    this.loadingModules.clear();
   }
 }
 

@@ -1,6 +1,7 @@
 ---
 name: rebuttal
 description: Use when a quest already has a paper, draft, or review package and the task is to map reviewer feedback into experiments, manuscript deltas, and a durable rebuttal / revision response.
+skill_role: companion
 ---
 
 # Rebuttal

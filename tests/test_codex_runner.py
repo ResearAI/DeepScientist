@@ -4,7 +4,45 @@ import json
 from pathlib import Path
 
 from deepscientist.runners import CodexRunner, RunRequest
-from deepscientist.runners.codex import _compact_tool_event_payload, _tool_event
+from deepscientist.runners.codex import _compact_tool_event_payload, _message_events, _tool_event
+
+
+def test_codex_message_events_preserve_stream_identity() -> None:
+    delta_events, _ = _message_events(
+        {
+            "type": "response.output_text.delta",
+            "item_id": "msg-123",
+            "delta": "Working through the plan.",
+        },
+        quest_id="q-001",
+        run_id="run-001",
+        skill_id="baseline",
+        created_at="2026-03-21T00:00:00Z",
+    )
+    final_events, _ = _message_events(
+        {
+            "type": "item.completed",
+            "item_type": "agent_message",
+            "item": {
+                "type": "agent_message",
+                "id": "msg-123",
+                "content": [{"type": "output_text", "text": "Working through the plan."}],
+            },
+        },
+        quest_id="q-001",
+        run_id="run-001",
+        skill_id="baseline",
+        created_at="2026-03-21T00:00:01Z",
+    )
+
+    assert len(delta_events) == 1
+    assert len(final_events) == 1
+    assert delta_events[0]["type"] == "runner.delta"
+    assert final_events[0]["type"] == "runner.agent_message"
+    assert delta_events[0]["stream_id"] == "msg-123"
+    assert final_events[0]["stream_id"] == "msg-123"
+    assert delta_events[0]["message_id"] == "msg-123"
+    assert final_events[0]["message_id"] == "msg-123"
 
 
 def test_codex_tool_event_preserves_parseable_bash_exec_payload_and_metadata() -> None:

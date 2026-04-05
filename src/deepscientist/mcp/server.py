@@ -526,6 +526,45 @@ def build_artifact_server(context: McpContext) -> FastMCP:
             allow_empty=allow_empty,
         )
 
+    @server.tool(
+        name="git",
+        description=(
+            "Run git-oriented workspace operations for Copilot mode and general quest maintenance. "
+            "Use action=status|commit|branch|checkout|log|show|diff|graph."
+        ),
+    )
+    def git(
+        action: str,
+        message: str | None = None,
+        ref: str | None = None,
+        base: str | None = None,
+        head: str | None = None,
+        sha: str | None = None,
+        path: str | None = None,
+        branch: str | None = None,
+        create_from: str | None = None,
+        limit: int = 30,
+        allow_empty: bool = False,
+        checkout_new_branch: bool = False,
+        comment: str | dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return service.git_action(
+            context.require_quest_root(),
+            action=action,
+            workspace_root=context.worktree_root,
+            message=message,
+            ref=ref,
+            base=base,
+            head=head,
+            sha=sha,
+            path=path,
+            branch=branch,
+            create_from=create_from,
+            limit=limit,
+            allow_empty=allow_empty,
+            checkout_new_branch=checkout_new_branch,
+        )
+
     @server.tool(name="prepare_branch", description="Prepare an idea or run branch and optional worktree.")
     def prepare_branch(
         run_id: str | None = None,

@@ -182,6 +182,8 @@ def build_session_update(
             "content": event.get("text"),
             "run_id": event.get("run_id"),
             "skill_id": event.get("skill_id"),
+            "stream_id": event.get("stream_id"),
+            "message_id": event.get("message_id"),
             "stream": True,
         }
     elif event_type == "runner.agent_message":
@@ -192,6 +194,8 @@ def build_session_update(
             "content": event.get("text"),
             "run_id": event.get("run_id"),
             "skill_id": event.get("skill_id"),
+            "stream_id": event.get("stream_id"),
+            "message_id": event.get("message_id"),
             "stream": False,
         }
     elif event_type == "runner.reasoning":
@@ -202,6 +206,8 @@ def build_session_update(
             "content": event.get("text"),
             "run_id": event.get("run_id"),
             "skill_id": event.get("skill_id"),
+            "stream_id": event.get("stream_id"),
+            "message_id": event.get("message_id"),
             "stream": False,
         }
     elif event_type == "runner.turn_start":

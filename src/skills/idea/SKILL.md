@@ -1,6 +1,7 @@
 ---
 name: idea
 description: Use when a quest needs concrete hypotheses, limitation analysis, candidate directions, or a selected idea relative to the active baseline.
+skill_role: stage
 ---
 
 # Idea

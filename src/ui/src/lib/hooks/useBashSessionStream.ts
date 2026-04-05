@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getApiBaseUrl } from '@/lib/api/client'
 import { refreshAccessToken } from '@/lib/api/auth'
+import { handleUnauthorizedAuth, readRequestAuthContext, type RequestAuthMode } from '@/lib/auth'
 import { listBashSessions } from '@/lib/api/bash'
 import type { BashSession } from '@/lib/types/bash'
-import { redirectToLanding } from '@/lib/navigation'
 
 export type BashSessionStreamState = {
   status: 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed' | 'error'
@@ -74,29 +74,15 @@ const buildAuthContext = () => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
-  let authMode: 'user' | 'none' = 'none'
-
-  if (typeof window === 'undefined') return { headers, authMode }
-
-  const userToken = window.localStorage.getItem('ds_access_token')
-
-  if (userToken) {
-    headers.Authorization = `Bearer ${userToken}`
-    authMode = 'user'
+  const { token, mode } = readRequestAuthContext()
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
   }
-
-  return { headers, authMode }
+  return { headers, authMode: mode }
 }
 
-const handleUnauthorized = (headers: Record<string, string>) => {
-  if (typeof window === 'undefined') return
-  const userToken = window.localStorage.getItem('ds_access_token')
-  const hasUserToken = Boolean(userToken)
-
-  if (hasUserToken) {
-    window.localStorage.removeItem('ds_access_token')
-    redirectToLanding('session_expired')
-  }
+const handleUnauthorized = (authMode: RequestAuthMode) => {
+  handleUnauthorizedAuth(authMode, 'session_expired')
 }
 
 export function useBashSessionStream({
@@ -227,7 +213,7 @@ export function useBashSessionStream({
             }
           }
           updateConnection({ status: 'error', error: 'unauthorized' })
-          handleUnauthorized(headers)
+          handleUnauthorized(authMode)
           return
         }
 
@@ -362,6 +348,7 @@ export function useBashSessionStream({
     }
     hasSnapshotRef.current = false
     if (stream) {
+      void reload()
       void runStream(0)
       return () => {
         stopStream()

@@ -10,6 +10,7 @@ import pytest
 from deepscientist.artifact import ArtifactService
 from deepscientist.bash_exec import BashExecService
 from deepscientist.config import ConfigManager
+from deepscientist.daemon.app import DaemonApp
 from deepscientist.home import ensure_home_layout, repo_root
 from deepscientist.mcp.context import McpContext
 from deepscientist.mcp.server import build_artifact_server, build_bash_exec_server, build_memory_server
@@ -290,6 +291,7 @@ def test_artifact_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
         assert [tool.name for tool in tools] == [
             "record",
             "checkpoint",
+            "git",
             "prepare_branch",
             "activate_branch",
             "submit_idea",
@@ -353,6 +355,26 @@ def test_artifact_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
         )
         assert checkpoint_result["ok"] is True
         assert "head" in checkpoint_result
+
+        git_status = _unwrap_tool_result(await server.call_tool("git", {"action": "status"}))
+        assert git_status["ok"] is True
+        assert git_status["action"] == "status"
+        assert git_status["result"]["repo"] == str(quest_root)
+
+        git_commit = _unwrap_tool_result(
+            await server.call_tool(
+                "git",
+                {
+                    "action": "commit",
+                    "message": "mcp git checkpoint",
+                    "allow_empty": True,
+                },
+            )
+        )
+        assert git_commit["ok"] is True
+        assert git_commit["action"] == "commit"
+        assert git_commit["result"]["committed"] is True
+        assert git_commit["result"]["subject"] == "mcp git checkpoint"
 
         branch_result = _unwrap_tool_result(
             await server.call_tool(
@@ -687,6 +709,131 @@ def test_artifact_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
         )
         assert completion_result["ok"] is True
         assert completion_result["snapshot"]["status"] == "completed"
+
+    asyncio.run(scenario())
+
+
+def test_artifact_mcp_copilot_workspace_keeps_branch_graph_visible(temp_home: Path) -> None:
+    async def scenario() -> None:
+        ensure_home_layout(temp_home)
+        ConfigManager(temp_home).ensure_files()
+        quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create(
+            "mcp copilot graph quest",
+            startup_contract={"workspace_mode": "copilot"},
+        )
+        quest_root = Path(quest["quest_root"])
+        context = McpContext(
+            home=temp_home,
+            quest_id=quest["quest_id"],
+            quest_root=quest_root,
+            run_id="run-mcp-copilot-graph",
+            active_anchor="baseline",
+            conversation_id="quest:test",
+            agent_role="pi",
+            worker_id="worker-main",
+            worktree_root=None,
+            team_mode="single",
+        )
+        server = build_artifact_server(context)
+
+        artifact = ArtifactService(temp_home)
+        baseline_root = quest_root / "baselines" / "local" / "copilot-mcp-baseline"
+        baseline_root.mkdir(parents=True, exist_ok=True)
+        (baseline_root / "README.md").write_text("# Copilot MCP Baseline\n", encoding="utf-8")
+        artifact.confirm_baseline(
+            quest_root,
+            baseline_path=str(baseline_root),
+            baseline_id="copilot-mcp-baseline",
+            summary="Confirmed copilot baseline",
+            metrics_summary={"acc": 0.8},
+            primary_metric={"name": "acc", "value": 0.8},
+            metric_contract={
+                "primary_metric_id": "acc",
+                "metrics": [{"metric_id": "acc", "direction": "higher"}],
+            },
+        )
+
+        first_idea = _unwrap_tool_result(
+            await server.call_tool(
+                "submit_idea",
+                {
+                    "mode": "create",
+                    "lineage_intent": "continue_line",
+                    "title": "Copilot route",
+                    "problem": "Copilot mode should still generate a real branch graph.",
+                    "hypothesis": "The branch graph should not collapse into a commit list.",
+                    "mechanism": "Open a durable idea branch from copilot mode.",
+                    "decision_reason": "Start the first branch in copilot mode.",
+                },
+            )
+        )
+        assert first_idea["ok"] is True
+
+        main_run = _unwrap_tool_result(
+            await server.call_tool(
+                "record_main_experiment",
+                {
+                    "run_id": "main-copilot-mcp-001",
+                    "title": "Copilot MCP main run",
+                    "hypothesis": "The copilot route improves the metric.",
+                    "setup": "Use the confirmed baseline recipe.",
+                    "execution": "Ran the comparable main validation pass.",
+                    "results": "The copilot route improved accuracy.",
+                    "conclusion": "Use the measured result as the next branch foundation.",
+                    "metric_rows": [{"metric_id": "acc", "value": 0.91}],
+                },
+            )
+        )
+        assert main_run["ok"] is True
+
+        second_idea = _unwrap_tool_result(
+            await server.call_tool(
+                "submit_idea",
+                {
+                    "mode": "create",
+                    "lineage_intent": "continue_line",
+                    "title": "Run-informed copilot route",
+                    "problem": "Need a follow-up route from the measured run.",
+                    "hypothesis": "The best measured run is the right foundation.",
+                    "mechanism": "Continue from the strongest measured branch.",
+                    "decision_reason": "Branch from the main measured run.",
+                    "foundation_ref": {"kind": "run", "ref": "main-copilot-mcp-001"},
+                    "foundation_reason": "Carry forward the strongest measured branch.",
+                },
+            )
+        )
+        assert second_idea["ok"] is True
+
+        activated = _unwrap_tool_result(
+            await server.call_tool(
+                "activate_branch",
+                {
+                    "branch": first_idea["branch"],
+                },
+            )
+        )
+        assert activated["ok"] is True
+
+        branches_after = _unwrap_tool_result(await server.call_tool("list_research_branches", {}))
+        assert branches_after["ok"] is True
+        by_branch = {item["branch_name"]: item for item in branches_after["branches"]}
+        assert by_branch[first_idea["branch"]]["branch_no"] == "001"
+        assert by_branch["run/main-copilot-mcp-001"]["latest_main_experiment"]["run_id"] == "main-copilot-mcp-001"
+        assert by_branch[second_idea["branch"]]["branch_no"] == "002"
+        assert by_branch[second_idea["branch"]]["foundation_reason"] == "Carry forward the strongest measured branch."
+
+        refs = _unwrap_tool_result(await server.call_tool("resolve_runtime_refs", {}))
+        assert refs["current_workspace_branch"] == first_idea["branch"]
+
+        app = DaemonApp(temp_home)
+        graph_payload = app.handlers.git_branches(quest["quest_id"])
+        nodes = {item["ref"]: item for item in graph_payload["nodes"]}
+        assert graph_payload["workspace_mode"] == "copilot"
+        assert any(
+            edge["from"] == "run/main-copilot-mcp-001" and edge["to"] == second_idea["branch"]
+            for edge in graph_payload["edges"]
+        )
+        assert nodes[second_idea["branch"]]["foundation_reason"] == "Carry forward the strongest measured branch."
 
     asyncio.run(scenario())
 

@@ -13,6 +13,7 @@ import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTabsStore } from "@/lib/stores/tabs";
 import { useFileTreeStore } from "@/lib/stores/file-tree";
+import { builtinPluginLoader } from "@/lib/plugin/builtin-loader";
 import type { FileNode } from "@/lib/types/file";
 import type { TabContext } from "@/lib/types/tab";
 import {
@@ -103,6 +104,11 @@ export function useOpenFile() {
     return normalized === "text/markdown" || normalized === "text/x-markdown";
   }, []);
 
+  const preloadPlugin = useCallback((pluginId?: string | null) => {
+    if (!pluginId) return;
+    void builtinPluginLoader.preload([pluginId]);
+  }, []);
+
   /**
    * Get the best plugin ID for a file
    */
@@ -170,6 +176,7 @@ export function useOpenFile() {
       if (resolvedProjectId && isLatexSourceFile(file.name)) {
         const latexFolder = findLatexFolderForFile(file);
         if (latexFolder) {
+          preloadPlugin(BUILTIN_PLUGINS.LATEX);
           const readOnly =
             Boolean(options.customData?.readOnly) ||
             Boolean(options.customData?.readonly);
@@ -214,6 +221,7 @@ export function useOpenFile() {
       }
 
       // Build context for the plugin
+      preloadPlugin(pluginId);
       const context: TabContext = {
         type: file.type === "notebook" ? "notebook" : "file",
         resourceId: file.id,
@@ -226,6 +234,7 @@ export function useOpenFile() {
       const existing = findTabByContext(context);
       if (existing) {
         if (existing.pluginId !== pluginId) {
+          preloadPlugin(pluginId);
           updateTabPlugin(existing.id, pluginId, context);
         }
         setActiveTab(existing.id);
@@ -253,6 +262,7 @@ export function useOpenFile() {
       openTab,
       setActiveTab,
       storeProjectId,
+      preloadPlugin,
       updateTabPlugin,
     ]
   );

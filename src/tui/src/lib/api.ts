@@ -13,6 +13,35 @@ import type {
   WeixinQrLoginWaitPayload,
 } from '../types.js'
 
+let daemonAuthToken: string | null = null
+
+function toHeaderRecord(headers?: HeadersInit): Record<string, string> {
+  if (!headers) return {}
+  if (headers instanceof Headers) {
+    return Object.fromEntries(headers.entries())
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers)
+  }
+  return { ...headers }
+}
+
+function authHeaders(headers?: HeadersInit): HeadersInit {
+  const normalizedToken = typeof daemonAuthToken === 'string' ? daemonAuthToken.trim() : ''
+  if (!normalizedToken) {
+    return toHeaderRecord(headers)
+  }
+  return {
+    ...toHeaderRecord(headers),
+    Authorization: `Bearer ${normalizedToken}`,
+  }
+}
+
+export function setDaemonAuthToken(value: string | null | undefined) {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  daemonAuthToken = normalized || null
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw new Error(await response.text())
@@ -22,10 +51,11 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
 export async function api<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
+    ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...(authHeaders(init?.headers) as Record<string, string>),
     },
-    ...init,
   })
   return parseResponse<T>(response)
 }
@@ -131,6 +161,7 @@ export const client = {
     const response = await fetch(client.eventsStreamUrl(baseUrl, questId, cursor), {
       headers: {
         Accept: 'text/event-stream',
+        ...(authHeaders() as Record<string, string>),
       },
       signal: callbacks.signal,
     })
@@ -205,7 +236,9 @@ export const client = {
       search.set('order', params.order)
     }
     const suffix = search.toString() ? `?${search.toString()}` : ''
-    const response = await fetch(`${baseUrl}/api/quests/${questId}/bash/sessions/${bashId}/logs${suffix}`)
+    const response = await fetch(`${baseUrl}/api/quests/${questId}/bash/sessions/${bashId}/logs${suffix}`, {
+      headers: authHeaders(),
+    })
     if (!response.ok) {
       throw new Error(await response.text())
     }
@@ -240,7 +273,7 @@ export const client = {
     }
     const response = await fetch(`${baseUrl}/api/quests/${questId}/bash/sessions/${bashId}/stream`, {
       method: 'GET',
-      headers,
+      headers: authHeaders(headers),
       signal: callbacks.signal,
     })
     if (!response.ok || !response.body) {

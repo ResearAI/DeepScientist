@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { ConfirmModal } from '@/components/ui/modal'
 import { useI18n } from '@/lib/i18n'
+import { resolveProjectDisplay, resolveProjectTemplate } from '@/lib/projectDisplayCatalog'
+import { runtimeHomePath } from '@/lib/runtime/quest-runtime'
 import type { QuestSummary } from '@/types'
 
 function formatTime(value?: string, locale?: string) {
@@ -47,6 +49,7 @@ export function OpenQuestDialog({
   const [search, setSearch] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmQuest, setConfirmQuest] = useState<QuestSummary | null>(null)
+  const activeRuntimeHome = useMemo(() => runtimeHomePath(), [])
 
   useEffect(() => {
     if (!open) {
@@ -67,6 +70,7 @@ export function OpenQuestDialog({
         .includes(keyword)
     )
   }, [quests, search])
+  const emptyBecauseNoProjects = filteredQuests.length === 0 && quests.length === 0 && !search.trim()
 
   return (
     <OverlayDialog
@@ -110,14 +114,38 @@ export function OpenQuestDialog({
               {error}
             </div>
           ) : filteredQuests.length === 0 ? (
-            <div className="flex min-h-[420px] items-center justify-center rounded-[26px] border border-dashed border-black/[0.10] text-sm text-muted-foreground dark:border-white/[0.12]">
-              {t('openQuestEmpty')}
+            <div className="flex min-h-[420px] items-center justify-center">
+              <div className="w-full max-w-xl rounded-[26px] border border-dashed border-black/[0.10] bg-white/[0.52] px-6 py-6 text-center dark:border-white/[0.12]">
+                <div className="text-sm font-medium text-[rgba(38,36,33,0.92)]">
+                  {emptyBecauseNoProjects ? t('openQuestNoProjects') : t('openQuestEmpty')}
+                </div>
+                {emptyBecauseNoProjects ? (
+                  <div className="mt-4 space-y-3 text-sm text-muted-foreground">
+                    {activeRuntimeHome ? (
+                      <div className="space-y-1">
+                        <div>{t('openQuestCurrentHome')}</div>
+                        <code className="inline-block rounded-xl bg-black/[0.04] px-3 py-2 font-mono text-[12px] text-[rgba(38,36,33,0.88)]">
+                          <span className="break-all">{activeRuntimeHome}</span>
+                        </code>
+                      </div>
+                    ) : null}
+                    <div>{t('openQuestHomeHint')}</div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
               {filteredQuests.map((quest) => {
                 const pendingCount = quest.pending_decisions?.length ?? quest.counts?.pending_decision_count ?? 0
                 const isDeleting = Boolean(deletingQuestId && deletingQuestId === quest.quest_id)
+                const settings = quest.settings && typeof quest.settings === 'object' ? quest.settings : {}
+                const display = resolveProjectDisplay(
+                  settings && typeof settings === 'object' && 'project_display' in settings
+                    ? { project_display: (settings as Record<string, unknown>).project_display as Record<string, unknown> | null }
+                    : null
+                )
+                const templateMeta = resolveProjectTemplate(display.template)
                 return (
                   <div key={quest.quest_id} className="group relative">
                     <button
@@ -143,6 +171,7 @@ export function OpenQuestDialog({
 
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Badge>{quest.quest_id}</Badge>
+                          <Badge>{templateMeta.label}</Badge>
                           {quest.branch ? <Badge>{t('openQuestBranch')}: {quest.branch}</Badge> : null}
                           {pendingCount > 0 ? <Badge>{t('openQuestPending')}: {pendingCount}</Badge> : null}
                         </div>

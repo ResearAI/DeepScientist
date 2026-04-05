@@ -9,7 +9,7 @@ from deepscientist.cli import _local_ui_url, init_command, pause_command
 from deepscientist.home import ensure_home_layout, repo_root
 from deepscientist.mcp.context import McpContext
 from deepscientist.quest import QuestService
-from deepscientist.shared import ensure_dir, write_json, write_text
+from deepscientist.shared import append_jsonl, ensure_dir, write_json, write_text
 from deepscientist.skills import SkillInstaller
 
 
@@ -104,6 +104,58 @@ def test_new_creates_standalone_git_repo(temp_home: Path) -> None:
     assert snapshot["summary"]["status_line"] == "Quest created. Waiting for baseline setup or reuse."
 
 
+def test_sync_quest_prompts_backs_up_previous_active_tree(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    installer = SkillInstaller(repo_root(), temp_home)
+    snapshot = QuestService(temp_home, skill_installer=installer).create("prompt backup quest")
+    quest_root = Path(snapshot["quest_root"])
+
+    prompt_copy = quest_root / ".codex" / "prompts" / "system.md"
+    original = prompt_copy.read_text(encoding="utf-8")
+    prompt_copy.write_text(original + "\nPROMPT_BACKUP_SENTINEL\n", encoding="utf-8")
+
+    result = installer.sync_quest_prompts(quest_root, installed_version="9.9.9")
+
+    assert result["updated"] is True
+    backup_id = str(result["backup_id"] or "")
+    assert backup_id
+    assert "PROMPT_BACKUP_SENTINEL" not in prompt_copy.read_text(encoding="utf-8")
+    backup_prompt = quest_root / ".codex" / "prompt_versions" / backup_id / "system.md"
+    assert "PROMPT_BACKUP_SENTINEL" in backup_prompt.read_text(encoding="utf-8")
+    index_payload = json.loads((quest_root / ".codex" / "prompt_versions" / "index.json").read_text(encoding="utf-8"))
+    versions = index_payload.get("versions") if isinstance(index_payload.get("versions"), list) else []
+    assert any(str(item.get("backup_id") or "") == backup_id for item in versions if isinstance(item, dict))
+
+
+def test_sync_quest_prompts_recovers_from_existing_backup_directory_race(temp_home: Path, monkeypatch) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    installer = SkillInstaller(repo_root(), temp_home)
+    snapshot = QuestService(temp_home, skill_installer=installer).create("prompt backup retry quest")
+    quest_root = Path(snapshot["quest_root"])
+
+    prompt_copy = quest_root / ".codex" / "prompts" / "system.md"
+    prompt_copy.write_text(prompt_copy.read_text(encoding="utf-8") + "\nPROMPT_BACKUP_RETRY_SENTINEL\n", encoding="utf-8")
+
+    versions_root = quest_root / ".codex" / "prompt_versions"
+    (versions_root / "conflict").mkdir(parents=True, exist_ok=True)
+    backup_ids = iter(["conflict", "resolved"])
+
+    monkeypatch.setattr(
+        installer,
+        "_unique_prompt_backup_id",
+        lambda *_args, **_kwargs: next(backup_ids),
+    )
+
+    result = installer.sync_quest_prompts(quest_root, installed_version="9.9.9")
+
+    assert result["updated"] is True
+    assert result["backup_id"] == "resolved"
+    backup_prompt = quest_root / ".codex" / "prompt_versions" / "resolved" / "system.md"
+    assert "PROMPT_BACKUP_RETRY_SENTINEL" in backup_prompt.read_text(encoding="utf-8")
+
+
 def test_auto_generated_quest_ids_are_sequential(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     service = QuestService(temp_home)
@@ -162,6 +214,52 @@ def test_deleted_quest_ids_are_not_reused(temp_home: Path) -> None:
     fourth = service.create("fourth quest")
 
     assert [first["quest_id"], second["quest_id"], third["quest_id"], fourth["quest_id"]] == ["001", "002", "003", "004"]
+
+
+def test_events_tail_preserves_cursor_order_after_file_grows(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    service = QuestService(temp_home)
+    snapshot = service.create("tail cursor quest")
+    quest_id = snapshot["quest_id"]
+    events_path = Path(snapshot["quest_root"]) / ".ds" / "events.jsonl"
+
+    for index in range(1, 11):
+        append_jsonl(
+            events_path,
+            {
+                "event_id": f"evt-{index}",
+                "type": "conversation.message",
+                "quest_id": quest_id,
+                "role": "assistant",
+                "content": f"message-{index}",
+            },
+        )
+
+    first_tail = service.events(quest_id, tail=True, limit=3)
+    assert [item["cursor"] for item in first_tail["events"]] == [8, 9, 10]
+    assert [item["content"] for item in first_tail["events"]] == [
+        "message-8",
+        "message-9",
+        "message-10",
+    ]
+
+    append_jsonl(
+        events_path,
+        {
+            "event_id": "evt-11",
+            "type": "conversation.message",
+            "quest_id": quest_id,
+            "role": "assistant",
+            "content": "message-11",
+        },
+    )
+
+    second_tail = service.events(quest_id, tail=True, limit=2)
+    assert [item["cursor"] for item in second_tail["events"]] == [10, 11]
+    assert [item["content"] for item in second_tail["events"]] == [
+        "message-10",
+        "message-11",
+    ]
 
 
 def test_snapshot_exposes_paper_contract_and_analysis_inventory(temp_home: Path) -> None:
@@ -468,9 +566,10 @@ def test_pause_command_prefers_daemon_control_when_available(temp_home: Path, mo
     assert '"status": "paused"' in captured.out
 
 
-def test_local_ui_url_keeps_default_host_visible() -> None:
-    assert _local_ui_url("0.0.0.0", 20999) == "http://0.0.0.0:20999"
-    assert _local_ui_url("", 20999) == "http://0.0.0.0:20999"
+def test_local_ui_url_uses_loopback_for_bind_all_hosts() -> None:
+    assert _local_ui_url("0.0.0.0", 20999) == "http://127.0.0.1:20999"
+    assert _local_ui_url("", 20999) == "http://127.0.0.1:20999"
+    assert _local_ui_url("::", 20999) == "http://127.0.0.1:20999"
 
 
 def test_mcp_context_prefers_deepscientist_home_env(monkeypatch, tmp_path: Path) -> None:

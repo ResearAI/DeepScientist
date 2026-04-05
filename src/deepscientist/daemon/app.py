@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import base64
 from collections import deque
+from dataclasses import dataclass
 import faulthandler
 import hashlib
+import hmac
 import json
 import mimetypes
 import os
 import re
+import secrets
 import signal
 import shutil
 import subprocess
@@ -16,6 +19,7 @@ import threading
 import time
 import traceback
 from datetime import UTC, datetime, timedelta
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -24,9 +28,11 @@ from urllib.request import Request
 
 from .. import __version__
 from ..annotations import AnnotationService
+from ..acp import build_session_update
 from ..artifact import ArtifactService
 from ..bash_exec import BashExecService
 from ..bash_exec.models import TerminalClient
+from ..bash_exec.service import DEFAULT_TERMINAL_SESSION_ID
 from ..bridges import register_builtin_connector_bridges
 from ..bridges.connectors import QQConnectorBridge
 from ..channels import QQRelayChannel, get_channel_factory, list_channel_names, register_builtin_channels
@@ -69,7 +75,7 @@ from ..connector.lingzhu_support import (
     lingzhu_verify_auth_header,
 )
 from ..prompts import PromptBuilder
-from ..prompts.builder import STANDARD_SKILLS, classify_turn_intent
+from ..prompts.builder import classify_turn_intent, current_standard_skills
 from ..connector.qq_profiles import list_qq_profiles, merge_qq_profile_config, normalize_qq_connector_config
 from ..quest import QuestService
 from ..runners import CodexRunner, RunRequest, get_runner_factory, register_builtin_runners
@@ -96,7 +102,9 @@ from websockets.sync.server import Server as WebSocketServer
 from websockets.sync.server import ServerConnection, serve as websocket_serve
 
 TERMINAL_STREAM_IDLE_SLEEP_SECONDS = 0.02
-_AUTO_CONTINUE_DELAY_SECONDS = 0.2
+_AUTO_CONTINUE_DELAY_SECONDS = 240.0
+_AUTO_CONTINUE_ACTIVE_WORK_DELAY_SECONDS = 0.2
+_TERMINAL_PREWARM_DEBOUNCE_SECONDS = 20.0
 _STALLED_RUNNING_TURN_INACTIVITY_SECONDS = 30 * 60
 _STALLED_RUNNING_TURN_INTERRUPT_TIMEOUT_SECONDS = 5.0
 CODEX_RETRY_DEFAULT_MAX_ATTEMPTS = 5
@@ -146,6 +154,20 @@ _LINGZHU_SHORT_LATEST_ALIASES = {"latest", "newest", "最新", "最新的"}
 _WEIXIN_STALE_REPLAY_LIMIT_DEFAULT = 5
 _WEIXIN_STALE_REPLAY_INTERVAL_SECONDS_DEFAULT = 2.0
 _LINGZHU_DELETE_CONFIRM_ALIASES = {"确认", "强制", "--yes", "-y"}
+_BROWSER_AUTH_COOKIE_NAME = "ds_local_auth"
+_BROWSER_AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365
+_BROWSER_AUTH_QUERY_PARAM = "token"
+_BROWSER_AUTH_STORAGE_KEY = "ds_local_auth_token"
+_BROWSER_AUTH_PUBLIC_ROUTE_NAMES = {"root", "spa_root", "ui_asset", "asset", "auth_login"}
+_BROWSER_AUTH_EXEMPT_ROUTE_NAMES = {"lingzhu_health", "lingzhu_sse"}
+_BROWSER_AUTH_REALM = "DeepScientist"
+
+
+@dataclass(frozen=True)
+class BrowserAuthState:
+    authenticated: bool
+    token_source: str | None = None
+    response_cookie: str | None = None
 
 
 def _windows_hidden_subprocess_kwargs() -> dict[str, object]:
@@ -157,7 +179,14 @@ def _windows_hidden_subprocess_kwargs() -> dict[str, object]:
 class DaemonApp:
     _MAX_INBOUND_ATTACHMENT_BYTES = 25 * 1024 * 1024
 
-    def __init__(self, home: Path) -> None:
+    def __init__(
+        self,
+        home: Path,
+        *,
+        browser_auth_enabled: bool | None = None,
+        browser_auth_token: str | None = None,
+        prompt_version_selection: str | None = None,
+    ) -> None:
         self.home = home.resolve()
         self.daemon_id = str(os.environ.get("DS_DAEMON_ID") or "").strip() or generate_id("daemon")
         self.daemon_managed_by = str(os.environ.get("DS_DAEMON_MANAGED_BY") or "manual").strip() or "manual"
@@ -193,7 +222,11 @@ class DaemonApp:
                 abandoned_run_id=item.get("abandoned_run_id"),
                 status=item.get("status"),
             )
-        self.prompt_builder = PromptBuilder(self.repo_root, home)
+        self.prompt_builder = PromptBuilder(
+            self.repo_root,
+            home,
+            prompt_version_selection=prompt_version_selection,
+        )
         self.codex_runner = CodexRunner(
             home=home,
             repo_root=self.repo_root,
@@ -213,6 +246,8 @@ class DaemonApp:
         self._canonicalize_lingzhu_binding_state()
         self._turn_lock = threading.Lock()
         self._turn_state: dict[str, dict[str, object]] = {}
+        self._terminal_prewarm_lock = threading.Lock()
+        self._terminal_prewarm_recent: dict[str, float] = {}
         self._server: ThreadingHTTPServer | None = None
         self._terminal_attach_server: WebSocketServer | None = None
         self._terminal_attach_thread: threading.Thread | None = None
@@ -232,7 +267,189 @@ class DaemonApp:
         self._process_hooks_installed = False
         self._faulthandler_stream = None
         self._recovered_quest_ids: set[str] = set()
+        ui_config = config.get("ui") if isinstance(config.get("ui"), dict) else {}
+        configured_browser_auth_enabled = self._parse_browser_auth_bool(ui_config.get("auth_enabled"))
+        env_browser_auth_enabled = self._parse_browser_auth_bool(os.environ.get("DS_UI_AUTH_ENABLED"))
+        explicit_browser_auth_enabled = self._parse_browser_auth_bool(browser_auth_enabled)
+        if explicit_browser_auth_enabled is not None:
+            self.browser_auth_enabled = explicit_browser_auth_enabled
+        elif env_browser_auth_enabled is not None:
+            self.browser_auth_enabled = env_browser_auth_enabled
+        elif configured_browser_auth_enabled is not None:
+            self.browser_auth_enabled = configured_browser_auth_enabled
+        else:
+            self.browser_auth_enabled = False
+        explicit_browser_auth_token = self._normalize_browser_auth_token(browser_auth_token)
+        env_browser_auth_token = self._normalize_browser_auth_token(os.environ.get("DS_UI_AUTH_TOKEN"))
+        if self.browser_auth_enabled:
+            self.browser_auth_token = explicit_browser_auth_token or env_browser_auth_token or self.generate_browser_auth_token()
+        else:
+            self.browser_auth_token = None
         self.handlers = ApiHandlers(self)
+
+    @staticmethod
+    def _parse_browser_auth_bool(value: object) -> bool | None:
+        if isinstance(value, bool):
+            return value
+        normalized = str(value or "").strip().lower()
+        if not normalized:
+            return None
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        return None
+
+    @staticmethod
+    def _normalize_browser_auth_token(value: object) -> str | None:
+        token = str(value or "").strip()
+        return token or None
+
+    @staticmethod
+    def generate_browser_auth_token() -> str:
+        return secrets.token_hex(8)
+
+    def masked_browser_auth_token(self) -> str | None:
+        token = self.browser_auth_token
+        if not token:
+            return None
+        if len(token) <= 6:
+            return "*" * len(token)
+        return f"{token[:3]}{'*' * (len(token) - 6)}{token[-3:]}"
+
+    @staticmethod
+    def _header_value(headers: dict[str, str] | None, name: str) -> str:
+        if not isinstance(headers, dict):
+            return ""
+        target = name.strip().lower()
+        for key, value in headers.items():
+            if str(key).strip().lower() == target:
+                return str(value or "")
+        return ""
+
+    @staticmethod
+    def _parse_bearer_token(header_value: str) -> str | None:
+        normalized = str(header_value or "").strip()
+        prefix = "bearer "
+        if not normalized or normalized[: len(prefix)].lower() != prefix:
+            return None
+        token = normalized[len(prefix) :].strip()
+        return token or None
+
+    def _request_cookie_token(self, headers: dict[str, str] | None) -> str | None:
+        raw_cookie = self._header_value(headers, "Cookie")
+        if not raw_cookie:
+            return None
+        try:
+            cookie = SimpleCookie()
+            cookie.load(raw_cookie)
+        except Exception:
+            return None
+        morsel = cookie.get(_BROWSER_AUTH_COOKIE_NAME)
+        if morsel is None:
+            return None
+        token = str(getattr(morsel, "value", "") or "").strip()
+        return token or None
+
+    @staticmethod
+    def _request_query_token(path: str) -> str | None:
+        query = parse_qs(urlparse(path).query, keep_blank_values=True)
+        token = str((query.get(_BROWSER_AUTH_QUERY_PARAM) or [""])[0] or "").strip()
+        return token or None
+
+    def _browser_auth_cookie_header(self, token: str | None = None) -> str:
+        cookie = SimpleCookie()
+        cookie[_BROWSER_AUTH_COOKIE_NAME] = token or (self.browser_auth_token or "")
+        morsel = cookie[_BROWSER_AUTH_COOKIE_NAME]
+        morsel["path"] = "/"
+        morsel["httponly"] = True
+        morsel["samesite"] = "Strict"
+        morsel["max-age"] = str(_BROWSER_AUTH_COOKIE_MAX_AGE_SECONDS)
+        return morsel.OutputString()
+
+    @staticmethod
+    def _browser_auth_clear_cookie_header() -> str:
+        cookie = SimpleCookie()
+        cookie[_BROWSER_AUTH_COOKIE_NAME] = ""
+        morsel = cookie[_BROWSER_AUTH_COOKIE_NAME]
+        morsel["path"] = "/"
+        morsel["httponly"] = True
+        morsel["samesite"] = "Strict"
+        morsel["max-age"] = "0"
+        morsel["expires"] = "Thu, 01 Jan 1970 00:00:00 GMT"
+        return morsel.OutputString()
+
+    def browser_auth_matches(self, token: str | None) -> bool:
+        expected = self.browser_auth_token
+        candidate = self._normalize_browser_auth_token(token)
+        return bool(expected and candidate and hmac.compare_digest(candidate, expected))
+
+    def rotate_browser_auth_token(self) -> str:
+        if not self.browser_auth_enabled:
+            raise RuntimeError("Browser authentication is disabled.")
+        rotated = self.generate_browser_auth_token()
+        self.browser_auth_token = rotated
+        return rotated
+
+    def browser_auth_state_for_request(self, path: str, headers: dict[str, str] | None = None) -> BrowserAuthState:
+        if not self.browser_auth_enabled:
+            return BrowserAuthState(authenticated=True)
+        expected = self.browser_auth_token
+        if not expected:
+            return BrowserAuthState(authenticated=False)
+
+        candidates = (
+            ("authorization", self._parse_bearer_token(self._header_value(headers, "Authorization"))),
+            ("query", self._request_query_token(path)),
+            ("cookie", self._request_cookie_token(headers)),
+        )
+        for source, candidate in candidates:
+            if candidate and hmac.compare_digest(candidate, expected):
+                response_cookie = self._browser_auth_cookie_header(expected) if source in {"authorization", "query"} else None
+                return BrowserAuthState(authenticated=True, token_source=source, response_cookie=response_cookie)
+        return BrowserAuthState(authenticated=False, response_cookie=self._browser_auth_clear_cookie_header())
+
+    @staticmethod
+    def _auth_response_headers(auth_state: BrowserAuthState | None) -> dict[str, str]:
+        if auth_state is None or not auth_state.response_cookie:
+            return {}
+        return {"Set-Cookie": auth_state.response_cookie}
+
+    @staticmethod
+    def _merge_response_headers(
+        base: dict[str, str] | None = None,
+        extra: dict[str, str] | None = None,
+    ) -> dict[str, str]:
+        merged: dict[str, str] = {}
+        if isinstance(extra, dict):
+            merged.update(extra)
+        if isinstance(base, dict):
+            merged.update(base)
+        return merged
+
+    def _route_requires_browser_auth(self, route_name: str | None) -> bool:
+        if not self.browser_auth_enabled or not route_name:
+            return False
+        if route_name in _BROWSER_AUTH_PUBLIC_ROUTE_NAMES:
+            return False
+        if route_name in _BROWSER_AUTH_EXEMPT_ROUTE_NAMES:
+            return False
+        return True
+
+    def browser_auth_runtime_payload(self) -> dict[str, object]:
+        return {
+            "enabled": self.browser_auth_enabled,
+            "tokenQueryParam": _BROWSER_AUTH_QUERY_PARAM,
+            "storageKey": _BROWSER_AUTH_STORAGE_KEY,
+        }
+
+    def browser_auth_tokenized_url(self, url: str) -> str:
+        if not self.browser_auth_enabled or not self.browser_auth_token:
+            return url
+        parsed = urlparse(url)
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        query[_BROWSER_AUTH_QUERY_PARAM] = [self.browser_auth_token]
+        return parsed._replace(query=urlencode(query, doseq=True)).geturl()
 
     def list_connector_statuses(self) -> list[dict[str, object]]:
         title_by_quest = self._quest_titles_by_id()
@@ -1524,6 +1741,57 @@ class DaemonApp:
     def _turn_worker_is_alive(worker: object) -> bool:
         return isinstance(worker, threading.Thread) and worker.is_alive()
 
+    def schedule_latest_quest_terminal_prewarm(
+        self,
+        quest_id: str,
+        *,
+        source: str = "quest_session_prewarm",
+    ) -> None:
+        normalized_quest_id = str(quest_id or "").strip()
+        if not normalized_quest_id or os.name == "nt":
+            return
+        try:
+            quests = self.quest_service.list_quests()
+        except Exception:
+            return
+        latest_quest_id = str((quests[0].get("quest_id") if quests else "") or "").strip()
+        if latest_quest_id != normalized_quest_id:
+            return
+        now = time.monotonic()
+        with self._terminal_prewarm_lock:
+            last_attempt = float(self._terminal_prewarm_recent.get(normalized_quest_id) or 0.0)
+            if now - last_attempt < _TERMINAL_PREWARM_DEBOUNCE_SECONDS:
+                return
+            self._terminal_prewarm_recent[normalized_quest_id] = now
+        threading.Thread(
+            target=self._prewarm_terminal_for_quest,
+            args=(normalized_quest_id, source),
+            daemon=True,
+            name=f"deepscientist-terminal-prewarm-{normalized_quest_id}",
+        ).start()
+
+    def _prewarm_terminal_for_quest(self, quest_id: str, source: str) -> None:
+        try:
+            quest_root = self.quest_service._quest_root(quest_id)
+            workspace_root = self.quest_service.active_workspace_root(quest_root)
+            self.bash_exec_service.ensure_terminal_session(
+                quest_root,
+                quest_id=quest_id,
+                bash_id=DEFAULT_TERMINAL_SESSION_ID,
+                cwd=workspace_root,
+                source=source,
+            )
+        except Exception as exc:
+            with self._terminal_prewarm_lock:
+                self._terminal_prewarm_recent.pop(quest_id, None)
+            self.logger.log(
+                "warning",
+                "terminal.prewarm_failed",
+                quest_id=quest_id,
+                source=source,
+                error=str(exc),
+            )
+
     def _refresh_turn_worker_state(self, quest_id: str) -> dict[str, object]:
         with self._turn_lock:
             state = self._turn_state.setdefault(quest_id, {"running": False, "pending": False})
@@ -2029,52 +2297,50 @@ class DaemonApp:
         cancelled_pending_user_message_count: int,
         previous_snapshot: dict | None = None,
     ) -> str:
-        branch = str(snapshot.get("branch") or "unknown").strip() or "unknown"
-        workspace_root = str(snapshot.get("current_workspace_root") or snapshot.get("quest_root") or "").strip()
         if action == "resume":
             lines = [
                 self._polite_copy(
-                    zh="DeepScientist 已恢复运行。",
-                    en="DeepScientist has resumed.",
+                    zh=f"我回来继续干活啦，Quest `{quest_id}` 已恢复。",
+                    en=f"I’m back on it. Quest `{quest_id}` has resumed. ✨",
                 ),
                 self._polite_copy(
-                    zh="当前 Git 分支与 worktree 已保留，系统会沿用现有研究上下文继续。",
-                    en="The current Git branch and worktree were kept intact, and the quest will continue from the existing research context.",
+                    zh="刚才的进度都还在，我会直接接着往下推。",
+                    en="The current progress is still here, and I’ll pick up right where I left off.",
                 ),
             ]
             if source.startswith("auto:daemon-recovery"):
                 lines.append(
                     self._polite_copy(
-                        zh="检测到 daemon 曾异常退出；当前 quest 已在自动恢复后继续运行。",
-                        en="The daemon exited unexpectedly before; this quest has now been recovered automatically and will continue.",
+                        zh="刚才是 daemon 意外断开了，不过现在已经自动接回来了。",
+                        en="The daemon dropped unexpectedly, but it has been recovered automatically. 🔧",
                     )
                 )
         elif action == "pause":
             lines = [
                 self._polite_copy(
-                    zh="DeepScientist 已从运行状态转为暂停状态。",
-                    en="DeepScientist has moved from running to paused.",
+                    zh=f"我先帮您把 Quest `{quest_id}` 稳稳停在这里啦。",
+                    en=f"I’ve paused Quest `{quest_id}` right here for now. ⏸️",
                 ),
                 self._polite_copy(
-                    zh="当前 Git 分支与 worktree 已保留。如需继续，请直接在当前聊天或 connector 中发送任意新指令，或使用 /resume；系统会沿用当前 quest 上下文继续。",
-                    en="The current Git branch and worktree were kept intact. To continue, send any new instruction in this chat or connector, or use /resume; the quest will resume from the current context.",
+                    zh="当前进度我都保留好了，您发新消息或者执行 `/resume`，我就会继续。",
+                    en="I kept the current progress safe. Send a new message or use `/resume`, and I’ll continue.",
                 ),
             ]
         else:
             lines = [
                 self._polite_copy(
-                    zh="DeepScientist 已从运行状态转为停止状态。",
-                    en="DeepScientist has moved from running to stopped.",
+                    zh=f"这轮我先收住啦，Quest `{quest_id}` 已停止运行。",
+                    en=f"I’m wrapping this round here. Quest `{quest_id}` has stopped. 📌",
                 ),
                 self._polite_copy(
-                    zh="当前 Git 分支与 worktree 已保留。如需继续，请直接在当前聊天或 connector 中发送任意新指令，或使用 /resume；系统会沿用当前 quest 上下文继续。",
-                    en="The current Git branch and worktree were kept intact. To continue, send any new instruction in this chat or connector, or use /resume; the quest will resume from the current context.",
+                    zh="不过别担心，当前进度我都保留好了；您发新消息或者执行 `/resume`，我就能接着干。",
+                    en="Don’t worry, the current progress is still preserved. Send a new message or use `/resume`, and I’ll keep going.",
                 ),
             ]
         if interrupted:
             lines.append(
                 self._polite_copy(
-                    zh="当前活跃 runner 已被中断。",
+                    zh="刚才正在跑的任务已经被打断了。",
                     en="The active runner was interrupted.",
                 )
             )
@@ -2082,8 +2348,8 @@ class DaemonApp:
         if cancelled_count > 0:
             lines.append(
                 self._polite_copy(
-                    zh=f"已取消 {cancelled_count} 条排队中的用户消息。",
-                    en=f"Cancelled {cancelled_count} queued user message(s).",
+                    zh=f"另外我还顺手清掉了 {cancelled_count} 条排队消息，避免旧指令继续堆着。",
+                    en=f"I also cleared {cancelled_count} queued message(s) so stale instructions do not pile up.",
                 )
             )
         previous_status = str(
@@ -2094,17 +2360,10 @@ class DaemonApp:
         if previous_status and action == "resume":
             lines.append(
                 self._polite_copy(
-                    zh=f"此前状态：`{previous_status}`。",
+                    zh=f"恢复前的状态是：`{previous_status}`。",
                     en=f"Previous status: `{previous_status}`.",
                 )
             )
-        lines.extend(
-            [
-                f"- Quest: `{quest_id}`",
-                f"- Branch: `{branch}`",
-                f"- Workspace: `{workspace_root or snapshot.get('quest_root')}`",
-            ]
-        )
         return "\n".join(lines)
 
     def _drain_turns(self, quest_id: str) -> None:
@@ -2568,11 +2827,41 @@ class DaemonApp:
 
     @staticmethod
     def _continuation_anchor_for(snapshot: dict) -> str:
+        available_stage_skills = current_standard_skills(repo_root())
         continuation_anchor = str(snapshot.get("continuation_anchor") or "").strip()
-        if continuation_anchor in STANDARD_SKILLS:
+        if continuation_anchor in available_stage_skills:
             return continuation_anchor
         active_anchor = str(snapshot.get("active_anchor") or "").strip()
-        return active_anchor if active_anchor in STANDARD_SKILLS else "decision"
+        return active_anchor if active_anchor in available_stage_skills else "decision"
+
+    @staticmethod
+    def _workspace_mode_for(snapshot: dict) -> str:
+        value = str(snapshot.get("workspace_mode") or "").strip().lower()
+        if value in {"copilot", "autonomous"}:
+            return value
+        startup_contract = snapshot.get("startup_contract")
+        if isinstance(startup_contract, dict):
+            value = str(startup_contract.get("workspace_mode") or "").strip().lower()
+            if value in {"copilot", "autonomous"}:
+                return value
+        return "autonomous"
+
+    def _resolve_continuation_policy(self, snapshot: dict, *, current_policy: str) -> tuple[str, str]:
+        normalized = str(current_policy or "auto").strip().lower() or "auto"
+        if normalized != "auto":
+            return normalized, str(snapshot.get("continuation_reason") or "").strip() or "explicit_continuation_policy"
+        if self._workspace_mode_for(snapshot) == "copilot":
+            return "wait_for_user_or_resume", "copilot_mode"
+        if self._has_external_progress(snapshot):
+            return "when_external_progress", "background_external_progress_active"
+        return "auto", "autonomous_prepare_or_launch_long_run"
+
+    @staticmethod
+    def _auto_continue_delay_for_policy(policy: str) -> float:
+        normalized = str(policy or "").strip().lower() or "auto"
+        if normalized == "when_external_progress":
+            return _AUTO_CONTINUE_DELAY_SECONDS
+        return _AUTO_CONTINUE_ACTIVE_WORK_DELAY_SECONDS
 
     @staticmethod
     def _turn_skill_stage_gate(snapshot: dict, candidate_skill: str) -> str:
@@ -2602,6 +2891,19 @@ class DaemonApp:
         turn_reason: str = "user_message",
         turn_mode: str = "stage_execution",
     ) -> str:
+        available_stage_skills = current_standard_skills(repo_root())
+        workspace_mode = DaemonApp._workspace_mode_for(snapshot)
+
+        def copilot_default_skill() -> str:
+            active_anchor = str(snapshot.get("active_anchor") or "").strip()
+            if active_anchor in available_stage_skills and active_anchor != "decision":
+                return DaemonApp._turn_skill_stage_gate(snapshot, active_anchor)
+            continuation_anchor = str(snapshot.get("continuation_anchor") or "").strip()
+            if continuation_anchor in available_stage_skills and continuation_anchor != "decision":
+                return DaemonApp._turn_skill_stage_gate(snapshot, continuation_anchor)
+            fallback = "baseline" if "baseline" in available_stage_skills else "scout"
+            return DaemonApp._turn_skill_stage_gate(snapshot, fallback)
+
         reply_target = str((latest_user_message or {}).get("reply_to_interaction_id") or "").strip()
         if reply_target:
             for item in (snapshot.get("active_interactions") or []):
@@ -2628,11 +2930,17 @@ class DaemonApp:
                 ):
                     return "decision"
                 if str(item.get("reply_mode") or "") == "threaded":
+                    if workspace_mode == "copilot":
+                        return copilot_default_skill()
                     return DaemonApp._turn_skill_stage_gate(
                         snapshot,
                         DaemonApp._continuation_anchor_for(snapshot),
                     )
-        if turn_mode in {"answering", "command_execution", "recovering"}:
+        if turn_mode == "recovering":
+            return "decision"
+        if workspace_mode == "copilot" and latest_user_message is not None:
+            return copilot_default_skill()
+        if turn_mode in {"answering", "command_execution"}:
             return "decision"
         if str(turn_reason or "").strip() == "auto_continue" or latest_user_message is None:
             return DaemonApp._turn_skill_stage_gate(
@@ -2648,7 +2956,7 @@ class DaemonApp:
         active_anchor = str(snapshot.get("active_anchor") or "").strip()
         return DaemonApp._turn_skill_stage_gate(
             snapshot,
-            active_anchor if active_anchor in STANDARD_SKILLS else "decision",
+            active_anchor if active_anchor in available_stage_skills else "decision",
         )
 
     def _latest_user_message(self, quest_id: str) -> dict | None:
@@ -3128,23 +3436,67 @@ class DaemonApp:
                 self.schedule_turn(quest_id, reason="queued_user_messages")
             else:
                 continuation_policy = str(snapshot.get("continuation_policy") or "auto").strip().lower() or "auto"
+                if continuation_policy == "auto":
+                    continuation_policy, continuation_reason = self._resolve_continuation_policy(
+                        snapshot,
+                        current_policy=continuation_policy,
+                    )
+                    self.quest_service.update_runtime_state(
+                        quest_root=self.quest_service._quest_root(quest_id),
+                        continuation_policy=continuation_policy,
+                        continuation_reason=continuation_reason,
+                        continuation_updated_at=utc_now(),
+                    )
+                    snapshot = self.quest_service.snapshot(quest_id)
                 if continuation_policy not in {"wait_for_user_or_resume", "none"}:
-                    self._schedule_turn_later(quest_id, reason="auto_continue", delay_seconds=_AUTO_CONTINUE_DELAY_SECONDS)
+                    self._schedule_turn_later(
+                        quest_id,
+                        reason="auto_continue",
+                        delay_seconds=self._auto_continue_delay_for_policy(continuation_policy),
+                    )
             return
         if int(snapshot.get("pending_user_message_count") or 0) > 0:
             self.schedule_turn(quest_id, reason="queued_user_messages")
             return
         continuation_policy = str(snapshot.get("continuation_policy") or "auto").strip().lower() or "auto"
+        if continuation_policy == "auto":
+            continuation_policy, continuation_reason = self._resolve_continuation_policy(
+                snapshot,
+                current_policy=continuation_policy,
+            )
+            self.quest_service.update_runtime_state(
+                quest_root=self.quest_service._quest_root(quest_id),
+                continuation_policy=continuation_policy,
+                continuation_reason=continuation_reason,
+                continuation_updated_at=utc_now(),
+            )
+            snapshot = self.quest_service.snapshot(quest_id)
         if continuation_policy == "none":
             return
         if continuation_policy == "wait_for_user_or_resume":
             return
         if continuation_policy == "when_external_progress":
-            counts = snapshot.get("counts") if isinstance(snapshot.get("counts"), dict) else {}
-            has_external_progress = bool(snapshot.get("active_run_id")) or int(counts.get("bash_running_count") or 0) > 0
-            if not has_external_progress:
+            if not self._has_external_progress(snapshot):
+                next_policy = "wait_for_user_or_resume" if self._workspace_mode_for(snapshot) == "copilot" else "auto"
+                next_reason = "external_progress_finished" if next_policy == "wait_for_user_or_resume" else "external_progress_finished_continue_autonomous"
+                self.quest_service.update_runtime_state(
+                    quest_root=self.quest_service._quest_root(quest_id),
+                    continuation_policy=next_policy,
+                    continuation_reason=next_reason,
+                    continuation_updated_at=utc_now(),
+                )
+                if next_policy != "wait_for_user_or_resume":
+                    self._schedule_turn_later(
+                        quest_id,
+                        reason="auto_continue",
+                        delay_seconds=self._auto_continue_delay_for_policy(next_policy),
+                    )
                 return
-        self._schedule_turn_later(quest_id, reason="auto_continue", delay_seconds=_AUTO_CONTINUE_DELAY_SECONDS)
+        self._schedule_turn_later(
+            quest_id,
+            reason="auto_continue",
+            delay_seconds=self._auto_continue_delay_for_policy(continuation_policy),
+        )
 
     def _schedule_turn_later(self, quest_id: str, *, reason: str, delay_seconds: float) -> None:
         def _delayed() -> None:
@@ -3156,12 +3508,30 @@ class DaemonApp:
             if status in {"completed", "paused", "stopped", "error", "waiting_for_user"}:
                 return
             continuation_policy = str(snapshot.get("continuation_policy") or "auto").strip().lower() or "auto"
+            if continuation_policy == "auto":
+                continuation_policy, continuation_reason = self._resolve_continuation_policy(
+                    snapshot,
+                    current_policy=continuation_policy,
+                )
+                self.quest_service.update_runtime_state(
+                    quest_root=self.quest_service._quest_root(quest_id),
+                    continuation_policy=continuation_policy,
+                    continuation_reason=continuation_reason,
+                    continuation_updated_at=utc_now(),
+                )
+                snapshot = self.quest_service.snapshot(quest_id)
             if continuation_policy in {"none", "wait_for_user_or_resume"}:
                 return
             if continuation_policy == "when_external_progress":
-                counts = snapshot.get("counts") if isinstance(snapshot.get("counts"), dict) else {}
-                has_external_progress = bool(snapshot.get("active_run_id")) or int(counts.get("bash_running_count") or 0) > 0
-                if not has_external_progress:
+                if not self._has_external_progress(snapshot):
+                    next_policy = "wait_for_user_or_resume" if self._workspace_mode_for(snapshot) == "copilot" else "auto"
+                    next_reason = "external_progress_finished" if next_policy == "wait_for_user_or_resume" else "external_progress_finished_continue_autonomous"
+                    self.quest_service.update_runtime_state(
+                        quest_root=self.quest_service._quest_root(quest_id),
+                        continuation_policy=next_policy,
+                        continuation_reason=next_reason,
+                        continuation_updated_at=utc_now(),
+                    )
                     return
             self.schedule_turn(quest_id, reason=reason)
 
@@ -3170,6 +3540,23 @@ class DaemonApp:
             daemon=True,
             name=f"deepscientist-turn-delay-{quest_id}",
         ).start()
+
+    def _has_external_progress(self, snapshot: dict) -> bool:
+        if bool(snapshot.get("active_run_id")):
+            return True
+        quest_id = str(snapshot.get("quest_id") or "").strip()
+        if not quest_id:
+            return False
+        try:
+            quest_root = self.quest_service._quest_root(quest_id)
+        except FileNotFoundError:
+            return False
+        try:
+            sessions = self.bash_exec_service.list_sessions(quest_root, limit=200)
+            return any(str(item.get("status") or "").strip().lower() == "running" for item in sessions if isinstance(item, dict))
+        except Exception:
+            counts = snapshot.get("counts") if isinstance(snapshot.get("counts"), dict) else {}
+            return int(counts.get("bash_running_count") or 0) > 0
 
     def _relay_quest_message_to_bound_connectors(
         self,
@@ -4163,8 +4550,8 @@ class DaemonApp:
                         "quest_id": target_quest,
                         "kind": "ack",
                         "message": self._polite_copy(
-                            zh=f"老师，已将当前 {connector_label} 会话绑定到 {target_quest}，我会继续推进并同步计划。",
-                            en=f"Received. I’ve bound this {connector_label} conversation to {target_quest} and will keep the plan moving.",
+                            zh=f"收到啦！这里已经切到 Quest `{target_quest}` 了，接下来我会直接在这个 {connector_label} 里继续同步进展。",
+                            en=f"Got it. This {connector_label} is now on Quest `{target_quest}`, and I’ll keep the next updates here. ✨",
                         ),
                     }
                 )
@@ -5255,13 +5642,13 @@ class DaemonApp:
                 channel = self._channel_with_bindings(old_connector)
                 if mode == "disconnect":
                     message = self._polite_copy(
-                        zh=f"当前已退出 Quest `{quest_id}`，项目已切换为仅本地。",
-                        en=f"This conversation is no longer bound to Quest `{quest_id}`. The project is now local only.",
+                        zh=f"Quest `{quest_id}` 已经从这里解绑啦，后面会只在本地继续推进。",
+                        en=f"Quest `{quest_id}` is no longer bound here. It will continue locally only. 📌",
                     )
                 else:
                     message = self._polite_copy(
-                        zh=f"当前已退出 Quest `{quest_id}`，后续请在 {current_label} 查看进展。",
-                        en=f"This conversation is no longer bound to Quest `{quest_id}`. Continue from {current_label}.",
+                        zh=f"Quest `{quest_id}` 已经从这里切走啦，后面的进展请在 {current_label} 查看。",
+                        en=f"Quest `{quest_id}` has moved away from this conversation. Continue from {current_label}. 🔁",
                     )
                 channel.send(
                     {
@@ -5278,13 +5665,13 @@ class DaemonApp:
                 channel = self._channel_with_bindings(new_connector)
                 if mode == "bind":
                     message = self._polite_copy(
-                        zh=f"当前已绑定 Quest `{quest_id}`。",
-                        en=f"This conversation is now bound to Quest `{quest_id}`.",
+                        zh=f"收到！Quest `{quest_id}` 已经接上啦，后面的进展我都会直接在这里同步给您。",
+                        en=f"Quest `{quest_id}` is now connected here, and I’ll keep the next updates in this conversation. ✨",
                     )
                 elif mode == "switch":
                     message = self._polite_copy(
-                        zh=f"当前已绑定 Quest `{quest_id}`，并已从 {previous_label} 切换到当前会话。",
-                        en=f"This conversation is now bound to Quest `{quest_id}`, replacing {previous_label}.",
+                        zh=f"收到！Quest `{quest_id}` 已经切到这里啦，后面的进展我都会直接在这里同步给您。",
+                        en=f"Quest `{quest_id}` has switched over here, and I’ll keep the next updates in this conversation. 🔄",
                     )
                 else:
                     message = ""
@@ -5518,6 +5905,20 @@ class DaemonApp:
         )
         return f"{notice}\n\n{base}"
 
+    def _connector_goal_preview(self, goal: str, *, limit: int = 88) -> str:
+        for raw_line in str(goal or "").replace("\r", "\n").split("\n"):
+            line = re.sub(r"^[#>*\-\d\.)\s]+", "", raw_line).strip()
+            if not line:
+                continue
+            normalized = re.sub(r"\s+", " ", line).strip()
+            if len(normalized) <= limit:
+                return normalized
+            return normalized[: max(0, limit - 3)].rstrip() + "..."
+        return self._polite_copy(
+            zh="我会先把当前任务整理清楚，再继续推进。",
+            en="I will clarify the current task first, then keep moving. ✨",
+        )
+
     def _quest_created_connector_message(
         self,
         connector_name: str,
@@ -5526,29 +5927,29 @@ class DaemonApp:
         goal: str,
         previous_quest_id: str | None = None,
     ) -> str:
-        normalized_goal = str(goal or "").strip() or "（未提供具体任务）"
         previous = str(previous_quest_id or "").strip()
+        goal_preview = self._connector_goal_preview(goal)
         restore_zh = (
-            f"\n如果需要恢复到原先绑定的 quest，请发送：`/use {previous}`。"
+            f"\n如果想切回原先的 Quest `{previous}`，给我发 `/use {previous}` 就行。"
             if previous and previous != quest_id
             else ""
         )
         restore_en = (
-            f"\nIf you need to switch back to the previously bound quest, send: `/use {previous}`."
+            f"\nIf you want to switch back to Quest `{previous}`, send `/use {previous}`. 🔁"
             if previous and previous != quest_id
             else ""
         )
         return self._polite_copy(
             zh=(
-                f"老师，已顺利创建新的 quest `{quest_id}`。\n"
-                f"我即将为您完成以下任务：{normalized_goal}\n"
-                f"当前 {self._connector_label(connector_name)} 会话接下来会自动使用这个新 quest 保持连接。\n"
+                f"开工啦！新的 Quest `{quest_id}` 已经建好啦。\n"
+                f"这轮我先做这件事：{goal_preview}\n"
+                f"后面的进展我都会直接在这里同步给您。"
             )
             + restore_zh,
             en=(
-                f"Created a new quest `{quest_id}` successfully.\n"
-                f"I am about to work on: {normalized_goal}\n"
-                f"This {self._connector_label(connector_name)} conversation will now stay attached to the new quest automatically.\n"
+                f"Quest `{quest_id}` is ready, and I’m starting now. 🚀\n"
+                f"Current focus: {goal_preview}\n"
+                f"I’ll keep the next updates right here."
             )
             + restore_en,
         )
@@ -6376,7 +6777,47 @@ class DaemonApp:
         handler.wfile.flush()
 
     @staticmethod
+    def _write_handler_response(
+        handler: BaseHTTPRequestHandler,
+        *,
+        code: int,
+        content: bytes,
+        content_type: str | None = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> bool:
+        try:
+            handler.send_response(code)
+            if content_type:
+                handler.send_header("Content-Type", content_type)
+            handler.send_header("Content-Length", str(len(content)))
+            for key, value in (extra_headers or {}).items():
+                handler.send_header(key, value)
+            handler.end_headers()
+            if content:
+                handler.wfile.write(content)
+            return True
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            try:
+                handler.close_connection = True
+            except Exception:
+                pass
+            return False
+
+    @staticmethod
     def _parse_bash_log_jsonl_line(raw_line: bytes) -> dict[str, Any] | None:
+        stripped = raw_line.strip()
+        if not stripped:
+            return None
+        try:
+            payload = json.loads(stripped.decode("utf-8", errors="replace"))
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        return payload
+
+    @staticmethod
+    def _parse_quest_event_jsonl_line(raw_line: bytes) -> dict[str, Any] | None:
         stripped = raw_line.strip()
         if not stripped:
             return None
@@ -6431,6 +6872,42 @@ class DaemonApp:
 
         return fresh_entries, next_offset, remainder
 
+    @classmethod
+    def _read_quest_event_delta(
+        cls,
+        event_path: Path,
+        *,
+        offset: int,
+        pending: bytes,
+    ) -> tuple[list[dict[str, Any]], int, bytes]:
+        if not event_path.exists():
+            return [], 0, pending
+
+        current_size = event_path.stat().st_size
+        safe_offset = max(0, min(offset, current_size))
+        with event_path.open("rb") as handle:
+            handle.seek(safe_offset)
+            chunk = handle.read()
+            next_offset = handle.tell()
+
+        if not chunk:
+            return [], next_offset, pending
+
+        payload = pending + chunk
+        lines = payload.split(b"\n")
+        remainder = b""
+        if payload and not payload.endswith(b"\n"):
+            remainder = lines.pop()
+
+        fresh_entries: list[dict[str, Any]] = []
+        for raw_line in lines:
+            entry = cls._parse_quest_event_jsonl_line(raw_line.rstrip(b"\r"))
+            if not entry:
+                continue
+            fresh_entries.append(entry)
+
+        return fresh_entries, next_offset, remainder
+
     def stream_quest_events(
         self,
         handler: BaseHTTPRequestHandler,
@@ -6438,6 +6915,7 @@ class DaemonApp:
         quest_id: str,
         path: str,
         headers: dict[str, str] | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         query = self.handlers.parse_query(path)
         after = int((query.get("after") or ["0"])[0] or "0")
@@ -6447,16 +6925,23 @@ class DaemonApp:
         last_event_id = str((headers or {}).get("Last-Event-ID") or (headers or {}).get("last-event-id") or "").strip()
         current_cursor = max(after, int(last_event_id)) if last_event_id.isdigit() else after
         heartbeat_at = time.monotonic()
-        idle_sleep_seconds = 0.35
+        idle_sleep_seconds = 0.08
         force_fetch = True
         event_path = self.quest_service._quest_root(quest_id) / ".ds" / "events.jsonl"
         previous_event_state = None
+        cached_tail = self.quest_service.jsonl_tail_cache_entry(event_path) or {}
+        cached_tail_state = cached_tail.get("state") if isinstance(cached_tail.get("state"), (list, tuple)) else None
+        cached_tail_total = int(cached_tail.get("total") or 0) if isinstance(cached_tail, dict) else 0
+        event_offset = int(cached_tail_state[2]) if cached_tail_state and cached_tail_total == current_cursor else 0
+        pending_bytes = b""
 
         handler.send_response(200)
         handler.send_header("Content-Type", "text/event-stream; charset=utf-8")
         handler.send_header("Cache-Control", "no-cache, no-transform")
         handler.send_header("Connection", "keep-alive")
         handler.send_header("X-Accel-Buffering", "no")
+        for key, value in (extra_headers or {}).items():
+            handler.send_header(key, value)
         handler.end_headers()
         handler.wfile.write(b"retry: 1000\n\n")
         handler.wfile.flush()
@@ -6465,6 +6950,62 @@ class DaemonApp:
             while True:
                 current_event_state = self.quest_service._path_state(event_path)
                 if force_fetch or current_event_state != previous_event_state:
+                    used_incremental_delta = False
+                    delta_base_state = previous_event_state or cached_tail_state
+                    can_read_incremental = (
+                        current_cursor > 0
+                        and event_offset > 0
+                        and current_event_state is not None
+                        and delta_base_state is not None
+                        and tuple(delta_base_state)[0] == current_event_state[0]
+                        and current_event_state[2] >= int(tuple(delta_base_state)[2])
+                    )
+                    if can_read_incremental:
+                        fresh_events, event_offset, pending_bytes = self._read_quest_event_delta(
+                            event_path,
+                            offset=event_offset,
+                            pending=pending_bytes,
+                        )
+                        previous_event_state = current_event_state
+                        if fresh_events:
+                            for event in fresh_events:
+                                current_cursor += 1
+                                enriched_event = {
+                                    "cursor": current_cursor,
+                                    "event_id": event.get("event_id") or f"evt-{quest_id}-{current_cursor}",
+                                    **event,
+                                }
+                                update = build_session_update(
+                                    enriched_event,
+                                    quest_id=quest_id,
+                                    cursor=current_cursor,
+                                    session_id=session_id,
+                                )
+                                self._write_sse_event(
+                                    handler,
+                                    event="acp_update",
+                                    data=update,
+                                    event_id=str(current_cursor),
+                                )
+                            self._write_sse_event(
+                                handler,
+                                event="cursor",
+                                data={"cursor": current_cursor, "quest_id": quest_id},
+                            )
+                            heartbeat_at = time.monotonic()
+                            used_incremental_delta = True
+                            force_fetch = False
+                            idle_sleep_seconds = 0.03
+                        else:
+                            force_fetch = False
+                            now = time.monotonic()
+                            if now - heartbeat_at >= 10:
+                                handler.wfile.write(b": keep-alive\n\n")
+                                handler.wfile.flush()
+                                heartbeat_at = now
+                    if used_incremental_delta:
+                        time.sleep(idle_sleep_seconds)
+                        continue
                     stream_path = f"/api/quests/{quest_id}/events?{urlencode({'after': current_cursor, 'limit': limit, 'format': format_name, 'session_id': session_id})}"
                     payload = self.handlers.quest_events(quest_id, path=stream_path)
                     previous_event_state = current_event_state
@@ -6479,6 +7020,11 @@ class DaemonApp:
                                 event_id=update_cursor or None,
                             )
                         current_cursor = int(payload.get("cursor") or current_cursor)
+                        if current_event_state is not None and not payload.get("has_more"):
+                            event_offset = int(current_event_state[2])
+                            pending_bytes = b""
+                            cached_tail_state = current_event_state
+                            cached_tail_total = current_cursor
                         self._write_sse_event(
                             handler,
                             event="cursor",
@@ -6486,22 +7032,25 @@ class DaemonApp:
                         )
                         heartbeat_at = time.monotonic()
                         force_fetch = bool(payload.get("has_more"))
-                        idle_sleep_seconds = 0.05 if force_fetch else 0.2
+                        idle_sleep_seconds = 0.03 if force_fetch else 0.08
                     else:
+                        if current_event_state is not None:
+                            event_offset = int(current_event_state[2])
+                            cached_tail_state = current_event_state
                         force_fetch = False
                         now = time.monotonic()
                         if now - heartbeat_at >= 10:
                             handler.wfile.write(b": keep-alive\n\n")
                             handler.wfile.flush()
                             heartbeat_at = now
-                        idle_sleep_seconds = min(1.5, idle_sleep_seconds * 1.35)
+                        idle_sleep_seconds = min(0.9, idle_sleep_seconds * 1.25)
                 else:
                     now = time.monotonic()
                     if now - heartbeat_at >= 10:
                         handler.wfile.write(b": keep-alive\n\n")
                         handler.wfile.flush()
                         heartbeat_at = now
-                    idle_sleep_seconds = min(1.5, idle_sleep_seconds * 1.35)
+                    idle_sleep_seconds = min(0.9, idle_sleep_seconds * 1.25)
                 time.sleep(idle_sleep_seconds)
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
             return
@@ -6512,6 +7061,7 @@ class DaemonApp:
         *,
         quest_id: str,
         path: str,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         quest_root = self.quest_service._quest_root(quest_id)
         query = self.handlers.parse_query(path)
@@ -6548,6 +7098,8 @@ class DaemonApp:
         handler.send_header("Cache-Control", "no-cache, no-transform")
         handler.send_header("Connection", "keep-alive")
         handler.send_header("X-Accel-Buffering", "no")
+        for key, value in (extra_headers or {}).items():
+            handler.send_header(key, value)
         handler.end_headers()
         handler.wfile.write(b"retry: 1000\n\n")
         handler.wfile.flush()
@@ -6633,6 +7185,7 @@ class DaemonApp:
         quest_id: str,
         bash_id: str,
         headers: dict[str, str] | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         quest_root = self.quest_service._quest_root(quest_id)
         last_event_raw = str((headers or {}).get("Last-Event-ID") or (headers or {}).get("last-event-id") or "").strip()
@@ -6643,6 +7196,8 @@ class DaemonApp:
         handler.send_header("Cache-Control", "no-cache, no-transform")
         handler.send_header("Connection", "keep-alive")
         handler.send_header("X-Accel-Buffering", "no")
+        for key, value in (extra_headers or {}).items():
+            handler.send_header(key, value)
         handler.end_headers()
         handler.wfile.write(b"retry: 1000\n\n")
         handler.wfile.flush()
@@ -6843,35 +7398,84 @@ class DaemonApp:
                 if route_name is None:
                     self._write_json(404, {"ok": False, "message": "Not Found"})
                     return
-                if route_name == "quest_events" and app._wants_event_stream(self.path, dict(self.headers.items())):
+                request_headers = dict(self.headers.items())
+                auth_state = app.browser_auth_state_for_request(self.path, request_headers)
+                auth_headers = app._auth_response_headers(auth_state)
+                if app._route_requires_browser_auth(route_name) and not auth_state.authenticated:
+                    self._write_json(
+                        401,
+                        {
+                            "ok": False,
+                            "message": "Authentication required.",
+                            "auth_required": True,
+                            "auth_enabled": True,
+                        },
+                        extra_headers={
+                            **auth_headers,
+                            "WWW-Authenticate": f'Bearer realm="{_BROWSER_AUTH_REALM}"',
+                            "Cache-Control": "no-store, max-age=0, must-revalidate",
+                        },
+                    )
+                    return
+                if route_name == "quest_events" and app._wants_event_stream(self.path, request_headers):
                     try:
-                        app.stream_quest_events(self, **params, path=self.path, headers=dict(self.headers.items()))
+                        app.stream_quest_events(self, **params, path=self.path, headers=request_headers, extra_headers=auth_headers)
                     except Exception as exc:
-                        self._write_json(500, {"ok": False, "message": str(exc)})
+                        app.logger.log(
+                            "error",
+                            "http.stream_quest_events_failed",
+                            path=self.path,
+                            error=str(exc),
+                        )
+                        self.close_connection = True
                     return
                 if route_name == "bash_sessions_stream":
                     try:
-                        app.stream_bash_sessions(self, **params, path=self.path)
+                        app.stream_bash_sessions(self, **params, path=self.path, extra_headers=auth_headers)
                     except Exception as exc:
-                        self._write_json(500, {"ok": False, "message": str(exc)})
+                        app.logger.log(
+                            "error",
+                            "http.stream_bash_sessions_failed",
+                            path=self.path,
+                            error=str(exc),
+                        )
+                        self.close_connection = True
                     return
                 if route_name == "bash_log_stream":
                     try:
-                        app.stream_bash_logs(self, **params, headers=dict(self.headers.items()))
+                        app.stream_bash_logs(self, **params, headers=request_headers, extra_headers=auth_headers)
                     except Exception as exc:
-                        self._write_json(500, {"ok": False, "message": str(exc)})
+                        app.logger.log(
+                            "error",
+                            "http.stream_bash_logs_failed",
+                            path=self.path,
+                            error=str(exc),
+                        )
+                        self.close_connection = True
                     return
                 if route_name == "terminal_stream":
                     try:
-                        app.stream_bash_logs(self, quest_id=params["quest_id"], bash_id=params["session_id"], headers=dict(self.headers.items()))
+                        app.stream_bash_logs(
+                            self,
+                            quest_id=params["quest_id"],
+                            bash_id=params["session_id"],
+                            headers=request_headers,
+                            extra_headers=auth_headers,
+                        )
                     except Exception as exc:
-                        self._write_json(500, {"ok": False, "message": str(exc)})
+                        app.logger.log(
+                            "error",
+                            "http.stream_terminal_logs_failed",
+                            path=self.path,
+                            error=str(exc),
+                        )
+                        self.close_connection = True
                     return
                 if route_name == "lingzhu_sse":
                     content_length = int(self.headers.get("Content-Length", "0"))
                     raw_body = self.rfile.read(content_length) if content_length else b""
                     try:
-                        app.stream_lingzhu_sse(self, raw_body=raw_body, headers=dict(self.headers.items()))
+                        app.stream_lingzhu_sse(self, raw_body=raw_body, headers=request_headers)
                     except Exception as exc:
                         self._write_json(500, {"ok": False, "message": str(exc)})
                     return
@@ -6886,11 +7490,12 @@ class DaemonApp:
                     result = getattr(app.handlers, route_name)
                     if route_name == "asset":
                         status, headers, content = result(**params)
-                        self.send_response(status)
-                        for key, value in headers.items():
-                            self.send_header(key, value)
-                        self.end_headers()
-                        self.wfile.write(content)
+                        app._write_handler_response(
+                            self,
+                            code=status,
+                            content=content,
+                            extra_headers=app._merge_response_headers(headers, auth_headers),
+                        )
                         return
                     if route_name in {
                         "quest_events",
@@ -6917,7 +7522,7 @@ class DaemonApp:
                         payload = result(**params, path=self.path)
                     elif method == "GET":
                         payload = result(**params) if params else result()
-                    elif route_name in {"document_open", "document_asset_upload", "chat", "command", "quest_control", "config_save", "quest_create", "quest_baseline_binding", "run_create", "qq_inbound", "connector_inbound", "docs_open", "admin_shutdown", "bash_stop", "quest_settings", "quest_bindings", "quest_delete", "quest_layout_update", "terminal_session_ensure", "terminal_attach", "terminal_input", "stage_view", "latex_init", "latex_compile", "system_update_action", "weixin_login_qr_start", "weixin_login_qr_wait", "arxiv_import", "annotation_create"}:
+                    elif route_name in {"document_open", "document_asset_upload", "chat", "command", "quest_control", "config_save", "quest_create", "quest_baseline_binding", "run_create", "qq_inbound", "connector_inbound", "docs_open", "admin_shutdown", "bash_stop", "quest_settings", "quest_bindings", "quest_delete", "quest_layout_update", "terminal_session_ensure", "terminal_attach", "terminal_input", "stage_view", "latex_init", "latex_compile", "system_update_action", "weixin_login_qr_start", "weixin_login_qr_wait", "arxiv_import", "annotation_create", "auth_login", "auth_rotate"}:
                         payload = result(**params, body=body)
                     elif route_name == "config_validate":
                         payload = result(body)
@@ -6930,33 +7535,43 @@ class DaemonApp:
                     else:
                         payload = result(**params) if params else result()
                 except Exception as exc:
-                    self._write_json(500, {"ok": False, "message": str(exc)})
+                    self._write_json(500, {"ok": False, "message": str(exc)}, extra_headers=auth_headers)
                     return
 
                 if isinstance(payload, tuple) and len(payload) == 2:
                     status, body = payload
-                    self._write_json(status, body)
+                    self._write_json(status, body, extra_headers=auth_headers)
                     return
                 if isinstance(payload, tuple) and len(payload) == 3:
                     status, headers, content = payload
-                    self.send_response(status)
-                    for key, value in headers.items():
-                        self.send_header(key, value)
-                    self.end_headers()
                     if isinstance(content, str):
-                        self.wfile.write(content.encode("utf-8"))
+                        encoded = content.encode("utf-8")
                     else:
-                        self.wfile.write(content)
+                        encoded = content
+                    app._write_handler_response(
+                        self,
+                        code=status,
+                        content=encoded,
+                        extra_headers=app._merge_response_headers(headers, auth_headers),
+                    )
                     return
-                self._write_json(200, payload)
+                self._write_json(200, payload, extra_headers=auth_headers)
 
-            def _write_json(self, code: int, payload: dict | list) -> None:
+            def _write_json(
+                self,
+                code: int,
+                payload: dict | list,
+                *,
+                extra_headers: dict[str, str] | None = None,
+            ) -> None:
                 encoded = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-                self.send_response(code)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Content-Length", str(len(encoded)))
-                self.end_headers()
-                self.wfile.write(encoded)
+                app._write_handler_response(
+                    self,
+                    code=code,
+                    content=encoded,
+                    content_type="application/json; charset=utf-8",
+                    extra_headers=extra_headers,
+                )
 
         server = ThreadingHTTPServer((host, port), RequestHandler)
         server.daemon_threads = True
@@ -6968,6 +7583,8 @@ class DaemonApp:
         self._start_background_connectors()
         self._resume_reconciled_quests()
         print(f"DeepScientist daemon listening on http://{host}:{port}")
+        if self.browser_auth_enabled and self.browser_auth_token:
+            print(f"DeepScientist auth token: {self.browser_auth_token}")
         try:
             server.serve_forever()
         except KeyboardInterrupt:

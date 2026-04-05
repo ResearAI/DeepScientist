@@ -1,14 +1,14 @@
-import { ArrowUpRight, BookmarkPlus, CircleHelp, Lock, RotateCcw, Sparkles } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, BookmarkPlus, CircleHelp, Lock, RotateCcw, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { ConnectorTargetRadioGroup, type ConnectorTargetRadioItem } from '@/components/connectors/ConnectorTargetRadioGroup'
 import { OverlayDialog } from '@/components/home/OverlayDialog'
+import { LAUNCH_DIALOG_SHELL_CLASS } from '@/components/projects/LaunchModeVisuals'
 import { connectorCatalog } from '@/components/settings/connectorCatalog'
 import { AnimatedCheckbox } from '@/components/ui/animated-checkbox'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { client } from '@/lib/api'
@@ -31,7 +31,6 @@ import {
   saveStartResearchDraft,
   saveStartResearchTemplate,
   slugifyQuestRepo,
-  shouldRecommendStartResearchConnectorBinding,
   type BaselineExecutionPolicy,
   type CustomProfile,
   type DecisionPolicy,
@@ -46,16 +45,21 @@ import {
 import { cn } from '@/lib/utils'
 import type {
   BaselineRegistryEntry,
-  ConnectorAvailabilitySnapshot,
   ConnectorSnapshot,
 } from '@/types'
 
 const copy = {
   en: {
     title: 'Start Research',
-    body: 'Fill the brief, review the kickoff prompt, then create the project.',
+    body: 'Create and start.',
     formTitle: 'Context Form',
-    formHint: 'Each field adds concrete context for the first research round.',
+    formHint: 'Left form, right prompt.',
+    essentialsTitle: 'Essentials',
+    essentialsHint: 'Title, goal, references.',
+    advancedTitle: 'Advanced options',
+    advancedHint: 'Template, connector, contract.',
+    advancedShow: 'Show advanced options',
+    advancedHide: 'Hide advanced options',
     preview: 'Prompt preview',
     previewBody: 'This is the exact kickoff content that will be written into the new project.',
     manual: 'Manual edit active',
@@ -358,9 +362,15 @@ const copy = {
   },
   zh: {
     title: 'Start Research',
-    body: '填写研究简述，检查 kickoff prompt，然后创建项目。',
+    body: '创建后立即开始。',
     formTitle: '上下文表单',
-    formHint: '每一项都在为第一轮研究提供清晰、可执行的上下文。',
+    formHint: '左侧表单，右侧 prompt。',
+    essentialsTitle: '必要信息',
+    essentialsHint: '标题、目标、参考资料。',
+    advancedTitle: '高级设置',
+    advancedHint: '模板、连接器、研究合同。',
+    advancedShow: '展开高级设置',
+    advancedHide: '收起高级设置',
     preview: 'Prompt 预览',
     previewBody: '这里展示的是即将写入新项目的完整启动内容。',
     manual: '手工编辑已启用',
@@ -1234,6 +1244,7 @@ export function CreateProjectDialog({
   loading,
   error,
   initialGoal = '',
+  onBack,
   onClose,
   onCreate,
 }: {
@@ -1241,6 +1252,7 @@ export function CreateProjectDialog({
   loading?: boolean
   error?: string | null
   initialGoal?: string
+  onBack?: () => void
   onClose: () => void
   onCreate: (payload: {
     title: string
@@ -1255,6 +1267,8 @@ export function CreateProjectDialog({
   const { locale } = useI18n()
   const onboardingStatus = useOnboardingStore((state) => state.status)
   const t = normalizedCopy[locale]
+  const backLabel = locale === 'zh' ? '返回' : 'Back'
+  const [showAdvanced, setShowAdvanced] = useState(true)
   const [form, setForm] = useState<StartResearchTemplate>(defaultStartResearchTemplate(locale))
   const [promptDraft, setPromptDraft] = useState('')
   const [manualOverride, setManualOverride] = useState(false)
@@ -1269,13 +1283,7 @@ export function CreateProjectDialog({
   const [connectors, setConnectors] = useState<ConnectorSnapshot[]>([])
   const [connectorsLoading, setConnectorsLoading] = useState(false)
   const [connectorsError, setConnectorsError] = useState<string | null>(null)
-  const [connectorAvailability, setConnectorAvailability] = useState<ConnectorAvailabilitySnapshot | null>(null)
-  const [connectorAvailabilityLoading, setConnectorAvailabilityLoading] = useState(false)
-  const [connectorAvailabilityResolved, setConnectorAvailabilityResolved] = useState(false)
-  const [connectorAvailabilityError, setConnectorAvailabilityError] = useState<string | null>(null)
   const [selectedConnectorBindings, setSelectedConnectorBindings] = useState<Record<string, string | null>>({})
-  const [showConnectorRecommendation, setShowConnectorRecommendation] = useState(false)
-  const [connectorRecommendationHandled, setConnectorRecommendationHandled] = useState(false)
   const referenceTemplates = useMemo(() => listReferenceStartResearchTemplates(), [])
 
   const activeResearchIntensity = useMemo(
@@ -1428,10 +1436,7 @@ export function CreateProjectDialog({
     setQuestIdManualOverride(false)
     setSuggestedQuestId('')
     setSelectedConnectorBindings({})
-    setShowConnectorRecommendation(false)
-    setConnectorRecommendationHandled(false)
-    setConnectorAvailability(null)
-    setConnectorAvailabilityResolved(false)
+    setShowAdvanced(true)
   }, [initialGoal, locale, onboardingStatus, open])
 
   const setField = <K extends keyof StartResearchTemplate>(
@@ -1496,35 +1501,6 @@ export function CreateProjectDialog({
   }, [open])
 
   useEffect(() => {
-    if (onboardingStatus === 'running') {
-      setShowConnectorRecommendation(false)
-      return
-    }
-    if (
-      !shouldRecommendStartResearchConnectorBinding({
-        open,
-        availabilityResolved: connectorAvailabilityResolved,
-        availabilityLoading: connectorAvailabilityLoading,
-        availabilityError: connectorAvailabilityError,
-        connectorRecommendationHandled,
-        availability: connectorAvailability,
-      })
-    ) {
-      return
-    }
-    setShowConnectorRecommendation(true)
-    setConnectorRecommendationHandled(true)
-  }, [
-    connectorAvailability,
-    connectorAvailabilityError,
-    connectorAvailabilityLoading,
-    connectorAvailabilityResolved,
-    connectorRecommendationHandled,
-    onboardingStatus,
-    open,
-  ])
-
-  useEffect(() => {
     if (!open) return
     let active = true
     setConnectorsLoading(true)
@@ -1544,34 +1520,6 @@ export function CreateProjectDialog({
       .finally(() => {
         if (active) {
           setConnectorsLoading(false)
-        }
-      })
-    return () => {
-      active = false
-    }
-  }, [open])
-
-  useEffect(() => {
-    if (!open) return
-    let active = true
-    setConnectorAvailabilityLoading(true)
-    setConnectorAvailabilityResolved(false)
-    setConnectorAvailabilityError(null)
-    void client
-      .connectorsAvailability()
-      .then((payload) => {
-        if (!active) return
-        setConnectorAvailability(payload)
-      })
-      .catch((caught) => {
-        if (!active) return
-        setConnectorAvailability(null)
-        setConnectorAvailabilityError(caught instanceof Error ? caught.message : 'Failed to load connector availability.')
-      })
-      .finally(() => {
-        if (active) {
-          setConnectorAvailabilityLoading(false)
-          setConnectorAvailabilityResolved(true)
         }
       })
     return () => {
@@ -1794,14 +1742,7 @@ export function CreateProjectDialog({
     setField('quest_id', nextQuestId)
   }
 
-  const handleOpenConnectorSettings = () => {
-    setShowConnectorRecommendation(false)
-    onClose()
-    navigate('/settings/connector', { state: { configName: 'connectors' } })
-  }
-
   const handleLaunchTutorialDemo = useCallback(() => {
-    setShowConnectorRecommendation(false)
     onClose()
     resetDemoRuntime('demo-memory')
     navigate('/projects/demo-memory')
@@ -1850,7 +1791,8 @@ export function CreateProjectDialog({
       }))
       .filter((item) => Boolean(item.conversation_id))
     const startupContract = {
-      schema_version: 3,
+      schema_version: 4,
+      workspace_mode: 'autonomous',
       user_language: saved.user_language,
       need_research_paper: saved.need_research_paper,
       research_intensity: saved.research_intensity,
@@ -1874,6 +1816,10 @@ export function CreateProjectDialog({
       review_summary: effectiveReviewSummary,
       review_materials: effectiveReviewMaterials,
       custom_brief: saved.custom_brief,
+      project_display: {
+        template: 'experiment',
+        accent_color: 'sage',
+      },
     }
     await onCreate({
       title: saved.title,
@@ -1892,7 +1838,7 @@ export function CreateProjectDialog({
         title={t.title}
         description={t.body}
         onClose={onClose}
-        className="h-[94svh] max-w-[96vw] rounded-[26px] sm:h-[92vh] sm:max-w-[92vw] sm:rounded-[30px]"
+        className={LAUNCH_DIALOG_SHELL_CLASS}
       >
         <div
           className="feed-scrollbar flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:overflow-hidden lg:p-5"
@@ -1900,7 +1846,7 @@ export function CreateProjectDialog({
         >
         <div
           className={cn(
-            'flex flex-none flex-col overflow-visible lg:min-h-0 lg:flex-auto lg:overflow-hidden lg:rounded-xl lg:border lg:border-[rgba(45,42,38,0.09)] lg:bg-[rgba(255,255,255,0.76)] lg:shadow-[0_10px_26px_-22px_rgba(45,42,38,0.26)] lg:backdrop-blur-xl dark:lg:border-[rgba(45,42,38,0.09)] dark:lg:bg-[rgba(255,255,255,0.82)]'
+            'flex flex-none flex-col overflow-visible lg:min-h-0 lg:flex-auto lg:overflow-hidden lg:rounded-[28px] lg:border lg:border-black/[0.06] lg:bg-[rgba(255,250,245,0.76)] lg:shadow-[0_22px_72px_-54px_rgba(15,23,42,0.3)] lg:backdrop-blur-xl'
           )}
         >
           <div className="shrink-0 px-1 py-1 lg:border-b lg:border-[rgba(45,42,38,0.08)] lg:px-4 lg:py-4 dark:lg:border-[rgba(45,42,38,0.08)]">
@@ -1924,69 +1870,6 @@ export function CreateProjectDialog({
                 </div>
               ) : null}
 
-              <SectionCard title={t.template} muted>
-                <InlineField label={t.template} help={t.templateHint} hint={t.templateHint}>
-                  <div className="flex gap-2">
-                    <select
-                      value={selectedTemplateId}
-                      onChange={(event) => handleTemplateChange(event.target.value)}
-                      className={cn(selectClassName, 'min-w-0 flex-1')}
-                      disabled={manualOverride}
-                    >
-                      <option value="__new__">{t.newTemplate}</option>
-                      <option value="__latest__">{t.useTemplate}: {t.latestDraft}</option>
-                      {templateOptions.length === 0 ? <option value="__empty__">{t.noTemplates}</option> : null}
-                      {templateOptions.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {compactTemplateLabel(item, locale)}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="inline-flex h-9 items-center rounded-[10px] border border-[rgba(45,42,38,0.09)] bg-white/65 px-3 text-[11px] text-[rgba(75,73,69,0.72)] dark:border-[rgba(45,42,38,0.09)] dark:bg-white/72 dark:text-[rgba(75,73,69,0.72)]">
-                      {templateOptions.length}
-                    </div>
-                  </div>
-                </InlineField>
-              </SectionCard>
-
-              <SectionCard title={t.questTarget} muted>
-                <div className="text-[11px] leading-5 text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.targetHint}</div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border border-[rgba(45,42,38,0.08)] bg-white/70 px-3 py-3 dark:border-[rgba(45,42,38,0.08)] dark:bg-white/76">
-                    <div className="text-[11px] text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.targetMode}</div>
-                    <div className="mt-1 text-sm font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">{t.targetModeValue}</div>
-                  </div>
-                  <div className="rounded-lg border border-[rgba(45,42,38,0.08)] bg-white/70 px-3 py-3 dark:border-[rgba(45,42,38,0.08)] dark:bg-white/76">
-                    <div className="text-[11px] text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.targetRunner}</div>
-                    <div className="mt-1 text-sm font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">{t.targetRunnerValue}</div>
-                  </div>
-                </div>
-                <div data-onboarding-id="start-research-connector">
-                  <ConnectorChoiceField
-                  label={t.connectorDeliveryLabel}
-                  help={t.connectorDeliveryHelp}
-                  hint={t.connectorDeliveryHint}
-                  items={connectorChoices}
-                  value={effectiveSelectedConnectorBindings}
-                  loading={connectorsLoading}
-                  error={connectorsError}
-                  localOnlyLabel={t.connectorSelectPlaceholder}
-                  onChange={(connectorName, next) =>
-                    setSelectedConnectorBindings(() => {
-                      const normalized: Record<string, string | null> = {}
-                      for (const item of connectorChoices) {
-                        normalized[item.name] = null
-                      }
-                      if (next) {
-                        normalized[connectorName] = next
-                      }
-                      return normalized
-                    })
-                  }
-                  />
-                </div>
-              </SectionCard>
-
               <SectionCard title={t.basics}>
                 <InlineField label={t.titleLabel} help={t.titleHelp} dataOnboardingId="start-research-title">
                   <Input
@@ -1998,15 +1881,17 @@ export function CreateProjectDialog({
                   />
                 </InlineField>
 
-                <InlineField label={t.repoLabel} help={t.repoHelp}>
-                  <Input
-                    value={displayedQuestId}
-                    onChange={(event) => handleQuestIdChange(event.target.value)}
-                    placeholder={suggestedQuestIdLoading ? t.repoLoading : suggestedQuestId || t.repoPlaceholder}
-                    className="rounded-[10px] border-[rgba(45,42,38,0.09)] bg-white/75 text-xs dark:border-[rgba(45,42,38,0.09)] dark:bg-white/78"
-                    disabled={manualOverride}
-                  />
-                </InlineField>
+                {showAdvanced ? (
+                  <InlineField label={t.repoLabel} help={t.repoHelp}>
+                    <Input
+                      value={displayedQuestId}
+                      onChange={(event) => handleQuestIdChange(event.target.value)}
+                      placeholder={suggestedQuestIdLoading ? t.repoLoading : suggestedQuestId || t.repoPlaceholder}
+                      className="rounded-[10px] border-[rgba(45,42,38,0.09)] bg-white/75 text-xs dark:border-[rgba(45,42,38,0.09)] dark:bg-white/78"
+                      disabled={manualOverride}
+                    />
+                  </InlineField>
+                ) : null}
 
                 <InlineField label={t.goalLabel} help={t.goalHelp} dataOnboardingId="start-research-goal">
                   <Textarea
@@ -2092,17 +1977,6 @@ export function CreateProjectDialog({
                     </div>
                   </InlineField>
                 </div>
-                <InlineField label={t.languageLabel} help={t.languageHelp}>
-                  <select
-                    value={form.user_language}
-                    onChange={(event) => setField('user_language', event.target.value as StartResearchTemplate['user_language'])}
-                    className={selectClassName}
-                    disabled={manualOverride}
-                  >
-                    <option value="zh">中文</option>
-                    <option value="en">English</option>
-                  </select>
-                </InlineField>
                 <InlineField label={t.baselineUrls} help={t.baselineUrlsHelp}>
                   <Textarea
                     value={form.baseline_urls}
@@ -2121,9 +1995,86 @@ export function CreateProjectDialog({
                     disabled={manualOverride}
                   />
                 </InlineField>
+                {showAdvanced ? (
+                  <InlineField label={t.languageLabel} help={t.languageHelp}>
+                    <select
+                      value={form.user_language}
+                      onChange={(event) => setField('user_language', event.target.value as StartResearchTemplate['user_language'])}
+                      className={selectClassName}
+                      disabled={manualOverride}
+                    >
+                      <option value="zh">中文</option>
+                      <option value="en">English</option>
+                    </select>
+                  </InlineField>
+                ) : null}
               </SectionCard>
 
-              <SectionCard title={t.policy} dataOnboardingId="start-research-contract">
+              <>
+                  <SectionCard title={t.template} muted>
+                <InlineField label={t.template} help={t.templateHint} hint={t.templateHint}>
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedTemplateId}
+                      onChange={(event) => handleTemplateChange(event.target.value)}
+                      className={cn(selectClassName, 'min-w-0 flex-1')}
+                      disabled={manualOverride}
+                    >
+                      <option value="__new__">{t.newTemplate}</option>
+                      <option value="__latest__">{t.useTemplate}: {t.latestDraft}</option>
+                      {templateOptions.length === 0 ? <option value="__empty__">{t.noTemplates}</option> : null}
+                      {templateOptions.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {compactTemplateLabel(item, locale)}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="inline-flex h-9 items-center rounded-[10px] border border-[rgba(45,42,38,0.09)] bg-white/65 px-3 text-[11px] text-[rgba(75,73,69,0.72)] dark:border-[rgba(45,42,38,0.09)] dark:bg-white/72 dark:text-[rgba(75,73,69,0.72)]">
+                      {templateOptions.length}
+                    </div>
+                  </div>
+                </InlineField>
+                  </SectionCard>
+
+                  <SectionCard title={t.questTarget} muted>
+                <div className="text-[11px] leading-5 text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.targetHint}</div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-[rgba(45,42,38,0.08)] bg-white/70 px-3 py-3 dark:border-[rgba(45,42,38,0.08)] dark:bg-white/76">
+                    <div className="text-[11px] text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.targetMode}</div>
+                    <div className="mt-1 text-sm font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">{t.targetModeValue}</div>
+                  </div>
+                  <div className="rounded-lg border border-[rgba(45,42,38,0.08)] bg-white/70 px-3 py-3 dark:border-[rgba(45,42,38,0.08)] dark:bg-white/76">
+                    <div className="text-[11px] text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.targetRunner}</div>
+                    <div className="mt-1 text-sm font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">{t.targetRunnerValue}</div>
+                  </div>
+                </div>
+                <div data-onboarding-id="start-research-connector">
+                  <ConnectorChoiceField
+                  label={t.connectorDeliveryLabel}
+                  help={t.connectorDeliveryHelp}
+                  hint={t.connectorDeliveryHint}
+                  items={connectorChoices}
+                  value={effectiveSelectedConnectorBindings}
+                  loading={connectorsLoading}
+                  error={connectorsError}
+                  localOnlyLabel={t.connectorSelectPlaceholder}
+                  onChange={(connectorName, next) =>
+                    setSelectedConnectorBindings(() => {
+                      const normalized: Record<string, string | null> = {}
+                      for (const item of connectorChoices) {
+                        normalized[item.name] = null
+                      }
+                      if (next) {
+                        normalized[connectorName] = next
+                      }
+                      return normalized
+                    })
+                  }
+                  />
+                </div>
+                  </SectionCard>
+
+                  <SectionCard title={t.policy} dataOnboardingId="start-research-contract">
                 <ChoiceField
                   label={t.launchModeLabel}
                   help={t.launchModeHelp}
@@ -2330,9 +2281,9 @@ export function CreateProjectDialog({
                     disabled={manualOverride}
                   />
                 </InlineField>
-              </SectionCard>
+                  </SectionCard>
 
-              <SectionCard title={t.objectives}>
+                  <SectionCard title={t.objectives}>
                 <InlineField label={t.objectivesLabel} help={t.objectivesHelp}>
                   <Textarea
                     value={form.objectives}
@@ -2342,7 +2293,8 @@ export function CreateProjectDialog({
                     disabled={manualOverride}
                   />
                 </InlineField>
-              </SectionCard>
+                  </SectionCard>
+              </>
             </div>
           </div>
         </div>
@@ -2350,7 +2302,7 @@ export function CreateProjectDialog({
         <div
           data-onboarding-id="start-research-preview"
           className={cn(
-            'flex flex-none flex-col overflow-visible p-0 sm:p-0 lg:min-h-0 lg:flex-auto lg:overflow-hidden lg:rounded-xl lg:border lg:border-[rgba(45,42,38,0.09)] lg:bg-[rgba(255,255,255,0.76)] lg:p-4 lg:shadow-[0_10px_26px_-22px_rgba(45,42,38,0.26)] lg:backdrop-blur-xl dark:lg:border-[rgba(45,42,38,0.09)] dark:lg:bg-[rgba(255,255,255,0.82)]'
+            'flex flex-none flex-col overflow-visible p-0 sm:p-0 lg:min-h-0 lg:flex-auto lg:overflow-hidden lg:rounded-[28px] lg:border lg:border-black/[0.06] lg:bg-[rgba(255,250,245,0.74)] lg:p-4 lg:shadow-[0_22px_72px_-54px_rgba(15,23,42,0.28)] lg:backdrop-blur-xl'
           )}
         >
           <div className="mb-2 flex shrink-0 flex-wrap items-start justify-between gap-2 px-1 lg:mb-3 lg:px-0">
@@ -2386,9 +2338,7 @@ export function CreateProjectDialog({
             <div className="rounded-lg border border-[rgba(45,42,38,0.09)] bg-[rgba(244,239,233,0.55)] px-3 py-2 text-[11px] dark:border-[rgba(45,42,38,0.09)] dark:bg-[rgba(244,239,233,0.65)]">
               <div className="text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.connectorSummaryLabel}</div>
               <div className="mt-1 font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">
-                {selectedConnectorTarget
-                  ? selectedConnectorTarget.connector
-                  : t.connectorSummaryAuto}
+                {selectedConnectorTarget ? selectedConnectorTarget.connector : t.connectorSummaryAuto}
               </div>
               <div
                 className="mt-1 truncate text-[10px] leading-4 text-[rgba(107,103,97,0.78)] dark:text-[rgba(107,103,97,0.78)]"
@@ -2398,9 +2348,7 @@ export function CreateProjectDialog({
                     : t.connectorSummaryLocalBody
                 }
               >
-                {selectedConnectorTarget
-                  ? selectedConnectorTarget.target.compactLabel
-                  : t.connectorSummaryLocalBody}
+                {selectedConnectorTarget ? selectedConnectorTarget.target.compactLabel : t.connectorSummaryLocalBody}
               </div>
             </div>
             <div className="hidden rounded-lg border border-[rgba(45,42,38,0.09)] bg-[rgba(244,239,233,0.55)] px-3 py-2 text-[11px] sm:block dark:border-[rgba(45,42,38,0.09)] dark:bg-[rgba(244,239,233,0.65)]">
@@ -2446,6 +2394,16 @@ export function CreateProjectDialog({
             <div
               className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3"
             >
+              {onBack ? (
+                <Button
+                  variant="outline"
+                  onClick={onBack}
+                  className="w-full sm:w-auto"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  {backLabel}
+                </Button>
+              ) : null}
               <Button
                 variant="secondary"
                 disabled={!manualOverride || loading}
@@ -2472,47 +2430,6 @@ export function CreateProjectDialog({
         </div>
         </div>
       </OverlayDialog>
-      <Dialog
-        open={open && showConnectorRecommendation}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
-            setShowConnectorRecommendation(false)
-          }
-        }}
-      >
-        <DialogContent
-          showCloseButton={false}
-          className="max-w-[92vw] rounded-[24px] border border-[rgba(45,42,38,0.09)] bg-[rgba(255,255,255,0.92)] p-0 shadow-[0_30px_90px_-48px_rgba(45,42,38,0.38)] backdrop-blur-2xl sm:max-w-md dark:border-[rgba(255,255,255,0.08)] dark:bg-[rgba(28,28,30,0.86)]"
-        >
-          <div className="p-5 sm:p-6">
-            <DialogHeader className="space-y-2 text-left">
-              <DialogTitle className="text-[18px] font-semibold text-[rgba(38,36,33,0.96)] dark:text-white">
-                {t.connectorSuggestTitle}
-              </DialogTitle>
-              <DialogDescription className="text-sm leading-6 text-[rgba(86,82,77,0.82)] dark:text-white/68">
-                {t.connectorSuggestBody}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="mt-5 flex-row justify-end gap-2 sm:space-x-0">
-              <Button
-                type="button"
-                variant="ghost"
-                className="min-w-[88px]"
-                onClick={() => setShowConnectorRecommendation(false)}
-              >
-                {t.connectorSuggestLater}
-              </Button>
-              <Button
-                type="button"
-                className="min-w-[88px]"
-                onClick={handleOpenConnectorSettings}
-              >
-                {t.connectorSuggestGo}
-              </Button>
-            </DialogFooter>
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   )
 }

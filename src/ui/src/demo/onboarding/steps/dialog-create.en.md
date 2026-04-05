@@ -1,5 +1,3 @@
-In the guided tutorial, **Create project** does not launch a real run. Instead, it brings you into a fully interactive guided project that uses the same project-page layout and surfaces.
+In the guided tutorial, **Create project** still does not consume real resources.
 
-- Click **Create project** to continue.
-- The next screen will still be a project workspace, but its contents are staged for learning.
-- This lets you practice the real interface before spending real resources.
+It opens the staged demo workspace so you can practice the real project layout before running a real quest.

@@ -316,8 +316,15 @@ This is the main public knob for round depth.
 
 - `autonomous`
   - the agent should keep choosing ordinary routes on its own
+  - after one turn finishes, it should keep moving automatically: if no real long-running external task exists yet, keep preparing or launching it; once a real long-running external task exists, background monitoring should become low-frequency instead of sub-minute polling
 - `user_gated`
   - the agent may raise a blocking decision only when continuation truly depends on the user
+
+Practical note on workspace mode:
+
+- DeepScientist also distinguishes a user-directed `copilot` workspace mode from the default `autonomous` mode.
+- In `copilot`, completing the current requested unit should normally park and wait for the next user message or `/resume`.
+- In `autonomous`, the quest should not park just because no long-running task is active yet; it should keep pushing toward the next real long-running unit of work.
 
 ### Launch mode
 

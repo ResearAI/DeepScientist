@@ -3,7 +3,7 @@
 import fs, { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..')
@@ -19,19 +19,30 @@ const skipRebuild = ['1', 'true', 'yes', 'on'].includes(
     .trim()
     .toLowerCase()
 )
+const parallelBundleBuilds = ['1', 'true', 'yes', 'on'].includes(
+  String(process.env.DEEPSCIENTIST_PARALLEL_BUNDLE_BUILDS || '')
+    .trim()
+    .toLowerCase()
+)
 
 function run(command, args, cwd = repoRoot) {
-  const result = spawnSync(command, args, {
-    cwd,
-    stdio: 'inherit',
-    env: process.env,
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      stdio: 'inherit',
+      env: process.env,
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve()
+        return
+      }
+      const error = new Error(`${command} ${args.join(' ')} exited with code ${code ?? 1}`)
+      error.exitCode = code ?? 1
+      reject(error)
+    })
   })
-  if (result.error) {
-    throw result.error
-  }
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1)
-  }
 }
 
 function ensureFile(relativePath) {
@@ -110,27 +121,92 @@ function bundleFreshness() {
   }
 }
 
-const freshness = bundleFreshness()
-const bundlesFresh = freshness.webFresh && freshness.tuiFresh
+function installMarkerMtime(relativePath) {
+  const packageRoot = path.join(repoRoot, relativePath)
+  const markerCandidates = [
+    path.join(packageRoot, 'node_modules', '.package-lock.json'),
+    path.join(packageRoot, 'node_modules'),
+  ]
+  for (const candidate of markerCandidates) {
+    if (existsSync(candidate)) {
+      return fs.statSync(candidate).mtimeMs
+    }
+  }
+  return 0
+}
 
-if (runningFromPrepack && !forceRebuild) {
+function dependenciesNeedInstall(relativePath) {
+  const manifestMtime = latestMtimeForPaths([
+    path.join(relativePath, 'package.json'),
+    path.join(relativePath, 'package-lock.json'),
+  ])
+  const installedMtime = installMarkerMtime(relativePath)
+  return installedMtime === 0 || installedMtime < manifestMtime
+}
+
+async function main() {
+  const freshness = bundleFreshness()
+  const bundlesFresh = freshness.webFresh && freshness.tuiFresh
+
+  if (runningFromPrepack && !forceRebuild) {
+    ensureFile(webBundle)
+    ensureFile(tuiBundle)
+    if (!bundlesFresh) {
+      console.error('Prebuilt UI/TUI bundles are stale for npm pack/publish.')
+      console.error('Run `npm run build:release` first, then rerun `npm pack` or `npm publish`.')
+      process.exit(1)
+    }
+    return
+  }
+
+  if (bundlesFresh && !forceRebuild) {
+    console.log('UI/TUI bundles are already fresh; skipping rebuild.')
+    ensureFile(webBundle)
+    ensureFile(tuiBundle)
+    return
+  }
+
+  if (!skipRebuild || forceRebuild) {
+    const installTasks = []
+    if (dependenciesNeedInstall('src/ui')) {
+      installTasks.push(
+        run('npm', ['--prefix', 'src/ui', 'ci', '--include=dev', '--no-audit', '--no-fund', '--prefer-offline'])
+      )
+    } else {
+      console.log('Skipping npm ci for src/ui; dependencies look fresh.')
+    }
+    if (dependenciesNeedInstall('src/tui')) {
+      installTasks.push(
+        run('npm', ['--prefix', 'src/tui', 'ci', '--include=dev', '--no-audit', '--no-fund', '--prefer-offline'])
+      )
+    } else {
+      console.log('Skipping npm ci for src/tui; dependencies look fresh.')
+    }
+    if (installTasks.length > 0) {
+      await Promise.all(installTasks)
+    }
+    const buildSteps = [
+      () => run('npm', ['--prefix', 'src/ui', 'run', 'build']),
+      () => run('npm', ['--prefix', 'src/tui', 'run', 'build']),
+    ]
+    if (parallelBundleBuilds) {
+      await Promise.all(buildSteps.map((step) => step()))
+    } else {
+      for (const step of buildSteps) {
+        await step()
+      }
+    }
+  }
+
   ensureFile(webBundle)
   ensureFile(tuiBundle)
-  if (!bundlesFresh) {
-    console.error('Prebuilt UI/TUI bundles are stale for npm pack/publish.')
-    console.error('Run `npm run build:release` first, then rerun `npm pack` or `npm publish`.')
-    process.exit(1)
+}
+
+try {
+  await main()
+} catch (error) {
+  if (error && typeof error === 'object' && 'exitCode' in error && typeof error.exitCode === 'number') {
+    process.exit(error.exitCode)
   }
-  process.exit(0)
+  throw error
 }
-
-if (!skipRebuild || forceRebuild) {
-  run('npm', ['--prefix', 'src/ui', 'ci', '--include=dev', '--no-audit', '--no-fund'])
-  run('npm', ['--prefix', 'src/ui', 'run', 'build'])
-
-  run('npm', ['--prefix', 'src/tui', 'ci', '--include=dev', '--no-audit', '--no-fund'])
-  run('npm', ['--prefix', 'src/tui', 'run', 'build'])
-}
-
-ensureFile(webBundle)
-ensureFile(tuiBundle)

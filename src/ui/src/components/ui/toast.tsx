@@ -42,6 +42,53 @@ const toastListeners = new Set<ToastListener>()
 const pendingToasts: Array<Omit<Toast, 'id'>> = []
 const MAX_PENDING_TOASTS = 20
 
+function describeUnhandledReason(reason: unknown) {
+  if (reason instanceof Error) {
+    return {
+      message: reason.message || reason.name || 'Unhandled rejection',
+      stack: reason.stack,
+    }
+  }
+  if (typeof reason === 'string') {
+    return {
+      message: reason || 'Unhandled rejection',
+      stack: undefined,
+    }
+  }
+  if (typeof Event !== 'undefined' && reason instanceof Event) {
+    const eventType = String(reason.type || '').trim()
+    return {
+      message: eventType ? `Unhandled rejection (Event: ${eventType})` : 'Unhandled rejection (Event)',
+      stack: undefined,
+    }
+  }
+  if (reason && typeof reason === 'object') {
+    try {
+      const serialized = JSON.stringify(reason)
+      if (serialized && serialized !== '{}') {
+        return {
+          message: `Unhandled rejection (${serialized})`,
+          stack: undefined,
+        }
+      }
+    } catch {
+      // Ignore serialization failure and fall back to constructor naming.
+    }
+    const constructorName =
+      typeof (reason as { constructor?: { name?: unknown } }).constructor?.name === 'string'
+        ? String((reason as { constructor?: { name?: string } }).constructor?.name)
+        : 'Object'
+    return {
+      message: `Unhandled rejection (${constructorName})`,
+      stack: undefined,
+    }
+  }
+  return {
+    message: 'Unhandled rejection',
+    stack: undefined,
+  }
+}
+
 function registerToastListener(listener: ToastListener) {
   toastListeners.add(listener)
   if (pendingToasts.length) {
@@ -149,10 +196,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
 
     const onRejection = (event: PromiseRejectionEvent) => {
       if ((event.reason as { __dsHandled?: boolean } | null)?.__dsHandled) return
-      const reason = event.reason
-      const message =
-        reason instanceof Error ? reason.message : typeof reason === 'string' ? reason : 'Unhandled rejection'
-      const stack = reason instanceof Error ? reason.stack : undefined
+      const { message, stack } = describeUnhandledReason(event.reason)
       const details = stack ? truncateText(redactSensitive(stack), 4000) : undefined
       addToast({
         type: 'error',

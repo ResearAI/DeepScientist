@@ -1,4 +1,4 @@
 from .installer import SkillInstaller
-from .registry import SkillBundle, discover_skill_bundles
+from .registry import SkillBundle, companion_skill_ids, discover_skill_bundles, stage_skill_ids
 
-__all__ = ["SkillBundle", "SkillInstaller", "discover_skill_bundles"]
+__all__ = ["SkillBundle", "SkillInstaller", "discover_skill_bundles", "stage_skill_ids", "companion_skill_ids"]

@@ -13,6 +13,114 @@ export type RenderOperationFeedItem = OperationFeedItem & {
 
 export type RenderFeedItem = Exclude<FeedItem, { type: 'operation' }> | RenderOperationFeedItem
 
+function normalizeComparableText(value?: string | null) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function textsLookEquivalent(left: string | undefined | null, right: string | undefined | null) {
+  const normalizedLeft = normalizeComparableText(left)
+  const normalizedRight = normalizeComparableText(right)
+  if (!normalizedLeft || !normalizedRight) return false
+  if (normalizedLeft === normalizedRight) return true
+  const [shorter, longer] =
+    normalizedLeft.length <= normalizedRight.length
+      ? [normalizedLeft, normalizedRight]
+      : [normalizedRight, normalizedLeft]
+  return shorter.length >= 48 && longer.includes(shorter)
+}
+
+function parseTimestampMs(value?: string) {
+  if (!value) return null
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function withinDuplicateWindow(left?: string, right?: string, seconds = 90) {
+  const leftMs = parseTimestampMs(left)
+  const rightMs = parseTimestampMs(right)
+  if (leftMs == null || rightMs == null) return true
+  return Math.abs(leftMs - rightMs) <= seconds * 1000
+}
+
+function isInteractiveArtifact(item: FeedItem): item is Extract<FeedItem, { type: 'artifact' }> {
+  return item.type === 'artifact' && Boolean(item.interactionId && normalizeComparableText(item.content))
+}
+
+function isVisibleAssistantMessage(item: FeedItem): item is Extract<FeedItem, { type: 'message' }> {
+  return (
+    item.type === 'message' &&
+    item.role === 'assistant' &&
+    !item.reasoning &&
+    normalizeComparableText(item.content).length > 0
+  )
+}
+
+function isVisibleUserMessage(item: FeedItem): item is Extract<FeedItem, { type: 'message' }> {
+  return item.type === 'message' && item.role === 'user' && normalizeComparableText(item.content).length > 0
+}
+
+function shouldSuppressDuplicateArtifact(
+  rendered: FeedItem[],
+  candidate: Extract<FeedItem, { type: 'artifact' }>
+) {
+  for (let index = rendered.length - 1; index >= 0; index -= 1) {
+    const previous = rendered[index]
+    if (isVisibleUserMessage(previous)) {
+      return false
+    }
+    if (!isInteractiveArtifact(previous)) {
+      continue
+    }
+    if (previous.kind !== candidate.kind) {
+      continue
+    }
+    if (!withinDuplicateWindow(previous.createdAt, candidate.createdAt)) {
+      continue
+    }
+    if (textsLookEquivalent(previous.content, candidate.content)) {
+      return true
+    }
+  }
+  return false
+}
+
+function dropEquivalentInteractiveArtifacts(
+  rendered: FeedItem[],
+  candidate: Extract<FeedItem, { type: 'message' }>
+) {
+  for (let index = rendered.length - 1; index >= 0; index -= 1) {
+    const previous = rendered[index]
+    if (isVisibleUserMessage(previous)) {
+      break
+    }
+    if (!isInteractiveArtifact(previous)) {
+      continue
+    }
+    if (!withinDuplicateWindow(previous.createdAt, candidate.createdAt)) {
+      continue
+    }
+    if (textsLookEquivalent(previous.content, candidate.content)) {
+      rendered.splice(index, 1)
+    }
+  }
+}
+
+export function dedupeVisibleFeedItems(items: FeedItem[]): FeedItem[] {
+  const deduped: FeedItem[] = []
+  for (const item of items) {
+    if (isInteractiveArtifact(item) && shouldSuppressDuplicateArtifact(deduped, item)) {
+      continue
+    }
+    if (isVisibleAssistantMessage(item)) {
+      dropEquivalentInteractiveArtifacts(deduped, item)
+    }
+    deduped.push(item)
+  }
+  return deduped
+}
+
 function parseJsonRecord(value?: string) {
   if (!value) return null
   try {
@@ -164,10 +272,11 @@ function mergeRenderOperation(
 }
 
 export function mergeFeedItemsForRender(items: FeedItem[]): RenderFeedItem[] {
+  const dedupedItems = dedupeVisibleFeedItems(items)
   const merged: RenderFeedItem[] = []
   const operationIndexByMergeKey = new Map<string, number>()
 
-  for (const item of items) {
+  for (const item of dedupedItems) {
     if (item.type !== 'operation') {
       merged.push(item)
       continue
@@ -197,6 +306,13 @@ export function mergeFeedItemsForRender(items: FeedItem[]): RenderFeedItem[] {
   }
 
   return merged
+}
+
+export function countActiveRenderedOperations(items: FeedItem[]) {
+  return mergeFeedItemsForRender(items).reduce((count, item) => {
+    if (item.type !== 'operation') return count
+    return item.hasResult ? count : count + 1
+  }, 0)
 }
 
 export function findLatestRenderedOperationId(

@@ -4,7 +4,7 @@ export const commonMessages: Partial<Record<UILanguage, Record<string, string>>>
   en: {
     language_label: 'Language',
     language_english: 'English',
-    language_chinese: 'Chinese',
+    language_chinese: '中文',
     language_french: 'French',
     language_japanese: 'Japanese',
     language_korean: 'Korean',

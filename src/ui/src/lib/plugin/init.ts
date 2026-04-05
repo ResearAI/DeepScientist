@@ -188,6 +188,28 @@ const gitDiffViewerManifest: UnifiedPluginManifest = {
   },
 };
 
+const gitCommitViewerManifest: UnifiedPluginManifest = {
+  id: "@ds/plugin-git-commit-viewer",
+  name: "Git Commit Viewer",
+  version: "1.0.0",
+  description: "Inspect a git commit and browse its changed files in a centered workspace tab",
+  type: "builtin",
+  frontend: {
+    entry: "plugins/git-commit-viewer/GitCommitViewerPlugin",
+    renderMode: "react",
+    multiInstance: true,
+  },
+  contributes: {
+    tabIcon: "git-commit",
+  },
+  permissions: {
+    frontend: ["project:read", "file:read"],
+  },
+  lifecycle: {
+    activationEvents: ["onCommand:openGitCommit"],
+  },
+};
+
 /**
  * Code Viewer Plugin Manifest
  */
@@ -481,6 +503,7 @@ export const BUILTIN_PLUGIN_MANIFESTS: UnifiedPluginManifest[] = [
   notebookManifest,
   latexManifest,
   gitDiffViewerManifest,
+  gitCommitViewerManifest,
   codeEditorManifest,
   codeViewerManifest,
   imageViewerManifest,
@@ -494,8 +517,17 @@ export const BUILTIN_PLUGIN_MANIFESTS: UnifiedPluginManifest[] = [
  * Plugin IDs that should be preloaded for better UX
  */
 export const PRELOAD_PLUGIN_IDS: string[] = [
-  // Keep empty to avoid pulling heavy plugins into the initial bundle.
+  "@ds/plugin-code-editor",
+  "@ds/plugin-code-viewer",
+  "@ds/plugin-cli",
+  "@ds/plugin-git-diff-viewer",
+  "@ds/plugin-notebook",
+  "@ds/plugin-text-viewer",
+  "@ds/plugin-markdown-viewer",
 ];
+
+let commonPluginPreloadPromise: Promise<void> | null = null;
+let commonPluginPreloadScheduled = false;
 
 // ============================================================
 // Initialization Functions
@@ -560,16 +592,66 @@ export function initializeBuiltinPlugins(): void {
  * ```
  */
 export async function preloadCommonPlugins(): Promise<void> {
+  if (commonPluginPreloadPromise) {
+    return commonPluginPreloadPromise;
+  }
   console.log("[PluginInit] Preloading common plugins...");
 
-  try {
-    await builtinPluginLoader.preload(PRELOAD_PLUGIN_IDS);
-    console.log(
-      `[PluginInit] Preloaded ${PRELOAD_PLUGIN_IDS.length} plugins`
-    );
-  } catch (error) {
-    console.warn("[PluginInit] Failed to preload some plugins:", error);
+  commonPluginPreloadPromise = (async () => {
+    try {
+      await builtinPluginLoader.preload(PRELOAD_PLUGIN_IDS);
+      console.log(
+        `[PluginInit] Preloaded ${PRELOAD_PLUGIN_IDS.length} plugins`
+      );
+    } catch (error) {
+      console.warn("[PluginInit] Failed to preload some plugins:", error);
+    }
+  })();
+
+  return commonPluginPreloadPromise;
+}
+
+export function scheduleCommonPluginPreload(
+  delayMs = 80
+): () => void {
+  if (
+    typeof window === "undefined" ||
+    commonPluginPreloadPromise ||
+    commonPluginPreloadScheduled
+  ) {
+    return () => {};
   }
+
+  commonPluginPreloadScheduled = true;
+  let cancelled = false;
+  let timeoutId: number | null = null;
+  let idleId: number | null = null;
+
+  const run = () => {
+    if (cancelled) {
+      commonPluginPreloadScheduled = false;
+      return;
+    }
+    commonPluginPreloadScheduled = false;
+    void preloadCommonPlugins();
+  };
+
+  if (typeof window.requestIdleCallback === "function") {
+    idleId = window.requestIdleCallback(run, { timeout: 900 });
+  } else {
+    timeoutId = window.setTimeout(run, delayMs);
+  }
+
+  return () => {
+    cancelled = true;
+    commonPluginPreloadScheduled = false;
+    if (idleId != null && typeof window.cancelIdleCallback === "function") {
+      window.cancelIdleCallback(idleId);
+    }
+    if (timeoutId != null) {
+      window.clearTimeout(timeoutId);
+    }
+  };
 }
 
 /**
@@ -639,6 +721,8 @@ export function resetPluginSystem(): void {
 
   // Clear builtin loader cache
   builtinPluginLoader.clearCache();
+  commonPluginPreloadPromise = null;
+  commonPluginPreloadScheduled = false;
 
   console.log("[PluginInit] Plugin system reset complete");
 }

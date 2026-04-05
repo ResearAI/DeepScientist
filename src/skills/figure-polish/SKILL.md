@@ -1,6 +1,7 @@
 ---
 name: figure-polish
 description: Use when a quest needs a polished milestone chart, paper-facing figure, appendix figure, or a mandatory render-inspect-revise pass before treating a figure as final.
+skill_role: companion
 ---
 
 # Figure Polish

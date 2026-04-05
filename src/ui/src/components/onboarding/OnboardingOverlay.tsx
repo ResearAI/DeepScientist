@@ -119,11 +119,46 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     route: 'landing',
     targetId: 'landing-start-research',
     title: {
-      en: 'Open Start Research',
-      zh: '先打开 Start Research',
+      en: 'Open the launch dialog',
+      zh: '先打开启动模式弹框',
     },
     body: onboardingStepBodies['landing-open-dialog'],
     actionTargetId: 'landing-start-research',
+    advanceMode: 'wait_for_element',
+    waitForElementId: 'experiment-launch-dialog',
+  },
+  {
+    id: 'launch-mode-overview',
+    route: 'landing',
+    targetId: 'experiment-launch-dialog',
+    title: {
+      en: 'First choose between Copilot and Autonomous',
+      zh: '先在 Copilot 和全自动之间做选择',
+    },
+    body: onboardingStepBodies['launch-mode-overview'],
+    placement: 'top',
+  },
+  {
+    id: 'launch-mode-copilot',
+    route: 'landing',
+    targetId: 'launch-mode-copilot-card',
+    title: {
+      en: 'Copilot is for human-in-the-loop work',
+      zh: 'Copilot 适合人机共研',
+    },
+    body: onboardingStepBodies['launch-mode-copilot'],
+    placement: 'right',
+  },
+  {
+    id: 'launch-mode-autonomous',
+    route: 'landing',
+    targetId: 'launch-mode-autonomous-card',
+    title: {
+      en: 'The walkthrough now follows the autonomous path',
+      zh: '这个教程接下来走全自动主线',
+    },
+    body: onboardingStepBodies['launch-mode-autonomous'],
+    actionTargetId: 'launch-mode-autonomous-card',
     advanceMode: 'wait_for_element',
     waitForElementId: 'start-research-dialog',
   },
@@ -132,8 +167,8 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     route: 'landing',
     targetId: 'start-research-dialog',
     title: {
-      en: 'Left side is context, right side is the kickoff prompt',
-      zh: '左侧填上下文，右侧看启动 Prompt',
+      en: 'Start with the essentials first',
+      zh: '先从必要信息开始',
     },
     body: onboardingStepBodies['dialog-overview'],
     placement: 'top',
@@ -169,32 +204,12 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     body: onboardingStepBodies['dialog-references'],
   },
   {
-    id: 'dialog-connectors',
-    route: 'landing',
-    targetId: 'start-research-connector',
-    title: {
-      en: 'Connector delivery is optional',
-      zh: '连接器投递是可选的',
-    },
-    body: onboardingStepBodies['dialog-connectors'],
-  },
-  {
-    id: 'dialog-contract',
-    route: 'landing',
-    targetId: 'start-research-contract',
-    title: {
-      en: 'Set the first-round contract',
-      zh: '在这里约定第一轮研究怎么跑',
-    },
-    body: onboardingStepBodies['dialog-contract'],
-  },
-  {
     id: 'dialog-preview',
     route: 'landing',
     targetId: 'start-research-preview',
     title: {
-      en: 'Always review the generated kickoff prompt',
-      zh: '一定要看一眼生成后的 kickoff Prompt',
+      en: 'Review the kickoff prompt before you create',
+      zh: '创建前看一眼 kickoff Prompt',
     },
     body: onboardingStepBodies['dialog-preview'],
     placement: 'left',
@@ -409,7 +424,6 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
       zh: 'Copilot 会在项目运行期间一直保持连接',
     },
     body: onboardingStepBodies['workspace-copilot'],
-    autoSkipIfTargetMissing: true,
   },
   {
     id: 'workspace-copilot-modes',
@@ -421,7 +435,6 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     },
     body: onboardingStepBodies['workspace-copilot-modes'],
     placement: 'left',
-    autoSkipIfTargetMissing: true,
   },
   {
     id: 'workspace-next-action',
@@ -432,13 +445,18 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
       zh: '这里就是人类协作真正接手的地方',
     },
     body: onboardingStepBodies['workspace-next-action'],
-    autoSkipIfTargetMissing: true,
   },
 ]
 
 function queryTarget(id?: string | null) {
   if (!id || typeof document === 'undefined') return null
   return document.querySelector<HTMLElement>(`[data-onboarding-id="${id}"]`)
+}
+
+function stepNeedsCopilotPanel(step: OnboardingStep | null) {
+  if (!step) return false
+  const ids = [step.targetId, step.actionTargetId, step.waitForElementId].filter(Boolean)
+  return ids.some((id) => id === 'workspace-copilot-panel' || id === 'quest-copilot-mode-tabs')
 }
 
 function isVerticalScrollable(element: HTMLElement) {
@@ -869,6 +887,38 @@ export function OnboardingOverlay() {
     const timer = window.setTimeout(() => advance(), 900)
     return () => window.clearTimeout(timer)
   }, [advance, location.pathname, status, step, targetFound])
+
+  React.useEffect(() => {
+    if (status !== 'running' || !step) return
+    if (!routeMatches(step, location.pathname)) return
+    if (!stepNeedsCopilotPanel(step)) return
+
+    let cancelled = false
+
+    const ensureCopilot = () => {
+      if (cancelled) return
+      const relevantTargetId =
+        step.targetId === 'quest-copilot-mode-tabs'
+          ? 'quest-copilot-mode-tabs'
+          : 'workspace-copilot-panel'
+      if (queryTarget(relevantTargetId)) return
+      window.dispatchEvent(
+        new CustomEvent('ds:copilot:open', {
+          detail: {
+            focus: false,
+            source: 'onboarding',
+          },
+        })
+      )
+    }
+
+    ensureCopilot()
+    const intervalId = window.setInterval(ensureCopilot, 700)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [location.pathname, status, step, targetFound])
 
   if (!hydrated) {
     return null

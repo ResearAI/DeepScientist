@@ -26,6 +26,8 @@ import {
   attachTerminalSession,
   ensureTerminalSession,
   restoreTerminalSession,
+  type TerminalRestoreCommand,
+  type TerminalRestoreTailEntry,
 } from '@/lib/api/terminal'
 import { useQuestWorkspace } from '@/lib/acp'
 import { openQuestDocumentAsFileNode } from '@/lib/api/quest-files'
@@ -369,6 +371,11 @@ type PendingTerminalEcho = {
   submittedAt: number
 }
 
+type TerminalRestorePreview = {
+  latestCommands: TerminalRestoreCommand[]
+  visibleLines: Array<{ line: string; stream: string }>
+}
+
 const TERMINAL_ESCAPE_UP = '\x1b[A'
 const TERMINAL_ESCAPE_DOWN = '\x1b[B'
 const TERMINAL_ESCAPE_RIGHT = '\x1b[C'
@@ -400,6 +407,36 @@ function commonPrefixLength(left: string, right: string) {
 
 function stripLeadingTerminalBreaks(value: string) {
   return value.replace(/^[\r\n]+/, '')
+}
+
+function buildTerminalRestorePreview(
+  payload: {
+    latest_commands?: TerminalRestoreCommand[]
+    tail?: TerminalRestoreTailEntry[]
+  } | null | undefined
+): TerminalRestorePreview {
+  const latestCommands = Array.isArray(payload?.latest_commands)
+    ? payload!.latest_commands.filter((item) => item && typeof item === 'object')
+    : []
+  const visibleLines = Array.isArray(payload?.tail)
+    ? payload!.tail
+        .map((entry) => ({
+          line: String(entry?.line || ''),
+          stream: String(entry?.stream || ''),
+        }))
+        .filter((entry) => {
+          if (!entry.line.trim()) return false
+          if (entry.stream === 'prompt' || entry.stream === 'carriage' || entry.stream === 'partial' || entry.stream === 'system') {
+            return false
+          }
+          return true
+        })
+        .slice(-6)
+    : []
+  return {
+    latestCommands,
+    visibleLines,
+  }
 }
 
 function formatConnectionState(
@@ -1198,23 +1235,25 @@ function QuestCanvasSurface({
   const queryClient = useQueryClient()
   const clearGraphSelection = useLabGraphSelectionStore((state) => state.clear)
   const selection = useLabGraphSelectionStore((state) => state.selection)
+  const setGraphSelection = useLabGraphSelectionStore((state) => state.setSelection)
 
   React.useEffect(() => {
     clearGraphSelection()
   }, [clearGraphSelection, questId])
 
   const handleRefresh = React.useCallback(async () => {
+    const refreshTasks: Array<Promise<unknown>> = [onRefresh()]
     clearGraphSelection()
-    await Promise.allSettled([
-      onRefresh(),
+    refreshTasks.push(
       queryClient.invalidateQueries({ queryKey: ['lab-quest-graph', questId] }),
       queryClient.invalidateQueries({ queryKey: ['lab-quest-events', questId] }),
       queryClient.invalidateQueries({ queryKey: ['lab-quest-node-trace', questId] }),
       queryClient.invalidateQueries({ queryKey: ['lab-quest-event-payload', questId] }),
       queryClient.invalidateQueries({ queryKey: ['lab-quest-summary', questId] }),
       queryClient.invalidateQueries({ queryKey: ['lab-papers', questId] }),
-      queryClient.invalidateQueries({ queryKey: ['lab-agents', questId] }),
-    ])
+      queryClient.invalidateQueries({ queryKey: ['lab-agents', questId] })
+    )
+    await Promise.allSettled(refreshTasks)
   }, [clearGraphSelection, onRefresh, queryClient, questId])
 
   const canOpenStageOverview = Boolean(
@@ -1664,6 +1703,12 @@ function QuestInteractiveTerminalPane({
   const [stopReason, setStopReason] = React.useState<string | null>(null)
   const [progress, setProgress] = React.useState<BashProgress | null>(null)
   const [liveConnected, setLiveConnected] = React.useState(false)
+  const [restorePreview, setRestorePreview] = React.useState<TerminalRestorePreview>({
+    latestCommands: [],
+    visibleLines: [],
+  })
+  const restorePreviewRequestRef = React.useRef(0)
+  const restorePreviewTimerRef = React.useRef<number | null>(null)
 
   const selectedSession = React.useMemo<BashSession | null>(() => {
     if (!terminalSessions.length) return null
@@ -1672,6 +1717,8 @@ function QuestInteractiveTerminalPane({
       terminalSessions[0]
     )
   }, [selectedSessionId, terminalSessions])
+  const selectedSessionBashId = selectedSession?.bash_id ?? null
+  const selectedSessionStatus = selectedSession?.status ?? null
 
   React.useEffect(() => {
     if (!terminalSessions.length) {
@@ -1685,6 +1732,33 @@ function QuestInteractiveTerminalPane({
       setSelectedSessionId(terminalSessions[0].bash_id)
     }
   }, [selectedSessionId, terminalSessions])
+
+  React.useEffect(() => {
+    return () => {
+      if (restorePreviewTimerRef.current != null) {
+        window.clearTimeout(restorePreviewTimerRef.current)
+      }
+    }
+  }, [])
+
+  const refreshRestorePreview = React.useCallback(
+    async (bashId: string) => {
+      const requestId = restorePreviewRequestRef.current + 1
+      restorePreviewRequestRef.current = requestId
+      try {
+        const payload = await restoreTerminalSession(questId, bashId, {
+          commands: 50,
+          output: 1000,
+        })
+        if (restorePreviewRequestRef.current !== requestId) return
+        setRestorePreview(buildTerminalRestorePreview(payload))
+      } catch {
+        if (restorePreviewRequestRef.current !== requestId) return
+        setRestorePreview({ latestCommands: [], visibleLines: [] })
+      }
+    },
+    [questId]
+  )
 
   const ensuredRef = React.useRef(false)
   const shouldAutoEnsureTerminal = React.useMemo(() => !isNativeWindowsBrowser(), [])
@@ -1846,6 +1920,8 @@ function QuestInteractiveTerminalPane({
           output: 1000,
         })
         if (restoreRequestRef.current !== requestId) return
+        restorePreviewRequestRef.current = requestId
+        setRestorePreview(buildTerminalRestorePreview(payload))
         resetTerminal()
         payload.tail.forEach((entry) => {
           replayRestoredEntry({ line: entry.line ?? '', stream: entry.stream })
@@ -1859,6 +1935,7 @@ function QuestInteractiveTerminalPane({
         setLogsError(
           error instanceof Error ? error.message : 'Failed to load terminal output.'
         )
+        setRestorePreview({ latestCommands: [], visibleLines: [] })
         resetTerminal()
       } finally {
         if (restoreRequestRef.current === requestId) {
@@ -1873,10 +1950,10 @@ function QuestInteractiveTerminalPane({
     (payload: Record<string, unknown>) => {
       const encoded = JSON.stringify(payload)
       const ws = liveSocketRef.current
-      if (!selectedSession?.bash_id) {
+      if (!selectedSessionBashId) {
         return false
       }
-      if (!ws || liveSocketSessionIdRef.current !== selectedSession.bash_id) {
+      if (!ws || liveSocketSessionIdRef.current !== selectedSessionBashId) {
         pendingLiveMessagesRef.current.push(encoded)
         return true
       }
@@ -1887,7 +1964,7 @@ function QuestInteractiveTerminalPane({
       ws.send(encoded)
       return true
     },
-    [selectedSession?.bash_id]
+    [selectedSessionBashId]
   )
 
   const openLiveSession = React.useCallback(
@@ -2008,12 +2085,14 @@ function QuestInteractiveTerminalPane({
       setLogsError(null)
       setLogsLoading(false)
       setLiveConnected(false)
+      setRestorePreview({ latestCommands: [], visibleLines: [] })
       resetTerminal()
       return
     }
     setLogsError(null)
     setLogsLoading(true)
     if (selectedSession.status === 'running' || selectedSession.status === 'terminating') {
+      void refreshRestorePreview(selectedSession.bash_id)
       void openLiveSession(selectedSession.bash_id)
       return
     }
@@ -2085,44 +2164,43 @@ function QuestInteractiveTerminalPane({
 
   const handleTerminalInput = React.useCallback(
     (data: string) => {
-      if (!data || !selectedSession) return
-      if (
-        selectedSession.status !== 'running' &&
-        selectedSession.status !== 'terminating'
-      ) {
+      if (!data || !selectedSessionBashId) return
+      if (selectedSessionStatus !== 'running' && selectedSessionStatus !== 'terminating') {
         return
       }
       sendLiveEnvelope({ type: 'input', data })
+      if (data.includes('\r') || data.includes('\n')) {
+        if (restorePreviewTimerRef.current != null) {
+          window.clearTimeout(restorePreviewTimerRef.current)
+        }
+        restorePreviewTimerRef.current = window.setTimeout(() => {
+          void refreshRestorePreview(selectedSessionBashId)
+        }, 500)
+      }
     },
-    [selectedSession, sendLiveEnvelope]
+    [refreshRestorePreview, selectedSessionBashId, selectedSessionStatus, sendLiveEnvelope]
   )
 
   const handleTerminalBinaryInput = React.useCallback(
     (data: string) => {
-      if (!data || !selectedSession) return
-      if (
-        selectedSession.status !== 'running' &&
-        selectedSession.status !== 'terminating'
-      ) {
+      if (!data || !selectedSessionBashId) return
+      if (selectedSessionStatus !== 'running' && selectedSessionStatus !== 'terminating') {
         return
       }
       sendLiveEnvelope({ type: 'binary_input', data: btoa(data) })
     },
-    [selectedSession, sendLiveEnvelope]
+    [selectedSessionBashId, selectedSessionStatus, sendLiveEnvelope]
   )
 
   const handleTerminalResize = React.useCallback(
     (cols: number, rows: number) => {
-      if (!selectedSession) return
-      if (
-        selectedSession.status !== 'running' &&
-        selectedSession.status !== 'terminating'
-      ) {
+      if (!selectedSessionBashId) return
+      if (selectedSessionStatus !== 'running' && selectedSessionStatus !== 'terminating') {
         return
       }
       sendLiveEnvelope({ type: 'resize', cols, rows })
     },
-    [selectedSession, sendLiveEnvelope]
+    [selectedSessionBashId, selectedSessionStatus, sendLiveEnvelope]
   )
 
   return (
@@ -2227,33 +2305,49 @@ function QuestInteractiveTerminalPane({
                 ) : null}
               </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-hidden rounded-[24px] border border-black/[0.10] bg-[#0f1115] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] dark:border-white/[0.10]">
-              <div className="h-full min-h-0 px-4 py-4">
-                <EnhancedTerminal
-                  onInput={handleTerminalInput}
-                  onBinary={handleTerminalBinaryInput}
-                  onResize={handleTerminalResize}
-                  onReady={(handlers) => {
-                    terminalHandlersRef.current = handlers
-                    if (pendingOutputRef.current) {
-                      const payload = pendingOutputRef.current
-                      pendingOutputRef.current = ''
-                      handlers.write(payload, () => {
-                        handlers.scrollToBottom()
-                      })
-                    }
-                    window.setTimeout(() => handlers.focus(), 60)
-                  }}
-                  searchOpen={false}
-                  onSearchOpenChange={() => {}}
-                  appearance="terminal"
-                  autoFocus={false}
-                  showHeader={false}
-                  scrollback={20000}
-                  convertEol={false}
-                />
+            {selectedSession ? (
+              <div className="min-h-0 flex-1 overflow-hidden rounded-[24px] border border-black/[0.10] bg-[#0f1115] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] dark:border-white/[0.10]">
+                <div className="h-full min-h-0 px-4 py-4">
+                  <EnhancedTerminal
+                    onInput={handleTerminalInput}
+                    onBinary={handleTerminalBinaryInput}
+                    onResize={handleTerminalResize}
+                    resizeKey={selectedSessionBashId}
+                    onReady={(handlers) => {
+                      terminalHandlersRef.current = handlers
+                      if (pendingOutputRef.current) {
+                        const payload = pendingOutputRef.current
+                        pendingOutputRef.current = ''
+                        handlers.write(payload, () => {
+                          handlers.scrollToBottom()
+                        })
+                      }
+                      window.setTimeout(() => handlers.focus(), 60)
+                    }}
+                    searchOpen={false}
+                    onSearchOpenChange={() => {}}
+                    appearance="terminal"
+                    autoFocus={false}
+                    showHeader={false}
+                    scrollback={20000}
+                    convertEol={false}
+                  />
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex min-h-0 flex-1 items-center justify-center rounded-[24px] border border-dashed border-black/[0.10] bg-[rgba(255,255,255,0.42)] px-6 py-6 text-sm text-muted-foreground dark:border-white/[0.12] dark:bg-[rgba(255,255,255,0.02)]">
+                <div className="max-w-md text-center">
+                  <div className="font-medium text-foreground">
+                    {shouldAutoEnsureTerminal ? 'Preparing terminal…' : t('terminal_none')}
+                  </div>
+                  <div className="mt-2 leading-7">
+                    {shouldAutoEnsureTerminal
+                      ? 'DeepScientist is creating the default interactive terminal session for this workspace.'
+                      : t('terminal_windows_manual_start')}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between gap-3 border-t border-black/[0.08] px-4 py-3 text-xs text-muted-foreground dark:border-white/[0.10]">
@@ -2321,6 +2415,8 @@ function QuestDeepScientistBashPane({
     if (!execSessions.length) return null
     return execSessions.find((session) => session.bash_id === selectedSessionId) ?? execSessions[0]
   }, [execSessions, selectedSessionId])
+  const selectedSessionBashId = selectedSession?.bash_id ?? null
+  const selectedSessionStatus = selectedSession?.status ?? null
 
   React.useEffect(() => {
     if (!execSessions.length) {
@@ -2512,10 +2608,10 @@ function QuestDeepScientistBashPane({
     (payload: Record<string, unknown>) => {
       const encoded = JSON.stringify(payload)
       const ws = liveSocketRef.current
-      if (!selectedSession?.bash_id) {
+      if (!selectedSessionBashId) {
         return false
       }
-      if (!ws || liveSocketSessionIdRef.current !== selectedSession.bash_id) {
+      if (!ws || liveSocketSessionIdRef.current !== selectedSessionBashId) {
         pendingLiveMessagesRef.current.push(encoded)
         return true
       }
@@ -2526,7 +2622,7 @@ function QuestDeepScientistBashPane({
       ws.send(encoded)
       return true
     },
-    [selectedSession?.bash_id]
+    [selectedSessionBashId]
   )
 
   const openLiveSession = React.useCallback(
@@ -2705,35 +2801,35 @@ function QuestDeepScientistBashPane({
 
   const handleTerminalInput = React.useCallback(
     (data: string) => {
-      if (!data || !selectedSession) return
-      if (!isActiveBashSession(selectedSession.status)) {
+      if (!data || !selectedSessionBashId) return
+      if (!isActiveBashSession(selectedSessionStatus)) {
         return
       }
       sendLiveEnvelope({ type: 'input', data })
     },
-    [selectedSession, sendLiveEnvelope]
+    [selectedSessionBashId, selectedSessionStatus, sendLiveEnvelope]
   )
 
   const handleTerminalBinaryInput = React.useCallback(
     (data: string) => {
-      if (!data || !selectedSession) return
-      if (!isActiveBashSession(selectedSession.status)) {
+      if (!data || !selectedSessionBashId) return
+      if (!isActiveBashSession(selectedSessionStatus)) {
         return
       }
       sendLiveEnvelope({ type: 'binary_input', data: btoa(data) })
     },
-    [selectedSession, sendLiveEnvelope]
+    [selectedSessionBashId, selectedSessionStatus, sendLiveEnvelope]
   )
 
   const handleTerminalResize = React.useCallback(
     (cols: number, rows: number) => {
-      if (!selectedSession) return
-      if (!isActiveBashSession(selectedSession.status)) {
+      if (!selectedSessionBashId) return
+      if (!isActiveBashSession(selectedSessionStatus)) {
         return
       }
       sendLiveEnvelope({ type: 'resize', cols, rows })
     },
-    [selectedSession, sendLiveEnvelope]
+    [selectedSessionBashId, selectedSessionStatus, sendLiveEnvelope]
   )
 
   const effectiveStatus = liveStatus ?? selectedSession?.status ?? null
@@ -2839,6 +2935,7 @@ function QuestDeepScientistBashPane({
                       onInput={handleTerminalInput}
                       onBinary={handleTerminalBinaryInput}
                       onResize={handleTerminalResize}
+                      resizeKey={selectedSessionBashId}
                       onReady={(handlers) => {
                         terminalHandlersRef.current = handlers
                         if (pendingOutputRef.current) {
@@ -3591,6 +3688,37 @@ function QuestDetails({
   const pendingUserMessages = snapshot?.counts?.pending_user_message_count || 0
   const runningBashCount =
     runningBashSessions.length || snapshot?.counts?.bash_running_count || 0
+  const workspaceMode = String(snapshot?.workspace_mode || '').trim().toLowerCase()
+  const isCopilotWorkspace = workspaceMode === 'copilot'
+  const runtimeStatusLabel = snapshot?.display_status || snapshot?.runtime_status || snapshot?.status || 'idle'
+  const runtimeStatusNormalized = String(runtimeStatusLabel).trim().toLowerCase()
+  const continuationPolicy = String(snapshot?.continuation_policy || '').trim().toLowerCase()
+  const isIdleCopilotWorkspace =
+    isCopilotWorkspace &&
+    continuationPolicy === 'wait_for_user_or_resume' &&
+    !snapshot?.active_run_id &&
+    runningBashCount === 0 &&
+    !['paused', 'stopped', 'completed', 'error'].includes(runtimeStatusNormalized)
+  const overallHint = isIdleCopilotWorkspace
+    ? 'Copilot workspace is idle and waiting for your first message.'
+    : statusLine
+  const overallStatusLabel = isIdleCopilotWorkspace ? 'Ready for your first instruction' : runtimeStatusLabel
+  const pendingWorkLabel =
+    isIdleCopilotWorkspace && pendingDecisionCount === 0 && pendingUserMessages === 0
+      ? 'No background work. Waiting for your next message.'
+      : `${pendingDecisionCount} pending decisions · ${pendingUserMessages} queued user messages`
+  const signalValue =
+    isIdleCopilotWorkspace && !latestMetric?.key
+      ? 'Waiting for first task'
+      : latestMetric?.key
+        ? `${latestMetric.key} · ${latestMetric.value ?? '—'}`
+        : `${pendingDecisionCount} pending decisions`
+  const signalHint =
+    isIdleCopilotWorkspace && !latestMetric?.key
+      ? 'Start a chat to launch planning, coding, experiments, or analysis.'
+      : latestMetric?.delta_vs_baseline != null
+        ? `Δ ${latestMetric.delta_vs_baseline} vs baseline`
+        : 'Awaiting stronger evidence'
 
   React.useEffect(() => {
     let cancelled = false
@@ -3724,11 +3852,12 @@ function QuestDetails({
 
         <DetailSection
           title="Overall"
-          hint={statusLine}
+          hint={overallHint}
           actions={<WorkspaceRefreshButton onRefresh={onRefresh} />}
         >
           <div className="flex flex-wrap items-center gap-2">
-            <StatusPill>{snapshot?.display_status || snapshot?.status || 'idle'}</StatusPill>
+            <StatusPill>{overallStatusLabel}</StatusPill>
+            {isCopilotWorkspace ? <StatusPill>Copilot mode</StatusPill> : null}
             <StatusPill>{snapshot?.branch || 'main'}</StatusPill>
             <StatusPill>{snapshot?.active_anchor || 'baseline'}</StatusPill>
             <StatusPill>{formatConnectionState(connectionState)}</StatusPill>
@@ -3748,7 +3877,7 @@ function QuestDetails({
             <OverviewMetric
               icon={<Activity className="h-4 w-4" />}
               label="Status"
-              value={snapshot?.display_status || snapshot?.status || 'idle'}
+              value={overallStatusLabel}
               hint={error || `Updated ${formatRelativeTime(snapshot?.updated_at)}`}
             />
             <OverviewMetric
@@ -3772,16 +3901,8 @@ function QuestDetails({
             <OverviewMetric
               icon={<Sparkles className="h-4 w-4" />}
               label="Signal"
-              value={
-                latestMetric?.key
-                  ? `${latestMetric.key} · ${latestMetric.value ?? '—'}`
-                  : `${pendingDecisionCount} pending decisions`
-              }
-              hint={
-                latestMetric?.delta_vs_baseline != null
-                  ? `Δ ${latestMetric.delta_vs_baseline} vs baseline`
-                  : 'Awaiting stronger evidence'
-              }
+              value={signalValue}
+              hint={signalHint}
             />
             <OverviewMetric
               icon={<FileCode2 className="h-4 w-4" />}
@@ -3804,7 +3925,7 @@ function QuestDetails({
                     Runtime state
                   </div>
                   <div className="break-words text-sm leading-7 text-foreground">
-                    {snapshot?.runtime_status || snapshot?.display_status || snapshot?.status || 'idle'}
+                    {overallStatusLabel}
                   </div>
                 </div>
                 <div className="grid gap-2 py-3 sm:grid-cols-[150px_minmax(0,1fr)]">
@@ -3812,7 +3933,7 @@ function QuestDetails({
                     Pending work
                   </div>
                   <div className="break-words text-sm leading-7 text-foreground">
-                    {pendingDecisionCount} pending decisions · {pendingUserMessages} queued user messages
+                    {pendingWorkLabel}
                   </div>
                 </div>
                 <div className="grid gap-2 py-3 sm:grid-cols-[150px_minmax(0,1fr)]">
@@ -4529,6 +4650,7 @@ export function QuestWorkspaceSurfaceInner({
   const { openFileInTab } = useOpenFile()
   const view = controlledView ?? uncontrolledView
   const detailLikeView = view === 'details' || view === 'memory'
+  const workspaceMode = String(snapshot?.workspace_mode || '').trim().toLowerCase()
 
   React.useEffect(() => {
     setActiveQuest(questId)
@@ -4562,10 +4684,16 @@ export function QuestWorkspaceSurfaceInner({
   }, [refresh])
 
   React.useEffect(() => {
+    if (restoring || !workspace.historySeeded) {
+      return
+    }
     void ensureViewData('details')
-  }, [ensureViewData, questId])
+  }, [ensureViewData, questId, restoring, workspace.historySeeded])
 
   React.useEffect(() => {
+    if (restoring || !workspace.historySeeded) {
+      return
+    }
     let cancelled = false
     let retryTimer: number | null = null
 
@@ -4595,7 +4723,7 @@ export function QuestWorkspaceSurfaceInner({
         window.clearTimeout(retryTimer)
       }
     }
-  }, [questId, workflow?.entries.length, workflow?.projection_status?.generated_at])
+  }, [questId, restoring, workflow?.entries.length, workflow?.projection_status?.generated_at, workspace.historySeeded])
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return

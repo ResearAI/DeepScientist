@@ -42,9 +42,6 @@
 
 ![deepscientist_install](https://github.com/user-attachments/assets/d8244944-4f70-4e08-94e3-002b74ce70fb)
 
-
-
-
 If you are tired of paper overload, broken baselines, scattered experiment logs, and late-night writing cleanup, give the project a star first, then keep scrolling to see how much research grunt work it can take off your plate.
 
 ---
@@ -77,10 +74,6 @@ It is much closer to a real long-running AI research partner:
 | Strong automation, but feels like a black box | Lets you inspect the process through the web workspace, Canvas, files, and terminal |
 | Hard to take over once it goes off track | Lets you pause, take over, edit plans, change code, and continue at any time |
 | Each run ends when the run ends | Preserves failed paths, winning paths, and reproduction lessons for the next round |
-
-
-
-
 
 ## About
 
@@ -162,14 +155,113 @@ Because this is not just a concept. It is a real system with public docs, a publ
 
 > [TODO asset] If you can later add one public case summary such as "reproduce a baseline + finish multiple experimental rounds + draft a paper package," this section will become much more convincing.
 
+## Product Preview
+
+### Architecture Overview
+
+<p align="center">
+  <img src="assets/readme/architecture-promo.png" alt="DeepScientist architecture overview" width="92%" />
+</p>
+
+### Example Outputs
+
+<table>
+<tr>
+<td width="50%">
+<img src="assets/readme/paper-output-1.png" alt="DeepScientist generated paper example 1" width="100%" />
+</td>
+<td width="50%">
+<img src="assets/readme/paper-output-2.png" alt="DeepScientist generated paper example 2" width="100%" />
+</td>
+</tr>
+<tr>
+<td valign="top">
+<b>Example paper output 1</b><br/>
+Paper-facing deliverables can be preserved directly inside the quest instead of being split across external tools.
+</td>
+<td valign="top">
+<b>Example paper output 2</b><br/>
+DeepScientist can carry work through writing, review, figure polish, and export workflows.
+</td>
+</tr>
+</table>
+
+### Workspace Preview
+
+<table>
+<tr>
+<td width="33%">
+<img src="assets/readme/start-research-promo.png" alt="Start Research dialog" width="100%" />
+</td>
+<td width="33%">
+<img src="assets/readme/canvas-promo.png" alt="Canvas workspace preview" width="100%" />
+</td>
+<td width="33%">
+<img src="assets/readme/studio-details-promo.png" alt="Studio and details workspace preview" width="100%" />
+</td>
+</tr>
+<tr>
+<td valign="top">
+<b>Start Research</b><br/>
+Kick off a quest from a paper, repository, or natural-language goal.
+</td>
+<td valign="top">
+<b>Canvas</b><br/>
+Inspect branches, baselines, and accumulated research structure as a visible map.
+</td>
+<td valign="top">
+<b>Studio + Details</b><br/>
+Review metrics, traces, and project state without leaving the same workspace.
+</td>
+</tr>
+</table>
+
+### Progress Reporting
+
+<p align="center">
+  <img src="assets/readme/progress-reporting-promo.png" alt="DeepScientist progress reporting example" width="88%" />
+</p>
+
+### Projects surface after long-running work
+
+![DeepScientist projects surface](assets/readme/projects-surface.png)
+
+## Who Will Love DeepScientist Most?
+
+- graduate students and engineers who want to reproduce papers and push beyond existing baselines
+- labs or research teams running long experiment loops, ablations, and structured result analysis
+- people who want code, experiments, notes, and writing to live in one workspace
+- users who do not want to hand unpublished ideas and intermediate results directly to a pure cloud workflow
+- people who want to run work on servers while following progress from web, TUI, or messaging surfaces
+
+## The Core Philosophy Behind DeepScientist
+
+We believe a system that is actually suitable for research should at least satisfy these principles:
+
+- one quest, one repository, instead of letting everything dissolve after a short conversation
+- branches and worktrees should express research routes naturally instead of being forced into chat history
+- failed paths should be preserved, summarized, and reused instead of overwritten
+- human researchers should always retain takeover power instead of being locked outside the loop
+- the research process should be reviewable, inspectable, and auditable instead of relying on "the model says it did it"
+
+If that sounds like the way you want to work, DeepScientist is worth trying now.
+
 ## Get Started In 30 Seconds
 
 If you want to try it right now, the shortest path is:
+
+Platform note: DeepScientist fully supports Linux and macOS. Native Windows support is currently experimental (strongly recommend WSL2).
 
 ```bash
 npm install -g @researai/deepscientist
 codex --login
 ds --here
+```
+
+To stop the managed local daemon and all currently running agents:
+
+```bash
+ds --stop
 ```
 
 If `codex --login` is unavailable, run this once first:
@@ -178,10 +270,26 @@ If `codex --login` is unavailable, run this once first:
 codex
 ```
 
+If `codex` still appears to be missing after installing DeepScientist, take the explicit repair path instead of assuming the bundled dependency was linked correctly:
+
+```bash
+npm install -g @openai/codex
+which codex
+codex --login
+```
+
+If `which codex` still prints nothing after that, fix the npm global bin path first, then retry `codex --login` and `ds doctor`.
+
 After startup, the default local address is:
 
 ```text
 http://127.0.0.1:20999
+```
+
+Local browser auth is now optional and disabled by default. If you want a per-launch local access password, start with:
+
+```bash
+ds --auth true
 ```
 
 Then you only need to do three things:
@@ -227,34 +335,26 @@ If this is your first run, prefer an isolated environment, a non-root user, and 
 - [Core Architecture Guide](docs/en/13_CORE_ARCHITECTURE_GUIDE.md)
 - [Prompt, Skills, and MCP Guide](docs/en/14_PROMPT_SKILLS_AND_MCP_GUIDE.md)
 
-## Product Preview
+## Autonomous Research Systems
 
+### End-to-End Autonomous Research Systems
 
-
-### Projects surface after long-running work
-
-![DeepScientist projects surface](assets/branding/projects.png)
-
-
-## Who Will Love DeepScientist Most?
-
-- graduate students and engineers who want to reproduce papers and push beyond existing baselines
-- labs or research teams running long experiment loops, ablations, and structured result analysis
-- people who want code, experiments, notes, and writing to live in one workspace
-- users who do not want to hand unpublished ideas and intermediate results directly to a pure cloud workflow
-- people who want to run work on servers while following progress from web, TUI, or messaging surfaces
-
-## The Core Philosophy Behind DeepScientist
-
-We believe a system that is actually suitable for research should at least satisfy these principles:
-
-- one quest, one repository, instead of letting everything dissolve after a short conversation
-- branches and worktrees should express research routes naturally instead of being forced into chat history
-- failed paths should be preserved, summarized, and reused instead of overwritten
-- human researchers should always retain takeover power instead of being locked outside the loop
-- the research process should be reviewable, inspectable, and auditable instead of relying on "the model says it did it"
-
-If that sounds like the way you want to work, DeepScientist is worth trying now.
+| System | System Type | E2E | Research Map | Workshop | Keeps Growing | Channels | Figure & Rebuttal & Review |
+|---|---|---|---|---|---|---|---|
+| [autoresearch](https://github.com/karpathy/autoresearch) | Open-source |  |  | ✓ |  |  |  |
+| [RD-Agent](https://github.com/microsoft/RD-Agent) | Open-source |  |  |  | ✓ |  |  |
+| [Agent Laboratory](https://github.com/SamuelSchmidgall/AgentLaboratory) | Open-source | ✓ |  | ✓ | ✓ |  |  |
+| [AI-Scientist](https://github.com/SakanaAI/AI-Scientist) | Open-source | ✓ |  |  |  |  |  |
+| [AI-Scientist-v2](https://github.com/SakanaAI/AI-Scientist-v2) | Open-source | ✓ |  |  |  |  |  |
+| [AutoResearchClaw](https://github.com/aiming-lab/AutoResearchClaw) | Open-source | ✓ |  |  | ✓ | ✓ |  |
+| [ClawPhD](https://github.com/ZhihaoAIRobotic/ClawPhD) | Open-source |  |  | ✓ |  | ✓ |  |
+| [Dr. Claw](https://github.com/OpenLAIR/dr-claw) | Open-source | ✓ |  | ✓ |  | ✓ |  |
+| [FARS](https://analemma.ai/fars/) | Closed-source | ✓ |  |  |  |  |  |
+| [EvoScientist](https://github.com/EvoScientist/EvoScientist) | Open-source | ✓ |  | ✓ | ✓ | ✓ |  |
+| [ScienceClaw](https://github.com/beita6969/ScienceClaw) | Open-source |  |  |  | ✓ | ✓ |  |
+| [claude-scholar](https://github.com/Galaxy-Dawn/claude-scholar) | Open-source | ✓ |  | ✓ | ✓ |  |  |
+| [Research-Claw](https://github.com/wentorai/Research-Claw) | Open-source | ✓ |  | ✓ | ✓ | ✓ |  |
+| [DeepScientist](https://github.com/ResearAI/DeepScientist) | Open-source | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Documentation
 
@@ -271,6 +371,17 @@ If you like DeepScientist, you may also want to explore the rest of the ResearAI
 | [AutoFigure-Edit](https://github.com/ResearAI/AutoFigure-Edit) | generate editable vector paper figures |
 | [DeepReviewer-v2](https://github.com/ResearAI/DeepReviewer-v2) | review papers and suggest revisions |
 | [Awesome-AI-Scientist](https://github.com/ResearAI/Awesome-AI-Scientist) | curated AI scientist landscape |
+
+## NLPCC 2026 AISB Challenge
+
+If you want to benchmark or extend AI scientist systems in the wild, the NLPCC 2026 AISB shared task is a natural next stop:
+
+- [Registration](http://tcci.ccf.org.cn/conference/2026/shared-tasks/)
+- [Task Repository](https://github.com/ResearAI/NLPCC-2026-Task9-AISB)
+
+<p align="center">
+  <img src="assets/readme/aisb-poster.jpeg" alt="NLPCC 2026 AISB shared task poster" width="88%" />
+</p>
 
 ## For Developers And Maintainers
 
@@ -295,8 +406,12 @@ url={https://openreview.net/forum?id=cZFgsLq8Gs}
 }
 ```
 
-## License
-
-[Apache License 2.0](LICENSE)
-
 If this feels like the research workflow you have been waiting for, give the project a star. Every star makes it easier for more researchers who actually need it to find it.
+
+## Community
+
+Welcome to join the WeChat group for discussion.
+
+<p align="center">
+  <img src="assets/readme/wechat.jpg" alt="DeepScientist WeChat group" width="360" />
+</p>

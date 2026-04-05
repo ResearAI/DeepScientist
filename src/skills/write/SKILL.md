@@ -1,6 +1,7 @@
 ---
 name: write
 description: Use when a quest has enough evidence to draft or refine a paper, report, or research summary without inventing missing support.
+skill_role: stage
 ---
 
 # Write

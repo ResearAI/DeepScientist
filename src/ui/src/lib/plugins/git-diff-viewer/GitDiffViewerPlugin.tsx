@@ -29,12 +29,13 @@ type ViewerMode = 'snapshot' | 'diff'
 
 type DiffViewerContext = {
   projectId?: string
-  resolver?: 'git' | 'file_change'
+  resolver?: 'git' | 'file_change' | 'git_commit'
   initialMode?: ViewerMode
   snapshotRevision?: string | null
   snapshotDocumentId?: string | null
   allowSnapshot?: boolean
   allowDiff?: boolean
+  sha?: string | null
   base?: string
   head?: string
   path?: string
@@ -180,8 +181,14 @@ export default function GitDiffViewerPlugin({
   const custom = (context.customData ?? {}) as DiffViewerContext
   const updateWorkspaceTabState = useWorkspaceSurfaceStore((state) => state.updateTabState)
   const projectId = normalizeString(custom.projectId)
-  const resolver = custom.resolver === 'file_change' ? 'file_change' : 'git'
+  const resolver =
+    custom.resolver === 'file_change'
+      ? 'file_change'
+      : custom.resolver === 'git_commit'
+        ? 'git_commit'
+        : 'git'
   const initialMode = custom.initialMode === 'snapshot' ? 'snapshot' : 'diff'
+  const sha = normalizeString(custom.sha)
   const base = normalizeString(custom.base)
   const head = normalizeString(custom.head)
   const path = normalizeString(custom.path)
@@ -199,7 +206,9 @@ export default function GitDiffViewerPlugin({
   const hasValidDiffContext =
     resolver === 'file_change'
       ? Boolean(projectId && runId && queryPath)
-      : Boolean(projectId && base && head && path)
+      : resolver === 'git_commit'
+        ? Boolean(projectId && sha && path)
+        : Boolean(projectId && base && head && path)
   const resolvedSnapshotDocumentId =
     snapshotDocumentId || (snapshotRevision && path ? `git::${snapshotRevision}::${path}` : null)
   const hasValidSnapshotContext = Boolean(projectId && resolvedSnapshotDocumentId)
@@ -232,10 +241,12 @@ export default function GitDiffViewerPlugin({
   })
 
   const diffQuery = useQuery({
-    queryKey: ['git-diff-viewer', 'diff', resolver, projectId, base, head, path, queryPath, runId, eventId],
+    queryKey: ['git-diff-viewer', 'diff', resolver, projectId, sha, base, head, path, queryPath, runId, eventId],
     queryFn: () =>
       resolver === 'file_change'
         ? client.fileChangeDiff(projectId!, runId!, queryPath!, eventId || undefined)
+        : resolver === 'git_commit'
+          ? client.gitCommitFile(projectId!, sha!, path!)
         : client.gitDiffFile(projectId!, base!, head!, path!),
     enabled: Boolean(hasValidDiffContext && allowDiff && viewMode === 'diff'),
     staleTime: 30_000,
@@ -257,6 +268,18 @@ export default function GitDiffViewerPlugin({
           isFileChangeDiffPayload(payload) ? payload.event_id || eventId || undefined : eventId || undefined,
       }
     }
+    if (resolver === 'git_commit') {
+      if (!path) return payload
+      return {
+        ...payload,
+        path,
+        sha: payload?.sha || sha || undefined,
+        old_path: payload.old_path || oldPath || undefined,
+        status: payload.status || status || undefined,
+        added: payload.added ?? added ?? undefined,
+        removed: payload.removed ?? removed ?? undefined,
+      }
+    }
     if (!path || !base || !head) return payload
     return {
       ...payload,
@@ -268,10 +291,11 @@ export default function GitDiffViewerPlugin({
       added: payload.added ?? added ?? undefined,
       removed: payload.removed ?? removed ?? undefined,
     }
-  }, [added, base, diffQuery.data, displayPath, eventId, head, oldPath, path, removed, resolver, runId, status])
+  }, [added, base, diffQuery.data, displayPath, eventId, head, oldPath, path, removed, resolver, runId, sha, status])
 
   const resolvedBase = mergedDiff?.base || base || ''
   const resolvedHead = mergedDiff?.head || head || ''
+  const resolvedSha = normalizeString((mergedDiff as { sha?: string | null } | null)?.sha) || sha || ''
   const resolvedStatus = mergedDiff?.status || status || 'modified'
   const resolvedOldPath = mergedDiff?.old_path || oldPath || null
   const resolvedAdded = mergedDiff?.added ?? added
@@ -378,15 +402,22 @@ export default function GitDiffViewerPlugin({
               {viewMode === 'snapshot' ? (
                 <>
                   {snapshotRevision ? <span>{snapshotRevision}</span> : null}
-                  {allowDiff && resolvedBase ? <span>{resolvedBase}</span> : null}
-                  {allowDiff && resolvedBase && resolvedHead ? <span>→</span> : null}
-                  {allowDiff && resolvedHead ? <span>{resolvedHead}</span> : null}
+                  {allowDiff && resolver === 'git_commit' && resolvedSha ? <span>{resolvedSha}</span> : null}
+                  {allowDiff && resolver !== 'git_commit' && resolvedBase ? <span>{resolvedBase}</span> : null}
+                  {allowDiff && resolver !== 'git_commit' && resolvedBase && resolvedHead ? <span>→</span> : null}
+                  {allowDiff && resolver !== 'git_commit' && resolvedHead ? <span>{resolvedHead}</span> : null}
                 </>
               ) : (
                 <>
-                  {resolvedBase ? <span>{resolvedBase}</span> : null}
-                  {resolvedBase && resolvedHead ? <span>→</span> : null}
-                  {resolvedHead ? <span>{resolvedHead}</span> : null}
+                  {resolver === 'git_commit' ? (
+                    resolvedSha ? <span>{resolvedSha}</span> : null
+                  ) : (
+                    <>
+                      {resolvedBase ? <span>{resolvedBase}</span> : null}
+                      {resolvedBase && resolvedHead ? <span>→</span> : null}
+                      {resolvedHead ? <span>{resolvedHead}</span> : null}
+                    </>
+                  )}
                 </>
               )}
               {resolvedAdded != null ? (

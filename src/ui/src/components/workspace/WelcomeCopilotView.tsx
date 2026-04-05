@@ -1,4 +1,5 @@
 'use client'
+import * as React from 'react'
 import dynamic from 'next/dynamic'
 import type { AiManusChatActions, AiManusChatMeta, CopilotPrefill } from '@/lib/plugins/ai-manus/view-types'
 
@@ -46,6 +47,7 @@ export function WelcomeCopilotView({
         deferSessionList
         embedded
         historyMode="overlay"
+        hideCopilotGreeting
         historyPanelId={historyPanelId}
         historyOpenOverride={historyOpenOverride}
         onHistoryOpenChange={onHistoryOpenChange}

@@ -2,6 +2,7 @@ import React from 'react'
 import { render } from 'ink'
 
 import { AppContainer } from './app/AppContainer.js'
+import { setDaemonAuthToken } from './lib/api.js'
 import { isAlternateBufferEnabled, isIncrementalRenderingEnabled } from './utils/terminal.js'
 
 const CLEAR_TO_END = '\x1b[0K'
@@ -37,6 +38,9 @@ function parseArg(name: string): string | null {
 
 const baseUrl = parseArg('--base-url') ?? 'http://0.0.0.0:20999'
 const questId = parseArg('--quest-id')
+const authToken = parseArg('--auth-token')
+
+setDaemonAuthToken(authToken)
 
 const useAlternateBuffer = isAlternateBufferEnabled()
 const useIncrementalRendering = isIncrementalRenderingEnabled()
@@ -64,7 +68,7 @@ const closeBracketedPasteMode = () => {
 setBracketedPasteMode(true)
 process.once('exit', closeBracketedPasteMode)
 
-const instance = render(<AppContainer baseUrl={baseUrl} initialQuestId={questId} />, {
+const instance = render(<AppContainer baseUrl={baseUrl} initialQuestId={questId} authToken={authToken} />, {
   stdout: withLineClearing(process.stdout),
   stderr: process.stderr,
   stdin: process.stdin,

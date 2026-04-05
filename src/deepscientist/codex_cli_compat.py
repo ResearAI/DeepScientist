@@ -5,6 +5,7 @@ import re
 import subprocess
 import tomllib
 from functools import lru_cache
+from pathlib import Path
 
 _MIN_XHIGH_SUPPORTED_VERSION = (0, 63, 0)
 _CODEX_VERSION_PATTERN = re.compile(r"codex-cli\s+(\d+)\.(\d+)\.(\d+)", re.IGNORECASE)
@@ -115,3 +116,117 @@ def adapt_profile_only_provider_config(
             f"{', '.join(injected_fields)} to the top level for Codex compatibility."
         ),
     )
+
+
+def provider_profile_metadata(
+    config_text: str,
+    *,
+    profile: str,
+) -> dict[str, str | bool | None]:
+    normalized_profile = str(profile or "").strip()
+    if not normalized_profile or not str(config_text or "").strip():
+        return {
+            "provider": None,
+            "model": None,
+            "env_key": None,
+            "base_url": None,
+            "wire_api": None,
+            "requires_openai_auth": None,
+        }
+    try:
+        parsed = tomllib.loads(config_text)
+    except tomllib.TOMLDecodeError:
+        return {
+            "provider": None,
+            "model": None,
+            "env_key": None,
+            "base_url": None,
+            "wire_api": None,
+            "requires_openai_auth": None,
+        }
+
+    profiles = parsed.get("profiles")
+    if not isinstance(profiles, dict):
+        return {
+            "provider": None,
+            "model": None,
+            "env_key": None,
+            "base_url": None,
+            "wire_api": None,
+            "requires_openai_auth": None,
+        }
+    profile_payload = profiles.get(normalized_profile)
+    if not isinstance(profile_payload, dict):
+        return {
+            "provider": None,
+            "model": None,
+            "env_key": None,
+            "base_url": None,
+            "wire_api": None,
+            "requires_openai_auth": None,
+        }
+
+    model_provider = str(
+        profile_payload.get("model_provider")
+        or parsed.get("model_provider")
+        or ""
+    ).strip() or None
+    model = str(
+        profile_payload.get("model")
+        or parsed.get("model")
+        or ""
+    ).strip() or None
+    provider_payload = None
+    model_providers = parsed.get("model_providers")
+    if model_provider and isinstance(model_providers, dict):
+        candidate = model_providers.get(model_provider)
+        if isinstance(candidate, dict):
+            provider_payload = candidate
+
+    env_key = (
+        str(provider_payload.get("env_key") or "").strip()
+        if isinstance(provider_payload, dict)
+        else None
+    ) or None
+    base_url = (
+        str(provider_payload.get("base_url") or "").strip()
+        if isinstance(provider_payload, dict)
+        else None
+    ) or None
+    wire_api = (
+        str(provider_payload.get("wire_api") or "").strip()
+        if isinstance(provider_payload, dict)
+        else None
+    ) or None
+    requires_openai_auth = (
+        bool(provider_payload.get("requires_openai_auth"))
+        if isinstance(provider_payload, dict) and "requires_openai_auth" in provider_payload
+        else None
+    )
+
+    return {
+        "provider": model_provider,
+        "model": model,
+        "env_key": env_key,
+        "base_url": base_url,
+        "wire_api": wire_api,
+        "requires_openai_auth": requires_openai_auth,
+    }
+
+
+def provider_profile_metadata_from_home(
+    config_home: str | Path,
+    *,
+    profile: str,
+) -> dict[str, str | bool | None]:
+    config_path = Path(config_home).expanduser() / "config.toml"
+    if not config_path.exists():
+        return {
+            "provider": None,
+            "model": None,
+            "env_key": None,
+            "base_url": None,
+            "wire_api": None,
+            "requires_openai_auth": None,
+        }
+    return provider_profile_metadata(config_path.read_text(encoding="utf-8"), profile=profile)

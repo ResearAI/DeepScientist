@@ -108,13 +108,13 @@ Official doc:
 
 ### Verified compatibility note
 
-Checked against MiniMax's current Codex CLI doc and local compatibility validation on 2026-03-25:
+Checked against MiniMax's current Codex CLI doc and local compatibility validation on 2026-04-04:
 
 - MiniMax's Codex CLI page currently recommends `@openai/codex@0.57.0`
 - the Coding Plan endpoint to use is `https://api.minimaxi.com/v1`
 - MiniMax's official page uses `m21` as the profile name, but that profile name is only a local alias; this repo uses `m27` consistently in examples
 - the `codex-MiniMax-*` model names shown on MiniMax's page did not pass reliably through Codex CLI in local testing with the provided key
-- the locally verified working path was `MiniMax-M2.7` + `m27` + `model: inherit` + Codex CLI `0.57.0`
+- the locally verified DeepScientist working paths were `MiniMax-M2.7` + `m27` + Codex CLI `0.57.0` and `MiniMax-M2.5` + `m25` + Codex CLI `0.57.0`
 - the current `@openai/codex` latest release still does not line up cleanly with MiniMax's current guide
 
 If you want the most reproducible DeepScientist + MiniMax path today, use Codex CLI `0.57.0`.
@@ -124,7 +124,7 @@ If you want the most reproducible DeepScientist + MiniMax path today, use Codex 
 - Codex CLI `0.57.0`
 - a MiniMax `Coding Plan Key`
 - `MINIMAX_API_KEY` available in the shell that starts Codex and DeepScientist
-- the current shell cleared of `OPENAI_API_KEY` and `OPENAI_BASE_URL`
+- for plain terminal `codex --profile <name>` checks, the current shell cleared of `OPENAI_API_KEY` and `OPENAI_BASE_URL`
 - a working Codex profile in `~/.codex/config.toml`
 
 ### Install Codex CLI `0.57.0`
@@ -144,6 +144,8 @@ codex-cli 0.57.0
 
 If you want to keep another Codex version elsewhere, create a small wrapper script and point `runners.codex.binary` at that absolute path.
 
+When DeepScientist detects a MiniMax profile at startup and the active Codex CLI is not `0.57.0`, it now prompts to reinstall `@openai/codex@0.57.0` automatically in interactive terminal launches.
+
 ### Codex-side setup
 
 Use `https://api.minimaxi.com/v1`, not `https://api.minimax.io/v1`.
@@ -156,15 +158,19 @@ unset OPENAI_BASE_URL
 export MINIMAX_API_KEY="..."
 ```
 
+For plain terminal validation, keep doing that exactly as shown above.
+For the DeepScientist path, when the selected provider sets `requires_openai_auth = false`, DeepScientist now strips `OPENAI_API_KEY` and `OPENAI_BASE_URL` automatically during the startup probe and real runner execution.
+
 MiniMax's official page uses `m21` as the example profile name. Since the profile name is only a local alias, this repo rewrites that example to `m27`.
 
 The important difference is the model name:
 
 - MiniMax's page currently shows `codex-MiniMax-M2.5`
-- in local testing, direct MiniMax API calls worked with `MiniMax-M2.7`
-- with the same key, `codex-MiniMax-M2.5` and `codex-MiniMax-M2.7` both failed through Codex CLI
+- in local testing, direct MiniMax API calls worked with `MiniMax-M2.7` and `MiniMax-M2.5`
+- the reproducible DeepScientist paths were `MiniMax-M2.7` on profile `m27` and `MiniMax-M2.5` on profile `m25`
+- for the `m25` path, use `MiniMax-M2.5`, not `codex-MiniMax-M2.5`
 
-So the config below is the currently recommended DeepScientist working configuration:
+So the config below is the currently recommended DeepScientist configuration:
 
 ```toml
 [model_providers.minimax]
@@ -182,9 +188,19 @@ model = "MiniMax-M2.7"
 model_provider = "minimax"
 ```
 
+If you want the same DeepScientist path on `m25`, keep the provider block unchanged and use:
+
+```toml
+[profiles.m25]
+model = "MiniMax-M2.5"
+model_provider = "minimax"
+```
+
 What DeepScientist supports now:
 
 - if you use this profile-only MiniMax config with Codex CLI `0.57.0`, DeepScientist automatically promotes the selected profile's `model_provider` and `model` to the top level inside its probe/runtime copy of `.codex/config.toml`
+- DeepScientist forces provider-backed MiniMax runs to use `model: inherit`, so it does not accidentally override the profile with a hard-coded OpenAI model
+- when `requires_openai_auth = false`, DeepScientist strips conflicting `OPENAI_API_KEY` and `OPENAI_BASE_URL` values from the probe/runtime environment
 - this means DeepScientist can start even when plain terminal `codex --profile m27` still fails on that exact profile-only shape
 
 If you want plain terminal `codex --profile <name>` to work too, use the explicit top-level compatibility form instead:
@@ -247,6 +263,7 @@ DeepScientist now does two MiniMax-specific compatibility steps for the `0.57.0`
 
 - it downgrades `xhigh` to `high` automatically when the Codex CLI does not support `xhigh`
 - it auto-adapts MiniMax's profile-only `model_provider` / `model` shape inside the temporary DeepScientist Codex home when needed
+- it removes conflicting `OPENAI_*` auth variables automatically when the provider explicitly says `requires_openai_auth = false`
 
 ## GLM
 

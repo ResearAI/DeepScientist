@@ -4,6 +4,8 @@ DeepScientist 不仅仅是一个可长期运行的自动化科学发现系统，
 
 2 分钟安装，2 分钟配置微信，2 分钟启动。极快、方便、易用。
 
+现在本地 Web 默认不启用浏览器访问密码。如果你希望某次启动启用 16 位本地访问密码，可以使用 `ds --auth true`；启用后，`ds` 会在终端里打印这次启动的密码，第一次成功进入后浏览器会持久化这次本地登录。
+
 它也是一种工作坊式协作环境：可以长期自主推进，也允许你随时接管、协作、改代码、自己跑终端，亦或者用 Notion 式方式记录笔记、计划与协作内容。
 
 DeepScientist 灵活且易于使用，支持：
@@ -76,6 +78,10 @@ DeepScientist 灵活且易于使用，支持：
 
 - [00 快速开始](./00_QUICK_START.md)
   从安装、启动，到创建第一个项目，先看这一篇。
+- [20 工作区模式指南](./20_WORKSPACE_MODES_GUIDE.md)
+  如果你最纠结的是“应该选 Copilot 还是全自动”，先看这篇。
+- [19 本地浏览器密码说明](./19_LOCAL_BROWSER_AUTH.md)
+  如果你想弄清楚密码弹窗是什么、密码去哪里看、怎样关闭这一层本地保护，先看这篇。
 - [05 TUI 端到端指南](./05_TUI_GUIDE.md)
   如果你主要在服务器或终端里工作，这篇会带你从 `ds --tui` 一路走到 quest、connector 和跨端协作跑通。
 - [15 Codex Provider 配置](./15_CODEX_PROVIDER_SETUP.md)
@@ -89,6 +95,8 @@ DeepScientist 灵活且易于使用，支持：
 
 - [02 Start Research 参考](./02_START_RESEARCH_GUIDE.md)
   解释当前前端字段、自动推导合同字段，以及实际可照抄的例子。
+- [20 工作区模式指南](./20_WORKSPACE_MODES_GUIDE.md)
+  如果你已经知道怎么填表，但还不确定项目应该从 Copilot 还是全自动启动，先看这篇。
 - [01 设置参考](./01_SETTINGS_REFERENCE.md)
   当你需要配置 runner、connector、运行时默认值或主目录路径时，看这一篇。
 - [11 协议与风险说明](./11_LICENSE_AND_RISK.md)
@@ -137,3 +145,11 @@ DeepScientist 灵活且易于使用，支持：
   说明系统级约束、核心契约和仓库结构。
 - [91 Development](../en/91_DEVELOPMENT.md)
   面向维护者的开发工作流和实现说明。
+
+## 社群交流
+
+欢迎加群讨论。
+
+<p align="center">
+  <img src="../../assets/readme/wechat.jpg" alt="DeepScientist 微信群" width="360" />
+</p>

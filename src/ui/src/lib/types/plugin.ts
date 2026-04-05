@@ -657,6 +657,7 @@ export interface PluginRendererProps {
 export const BUILTIN_PLUGINS = {
   LAB: "@ds/plugin-lab",
   GIT_DIFF_VIEWER: "@ds/plugin-git-diff-viewer",
+  GIT_COMMIT_VIEWER: "@ds/plugin-git-commit-viewer",
   PDF_VIEWER: "@ds/plugin-pdf-viewer",
   PDF_MARKDOWN: "@ds/plugin-pdf-markdown",
   NOTEBOOK: "@ds/plugin-notebook",

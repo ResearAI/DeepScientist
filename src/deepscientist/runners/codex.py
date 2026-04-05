@@ -11,7 +11,11 @@ from pathlib import Path
 from typing import Any
 
 from ..artifact import ArtifactService
-from ..codex_cli_compat import adapt_profile_only_provider_config, normalize_codex_reasoning_effort
+from ..codex_cli_compat import (
+    adapt_profile_only_provider_config,
+    normalize_codex_reasoning_effort,
+    provider_profile_metadata_from_home,
+)
 from ..config import ConfigManager
 from ..gitops import export_git_graph
 from ..prompts import PromptBuilder
@@ -68,6 +72,11 @@ _BUILTIN_MCP_TOOL_APPROVALS: dict[str, tuple[str, ...]] = {
         "bash_exec",
     ),
 }
+
+_PROVIDER_ENV_CONFLICT_KEYS = (
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+)
 
 
 def _compact_text(value: object, *, limit: int = 1200) -> str:
@@ -195,7 +204,9 @@ def _iter_event_texts(event: dict[str, Any]) -> list[str]:
                     if isinstance(value, str) and value.strip():
                         texts.append(value)
     delta = event.get("delta")
-    if isinstance(delta, dict):
+    if isinstance(delta, str) and delta.strip():
+        texts.append(delta)
+    elif isinstance(delta, dict):
         for key in ("text", "content"):
             value = delta.get(key)
             if isinstance(value, str) and value.strip():
@@ -222,6 +233,36 @@ def _web_search_text_payload(item: dict[str, Any]) -> str:
     return _compact_text(payload, limit=2400)
 
 
+def _message_stream_id(event: dict[str, Any], item: dict[str, Any], *, run_id: str, kind: str) -> str:
+    for value in (
+        event.get("stream_id"),
+        item.get("stream_id"),
+        event.get("message_id"),
+        item.get("message_id"),
+        event.get("item_id"),
+        item.get("id"),
+        event.get("output_item_id"),
+        event.get("response_id"),
+    ):
+        if value:
+            return str(value)
+    normalized_kind = str(kind or "message").strip().lower() or "message"
+    return f"{run_id}:{normalized_kind}"
+
+
+def _message_id(event: dict[str, Any], item: dict[str, Any], *, stream_id: str) -> str:
+    for value in (
+        event.get("message_id"),
+        item.get("message_id"),
+        event.get("item_id"),
+        item.get("id"),
+        event.get("output_item_id"),
+    ):
+        if value:
+            return str(value)
+    return stream_id
+
+
 def _message_events(
     event: dict[str, Any],
     *,
@@ -238,6 +279,8 @@ def _message_events(
 
     if item_type == "agent_message":
         texts = _dedupe_texts(_iter_event_texts(event))
+        stream_id = _message_stream_id(event, item, run_id=run_id, kind="assistant")
+        message_id = _message_id(event, item, stream_id=stream_id)
         for text in texts:
             quest_events.append(
                 {
@@ -248,6 +291,8 @@ def _message_events(
                     "source": "codex",
                     "skill_id": skill_id,
                     "text": text,
+                    "stream_id": stream_id,
+                    "message_id": message_id,
                     "created_at": created_at,
                 }
             )
@@ -255,6 +300,8 @@ def _message_events(
 
     if item_type in {"reasoning", "reasoning_summary"} or "reasoning" in event_type:
         texts = _dedupe_texts(_iter_event_texts(event))
+        stream_id = _message_stream_id(event, item, run_id=run_id, kind=item_type or "reasoning")
+        message_id = _message_id(event, item, stream_id=stream_id)
         for text in texts:
             quest_events.append(
                 {
@@ -265,6 +312,8 @@ def _message_events(
                     "source": "codex",
                     "skill_id": skill_id,
                     "text": text,
+                    "stream_id": stream_id,
+                    "message_id": message_id,
                     "kind": item_type or "reasoning",
                     "created_at": created_at,
                 }
@@ -278,6 +327,8 @@ def _message_events(
         return [], []
 
     texts = _dedupe_texts(_iter_event_texts(event))
+    stream_id = _message_stream_id(event, item, run_id=run_id, kind="assistant")
+    message_id = _message_id(event, item, stream_id=stream_id)
     for text in texts:
         quest_events.append(
             {
@@ -288,6 +339,8 @@ def _message_events(
                 "source": "codex",
                 "skill_id": skill_id,
                 "text": text,
+                "stream_id": stream_id,
+                "message_id": message_id,
                 "created_at": created_at,
             }
         )
@@ -729,6 +782,7 @@ class CodexRunner:
                 continue
             env[env_key] = env_value
         env["CODEX_HOME"] = str(codex_home)
+        env = self._sanitize_provider_env(env, runner_config=runner_config)
         env["DEEPSCIENTIST_HOME"] = str(self.home)
         env["DS_HOME"] = str(self.home)
         env["DS_QUEST_ID"] = request.quest_id
@@ -975,6 +1029,8 @@ class CodexRunner:
         resolved_runner_config = runner_config if isinstance(runner_config, dict) else self._load_runner_config()
         profile = str(resolved_runner_config.get("profile") or "").strip()
         normalized_model = str(request.model or "").strip()
+        if profile and normalized_model.lower() not in {"", "inherit", "default", "codex-default"}:
+            normalized_model = "inherit"
         command = [
             resolved_binary or self.binary,
             "--search",
@@ -1157,3 +1213,23 @@ class CodexRunner:
         except (TypeError, ValueError):
             return None
         return timeout if timeout > 0 else None
+
+    @staticmethod
+    def _sanitize_provider_env(
+        env: dict[str, str],
+        *,
+        runner_config: dict[str, Any] | None = None,
+    ) -> dict[str, str]:
+        resolved_runner_config = runner_config if isinstance(runner_config, dict) else {}
+        profile = str(resolved_runner_config.get("profile") or "").strip()
+        config_home = str(resolved_runner_config.get("config_dir") or env.get("CODEX_HOME") or "").strip()
+        if not profile or not config_home:
+            return env
+        metadata = provider_profile_metadata_from_home(config_home, profile=profile)
+        requires_openai_auth = metadata.get("requires_openai_auth")
+        if requires_openai_auth is not False:
+            return env
+        sanitized = dict(env)
+        for key in _PROVIDER_ENV_CONFLICT_KEYS:
+            sanitized.pop(key, None)
+        return sanitized

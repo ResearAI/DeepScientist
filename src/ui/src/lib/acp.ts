@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { refreshAccessToken } from '@/lib/api/auth'
 import { client } from '@/lib/api'
 import { extractArtifactComment, extractOperationComment, extractOperationMonitorFields } from '@/lib/agentComment'
+import { authHeaders, handleUnauthorizedAuth, readRequestAuthContext } from '@/lib/auth'
+import { countActiveRenderedOperations } from '@/lib/feedOperations'
 import { deriveMcpIdentity } from '@/lib/mcpIdentity'
 import { buildToolOperationContent, extractToolSubject } from '@/lib/toolOperations'
 import type {
   ExplorerPayload,
+  FeedEnvelope,
   FeedItem,
   GraphPayload,
   MemoryCard,
@@ -21,6 +25,8 @@ const INITIAL_EVENT_LIMIT = 120
 const OLDER_HISTORY_PAGE_LIMIT = 80
 const MAX_FEED_HISTORY = 2400
 const LOCAL_USER_SOURCE = 'web-local'
+const DETAILS_MEMORY_CACHE_MS = 2_500
+const DETAILS_DOCUMENTS_CACHE_MS = 5_000
 
 type ParsedEvent = {
   id?: string
@@ -70,6 +76,39 @@ function parseEventBlock(block: string): ParsedEvent | null {
   return { id: eventId || undefined, event: eventType || 'message', data: dataLines.join('\n') }
 }
 
+async function fetchQuestEventsEnvelope(
+  questId: string,
+  after: number,
+  options?: { before?: number | null; limit?: number; tail?: boolean; signal?: AbortSignal }
+) {
+  const params = new URLSearchParams()
+  if (typeof options?.before === 'number' && Number.isFinite(options.before) && options.before > 0) {
+    params.set('before', String(Math.floor(options.before)))
+  } else {
+    params.set('after', String(after))
+  }
+  params.set('format', 'acp')
+  params.set('session_id', `quest:${questId}`)
+  if (typeof options?.limit === 'number' && Number.isFinite(options.limit) && options.limit > 0) {
+    params.set('limit', String(Math.floor(options.limit)))
+  }
+  if (options?.tail) {
+    params.set('tail', '1')
+  }
+
+  const response = await fetch(`/api/quests/${questId}/events?${params.toString()}`, {
+    headers: authHeaders({
+      'Content-Type': 'application/json',
+    }),
+    signal: options?.signal,
+  })
+  if (!response.ok) {
+    const message = await response.text().catch(() => '')
+    throw new Error(message || `HTTP ${response.status}: ${response.statusText}`)
+  }
+  return (await response.json()) as FeedEnvelope
+}
+
 function stringifyToolPayload(value: unknown) {
   if (value == null) return undefined
   if (typeof value === 'string') return value
@@ -83,18 +122,6 @@ function stringifyToolPayload(value: unknown) {
 function normalizeMetadata(value: unknown) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   return value as Record<string, unknown>
-}
-
-function buildOperationIdentity(args: { runId?: string | null; toolCallId?: string | null; fallbackId?: string }) {
-  const runId = String(args.runId || '').trim()
-  const toolCallId = String(args.toolCallId || '').trim()
-  if (runId && toolCallId) {
-    return `tool:${runId}:${toolCallId}`
-  }
-  if (toolCallId) {
-    return `tool:${toolCallId}`
-  }
-  return args.fallbackId || ''
 }
 
 function normalizeUpdate(raw: Record<string, unknown>): FeedItem {
@@ -171,6 +198,18 @@ function normalizeUpdate(raw: Record<string, unknown>): FeedItem {
       content: String(message.content ?? ''),
       createdAt: String(raw.created_at ?? ''),
       stream: isReasoning ? false : Boolean(message.stream),
+      streamId:
+        typeof message.stream_id === 'string'
+          ? String(message.stream_id)
+          : typeof raw.stream_id === 'string'
+            ? String(raw.stream_id)
+            : null,
+      messageId:
+        typeof message.message_id === 'string'
+          ? String(message.message_id)
+          : typeof raw.message_id === 'string'
+            ? String(raw.message_id)
+            : null,
       runId: message.run_id ? String(message.run_id) : null,
       skillId: message.skill_id ? String(message.skill_id) : null,
       reasoning: isReasoning,
@@ -248,6 +287,15 @@ function appendHistoryItem(history: FeedItem[], item: FeedItem): FeedItem[] {
   if (history.some((existing) => existing.id === item.id)) {
     return history
   }
+  const equivalentIndex = findEquivalentAssistantHistoryIndex(history, item)
+  if (equivalentIndex >= 0) {
+    const next = [...history]
+    const existing = next[equivalentIndex]
+    if (existing.type === 'message' && item.type === 'message') {
+      next[equivalentIndex] = mergeEquivalentAssistantHistoryItem(existing, item)
+    }
+    return next.slice(-MAX_FEED_HISTORY)
+  }
   return [...history, item].slice(-MAX_FEED_HISTORY)
 }
 
@@ -256,6 +304,78 @@ function parseFeedItemTimestamp(item: FeedItem) {
   if (!raw) return null
   const parsed = Date.parse(raw)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function normalizeComparableMessageText(value: string | undefined | null) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function assistantMessagesLookEquivalent(
+  left: Extract<FeedItem, { type: 'message' }>,
+  right: Extract<FeedItem, { type: 'message' }>
+) {
+  const leftText = normalizeComparableMessageText(left.content)
+  const rightText = normalizeComparableMessageText(right.content)
+  if (!leftText || !rightText) return false
+  if (leftText === rightText) return true
+  const [shorter, longer] =
+    leftText.length <= rightText.length ? [leftText, rightText] : [rightText, leftText]
+  return shorter.length >= 48 && longer.includes(shorter)
+}
+
+function findEquivalentAssistantHistoryIndex(history: FeedItem[], item: FeedItem) {
+  if (!(item.type === 'message' && item.role === 'assistant' && !item.reasoning)) {
+    return -1
+  }
+  const itemTs = parseFeedItemTimestamp(item)
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const candidate = history[index]
+    if (!(candidate.type === 'message' && candidate.role === 'assistant' && !candidate.reasoning)) {
+      continue
+    }
+    if (item.runId && candidate.runId && item.runId !== candidate.runId) {
+      continue
+    }
+    if (!assistantMessagesLookEquivalent(candidate, item)) {
+      continue
+    }
+    const candidateTs = parseFeedItemTimestamp(candidate)
+    if (
+      itemTs != null &&
+      candidateTs != null &&
+      Math.abs(itemTs - candidateTs) > 30_000
+    ) {
+      continue
+    }
+    return index
+  }
+  return -1
+}
+
+function mergeEquivalentAssistantHistoryItem(
+  existing: Extract<FeedItem, { type: 'message' }>,
+  incoming: Extract<FeedItem, { type: 'message' }>
+): Extract<FeedItem, { type: 'message' }> {
+  const existingEventType = String(existing.eventType || '').trim().toLowerCase()
+  const incomingEventType = String(incoming.eventType || '').trim().toLowerCase()
+  const preferIncoming = incomingEventType === 'conversation.message' || existingEventType !== 'conversation.message'
+  return preferIncoming
+    ? {
+        ...existing,
+        ...incoming,
+        content: incoming.content || existing.content,
+        createdAt: incoming.createdAt || existing.createdAt,
+        source: incoming.source || existing.source,
+        runId: incoming.runId || existing.runId || null,
+        skillId: incoming.skillId || existing.skillId || null,
+        messageId: incoming.messageId || existing.messageId || null,
+        streamId: incoming.streamId || existing.streamId || null,
+        stream: false,
+        reasoning: false,
+      }
+    : existing
 }
 
 function shouldInsertHistoryItemBefore(existing: FeedItem, incoming: FeedItem) {
@@ -276,6 +396,15 @@ function shouldInsertHistoryItemBefore(existing: FeedItem, incoming: FeedItem) {
 function insertHistoryItemChronologically(history: FeedItem[], item: FeedItem): FeedItem[] {
   if (history.some((existing) => existing.id === item.id)) {
     return history
+  }
+  const equivalentIndex = findEquivalentAssistantHistoryIndex(history, item)
+  if (equivalentIndex >= 0) {
+    const next = [...history]
+    const existing = next[equivalentIndex]
+    if (existing.type === 'message' && item.type === 'message') {
+      next[equivalentIndex] = mergeEquivalentAssistantHistoryItem(existing, item)
+    }
+    return next.slice(-MAX_FEED_HISTORY)
   }
   const insertIndex = history.findIndex((existing) => shouldInsertHistoryItemBefore(existing, item))
   if (insertIndex < 0) {
@@ -357,13 +486,25 @@ function removeMatchingLocalPendingUser(pending: FeedItem[], item: MessageFeedIt
 
 function upsertPendingAssistant(pending: FeedItem[], item: MessageFeedItem): FeedItem[] {
   const next = [...pending]
+  const streamId = String(item.streamId || '').trim()
+  const messageId = String(item.messageId || '').trim()
+  const runId = String(item.runId || '').trim()
   const matchIndex = next.findIndex(
-    (candidate) =>
-      candidate.type === 'message' &&
-      candidate.role === 'assistant' &&
-      candidate.stream &&
-      candidate.runId &&
-      candidate.runId === item.runId
+    (candidate) => {
+      if (!(candidate.type === 'message' && candidate.role === 'assistant' && candidate.stream)) {
+        return false
+      }
+      const candidateStreamId = String(candidate.streamId || '').trim()
+      const candidateMessageId = String(candidate.messageId || '').trim()
+      const candidateRunId = String(candidate.runId || '').trim()
+      if (streamId && candidateStreamId) {
+        return candidateStreamId === streamId
+      }
+      if (messageId && candidateMessageId) {
+        return candidateMessageId === messageId
+      }
+      return Boolean(runId && candidateRunId && candidateRunId === runId)
+    }
   )
   if (matchIndex >= 0) {
     const current = next[matchIndex]
@@ -372,6 +513,8 @@ function upsertPendingAssistant(pending: FeedItem[], item: MessageFeedItem): Fee
         ...current,
         content: mergeAssistantMessageContent(current.content, item.content),
         createdAt: item.createdAt || current.createdAt,
+        streamId: item.streamId || current.streamId || null,
+        messageId: item.messageId || current.messageId || null,
         skillId: item.skillId || current.skillId,
         source: item.source || current.source,
       }
@@ -385,31 +528,68 @@ function flushPendingAssistant(
   pending: FeedItem[],
   item: MessageFeedItem
 ): { pending: FeedItem[]; finalized: MessageFeedItem } {
-  if (item.role !== 'assistant' || !item.runId) {
+  if (item.role !== 'assistant') {
     return { pending, finalized: item }
   }
+  const streamId = String(item.streamId || '').trim()
+  const messageId = String(item.messageId || '').trim()
+  const runId = String(item.runId || '').trim()
   let pendingText = ''
   const nextPending = pending.filter((candidate) => {
-    if (
-      candidate.type === 'message' &&
-      candidate.role === 'assistant' &&
-      candidate.runId &&
-      candidate.runId === item.runId
-    ) {
-      pendingText = candidate.content
+    if (!(candidate.type === 'message' && candidate.role === 'assistant' && candidate.stream)) {
+      return true
+    }
+    const candidateStreamId = String(candidate.streamId || '').trim()
+    const candidateMessageId = String(candidate.messageId || '').trim()
+    const candidateRunId = String(candidate.runId || '').trim()
+    const matches =
+      (streamId && candidateStreamId && candidateStreamId === streamId) ||
+      (messageId && candidateMessageId && candidateMessageId === messageId) ||
+      (runId && candidateRunId && candidateRunId === runId)
+    if (!matches) {
+      return true
+    }
+    pendingText = candidate.content
+    return false
+  })
+  const matchedPending = pending.find((candidate) => {
+    if (!(candidate.type === 'message' && candidate.role === 'assistant' && candidate.stream)) {
       return false
     }
-    return true
+    const candidateStreamId = String(candidate.streamId || '').trim()
+    const candidateMessageId = String(candidate.messageId || '').trim()
+    const candidateRunId = String(candidate.runId || '').trim()
+    return (
+      (streamId && candidateStreamId && candidateStreamId === streamId) ||
+      (messageId && candidateMessageId && candidateMessageId === messageId) ||
+      (runId && candidateRunId && candidateRunId === runId)
+    )
   })
   return {
     pending: nextPending,
     finalized: item.content
-      ? item
+      ? {
+          ...item,
+          streamId: item.streamId || matchedPending?.streamId || null,
+          messageId: item.messageId || matchedPending?.messageId || null,
+        }
       : {
           ...item,
           content: pendingText,
+          streamId: item.streamId || matchedPending?.streamId || null,
+          messageId: item.messageId || matchedPending?.messageId || null,
         },
   }
+}
+
+function shouldKeepPendingAssistantStream(candidate: FeedItem, allowedRunIds: Set<string> | null) {
+  if (!(candidate.type === 'message' && candidate.role === 'assistant' && candidate.stream)) {
+    return true
+  }
+  if (!allowedRunIds) {
+    return false
+  }
+  return !candidate.runId || !allowedRunIds.has(candidate.runId)
 }
 
 function sealPendingAssistantStreams(
@@ -419,10 +599,7 @@ function sealPendingAssistantStreams(
   const allowedRunIds = runIds ? new Set(Array.from(runIds).filter(Boolean)) : null
   let nextHistory = [...state.history]
   const nextPending = state.pending.filter((item) => {
-    if (!(item.type === 'message' && item.role === 'assistant' && item.stream)) {
-      return true
-    }
-    if (allowedRunIds && (!item.runId || !allowedRunIds.has(item.runId))) {
+    if (shouldKeepPendingAssistantStream(item, allowedRunIds)) {
       return true
     }
     nextHistory = insertHistoryItemChronologically(nextHistory, {
@@ -449,7 +626,11 @@ function applyIncomingFeedUpdates(state: FeedState, incoming: FeedItem[]): FeedS
       nextPending = upsertPendingAssistant(nextPending, item)
       continue
     }
-    if (item.type === 'message' && item.role === 'assistant' && item.runId) {
+    if (
+      item.type === 'message' &&
+      item.role === 'assistant' &&
+      (item.runId || item.streamId || item.messageId)
+    ) {
       const flushed = flushPendingAssistant(nextPending, item)
       nextPending = flushed.pending
       nextHistory = insertHistoryItemChronologically(nextHistory, flushed.finalized)
@@ -486,12 +667,14 @@ function shouldRefreshWorkflow(item: FeedItem) {
 }
 
 function shouldRefreshSessionSnapshot(item: FeedItem) {
+  if (item.type === 'artifact') return true
   if (item.type !== 'event') return false
   return (
     item.label === 'run_started' ||
     item.label === 'run_finished' ||
     item.label === 'run_failed' ||
-    item.label === 'quest.control'
+    item.label === 'quest.control' ||
+    item.label === 'artifact.recorded'
   )
 }
 
@@ -539,38 +722,52 @@ function findReplyTargetId(feed: FeedItem[]) {
   return null
 }
 
-function countActiveToolCalls(feed: FeedItem[]) {
-  const pending = new Set<string>()
-  for (const item of feed) {
-    if (item.type !== 'operation') continue
-    const identity = buildOperationIdentity({
-      runId: item.runId,
-      toolCallId: item.toolCallId,
-      fallbackId: item.id,
-    })
-    if (!identity) continue
-    if (item.label === 'tool_call') {
-      pending.add(identity)
-      continue
-    }
-    pending.delete(identity)
-  }
-  return pending.size
-}
-
 function snapshotIndicatesLiveRun(snapshot?: QuestSummary | null) {
   if (!snapshot) return false
+  const workspaceMode = String(snapshot.workspace_mode ?? '')
+    .trim()
+    .toLowerCase()
+  const continuationPolicy = String(snapshot.continuation_policy ?? '')
+    .trim()
+    .toLowerCase()
   const runtimeStatus = String(snapshot.runtime_status ?? snapshot.status ?? '')
     .trim()
     .toLowerCase()
   if (runtimeStatus === 'stopped' || runtimeStatus === 'paused') return false
-  if (snapshot.active_run_id) return true
-  if (runtimeStatus === 'running') return true
+  const activeRunId = String(snapshot.active_run_id ?? '').trim()
   const bashRunningCount =
     typeof snapshot.counts?.bash_running_count === 'number'
       ? snapshot.counts.bash_running_count
       : 0
+  const latestBashSession =
+    snapshot.summary?.latest_bash_session &&
+    typeof snapshot.summary.latest_bash_session === 'object' &&
+    !Array.isArray(snapshot.summary.latest_bash_session)
+      ? snapshot.summary.latest_bash_session
+      : null
+  const latestBashKind = String((latestBashSession as Record<string, unknown> | null)?.kind ?? '')
+    .trim()
+    .toLowerCase()
+  const latestBashId = String((latestBashSession as Record<string, unknown> | null)?.bash_id ?? '')
+    .trim()
+
+  const isParkedCopilot =
+    workspaceMode === 'copilot' &&
+    continuationPolicy === 'wait_for_user_or_resume' &&
+    !activeRunId &&
+    runtimeStatus !== 'running' &&
+    (bashRunningCount === 0 ||
+      (bashRunningCount === 1 &&
+        latestBashKind === 'terminal' &&
+        (latestBashId === '' || latestBashId === 'terminal-main')))
+  if (isParkedCopilot) return false
+  if (activeRunId) return true
+  if (runtimeStatus === 'running') return true
   return bashRunningCount > 0
+}
+
+function cacheWindowFresh(lastFetchedAt: number, maxAgeMs: number) {
+  return lastFetchedAt > 0 && Date.now() - lastFetchedAt < maxAgeMs
 }
 
 function projectionNeedsRefresh(
@@ -594,8 +791,9 @@ export function useQuestWorkspace(questId: string | null) {
   const [detailsReady, setDetailsReady] = useState(false)
   const [history, setHistory] = useState<FeedItem[]>([])
   const [pendingFeed, setPendingFeed] = useState<FeedItem[]>([])
-  const [loading, setLoading] = useState(false)
-  const [restoring, setRestoring] = useState(false)
+  const [loading, setLoading] = useState(Boolean(questId))
+  const [restoring, setRestoring] = useState(Boolean(questId))
+  const [historySeeded, setHistorySeeded] = useState(!questId)
   const [hasOlderHistory, setHasOlderHistory] = useState(false)
   const [loadingOlderHistory, setLoadingOlderHistory] = useState(false)
   const [oldestLoadedCursor, setOldestLoadedCursor] = useState<number | null>(null)
@@ -616,8 +814,11 @@ export function useQuestWorkspace(questId: string | null) {
   } | null>(null)
   const detailsInFlightRef = useRef<{
     questId: string
+    force: boolean
     promise: Promise<WorkflowPayload | null>
   } | null>(null)
+  const detailsMemoryFetchedAtRef = useRef(0)
+  const detailsDocumentsFetchedAtRef = useRef(0)
   const detailsRefreshTimerRef = useRef<number | null>(null)
   const detailsRefreshInFlightRef = useRef(false)
   const detailsRefreshPendingRef = useRef(false)
@@ -651,7 +852,7 @@ export function useQuestWorkspace(questId: string | null) {
     [hasLiveRun, pendingFeed]
   )
   const activeToolCount = useMemo(
-    () => (hasLiveRun ? countActiveToolCalls(feed.slice(-180)) : 0),
+    () => (hasLiveRun ? countActiveRenderedOperations(feed.slice(-180)) : 0),
     [feed, hasLiveRun]
   )
 
@@ -720,26 +921,67 @@ export function useQuestWorkspace(questId: string | null) {
     [fetchSessionState]
   )
 
-  const hydrateDetailsState = useCallback(async (targetQuestId: string) => {
+  const hydrateDetailsState = useCallback(async (targetQuestId: string, options?: { force?: boolean }) => {
+    const force = Boolean(options?.force)
     const inFlight = detailsInFlightRef.current
-    if (inFlight && inFlight.questId === targetQuestId) {
+    if (inFlight && inFlight.questId === targetQuestId && (!force || inFlight.force)) {
       return inFlight.promise
     }
 
-    const promise = Promise.all([
-      client.memory(targetQuestId),
-      client.documents(targetQuestId),
-      client.workflow(targetQuestId),
+    const shouldFetchMemory =
+      force ||
+      !detailsReady ||
+      !cacheWindowFresh(detailsMemoryFetchedAtRef.current, DETAILS_MEMORY_CACHE_MS)
+    const shouldFetchDocuments =
+      force ||
+      !detailsReady ||
+      !cacheWindowFresh(detailsDocumentsFetchedAtRef.current, DETAILS_DOCUMENTS_CACHE_MS)
+
+    const workflowPromise = client.workflow(targetQuestId).then((nextWorkflow) => {
+      if (questIdRef.current === targetQuestId) {
+        setWorkflow(nextWorkflow)
+      }
+      return nextWorkflow
+    })
+    const memoryPromise = shouldFetchMemory
+      ? client.memory(targetQuestId).then((nextMemory) => {
+          if (questIdRef.current === targetQuestId) {
+            detailsMemoryFetchedAtRef.current = Date.now()
+            setMemory(nextMemory)
+          }
+          return nextMemory
+        })
+      : Promise.resolve<MemoryCard[] | null>(null)
+    const documentsPromise = shouldFetchDocuments
+      ? client.documents(targetQuestId).then((nextDocuments) => {
+          if (questIdRef.current === targetQuestId) {
+            detailsDocumentsFetchedAtRef.current = Date.now()
+            setDocuments(nextDocuments)
+          }
+          return nextDocuments
+        })
+      : Promise.resolve<QuestDocument[] | null>(null)
+
+    const promise = Promise.allSettled([
+      workflowPromise,
+      memoryPromise,
+      documentsPromise,
     ])
-      .then(([nextMemory, nextDocuments, nextWorkflow]) => {
+      .then(([workflowResult, memoryResult, documentsResult]) => {
+        if (workflowResult.status !== 'fulfilled') {
+          throw workflowResult.reason
+        }
+        if (memoryResult.status === 'rejected') {
+          console.warn('[useQuestWorkspace] Failed to refresh quest memory.', memoryResult.reason)
+        }
+        if (documentsResult.status === 'rejected') {
+          console.warn('[useQuestWorkspace] Failed to refresh quest documents.', documentsResult.reason)
+        }
         if (questIdRef.current !== targetQuestId) {
           return null
         }
-        setMemory(nextMemory)
-        setDocuments(nextDocuments)
-        setWorkflow(nextWorkflow)
         setDetailsReady(true)
-        return nextWorkflow
+        return workflowResult.value
       })
       .finally(() => {
         if (detailsInFlightRef.current?.promise === promise) {
@@ -749,10 +991,11 @@ export function useQuestWorkspace(questId: string | null) {
 
     detailsInFlightRef.current = {
       questId: targetQuestId,
+      force,
       promise,
     }
     return promise
-  }, [])
+  }, [detailsReady])
 
   const syncSessionSnapshot = useCallback(
     async (targetQuestId: string) => fetchSessionState(targetQuestId),
@@ -797,7 +1040,7 @@ export function useQuestWorkspace(questId: string | null) {
         return
       }
       updateFeedState(nextState)
-    }, 1400)
+    }, 800)
   }, [clearPendingStreamCleanup, updateFeedState])
 
   const stopEventStream = useCallback(() => {
@@ -812,7 +1055,7 @@ export function useQuestWorkspace(questId: string | null) {
   }, [])
 
   const flushDetailsRefresh = useCallback(
-    async (targetQuestId: string) => {
+    async (targetQuestId: string, options?: { force?: boolean }) => {
       if (questIdRef.current !== targetQuestId || !detailsEnabledRef.current) {
         return
       }
@@ -823,7 +1066,7 @@ export function useQuestWorkspace(questId: string | null) {
       detailsRefreshInFlightRef.current = true
       setDetailsLoading(true)
       try {
-        const nextWorkflow = await hydrateDetailsState(targetQuestId)
+        const nextWorkflow = await hydrateDetailsState(targetQuestId, options)
         const shouldContinuePolling =
           questIdRef.current === targetQuestId &&
           detailsEnabledRef.current &&
@@ -962,6 +1205,9 @@ export function useQuestWorkspace(questId: string | null) {
           }
         }
       }
+      if (normalized.some((item) => item.type === 'message' && item.role === 'assistant' && item.stream)) {
+        schedulePendingStreamCleanup()
+      }
       if (normalized.some((item) => item.type === 'message' && item.role === 'assistant' && !item.stream)) {
         clearPendingStreamCleanup()
       }
@@ -972,12 +1218,12 @@ export function useQuestWorkspace(questId: string | null) {
             item.type === 'artifact' ||
             (shouldRefreshWorkflow(item) &&
               item.type === 'event' &&
-              ['run_finished', 'run_failed', 'quest.control'].includes(item.label || ''))
+              ['run_finished', 'run_failed', 'quest.control', 'artifact.recorded'].includes(item.label || ''))
         )
       ) {
         queueDetailsRefresh(targetQuestId)
       }
-      if (normalized.some((item) => item.type === 'artifact')) {
+      if (normalized.some((item) => shouldRefreshSessionSnapshot(item))) {
         queueSessionRefresh(targetQuestId)
       }
     },
@@ -985,6 +1231,7 @@ export function useQuestWorkspace(questId: string | null) {
       clearPendingStreamCleanup,
       queueDetailsRefresh,
       queueSessionRefresh,
+      schedulePendingStreamCleanup,
       syncSessionSnapshot,
       updateFeedState,
       updateHistoryWindow,
@@ -1000,6 +1247,7 @@ export function useQuestWorkspace(questId: string | null) {
       setLoading(true)
       if (reset) {
         setRestoring(true)
+        setHistorySeeded(false)
         setConnectionState('connecting')
         cursorRef.current = 0
         lastEventIdRef.current = null
@@ -1013,55 +1261,94 @@ export function useQuestWorkspace(questId: string | null) {
       }
       try {
         const after = reset ? 0 : cursorRef.current
-        const [hydrated, nextFeed] = await Promise.all([
-          hydrateState(targetQuestId),
-          reset
-            ? client.events(targetQuestId, 0, { limit: INITIAL_EVENT_LIMIT, tail: true })
-            : client.events(targetQuestId, after),
-        ])
-        if (!hydrated || questIdRef.current !== targetQuestId) {
+        const nextSession = await client.session(targetQuestId)
+        if (!nextSession || questIdRef.current !== targetQuestId) {
           return
         }
-
-        const initialUpdates = (nextFeed.acp_updates ?? []).map((item) => item.params.update)
-        const normalized = initialUpdates.map((item) => normalizeUpdate(item))
-        const sealedRunIds = collectSealedAssistantRunIds(initialUpdates)
-        const baseState: FeedState = reset
-          ? { history: [], pending: [] }
-          : { history: historyRef.current, pending: pendingFeedRef.current }
-        let nextState = applyIncomingFeedUpdates(baseState, normalized)
-
-        if (sealedRunIds.length > 0) {
-          nextState = sealPendingAssistantStreams(nextState, sealedRunIds)
-        }
-
-        if (hydrated.snapshot?.status && hydrated.snapshot.status !== 'running') {
-          nextState = sealPendingAssistantStreams(nextState)
-        }
-
-        updateFeedState(nextState)
-        cursorRef.current = typeof nextFeed.cursor === 'number' ? nextFeed.cursor : after
-        lastEventIdRef.current = String(cursorRef.current)
-        if (reset) {
-          updateHistoryWindow({
-            oldestCursor: parseCursorValue(nextFeed.oldest_cursor),
-            newestCursor:
-              parseCursorValue(nextFeed.newest_cursor) ??
-              parseCursorValue(nextFeed.cursor),
-            hasOlder: Boolean(nextFeed.has_more),
-          })
-        } else {
-          const nextNewestCursor =
-            parseCursorValue(nextFeed.newest_cursor) ??
-            parseCursorValue(nextFeed.cursor)
-          if (nextNewestCursor != null) {
-            updateHistoryWindow({
-              newestCursor: Math.max(newestLoadedCursorRef.current ?? 0, nextNewestCursor),
-            })
-          }
-        }
+        setSession(nextSession)
+        setSnapshot(nextSession.snapshot)
         setError(null)
         setConnectionState('connected')
+
+        const loadInitialFeed = async (attempt = 0) => {
+          const controller = new AbortController()
+          const timeoutMs = attempt === 0 ? 12000 : 20000
+          const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
+          try {
+            const nextFeed = reset
+              ? await fetchQuestEventsEnvelope(targetQuestId, 0, {
+                  limit: INITIAL_EVENT_LIMIT,
+                  tail: true,
+                  signal: controller.signal,
+                })
+              : await fetchQuestEventsEnvelope(targetQuestId, after, {
+                  signal: controller.signal,
+                })
+            if (questIdRef.current !== targetQuestId) {
+              return
+            }
+
+            const initialUpdates = (nextFeed.acp_updates ?? []).map((item) => item.params.update)
+            const normalized = initialUpdates.map((item) => normalizeUpdate(item))
+            const sealedRunIds = collectSealedAssistantRunIds(initialUpdates)
+            const baseState: FeedState = {
+              history: historyRef.current,
+              pending: pendingFeedRef.current,
+            }
+            let nextState = applyIncomingFeedUpdates(baseState, normalized)
+
+            if (sealedRunIds.length > 0) {
+              nextState = sealPendingAssistantStreams(nextState, sealedRunIds)
+            }
+
+            if (nextSession.snapshot?.status && nextSession.snapshot.status !== 'running') {
+              nextState = sealPendingAssistantStreams(nextState)
+            }
+
+            updateFeedState(nextState)
+            cursorRef.current = typeof nextFeed.cursor === 'number' ? nextFeed.cursor : after
+            lastEventIdRef.current = String(cursorRef.current)
+            if (reset) {
+              updateHistoryWindow({
+                oldestCursor: parseCursorValue(nextFeed.oldest_cursor),
+                newestCursor:
+                  parseCursorValue(nextFeed.newest_cursor) ??
+                  parseCursorValue(nextFeed.cursor),
+                hasOlder: Boolean(nextFeed.has_more),
+              })
+            } else {
+              const nextNewestCursor =
+                parseCursorValue(nextFeed.newest_cursor) ??
+                parseCursorValue(nextFeed.cursor)
+              if (nextNewestCursor != null) {
+                updateHistoryWindow({
+                  newestCursor: Math.max(newestLoadedCursorRef.current ?? 0, nextNewestCursor),
+                })
+              }
+            }
+            setHistorySeeded(true)
+          } catch (caught) {
+            if (questIdRef.current !== targetQuestId) {
+              return
+            }
+            if (attempt < 2) {
+              window.setTimeout(() => {
+                void loadInitialFeed(attempt + 1)
+              }, 900 * (attempt + 1))
+              return
+            }
+            if (historyRef.current.length === 0 && pendingFeedRef.current.length === 0) {
+              setError(caught instanceof Error ? caught.message : String(caught))
+              setConnectionState('error')
+            }
+          } finally {
+            window.clearTimeout(timeoutId)
+          }
+        }
+
+        window.setTimeout(() => {
+          void loadInitialFeed(0)
+        }, reset ? 120 : 0)
       } catch (caught) {
         if (questIdRef.current === targetQuestId) {
           setError(caught instanceof Error ? caught.message : String(caught))
@@ -1074,7 +1361,7 @@ export function useQuestWorkspace(questId: string | null) {
         }
       }
     },
-    [hydrateState, questId, updateFeedState, updateHistoryWindow]
+    [questId, updateFeedState, updateHistoryWindow]
   )
 
   const loadOlderHistory = useCallback(async () => {
@@ -1131,6 +1418,7 @@ export function useQuestWorkspace(questId: string | null) {
       }
 
       const clientMessageId = safeRandomUUID()
+      const cursorBeforeSend = cursorRef.current
       const localUserItem = createLocalUserFeedItem(trimmed, clientMessageId)
       updateFeedState({
         history: historyRef.current,
@@ -1150,6 +1438,16 @@ export function useQuestWorkspace(questId: string | null) {
               : item
           ),
         })
+        queueSessionRefresh(questId, 300)
+        const ensureReplyVisible = (delay: number) => {
+          window.setTimeout(() => {
+            if (questIdRef.current !== questId) return
+            if (cursorRef.current > cursorBeforeSend) return
+            void bootstrap(false)
+          }, delay)
+        }
+        ensureReplyVisible(connectionState === 'connected' ? 1800 : 600)
+        ensureReplyVisible(9000)
       } catch (caught) {
         updateFeedState({
           history: historyRef.current,
@@ -1162,7 +1460,15 @@ export function useQuestWorkspace(questId: string | null) {
         throw caught
       }
     },
-    [bootstrap, clearPendingStreamCleanup, questId, replyTargetId, updateFeedState]
+    [
+      bootstrap,
+      clearPendingStreamCleanup,
+      connectionState,
+      questId,
+      queueSessionRefresh,
+      replyTargetId,
+      updateFeedState,
+    ]
   )
 
   const stopRun = useCallback(async () => {
@@ -1181,7 +1487,7 @@ export function useQuestWorkspace(questId: string | null) {
         return
       }
       clearDetailsRefresh()
-      await flushDetailsRefresh(questId)
+      await flushDetailsRefresh(questId, options)
     },
     [clearDetailsRefresh, detailsReady, flushDetailsRefresh, questId]
   )
@@ -1212,10 +1518,13 @@ export function useQuestWorkspace(questId: string | null) {
     setOldestLoadedCursor(null)
     setNewestLoadedCursor(null)
     setConnectionState(questId ? 'connecting' : 'connected')
+    setHistorySeeded(!questId)
     setError(null)
     detailsEnabledRef.current = false
     sessionInFlightRef.current = null
     detailsInFlightRef.current = null
+    detailsMemoryFetchedAtRef.current = 0
+    detailsDocumentsFetchedAtRef.current = 0
     detailsRefreshInFlightRef.current = false
     clearDetailsRefresh()
     clearSessionRefresh()
@@ -1240,9 +1549,10 @@ export function useQuestWorkspace(questId: string | null) {
       setConnectionState(attempt > 0 ? 'reconnecting' : 'connecting')
 
       try {
-        const headers: Record<string, string> = {
+        const { mode: authMode } = readRequestAuthContext()
+        const headers = authHeaders({
           Accept: 'text/event-stream',
-        }
+        })
         if (lastEventIdRef.current) {
           headers['Last-Event-ID'] = lastEventIdRef.current
         }
@@ -1251,6 +1561,23 @@ export function useQuestWorkspace(questId: string | null) {
           headers,
           signal: controller.signal,
         })
+
+        if (response.status === 401) {
+          if (authMode === 'user' && attempt < 1) {
+            const refreshed = await refreshAccessToken()
+            if (refreshed) {
+              setConnectionState('reconnecting')
+              void runEventStream(targetQuestId, attempt + 1)
+              return
+            }
+          }
+          if (questIdRef.current === targetQuestId) {
+            setConnectionState('error')
+            setError('unauthorized')
+            handleUnauthorizedAuth(authMode, 'session_expired')
+          }
+          return
+        }
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -1335,7 +1662,7 @@ export function useQuestWorkspace(questId: string | null) {
   )
 
   useEffect(() => {
-    if (!questId || restoring) {
+    if (!questId || restoring || !historySeeded) {
       return
     }
     const targetQuestId = questId
@@ -1346,7 +1673,7 @@ export function useQuestWorkspace(questId: string | null) {
       clearSessionRefresh()
       clearPendingStreamCleanup()
     }
-  }, [clearDetailsRefresh, clearPendingStreamCleanup, clearSessionRefresh, questId, restoring, runEventStream, stopEventStream])
+  }, [clearDetailsRefresh, clearPendingStreamCleanup, clearSessionRefresh, historySeeded, questId, restoring, runEventStream, stopEventStream])
 
   const refreshWorkspace = useCallback(
     async (reset = true) => {
@@ -1381,6 +1708,7 @@ export function useQuestWorkspace(questId: string | null) {
     historyLimit: history.length,
     historyExpanded: !hasOlderHistory,
     historyLoadingFull: loadingOlderHistory,
+    historySeeded,
     hasLiveRun,
     streaming,
     activeToolCount,

@@ -17,6 +17,11 @@ from ...quest import QuestService
 from ...shared import generate_id, read_json, read_text, resolve_within, run_command, sha256_text, utc_now
 from ...runners import RunRequest
 
+_COPILOT_LEAD_MESSAGE = (
+    "我是 DeepScientist，任何事情都可以找我帮忙。"
+    "你可以让我读论文、改代码、看实验、整理思路，或者直接开始执行一个任务。"
+)
+
 
 class ApiHandlers:
     def __init__(self, app: "DaemonApp") -> None:
@@ -73,6 +78,8 @@ class ApiHandlers:
         runtime_payload = {
             "surface": "quest",
             "version": DEEPSCIENTIST_VERSION,
+            "homePath": str(self.app.home),
+            "auth": self.app.browser_auth_runtime_payload(),
             "supports": {
                 "productApis": False,
                 "socketIo": False,
@@ -158,8 +165,86 @@ npm --prefix src/ui run build</pre>
             "daemon_id": self.app.daemon_id,
             "managed_by": self.app.daemon_managed_by,
             "pid": os.getpid(),
+            "auth_enabled": self.app.browser_auth_enabled,
             "sessions": self.app.sessions.snapshot(),
         }
+
+    def auth_login(self, body: dict | None = None) -> tuple[int, dict, str] | tuple[int, dict]:
+        if not self.app.browser_auth_enabled:
+            payload = {
+                "ok": True,
+                "authenticated": True,
+                "auth_enabled": False,
+            }
+            return 200, {"Content-Type": "application/json; charset=utf-8"}, json.dumps(payload, ensure_ascii=False)
+
+        candidate = str(((body or {}) if isinstance(body, dict) else {}).get("token") or "").strip()
+        if not candidate:
+            return 400, {
+                "ok": False,
+                "message": "Token is required.",
+                "auth_required": True,
+                "auth_enabled": True,
+            }
+        if not self.app.browser_auth_matches(candidate):
+            return 401, {
+                "ok": False,
+                "message": "Invalid token.",
+                "auth_required": True,
+                "auth_enabled": True,
+            }
+        payload = {
+            "ok": True,
+            "authenticated": True,
+            "auth_enabled": True,
+            "token_masked": self.app.masked_browser_auth_token(),
+        }
+        return (
+            200,
+            {
+                "Content-Type": "application/json; charset=utf-8",
+                "Cache-Control": "no-store, max-age=0, must-revalidate",
+                "Set-Cookie": self.app._browser_auth_cookie_header(candidate),
+            },
+            json.dumps(payload, ensure_ascii=False),
+        )
+
+    def auth_token(self) -> dict:
+        return {
+            "ok": True,
+            "auth_enabled": self.app.browser_auth_enabled,
+            "token": self.app.browser_auth_token,
+            "token_masked": self.app.masked_browser_auth_token(),
+        }
+
+    def auth_rotate(self, body: dict | None = None) -> tuple[int, dict, str] | tuple[int, dict]:
+        if not self.app.browser_auth_enabled:
+            payload = {
+                "ok": True,
+                "auth_enabled": False,
+                "rotated": False,
+                "token": None,
+                "token_masked": None,
+            }
+            return 200, {"Content-Type": "application/json; charset=utf-8"}, json.dumps(payload, ensure_ascii=False)
+
+        rotated = self.app.rotate_browser_auth_token()
+        payload = {
+            "ok": True,
+            "auth_enabled": True,
+            "rotated": True,
+            "token": rotated,
+            "token_masked": self.app.masked_browser_auth_token(),
+        }
+        return (
+            200,
+            {
+                "Content-Type": "application/json; charset=utf-8",
+                "Cache-Control": "no-store, max-age=0, must-revalidate",
+                "Set-Cookie": self.app._browser_auth_cookie_header(rotated),
+            },
+            json.dumps(payload, ensure_ascii=False),
+        )
 
     def system_update(self) -> dict:
         return self.app.system_update_status()
@@ -324,6 +409,33 @@ npm --prefix src/ui run build</pre>
             return 400, {"ok": False, "message": str(exc)}
         except RuntimeError as exc:
             return 409, {"ok": False, "message": str(exc)}
+        workspace_mode = (
+            str(startup_contract.get("workspace_mode") or "").strip().lower()
+            if isinstance(startup_contract, dict)
+            else ""
+        )
+        if workspace_mode in {"copilot", "autonomous"}:
+            quest_root = self.app.quest_service._quest_root(snapshot["quest_id"])
+            self.app.quest_service.update_research_state(quest_root, workspace_mode=workspace_mode)
+            if workspace_mode == "copilot":
+                self.app.quest_service.append_message(
+                    snapshot["quest_id"],
+                    "assistant",
+                    _COPILOT_LEAD_MESSAGE,
+                    source="deepscientist",
+                )
+                self.app.quest_service.update_runtime_state(
+                    quest_root=quest_root,
+                    status="idle",
+                    display_status="idle",
+                )
+                self.app.quest_service.set_continuation_state(
+                    quest_root,
+                    policy="wait_for_user_or_resume",
+                    anchor="decision",
+                    reason="copilot_mode",
+                )
+            snapshot = self.app.quest_service.snapshot(snapshot["quest_id"])
         payload: dict[str, object] = {"ok": True, "snapshot": snapshot}
         if auto_start:
             startup = self.app.submit_user_message(
@@ -474,11 +586,12 @@ npm --prefix src/ui run build</pre>
 
     def quest_session(self, quest_id: str) -> dict:
         snapshot = self.app.quest_service.snapshot_fast(quest_id)
-        for kind in ("details", "canvas"):
+        for kind in ("details", "canvas", "git_canvas"):
             try:
                 self.app.quest_service.prime_projection(quest_id, kind)
             except Exception:
                 continue
+        self.app.schedule_latest_quest_terminal_prewarm(quest_id)
         return {
             "ok": True,
             "quest_id": quest_id,
@@ -496,7 +609,7 @@ npm --prefix src/ui run build</pre>
         tail = tail_raw in {"1", "true", "yes", "on"}
         format_name = ((query.get("format") or ["both"])[0] or "both").lower()
         session_id = ((query.get("session_id") or [f"quest:{quest_id}"])[0] or f"quest:{quest_id}")
-        payload = self._fresh_quest_service().events(
+        payload = self.app.quest_service.events(
             quest_id,
             after=after,
             before=before,
@@ -1026,6 +1139,15 @@ npm --prefix src/ui run build</pre>
             node["optimization_stagnant"] = ref in stagnant_branch_names
             node["optimization_fusion_candidate"] = ref in fusion_candidate_names
             node["optimization_candidate_count"] = candidate_count_by_branch.get(ref, 0)
+        return payload
+
+    def git_canvas(self, quest_id: str) -> dict:
+        quest_root = self._fresh_quest_service()._quest_root(quest_id)
+        payload = self.app.quest_service.git_commit_canvas(quest_id)
+        research_state = self.app.quest_service.read_research_state(quest_root)
+        active_workspace_branch = str(research_state.get("current_workspace_branch") or "").strip() or None
+        payload["active_workspace_ref"] = active_workspace_branch
+        payload["workspace_mode"] = str(research_state.get("workspace_mode") or "copilot").strip() or "copilot"
         return payload
 
     def git_log(self, quest_id: str, path: str) -> dict:

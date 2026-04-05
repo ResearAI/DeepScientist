@@ -46,6 +46,7 @@ export interface QuestSummary {
   title: string
   status: string
   active_anchor: string
+  workspace_mode?: string
   runner?: string
   branch?: string
   head?: string
@@ -92,6 +93,7 @@ export interface QuestSummary {
   default_reply_interaction_id?: string | null
   runtime_status?: string
   display_status?: string
+  continuation_policy?: string
   pending_user_message_count?: number
   stop_reason?: string | null
   active_interaction_id?: string | null
@@ -1014,8 +1016,9 @@ export interface GitComparePayload {
 
 export interface GitDiffPayload {
   ok: boolean
-  base: string
-  head: string
+  base?: string
+  head?: string
+  sha?: string
   path: string
   old_path?: string
   status?: string
@@ -1440,6 +1443,8 @@ export type FeedItem =
       content: string
       createdAt?: string
       stream?: boolean
+      streamId?: string | null
+      messageId?: string | null
       runId?: string | null
       skillId?: string | null
       reasoning?: boolean

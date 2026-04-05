@@ -865,6 +865,114 @@ model_provider = "minimax"
     assert Path(str(captured["env"]["CODEX_HOME"])) != source_codex_home
     assert 'model_provider = "minimax"' in str(captured["prepared_config"])
     assert 'model = "MiniMax-M2.7"' in str(captured["prepared_config"])
+
+
+def test_codex_probe_forces_inherit_model_for_provider_profile(monkeypatch, temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+
+    source_codex_home = temp_home / "provider-codex-home"
+    source_codex_home.mkdir(parents=True, exist_ok=True)
+    (source_codex_home / "config.toml").write_text(
+        """[model_providers.minimax]
+name = "MiniMax Chat Completions API"
+base_url = "https://api.minimaxi.com/v1"
+env_key = "MINIMAX_API_KEY"
+wire_api = "chat"
+requires_openai_auth = false
+
+[profiles.m27]
+model = "MiniMax-M2.7"
+model_provider = "minimax"
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("deepscientist.config.service.resolve_runner_binary", lambda binary, runner_name=None: "/tmp/fake-codex")
+    captured: dict[str, object] = {}
+
+    def fake_run(command, **kwargs):  # noqa: ANN001
+        captured["command"] = list(command)
+        captured["env"] = dict(kwargs.get("env") or {})
+
+        class Result:
+            returncode = 0
+            stdout = '{"item":{"text":"HELLO"}}'
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr("deepscientist.config.service.subprocess.run", fake_run)
+
+    result = manager._probe_codex_runner(
+        {
+            "binary": "codex",
+            "profile": "m27",
+            "model": "gpt-5.4",
+            "config_dir": str(source_codex_home),
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["details"]["requested_model"] == "gpt-5.4"
+    assert result["details"]["effective_model"] == "inherit"
+    assert "--model" not in captured["command"]
+
+
+def test_codex_probe_strips_openai_env_for_minimax_provider(monkeypatch, temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+
+    source_codex_home = temp_home / "provider-codex-home"
+    source_codex_home.mkdir(parents=True, exist_ok=True)
+    (source_codex_home / "config.toml").write_text(
+        """[model_providers.minimax]
+name = "MiniMax Chat Completions API"
+base_url = "https://api.minimaxi.com/v1"
+env_key = "MINIMAX_API_KEY"
+wire_api = "chat"
+requires_openai_auth = false
+
+[profiles.m27]
+model = "MiniMax-M2.7"
+model_provider = "minimax"
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-secret")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setattr("deepscientist.config.service.resolve_runner_binary", lambda binary, runner_name=None: "/tmp/fake-codex")
+    captured: dict[str, object] = {}
+
+    def fake_run(command, **kwargs):  # noqa: ANN001
+        captured["env"] = dict(kwargs.get("env") or {})
+
+        class Result:
+            returncode = 0
+            stdout = '{"item":{"text":"HELLO"}}'
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr("deepscientist.config.service.subprocess.run", fake_run)
+
+    result = manager._probe_codex_runner(
+        {
+            "binary": "codex",
+            "profile": "m27",
+            "model": "inherit",
+            "config_dir": str(source_codex_home),
+            "env": {"MINIMAX_API_KEY": "secret-value"},
+        }
+    )
+
+    assert result["ok"] is True
+    assert captured["env"]["MINIMAX_API_KEY"] == "secret-value"
+    assert "OPENAI_API_KEY" not in captured["env"]
+    assert "OPENAI_BASE_URL" not in captured["env"]
     assert "promoted `m27` profile" in "\n".join(result["warnings"])
 
 

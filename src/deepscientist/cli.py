@@ -25,23 +25,78 @@ from .registries import BaselineRegistry
 from .runners import CodexRunner, RunRequest, get_runner_factory, register_builtin_runners
 from .runtime_tools import RuntimeToolService
 from .runtime_logs import JsonlLogger
-from .shared import ensure_dir, read_yaml
+from .shared import ensure_dir, read_json, read_yaml
 from .skills import SkillInstaller
 from .tui import watch_tui
 
 
+class DeepScientistArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        self.print_usage(sys.stderr)
+        self.exit(2, f"DeepScientist argument error: {message}\nRun `{self.prog} --help` for usage.\n")
+
+
 def _local_ui_url(host: str, port: int) -> str:
-    connect_host = "0.0.0.0" if host in {"0.0.0.0", "::", ""} else host
-    return f"http://{connect_host}:{port}"
+    normalized = str(host or "").strip()
+    connect_host = "127.0.0.1" if normalized in {"0.0.0.0", "::", "[::]", ""} else normalized
+    if connect_host.startswith("[") and connect_host.endswith("]"):
+        rendered_host = connect_host
+    elif ":" in connect_host:
+        rendered_host = f"[{connect_host}]"
+    else:
+        rendered_host = connect_host
+    return f"http://{rendered_host}:{port}"
+
+
+def _parse_optional_bool(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    normalized = str(value or "").strip().lower()
+    if not normalized:
+        return None
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _daemon_request_headers(home: Path) -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    state = read_json(home / "runtime" / "daemon.json", {})
+    if not isinstance(state, dict):
+        return headers
+    if bool(state.get("auth_enabled")):
+        token = str(state.get("auth_token") or "").strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def _daemon_launch_url(home: Path, *, host: str, port: int) -> str:
+    state = read_json(home / "runtime" / "daemon.json", {})
+    if isinstance(state, dict):
+        launch_url = str(state.get("launch_url") or "").strip()
+        if launch_url:
+            return launch_url
+    return _local_ui_url(host, port)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ds", description="DeepScientist Core skeleton")
+    parser = DeepScientistArgumentParser(
+        prog="ds",
+        description="DeepScientist Core skeleton",
+        allow_abbrev=False,
+    )
     parser.add_argument("--home", default=None, help="Override DeepScientist home")
     parser.add_argument("--proxy", default=None, help="Explicit outbound HTTP/WS proxy, for example `http://127.0.0.1:7890`.")
     parser.add_argument("--codex", default=None, help="Override the Codex executable path for this invocation.")
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(
+        dest="command",
+        required=True,
+        parser_class=DeepScientistArgumentParser,
+    )
 
     subparsers.add_parser("init")
 
@@ -60,12 +115,24 @@ def build_parser() -> argparse.ArgumentParser:
     daemon_parser = subparsers.add_parser("daemon")
     daemon_parser.add_argument("--host", default=None)
     daemon_parser.add_argument("--port", type=int, default=None)
+    daemon_parser.add_argument("--auth", default=None)
+    daemon_parser.add_argument("--auth-token", default=None)
+    daemon_parser.add_argument(
+        "--prompt-version",
+        default=None,
+        help="Use `latest` managed prompts, an official historical prompt version such as `1.5.13`, or an exact backup id from `.codex/prompt_versions/` for this daemon session.",
+    )
 
     run_parser = subparsers.add_parser("run")
     run_parser.add_argument("skill_id")
     run_parser.add_argument("--quest-id", required=True)
     run_parser.add_argument("--message", required=True)
     run_parser.add_argument("--model", default=None)
+    run_parser.add_argument(
+        "--prompt-version",
+        default=None,
+        help="Use `latest` managed prompts, an official historical prompt version such as `1.5.13`, or an exact backup id from `.codex/prompt_versions/` for this one-off run.",
+    )
 
     ui_parser = subparsers.add_parser("ui")
     ui_parser.add_argument("--mode", choices=("web", "tui", "both"), default="web")
@@ -186,7 +253,6 @@ def resume_command(home: Path, quest_id: str) -> int:
     print(json.dumps(snapshot, ensure_ascii=False, indent=2))
     return 0
 
-
 def _daemon_control_quest(home: Path, quest_id: str, *, action: str) -> dict | None:
     config = ConfigManager(home).load_named("config", create_optional=False)
     ui_config = config.get("ui", {})
@@ -194,7 +260,7 @@ def _daemon_control_quest(home: Path, quest_id: str, *, action: str) -> dict | N
     request = Request(
         url,
         data=json.dumps({"action": action, "source": "cli"}).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=_daemon_request_headers(home),
         method="POST",
     )
     try:
@@ -211,7 +277,7 @@ def _daemon_create_quest(home: Path, *, goal: str, quest_id: str | None) -> dict
     request = Request(
         url,
         data=json.dumps({"goal": goal, "quest_id": quest_id, "source": "cli"}).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=_daemon_request_headers(home),
         method="POST",
     )
     try:
@@ -221,18 +287,37 @@ def _daemon_create_quest(home: Path, *, goal: str, quest_id: str | None) -> dict
         return None
 
 
-def daemon_command(home: Path, host: str | None, port: int | None) -> int:
+def daemon_command(
+    home: Path,
+    host: str | None,
+    port: int | None,
+    auth: str | None,
+    auth_token: str | None,
+    prompt_version: str | None,
+) -> int:
     ensure_home_layout(home)
     config_manager = ConfigManager(home)
     config_manager.ensure_files()
     config = config_manager.load_named("config")
     ui_config = config.get("ui", {})
-    daemon = DaemonApp(home)
+    daemon = DaemonApp(
+        home,
+        browser_auth_enabled=_parse_optional_bool(auth),
+        browser_auth_token=str(auth_token or "").strip() or None,
+        prompt_version_selection=str(prompt_version or "").strip() or None,
+    )
     daemon.serve(host or ui_config.get("host", "0.0.0.0"), port or ui_config.get("port", 20999))
     return 0
 
 
-def run_command(home: Path, quest_id: str, skill_id: str, message: str, model: str | None) -> int:
+def run_command(
+    home: Path,
+    quest_id: str,
+    skill_id: str,
+    message: str,
+    model: str | None,
+    prompt_version: str | None,
+) -> int:
     ensure_home_layout(home)
     config_manager = ConfigManager(home)
     config_manager.ensure_files()
@@ -246,7 +331,11 @@ def run_command(home: Path, quest_id: str, skill_id: str, message: str, model: s
         repo_root=repo_root(),
         binary=codex_cfg.get("binary", "codex"),
         logger=logger,
-        prompt_builder=PromptBuilder(repo_root(), home),
+        prompt_builder=PromptBuilder(
+            repo_root(),
+            home,
+            prompt_version_selection=str(prompt_version or "").strip() or None,
+        ),
         artifact_service=ArtifactService(home),
     )
     register_builtin_runners(codex_runner=runner)
@@ -322,19 +411,26 @@ def launch_ink_tui(home: Path, url: str) -> int:
             )
         )
         return 1
-    return subprocess.call([node_binary, str(entry), "--base-url", url])
+    state = read_json(home / "runtime" / "daemon.json", {})
+    args = [node_binary, str(entry), "--base-url", url]
+    if isinstance(state, dict) and bool(state.get("auth_enabled")):
+        token = str(state.get("auth_token") or "").strip()
+        if token:
+            args.extend(["--auth-token", token])
+    return subprocess.call(args)
 
 
 def ui_command(home: Path, mode: str) -> int:
     config = ConfigManager(home).load_named("config", create_optional=False)
     host = config.get("ui", {}).get("host", "0.0.0.0")
     port = config.get("ui", {}).get("port", 20999)
-    url = _local_ui_url(host, port)
+    base_url = _local_ui_url(str(host), int(port))
+    launch_url = _daemon_launch_url(home, host=str(host), port=int(port))
     if mode in {"web", "both"}:
-        webbrowser.open(url)
-        print(f"Opened {url}")
+        webbrowser.open(launch_url)
+        print(f"Opened {launch_url}")
     if mode in {"tui", "both"}:
-        return launch_ink_tui(home, url)
+        return launch_ink_tui(home, base_url)
     return 0
 
 
@@ -492,9 +588,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "resume":
         return resume_command(home, args.quest_id)
     if args.command == "daemon":
-        return daemon_command(home, args.host, args.port)
+        return daemon_command(home, args.host, args.port, args.auth, args.auth_token, args.prompt_version)
     if args.command == "run":
-        return run_command(home, args.quest_id, args.skill_id, args.message, args.model)
+        return run_command(home, args.quest_id, args.skill_id, args.message, args.model, args.prompt_version)
     if args.command == "ui":
         return ui_command(home, args.mode)
     if args.command == "note":

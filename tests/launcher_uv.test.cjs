@@ -81,12 +81,58 @@ test('createPythonRuntimePlan falls back to uv-managed python when active conda 
 
 test('buildUvRuntimeEnv pins uv state inside the DeepScientist runtime tree', () => {
   const home = path.join(path.sep, 'tmp', 'DeepScientistHome');
-  const env = __internal.buildUvRuntimeEnv(home, { EXTRA_MARKER: '1' });
+  const env = __internal.buildUvRuntimeEnv(home, {
+    EXTRA_MARKER: '1',
+    PYTHONPATH: '/tmp/pythonpath',
+    PYTHONHOME: '/tmp/pythonhome',
+    VIRTUAL_ENV: '/tmp/venv',
+    __PYVENV_LAUNCHER__: '/tmp/launcher',
+  });
 
   assert.equal(env.EXTRA_MARKER, '1');
   assert.equal(env.UV_PROJECT_ENVIRONMENT, path.join(home, 'runtime', 'python-env'));
   assert.equal(env.UV_CACHE_DIR, path.join(home, 'runtime', 'uv-cache'));
   assert.equal(env.UV_PYTHON_INSTALL_DIR, path.join(home, 'runtime', 'python'));
+  assert.equal(env.PYTHONPATH, undefined);
+  assert.equal(env.PYTHONHOME, undefined);
+  assert.equal(env.VIRTUAL_ENV, undefined);
+  assert.equal(env.__PYVENV_LAUNCHER__, undefined);
+});
+
+test('buildUvSyncFailureGuidance points npm installs away from uv lock by default', () => {
+  const guidance = __internal.buildUvSyncFailureGuidance({
+    installMode: 'npm-package',
+    env: {},
+  });
+
+  assert.match(guidance.join('\n'), /already includes a locked `uv\.lock`/);
+  assert.doesNotMatch(guidance.join('\n'), /run `uv lock`/);
+});
+
+test('buildUvSyncFailureGuidance suggests uv lock for source checkouts', () => {
+  const guidance = __internal.buildUvSyncFailureGuidance({
+    installMode: 'source-checkout',
+    env: {},
+  });
+
+  assert.match(guidance.join('\n'), /run `uv lock`/);
+});
+
+test('buildUvSyncFailureGuidance surfaces Python and package-index env pollution', () => {
+  const guidance = __internal.buildUvSyncFailureGuidance({
+    installMode: 'npm-package',
+    env: {
+      CONDA_PREFIX: '/opt/conda',
+      PYTHONPATH: '/tmp/pythonpath',
+      PIP_INDEX_URL: 'https://mirror.example/simple',
+      HTTPS_PROXY: 'http://127.0.0.1:8080',
+    },
+  });
+
+  const text = guidance.join('\n');
+  assert.match(text, /active Python environment was detected/i);
+  assert.match(text, /Custom package index settings were detected/i);
+  assert.match(text, /Proxy or certificate overrides were detected/i);
 });
 
 test('runtimePythonPath resolves to the managed uv environment interpreter', () => {
@@ -250,6 +296,72 @@ test('parseLauncherArgs accepts --proxy without treating its URL as a positional
 
   assert.equal(parsed.port, 8890);
   assert.equal(parsed.proxy, 'http://127.0.0.1:58887');
+});
+
+test('parseLauncherArgs accepts --auth false for password-free local launches', () => {
+  const parsed = __internal.parseLauncherArgs([
+    '--auth',
+    'false',
+    '--port',
+    '8890',
+  ]);
+
+  assert.equal(parsed.port, 8890);
+  assert.equal(parsed.auth, false);
+});
+
+test('launcher defaults browser auth to false when --auth is omitted', () => {
+  const parsed = __internal.parseLauncherArgs(['--port', '8890']);
+
+  assert.equal(parsed.port, 8890);
+  assert.equal(parsed.auth, null);
+  assert.equal(parsed.auth === null ? false : parsed.auth !== false, false);
+});
+
+test('normalizeLegacyHostFlagArgs rewrites --ip to --host and emits a warning', () => {
+  const normalized = __internal.normalizeLegacyHostFlagArgs([
+    '--ip',
+    '0.0.0.0',
+    '--port',
+    '8890',
+  ]);
+
+  assert.deepEqual(normalized.args, ['--host', '0.0.0.0', '--port', '8890']);
+  assert.equal(normalized.warnings.length, 1);
+  assert.match(normalized.warnings[0], /--host/);
+  assert.match(normalized.warnings[0], /127\.0\.0\.1/);
+});
+
+test('parseLauncherArgs rejects unknown launcher flags instead of falling through silently', () => {
+  const parsed = __internal.parseLauncherArgs(['--bogus']);
+
+  assert.equal(parsed.help, false);
+  assert.equal(parsed.error, 'Unknown launcher flag: --bogus');
+});
+
+test('parseLauncherArgs rejects invalid launcher option values clearly', () => {
+  assert.equal(
+    __internal.parseLauncherArgs(['--port', 'abc']).error,
+    'Invalid value for --port: abc. Expected an integer between 1 and 65535.'
+  );
+  assert.equal(
+    __internal.parseLauncherArgs(['--mode', 'desktop']).error,
+    'Invalid value for --mode: desktop. Expected one of: web, tui, both.'
+  );
+  assert.equal(
+    __internal.parseLauncherArgs(['--auth', 'maybe']).error,
+    'Invalid value for --auth: maybe. Use true or false.'
+  );
+});
+
+test('browser auth helpers generate 16-character tokens and append them to URLs', () => {
+  const token = __internal.generateBrowserAuthToken();
+  assert.equal(token.length, 16);
+  assert.match(token, /^[a-f0-9]{16}$/);
+  assert.equal(
+    __internal.appendBrowserAuthToken('http://127.0.0.1:20999/projects/q-001', token),
+    `http://127.0.0.1:20999/projects/q-001?token=${token}`
+  );
 });
 
 test('parseLauncherArgs accepts --codex-profile for provider-backed Codex setups', () => {

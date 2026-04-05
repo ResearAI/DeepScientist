@@ -56,6 +56,14 @@ In practice:
 - `SKILL.md` files define stage-specific execution discipline
 - `mcp/server.py` defines the built-in tool surface
 
+Managed quest-local prompt mirror:
+
+- DeepScientist still reads prompt fragments from `quest_root/.codex/prompts/` first when they exist.
+- But that tree is now managed automatically rather than assumed to be a permanent manual fork.
+- Before each real runner turn, DeepScientist compares the active quest-local prompt tree against the repository `src/prompts/` tree and refreshes the active copy when the source changed or the local copy drifted.
+- Before that refresh, the previous active tree is backed up under `quest_root/.codex/prompt_versions/<backup_id>/`.
+- This means an old quest uses the latest prompt contracts by default, while historical prompt trees remain available for explicit replay.
+
 ## 3. How one turn prompt is assembled
 
 The current runtime assembles the turn prompt in roughly this order:
@@ -72,11 +80,12 @@ The current runtime assembles the turn prompt in roughly this order:
 10. research delivery policy
 11. paper and evidence snapshot
 12. retry recovery packet when this is a retry turn
-13. interaction style block
-14. priority memory for this turn
-15. recent conversation window
-16. current turn attachments
-17. current user message
+13. resume context spine when this is an auto-continue turn
+14. interaction style block
+15. priority memory for this turn
+16. recent conversation window
+17. current turn attachments
+18. current user message
 
 That order matters.
 
@@ -210,6 +219,16 @@ If `Start Research` behavior feels wrong, you usually need to inspect:
 - `src/deepscientist/prompts/builder.py`
 - the stage skill the quest is currently using
 
+It also carries the key mode split for continuation:
+
+- `workspace_mode = copilot`
+  - request-scoped help
+  - complete one useful unit, then normally park and wait for the next user message or `/resume`
+- `workspace_mode = autonomous`
+  - keep advancing without waiting for the user
+  - if no real long-running external task exists yet, keep using the next turns to prepare, launch, or durably decide that real unit of work
+  - once a real long-running external task exists, background auto-continue turns become low-frequency monitoring passes
+
 ### 4.8 Interaction style
 
 This block tells the model how to speak on this turn.
@@ -229,7 +248,27 @@ This is why DeepScientist can keep the same runtime but behave differently acros
 - writing stages
 - waiting-for-decision stages
 
-### 4.9 Priority memory
+It now also encodes the auto-continue cadence split:
+
+- autonomous preparation / launch work may continue quickly across turns
+- monitoring an already-running external task should switch to low-frequency checks, roughly every `240` seconds by default
+- copilot mode should usually stop after the current requested unit instead of auto-continuing
+
+### 4.9 Resume context spine
+
+On auto-continue turns, the prompt now injects a compact resume spine so the model does not restart from a vague stage label alone.
+
+It includes:
+
+- the latest durable user message
+- the latest assistant checkpoint
+- the latest run result summary
+- a few recent memory cues
+- current `bash_exec` state, including whether a long-running shell session is active
+
+This is the main reason auto-continue turns can stay grounded in the latest intent and latest checkpoint instead of drifting into generic stage narration.
+
+### 4.10 Priority memory
 
 DeepScientist does not inject memory randomly.
 
@@ -246,22 +285,33 @@ This means the prompt is stage-biased on purpose.
 
 The agent should not see the same memory bundle on every turn.
 
-## 5. What can be overridden locally
+## 5. Managed local prompt copies and historical versions
 
-Prompt fragments can be overridden per quest under:
+The active quest-local prompt tree lives under:
 
 - `.codex/prompts/system.md`
 - `.codex/prompts/contracts/shared_interaction.md`
 - `.codex/prompts/connectors/<connector>.md`
 
-This means:
+Repository defaults still live under `src/prompts/`.
 
-- repo defaults live under `src/prompts/`
-- quest-local prompt overrides live under `.codex/prompts/`
+Important behavior change:
 
-Use quest-local prompt overrides only when the quest truly needs a different local contract.
+- `.codex/prompts/` is no longer best understood as a permanent hand-maintained override tree.
+- On each real run, DeepScientist repairs the active quest-local copy back to the current repository prompt source when they differ.
+- Manual edits to the active copy are therefore treated as drift: they are backed up and then replaced on the next run.
+- Historical copies are preserved under `.codex/prompt_versions/<backup_id>/`.
 
-Do not fork the repo-level prompt unless the change should affect the product globally.
+If you need to run a quest against an older prompt version intentionally, start the daemon or one-off run with the official DeepScientist version number:
+
+- `ds daemon --prompt-version <official_version>`
+- `ds run --prompt-version <official_version> ...`
+
+DeepScientist resolves that to the newest backup recorded for that formal version. If you need one exact backup rather than “latest backup for version X”, you may still pass the exact backup directory name.
+
+Use `latest` to stay on the managed active prompt tree.
+
+If a prompt change should affect normal future behavior, change the repository prompt source instead of editing only one quest-local active copy.
 
 ## 6. How skills are structured
 

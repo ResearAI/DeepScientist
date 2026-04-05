@@ -18,12 +18,18 @@ from ..gitops import (
     branch_exists,
     canonical_worktree_root,
     checkpoint_repo,
+    commit_detail,
+    compare_refs,
     create_worktree,
     current_branch,
+    diff_file_between_refs,
+    diff_file_for_commit,
     ensure_branch,
     export_git_graph,
     head_commit,
+    log_ref_history,
 )
+from ..home import repo_root
 from ..registries import BaselineRegistry
 from ..shared import (
     append_jsonl,
@@ -969,6 +975,43 @@ class ArtifactService:
         if branch_kind == "run":
             return "run"
         if branch_kind == "idea" or has_idea:
+            return "idea"
+        return "quest"
+
+    @staticmethod
+    def _collaboration_workspace_mode(state: dict[str, Any]) -> str | None:
+        normalized = str(state.get("workspace_mode") or "").strip().lower()
+        if normalized in {"copilot", "autonomous"}:
+            return normalized
+        return None
+
+    def _resolve_workspace_modes(
+        self,
+        state: dict[str, Any],
+        *,
+        branch_name: str | None,
+        has_idea: bool = False,
+    ) -> tuple[str, str]:
+        branch_mode = self._workspace_mode_for_branch(branch_name, has_idea=has_idea)
+        collaboration_mode = self._collaboration_workspace_mode(state)
+        return collaboration_mode or branch_mode, branch_mode
+
+    @staticmethod
+    def _active_workspace_branch_mode(state: dict[str, Any], *, branch_name: str | None) -> str:
+        normalized = str(state.get("workspace_branch_mode") or "").strip().lower()
+        if normalized:
+            return normalized
+        legacy = str(state.get("workspace_mode") or "").strip().lower()
+        if legacy in {"idea", "run", "analysis", "paper", "quest"}:
+            return legacy
+        branch_kind = str(branch_name or "").strip().lower()
+        if branch_kind.startswith("paper/") or branch_kind == "paper":
+            return "paper"
+        if branch_kind.startswith("analysis/") or branch_kind == "analysis":
+            return "analysis"
+        if branch_kind.startswith("run/") or branch_kind == "run":
+            return "run"
+        if branch_kind.startswith("idea/") or branch_kind == "idea":
             return "idea"
         return "quest"
 
@@ -4674,8 +4717,8 @@ class ArtifactService:
         current_branch_raw = str(state.get("current_workspace_branch") or "").strip()
         research_head_branch_raw = str(state.get("research_head_branch") or "").strip()
         paper_parent_branch_raw = str(state.get("paper_parent_branch") or "").strip()
-        workspace_mode = str(state.get("workspace_mode") or "").strip().lower()
-        prefer_paper_parent = workspace_mode == "paper" or self._branch_kind_from_name(current_branch_raw) == "paper"
+        branch_mode = self._active_workspace_branch_mode(state, branch_name=current_branch_raw)
+        prefer_paper_parent = branch_mode == "paper" or self._branch_kind_from_name(current_branch_raw) == "paper"
         parent_worktree_root: Path | None = None
         root_candidates = (
             (paper_parent_root_raw, head_root_raw, current_root_raw)
@@ -6027,7 +6070,7 @@ class ArtifactService:
         try:
             self.quest_service.schedule_projection_refresh(
                 quest_root,
-                kinds=("details", "canvas"),
+                kinds=("details", "canvas", "git_canvas"),
                 throttle_seconds=0.0,
             )
         except Exception:
@@ -6150,11 +6193,465 @@ class ArtifactService:
     def checkpoint(self, quest_root: Path, message: str, *, allow_empty: bool = False) -> dict:
         result = checkpoint_repo(quest_root, message, allow_empty=allow_empty)
         self._touch_quest_updated_at(quest_root)
+        self._refresh_git_surfaces(quest_root)
         return {
             "ok": True,
             "message": message,
             "guidance": "Checkpoint created. Continue from the updated quest branch state.",
             **result,
+        }
+
+    def _refresh_git_surfaces(self, quest_root: Path) -> dict[str, Any]:
+        projection_refresh = {
+            "details": True,
+            "canvas": True,
+            "git_canvas": True,
+            "graph": True,
+        }
+        try:
+            self.quest_service.schedule_projection_refresh(
+                quest_root,
+                kinds=("details", "canvas", "git_canvas"),
+                throttle_seconds=0.0,
+            )
+        except Exception:
+            pass
+        try:
+            export_git_graph(quest_root, ensure_dir(quest_root / "artifacts" / "graphs"))
+        except Exception:
+            projection_refresh["graph"] = False
+        return projection_refresh
+
+    def _append_git_event(
+        self,
+        quest_root: Path,
+        *,
+        action: str,
+        repo: Path,
+        result: dict[str, Any],
+    ) -> None:
+        append_jsonl(
+            quest_root / ".ds" / "events.jsonl",
+            {
+                "type": "artifact.git",
+                "quest_id": quest_root.name,
+                "action": action,
+                "repo": str(repo),
+                "result": result,
+                "recorded_at": utc_now(),
+            },
+        )
+
+    def _record_git_operation_artifact(
+        self,
+        quest_root: Path,
+        *,
+        repo: Path,
+        action: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        state = self.quest_service.read_research_state(quest_root)
+        if self._collaboration_workspace_mode(state) != "copilot":
+            return None
+
+        normalized_action = str(action or "").strip().lower()
+        before_branch = str(payload.get("before_branch") or "").strip() or None
+        payload_branch = str(payload.get("branch") or "").strip() or None
+        after_branch = (
+            str(payload.get("after_branch") or "").strip()
+            or payload_branch
+            or before_branch
+        )
+        target_ref = str(payload.get("target_ref") or payload.get("target") or "").strip() or after_branch
+        before_head = str(payload.get("before_head") or "").strip() or None
+        after_head = str(payload.get("after_head") or payload.get("head") or payload.get("sha") or "").strip() or None
+        commit_subject = str(payload.get("subject") or "").strip() or None
+        changed_files = [
+            str(item.get("path") or "").strip()
+            for item in (payload.get("files") or [])
+            if isinstance(item, dict) and str(item.get("path") or "").strip()
+        ]
+
+        should_record = False
+        summary = ""
+        reason = ""
+        status = "completed"
+        record_branch = after_branch
+        parent_branch: str | None = None
+
+        if normalized_action == "commit":
+            if bool(payload.get("committed")) and after_branch:
+                should_record = True
+                record_branch = after_branch
+                summary = (
+                    f"Committed on `{after_branch}`: {commit_subject}"
+                    if commit_subject
+                    else f"Committed changes on `{after_branch}`."
+                )
+                reason = "A durable Git commit changed the active branch state."
+        elif normalized_action == "branch":
+            created = bool(payload.get("created"))
+            switched = bool(after_branch and before_branch and after_branch != before_branch)
+            create_from = str(payload.get("create_from") or "").strip() or before_branch
+            if created or switched:
+                should_record = True
+                record_branch = target_ref or after_branch or payload_branch or before_branch
+                if created and switched:
+                    summary = f"Created and switched to `{target_ref}`."
+                elif created:
+                    summary = f"Created branch `{target_ref}`."
+                else:
+                    summary = f"Switched to existing branch `{after_branch}`."
+                reason = "A durable Git branch operation changed the available branch graph."
+                status = "completed" if created else "existing"
+                if created:
+                    parent_branch = create_from
+        elif normalized_action == "checkout":
+            switched = bool(after_branch and before_branch and after_branch != before_branch)
+            moved_head = bool(after_head and before_head and after_head != before_head)
+            if bool(payload.get("ok")) and (switched or moved_head):
+                should_record = True
+                record_branch = after_branch or target_ref
+                summary = (
+                    f"Checked out `{target_ref}`."
+                    if target_ref
+                    else f"Switched workspace branch from `{before_branch or 'unknown'}` to `{after_branch or 'unknown'}`."
+                )
+                reason = "A Git checkout changed the active branch or HEAD for the workspace."
+
+        if not should_record or not record_branch:
+            return None
+
+        worktree_root: str | None = None
+        worktree_rel_path: str | None = None
+        if after_branch and record_branch == after_branch:
+            worktree_root = str(repo)
+            worktree_rel_path = self._workspace_relative(quest_root, repo)
+
+        return self.record(
+            quest_root,
+            {
+                "kind": "report",
+                "status": status,
+                "report_type": "git_operation",
+                "suppress_if_semantically_equivalent": False,
+                "report_id": generate_id("report"),
+                "summary": summary,
+                "reason": reason,
+                "branch": record_branch,
+                "parent_branch": parent_branch,
+                "head_commit": after_head,
+                "worktree_root": worktree_root,
+                "worktree_rel_path": worktree_rel_path,
+                "flow_type": "git_operation",
+                "protocol_step": normalized_action,
+                "paths": {
+                    "workspace_root": str(repo),
+                },
+                "details": {
+                    "git_action": normalized_action,
+                    "target_ref": target_ref,
+                    "create_from": str(payload.get("create_from") or "").strip() or None,
+                    "before_branch": before_branch,
+                    "after_branch": after_branch,
+                    "record_branch": record_branch,
+                    "before_head": before_head,
+                    "after_head": after_head,
+                    "commit_subject": commit_subject,
+                    "changed_files": changed_files,
+                },
+                "source": {"kind": "system", "role": "artifact"},
+            },
+            checkpoint=False,
+            workspace_root=repo,
+        )
+
+    def _git_status_payload(self, repo: Path) -> dict[str, Any]:
+        result = run_command(["git", "status", "--porcelain", "-b"], cwd=repo, check=False)
+        lines = [line.rstrip() for line in str(result.stdout or "").splitlines()]
+        branch_line = lines[0] if lines else ""
+        changes: list[dict[str, Any]] = []
+        staged_count = 0
+        unstaged_count = 0
+        untracked_count = 0
+        for raw in lines[1:]:
+            if not raw:
+                continue
+            status = raw[:2]
+            path = raw[3:].strip() if len(raw) > 3 else raw.strip()
+            staged = status[0] not in {" ", "?"}
+            unstaged = status[1] not in {" "}
+            untracked = status == "??"
+            if staged:
+                staged_count += 1
+            if unstaged:
+                unstaged_count += 1
+            if untracked:
+                untracked_count += 1
+            changes.append(
+                {
+                    "path": path,
+                    "status": status,
+                    "staged": staged,
+                    "unstaged": unstaged,
+                    "untracked": untracked,
+                }
+            )
+        return {
+            "ok": result.returncode == 0,
+            "repo": str(repo),
+            "branch": current_branch(repo),
+            "head": head_commit(repo),
+            "branch_status": branch_line[3:].strip() if branch_line.startswith("## ") else None,
+            "has_changes": bool(changes),
+            "staged_count": staged_count,
+            "unstaged_count": unstaged_count,
+            "untracked_count": untracked_count,
+            "changes": changes,
+        }
+
+    def git_action(
+        self,
+        quest_root: Path,
+        *,
+        action: str,
+        workspace_root: Path | None = None,
+        message: str | None = None,
+        ref: str | None = None,
+        base: str | None = None,
+        head: str | None = None,
+        sha: str | None = None,
+        path: str | None = None,
+        branch: str | None = None,
+        create_from: str | None = None,
+        limit: int = 30,
+        allow_empty: bool = False,
+        checkout_new_branch: bool = False,
+    ) -> dict[str, Any]:
+        resolved_action = str(action or "").strip().lower()
+        repo = self._workspace_root_for(quest_root, workspace_root=workspace_root)
+        before_branch = current_branch(repo)
+        before_head = head_commit(repo)
+        projection_refresh = {
+            "details": False,
+            "canvas": False,
+            "git_canvas": False,
+            "graph": False,
+        }
+
+        if resolved_action == "status":
+            result = self._git_status_payload(repo)
+            return {
+                "ok": True,
+                "action": resolved_action,
+                "quest_id": quest_root.name,
+                "current_ref": current_branch(repo),
+                "head": head_commit(repo),
+                "projection_refresh": projection_refresh,
+                "result": result,
+            }
+
+        if resolved_action == "commit":
+            commit_message = str(message or "").strip() or "Update workspace"
+            result = checkpoint_repo(repo, commit_message, allow_empty=allow_empty)
+            self._touch_quest_updated_at(quest_root)
+            projection_refresh = self._refresh_git_surfaces(quest_root)
+            if result.get("committed"):
+                head_sha = str(result.get("head") or "").strip()
+                if head_sha:
+                    try:
+                        detail = commit_detail(repo, sha=head_sha)
+                    except Exception:
+                        detail = {
+                            "sha": head_sha,
+                            "short_sha": head_sha[:7],
+                            "subject": commit_message,
+                            "parents": [],
+                        }
+                else:
+                    detail = {
+                        "sha": None,
+                        "short_sha": None,
+                        "subject": commit_message,
+                        "parents": [],
+                    }
+            else:
+                detail = {
+                    "sha": result.get("head"),
+                    "short_sha": str(result.get("head") or "")[:7] or None,
+                    "subject": commit_message,
+                    "parents": [],
+                }
+            payload = {
+                "committed": bool(result.get("committed")),
+                "branch": result.get("branch"),
+                "head": result.get("head"),
+                "before_branch": before_branch,
+                "before_head": before_head,
+                "after_branch": result.get("branch"),
+                "after_head": result.get("head"),
+                "target_ref": result.get("branch") or before_branch,
+                "stdout": result.get("stdout"),
+                "stderr": result.get("stderr"),
+                **detail,
+            }
+            self._append_git_event(quest_root, action=resolved_action, repo=repo, result=payload)
+            self._record_git_operation_artifact(
+                quest_root,
+                repo=repo,
+                action=resolved_action,
+                payload=payload,
+            )
+            return {
+                "ok": True,
+                "action": resolved_action,
+                "quest_id": quest_root.name,
+                "current_ref": current_branch(repo),
+                "head": head_commit(repo),
+                "projection_refresh": projection_refresh,
+                "result": payload,
+            }
+
+        if resolved_action == "branch":
+            branch_name = str(branch or "").strip()
+            if not branch_name:
+                return {"ok": False, "action": resolved_action, "message": "`branch` is required."}
+            result = ensure_branch(repo, branch_name, start_point=create_from, checkout=checkout_new_branch)
+            payload = {
+                **result,
+                "before_branch": before_branch,
+                "before_head": before_head,
+                "after_branch": current_branch(repo),
+                "after_head": head_commit(repo),
+                "target_ref": branch_name,
+                "create_from": str(create_from or "").strip() or before_branch,
+            }
+            self._touch_quest_updated_at(quest_root)
+            projection_refresh = self._refresh_git_surfaces(quest_root)
+            self._append_git_event(quest_root, action=resolved_action, repo=repo, result=payload)
+            self._record_git_operation_artifact(
+                quest_root,
+                repo=repo,
+                action=resolved_action,
+                payload=payload,
+            )
+            return {
+                "ok": True,
+                "action": resolved_action,
+                "quest_id": quest_root.name,
+                "current_ref": current_branch(repo),
+                "head": head_commit(repo),
+                "projection_refresh": projection_refresh,
+                "result": payload,
+            }
+
+        if resolved_action == "checkout":
+            target = str(branch or ref or sha or head or "").strip()
+            if not target:
+                return {"ok": False, "action": resolved_action, "message": "One of `branch`, `ref`, `sha`, or `head` is required."}
+            result = run_command(["git", "checkout", target], cwd=repo, check=False)
+            payload = {
+                "ok": result.returncode == 0,
+                "target": target,
+                "branch": current_branch(repo),
+                "head": head_commit(repo),
+                "before_branch": before_branch,
+                "before_head": before_head,
+                "after_branch": current_branch(repo),
+                "after_head": head_commit(repo),
+                "target_ref": target,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            }
+            self._touch_quest_updated_at(quest_root)
+            projection_refresh = self._refresh_git_surfaces(quest_root)
+            self._append_git_event(quest_root, action=resolved_action, repo=repo, result=payload)
+            self._record_git_operation_artifact(
+                quest_root,
+                repo=repo,
+                action=resolved_action,
+                payload=payload,
+            )
+            return {
+                "ok": result.returncode == 0,
+                "action": resolved_action,
+                "quest_id": quest_root.name,
+                "current_ref": current_branch(repo),
+                "head": head_commit(repo),
+                "projection_refresh": projection_refresh,
+                "result": payload,
+            }
+
+        if resolved_action == "log":
+            target_ref = str(ref or branch or "").strip() or current_branch(repo)
+            result = log_ref_history(repo, ref=target_ref, base=(base or "").strip() or None, limit=limit)
+            return {
+                "ok": True,
+                "action": resolved_action,
+                "quest_id": quest_root.name,
+                "current_ref": current_branch(repo),
+                "head": head_commit(repo),
+                "projection_refresh": projection_refresh,
+                "result": result,
+            }
+
+        if resolved_action == "show":
+            target_sha = str(sha or ref or head or "").strip()
+            if not target_sha:
+                return {"ok": False, "action": resolved_action, "message": "`sha` or `ref` is required."}
+            result = commit_detail(repo, sha=target_sha)
+            return {
+                "ok": True,
+                "action": resolved_action,
+                "quest_id": quest_root.name,
+                "current_ref": current_branch(repo),
+                "head": head_commit(repo),
+                "projection_refresh": projection_refresh,
+                "result": result,
+            }
+
+        if resolved_action == "diff":
+            target_path = str(path or "").strip() or None
+            if sha:
+                result = commit_detail(repo, sha=sha) if not target_path else diff_file_for_commit(repo, sha=sha, path=target_path)
+            elif base and head:
+                result = (
+                    diff_file_between_refs(repo, base=base, head=head, path=target_path)
+                    if target_path
+                    else compare_refs(repo, base=base, head=head)
+                )
+            else:
+                return {
+                    "ok": False,
+                    "action": resolved_action,
+                    "message": "Provide `sha` for commit diff or `base` and `head` for compare diff.",
+                }
+            return {
+                "ok": True,
+                "action": resolved_action,
+                "quest_id": quest_root.name,
+                "current_ref": current_branch(repo),
+                "head": head_commit(repo),
+                "projection_refresh": projection_refresh,
+                "result": result,
+            }
+
+        if resolved_action == "graph":
+            projection_refresh = self._refresh_git_surfaces(quest_root)
+            return {
+                "ok": True,
+                "action": resolved_action,
+                "quest_id": quest_root.name,
+                "current_ref": current_branch(repo),
+                "head": head_commit(repo),
+                "projection_refresh": projection_refresh,
+                "result": self.quest_service.git_commit_canvas(quest_root.name),
+            }
+
+        return {
+            "ok": False,
+            "action": resolved_action,
+            "message": "Unsupported git action. Use status, commit, branch, checkout, log, show, diff, or graph.",
         }
 
     def prepare_branch(
@@ -6323,7 +6820,11 @@ class ArtifactService:
                 has_idea=bool(resolved_idea_id),
                 has_main_result=has_main_result,
             )
-        workspace_mode = self._workspace_mode_for_branch(branch_name, has_idea=bool(resolved_idea_id))
+        workspace_mode, branch_mode = self._resolve_workspace_modes(
+            state,
+            branch_name=branch_name,
+            has_idea=bool(resolved_idea_id),
+        )
         source_run_id = (
             str(target.get("run_id") or "").strip()
             or str(latest_main_run.get("run_id") or "").strip()
@@ -6360,7 +6861,7 @@ class ArtifactService:
                     "promote_to_head": bool(promote_to_head),
                     "worktree_created": worktree_created,
                     "next_anchor": next_anchor,
-                    "workspace_mode": workspace_mode,
+                    "workspace_mode": branch_mode,
                     "latest_main_run_id": str(latest_main_run.get("run_id") or "").strip() or None,
                     "branch_kind": branch_kind,
                     "paper_parent_branch": source_parent_branch if branch_kind == "paper" else None,
@@ -6388,6 +6889,7 @@ class ArtifactService:
             "paper_parent_run_id": source_run_id if branch_kind == "paper" else None,
             "next_pending_slice_id": None,
             "workspace_mode": workspace_mode,
+            "workspace_branch_mode": branch_mode,
             "last_flow_type": "branch_activation",
         }
         if promote_to_head:
@@ -6490,6 +6992,12 @@ class ArtifactService:
             checkpoint=False,
             workspace_root=workspace_root,
         )
+        current_state = self.quest_service.read_research_state(quest_root)
+        workspace_mode, branch_mode = self._resolve_workspace_modes(
+            current_state,
+            branch_name=target_branch,
+            has_idea=bool(idea_id),
+        )
         self.quest_service.update_research_state(
             quest_root,
             active_idea_id=idea_id,
@@ -6503,7 +7011,8 @@ class ArtifactService:
             paper_parent_branch=None,
             paper_parent_worktree_root=None,
             paper_parent_run_id=None,
-            workspace_mode="run",
+            workspace_mode=workspace_mode,
+            workspace_branch_mode=branch_mode,
             last_flow_type="main_experiment_branch",
         )
         return target_branch, current_branch_name, True
@@ -6522,10 +7031,7 @@ class ArtifactService:
             or current_branch(self._workspace_root_for(quest_root))
         )
         current_workspace_root = self._workspace_root_for(quest_root)
-        if (
-            str(state.get("workspace_mode") or "").strip() == "paper"
-            and self._branch_kind_from_name(current_branch_name) == "paper"
-        ):
+        if self._active_workspace_branch_mode(state, branch_name=current_branch_name) == "paper":
             return {
                 "ok": True,
                 "branch": current_branch_name,
@@ -6632,9 +7138,9 @@ class ArtifactService:
         risks = [str(item).strip() for item in (risks or []) if str(item).strip()]
         next_target = str(next_target or "experiment").strip().lower() or "experiment"
         normalized_lineage_intent = self._normalize_lineage_intent(lineage_intent)
-        from ..prompts.builder import STANDARD_SKILLS
+        from ..prompts.builder import current_standard_skills
 
-        next_anchor = next_target if next_target in STANDARD_SKILLS else "experiment"
+        next_anchor = next_target if next_target in current_standard_skills(repo_root()) else "experiment"
 
         if normalized_mode == "create":
             resolved_idea_id = str(idea_id or generate_id("idea")).strip()
@@ -6941,6 +7447,12 @@ class ArtifactService:
                 checkpoint=False,
                 workspace_root=worktree_root,
             )
+            current_state = self.quest_service.read_research_state(quest_root)
+            workspace_mode, branch_mode = self._resolve_workspace_modes(
+                current_state,
+                branch_name=branch_name,
+                has_idea=bool(resolved_idea_id),
+            )
             research_state = self.quest_service.update_research_state(
                 quest_root,
                 active_idea_id=resolved_idea_id,
@@ -6954,7 +7466,8 @@ class ArtifactService:
                 analysis_parent_branch=None,
                 analysis_parent_worktree_root=None,
                 next_pending_slice_id=None,
-                workspace_mode="idea",
+                workspace_mode=workspace_mode,
+                workspace_branch_mode=branch_mode,
                 last_flow_type="idea_submission",
             )
             self.quest_service.update_settings(quest_id, active_anchor=next_anchor)
@@ -7404,13 +7917,16 @@ class ArtifactService:
     ) -> dict[str, Any]:
         self._require_baseline_gate_open(quest_root, action="record_main_experiment")
         state = self.quest_service.read_research_state(quest_root)
-        workspace_mode = str(state.get("workspace_mode") or "").strip()
-        if workspace_mode == "analysis":
+        branch_mode = self._active_workspace_branch_mode(
+            state,
+            branch_name=str(state.get("current_workspace_branch") or "").strip(),
+        )
+        if branch_mode == "analysis":
             raise ValueError(
                 "record_main_experiment cannot run while the active workspace is an analysis slice. "
                 "Finish or close the analysis campaign first."
             )
-        if workspace_mode == "paper":
+        if branch_mode == "paper":
             raise ValueError(
                 "record_main_experiment cannot run while the active workspace is a paper branch. "
                 "Return to the source evidence branch or create a new run branch first."
@@ -7896,6 +8412,12 @@ class ArtifactService:
             },
         )
         self.quest_service.update_settings(self._quest_id(quest_root), active_anchor="decision")
+        current_state = self.quest_service.read_research_state(quest_root)
+        workspace_mode, branch_mode = self._resolve_workspace_modes(
+            current_state,
+            branch_name=branch_name,
+            has_idea=bool(active_idea_id),
+        )
         research_state = self.quest_service.update_research_state(
             quest_root,
             active_idea_id=active_idea_id,
@@ -7909,7 +8431,8 @@ class ArtifactService:
             paper_parent_branch=None,
             paper_parent_worktree_root=None,
             paper_parent_run_id=None,
-            workspace_mode="run",
+            workspace_mode=workspace_mode,
+            workspace_branch_mode=branch_mode,
             last_flow_type="main_experiment_recorded",
         )
         return {
@@ -7994,7 +8517,10 @@ class ArtifactService:
             or normalized_research_questions
             or normalized_experimental_designs
             or normalized_todo_items
-            or str(state.get("workspace_mode") or "").strip().lower() == "paper"
+            or self._active_workspace_branch_mode(
+                state,
+                branch_name=str(state.get("current_workspace_branch") or "").strip(),
+            ) == "paper"
             or active_anchor == "write"
             or campaign_origin_kind in {"write", "paper", "rebuttal", "revision"}
         )
@@ -8525,6 +9051,11 @@ class ArtifactService:
                     source_run_id=resolved_parent_run_id,
                     source_idea_id=active_idea_id,
                 )
+        current_state = self.quest_service.read_research_state(quest_root)
+        workspace_mode, branch_mode = self._resolve_workspace_modes(
+            current_state,
+            branch_name=first_slice["branch"],
+        )
         research_state = self.quest_service.update_research_state(
             quest_root,
             active_idea_id=active_idea_id,
@@ -8534,7 +9065,8 @@ class ArtifactService:
             next_pending_slice_id=first_slice["slice_id"],
             current_workspace_branch=first_slice["branch"],
             current_workspace_root=first_slice["worktree_root"],
-            workspace_mode="analysis",
+            workspace_mode=workspace_mode,
+            workspace_branch_mode=branch_mode,
             last_flow_type="analysis_campaign",
         )
         baseline_inventory = self._upsert_analysis_baseline_inventory(quest_root, inventory_entries) if inventory_entries else None
@@ -9516,13 +10048,19 @@ class ArtifactService:
         )
 
         if next_slice is not None:
+            current_state = self.quest_service.read_research_state(quest_root)
+            workspace_mode, branch_mode = self._resolve_workspace_modes(
+                current_state,
+                branch_name=next_slice.get("branch"),
+            )
             research_state = self.quest_service.update_research_state(
                 quest_root,
                 active_analysis_campaign_id=campaign_id,
                 next_pending_slice_id=next_slice.get("slice_id"),
                 current_workspace_branch=next_slice.get("branch"),
                 current_workspace_root=next_slice.get("worktree_root"),
-                workspace_mode="analysis",
+                workspace_mode=workspace_mode,
+                workspace_branch_mode=branch_mode,
                 last_flow_type="analysis_slice",
             )
             self.quest_service.update_settings(self._quest_id(quest_root), active_anchor="analysis-campaign")
@@ -9624,6 +10162,11 @@ class ArtifactService:
         startup_contract = self._startup_contract(quest_root)
         raw_need_research_paper = startup_contract.get("need_research_paper")
         need_research_paper = raw_need_research_paper if isinstance(raw_need_research_paper, bool) else True
+        current_state = self.quest_service.read_research_state(quest_root)
+        workspace_mode, branch_mode = self._resolve_workspace_modes(
+            current_state,
+            branch_name=parent_branch,
+        )
         base_research_state = self.quest_service.update_research_state(
             quest_root,
             active_idea_id=restored_idea_id,
@@ -9636,7 +10179,8 @@ class ArtifactService:
             next_pending_slice_id=None,
             current_workspace_branch=parent_branch,
             current_workspace_root=str(parent_worktree_root),
-            workspace_mode="run" if self._branch_kind_from_name(parent_branch) == "run" else "idea",
+            workspace_mode=workspace_mode,
+            workspace_branch_mode=branch_mode,
             last_flow_type="analysis_campaign_complete",
         )
         writing_workspace: dict[str, Any] | None = None
@@ -10382,11 +10926,12 @@ class ArtifactService:
             }
         suppress_resolved = (kind == "progress") if suppress_if_unchanged is None else bool(suppress_if_unchanged)
         dedupe_key_resolved = str(dedupe_key or self._normalize_interaction_message(full_message)).strip() or None
+        pending_user_message_count = int(self.quest_service.snapshot(self._quest_id(quest_root)).get("pending_user_message_count") or 0)
         if (
             kind == "progress"
             and suppress_resolved
             and dedupe_key_resolved
-            and int(self.quest_service.snapshot(self._quest_id(quest_root)).get("pending_user_message_count") or 0) == 0
+            and pending_user_message_count == 0
         ):
             prior_interaction = self._latest_duplicate_progress_interaction(
                 quest_root,
@@ -10431,6 +10976,57 @@ class ArtifactService:
                     "default_reply_interaction_id": interaction_state.get("default_reply_interaction_id"),
                     "guidance": "Duplicate progress was suppressed because the latest user-visible state is unchanged.",
                     "suppressed_reason": "unchanged_progress",
+                    "dedupe_key": dedupe_key_resolved,
+                }
+        if (
+            kind == "answer"
+            and not deliver_to_bound_conversations
+            and dedupe_key_resolved
+            and pending_user_message_count == 0
+        ):
+            prior_answer = self._latest_duplicate_answer_fallback_interaction(
+                quest_root,
+                dedupe_key=dedupe_key_resolved,
+                min_interval_seconds=120,
+            )
+            if prior_answer is not None:
+                interaction_state = self._read_interaction_state(quest_root)
+                waiting_requests = [
+                    dict(item)
+                    for item in (interaction_state.get("open_requests") or [])
+                    if str(item.get("status") or "") == "waiting"
+                ]
+                return {
+                    "status": "suppressed_duplicate",
+                    "artifact_id": prior_answer.get("artifact_id"),
+                    "interaction_id": prior_answer.get("interaction_id"),
+                    "expects_reply": False,
+                    "reply_mode": "threaded",
+                    "surface_actions": [],
+                    "connector_hints": connector_hints_resolved,
+                    "normalized_attachments": attachments_resolved,
+                    "attachment_issues": attachment_issues,
+                    "delivered": False,
+                    "delivery_results": [],
+                    "response_phase": response_phase,
+                    "delivery_targets": [],
+                    "delivery_policy": self._delivery_policy(self._connectors_config()),
+                    "preferred_connector": self._preferred_connector(self._connectors_config()),
+                    "recent_inbound_messages": [],
+                    "delivery_batch": None,
+                    "recent_interaction_records": self.quest_service.latest_artifact_interaction_records(quest_root, limit=10),
+                    "agent_instruction": self.quest_service.localized_copy(
+                        quest_root=quest_root,
+                        zh="这一轮里相同内容的 answer 已经发出过一次，不要再为本地 fallback 额外创建第二条。",
+                        en="An identical answer was already emitted in this user turn. Do not create a second local-only fallback copy.",
+                    ),
+                    "queued_message_count_before_delivery": 0,
+                    "queued_message_count_after_delivery": 0,
+                    "open_request_count": len(waiting_requests),
+                    "active_request": waiting_requests[-1] if waiting_requests else None,
+                    "default_reply_interaction_id": interaction_state.get("default_reply_interaction_id"),
+                    "guidance": "Duplicate answer fallback was suppressed because the same answer was already recorded in the current user turn.",
+                    "suppressed_reason": "duplicate_answer_fallback",
                     "dedupe_key": dedupe_key_resolved,
                 }
         resolved_artifact_id = generate_id(durable_kind)
@@ -10559,6 +11155,7 @@ class ArtifactService:
             connector_hints=connector_hints_resolved,
             created_at=(artifact.get("record") or {}).get("updated_at"),
             counts_as_visible=counts_as_visible,
+            deliver_to_bound_conversations=deliver_to_bound_conversations,
         )
 
         return {
@@ -10608,6 +11205,34 @@ class ArtifactService:
             if record_type != "artifact_outbound":
                 continue
             if str(item.get("kind") or "").strip() != "progress":
+                continue
+            previous_key = str(item.get("dedupe_key") or self._normalize_interaction_message(item.get("message") or "")).strip()
+            if previous_key != dedupe_key:
+                continue
+            if min_interval_seconds:
+                seconds_since = self.quest_service._seconds_since_iso_timestamp(item.get("created_at"))
+                if seconds_since is not None and seconds_since > int(min_interval_seconds):
+                    return None
+            return dict(item)
+        return None
+
+    def _latest_duplicate_answer_fallback_interaction(
+        self,
+        quest_root: Path,
+        *,
+        dedupe_key: str,
+        min_interval_seconds: int | None,
+    ) -> dict[str, Any] | None:
+        recent = self.quest_service.latest_artifact_interaction_records(quest_root, limit=40)
+        for item in reversed(recent):
+            record_type = str(item.get("type") or "").strip()
+            if record_type == "user_inbound":
+                return None
+            if record_type != "artifact_outbound":
+                continue
+            if str(item.get("kind") or "").strip() != "answer":
+                continue
+            if not bool(item.get("deliver_to_bound_conversations")):
                 continue
             previous_key = str(item.get("dedupe_key") or self._normalize_interaction_message(item.get("message") or "")).strip()
             if previous_key != dedupe_key:

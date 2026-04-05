@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useReducedMotion } from 'framer-motion'
 import { FolderOpen } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { CreateCopilotProjectDialog } from '@/components/projects/CreateCopilotProjectDialog'
 import { CreateProjectDialog } from '@/components/projects/CreateProjectDialog'
+import { ExperimentLaunchModeDialog } from '@/components/projects/ExperimentLaunchModeDialog'
 import { OpenQuestDialog } from '@/components/projects/OpenQuestDialog'
 import { Button } from '@/components/ui/button'
 import { FadeContent, GlareHover } from '@/components/react-bits'
@@ -23,15 +25,22 @@ import { UpdateReminderDialog } from './UpdateReminderDialog'
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 
+export type LandingDialogRequest = 'quests' | 'copilot' | 'autonomous'
+
+type ActiveLandingDialog = LandingDialogRequest | 'launch' | null
+
 function sortQuests(items: QuestSummary[]) {
   return [...items].sort((left, right) => {
-    const leftTime = new Date(left.updated_at || 0).getTime()
-    const rightTime = new Date(right.updated_at || 0).getTime()
-    return rightTime - leftTime
+    const leftAt = Date.parse(left.updated_at || '')
+    const rightAt = Date.parse(right.updated_at || '')
+    return rightAt - leftAt
   })
 }
 
-export default function Hero() {
+export default function Hero(props: {
+  dialogRequest?: LandingDialogRequest | null
+  onDialogRequestConsumed?: () => void
+}) {
   const navigate = useNavigate()
   const { locale } = useI18n()
   const hero = useMemo(() => getHeroBundle(locale), [locale])
@@ -61,24 +70,31 @@ export default function Hero() {
   const progressRef = useRef(0)
   const targetRef = useRef(0)
   const rafRef = useRef<number | null>(null)
-  const [questDialogOpen, setQuestDialogOpen] = useState(false)
-  const [quests, setQuests] = useState<QuestSummary[]>([])
-  const [questsLoading, setQuestsLoading] = useState(false)
-  const [deletingQuestId, setDeletingQuestId] = useState<string | null>(null)
-  const [questError, setQuestError] = useState<string | null>(null)
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [createError, setCreateError] = useState<string | null>(null)
+  const [activeDialog, setActiveDialog] = useState<ActiveLandingDialog>(null)
   const [connectorAvailability, setConnectorAvailability] = useState<ConnectorAvailabilitySnapshot | null>(null)
   const [connectorAvailabilityResolved, setConnectorAvailabilityResolved] = useState(false)
   const [entryCoachDismissed, setEntryCoachDismissed] = useState(false)
+  const [quests, setQuests] = useState<QuestSummary[]>([])
+  const [questsLoading, setQuestsLoading] = useState(false)
+  const [questsError, setQuestsError] = useState<string | null>(null)
+  const [deletingQuestId, setDeletingQuestId] = useState<string | null>(null)
+  const [autonomousCreating, setAutonomousCreating] = useState(false)
+  const [autonomousError, setAutonomousError] = useState<string | null>(null)
   const currentVersion = useMemo(() => runtimeVersion(), [])
-  const landingModalOpen = questDialogOpen || createDialogOpen
+  const landingModalOpen = activeDialog !== null
 
   useEffect(() => {
     document.body.classList.add('font-project')
     return () => document.body.classList.remove('font-project')
   }, [])
+
+  useEffect(() => {
+    if (!props.dialogRequest) {
+      return
+    }
+    setActiveDialog(props.dialogRequest)
+    props.onDialogRequestConsumed?.()
+  }, [props.dialogRequest, props.onDialogRequestConsumed])
 
   useEffect(() => {
     if (!onboardingHydrated) {
@@ -146,12 +162,45 @@ export default function Hero() {
     return 'recommended' as const
   }, [connectorAvailability])
 
+  useEffect(() => {
+    if (activeDialog !== 'quests') {
+      return
+    }
+    let alive = true
+    setQuestsLoading(true)
+    void client
+      .quests()
+      .then((payload) => {
+        if (!alive) return
+        setQuests(sortQuests(payload))
+        setQuestsError(null)
+      })
+      .catch((caught) => {
+        if (!alive) return
+        setQuestsError(caught instanceof Error ? caught.message : 'Failed to load quests.')
+      })
+      .finally(() => {
+        if (alive) {
+          setQuestsLoading(false)
+        }
+      })
+    return () => {
+      alive = false
+    }
+  }, [activeDialog])
+
+  useEffect(() => {
+    if (activeDialog !== 'autonomous') {
+      setAutonomousCreating(false)
+      setAutonomousError(null)
+    }
+  }, [activeDialog])
+
   const shouldShowConnectorCoach = connectorAvailabilityResolved && connectorCoachMode !== null
   const shouldShowTutorialCoach = onboardingHydrated && !firstRunHandled && !neverRemind
   const entryCoachOpen =
     !entryCoachDismissed &&
-    !createDialogOpen &&
-    !questDialogOpen &&
+    !landingModalOpen &&
     (shouldShowConnectorCoach || shouldShowTutorialCoach)
 
   useEffect(() => {
@@ -208,92 +257,6 @@ export default function Hero() {
       rafRef.current = null
     }
   }, [entryCoachOpen, landingModalOpen, reducedMotion, isPortraitMode])
-
-  useEffect(() => {
-    if (!questDialogOpen) {
-      return
-    }
-
-    let active = true
-
-    const loadQuests = async () => {
-      setQuestsLoading(true)
-      try {
-        const payload = await client.quests()
-        if (!active) {
-          return
-        }
-        setQuests(sortQuests(payload))
-        setQuestError(null)
-      } catch (caught) {
-        if (!active) {
-          return
-        }
-        setQuestError(caught instanceof Error ? caught.message : 'Failed to load quests.')
-      } finally {
-        if (active) {
-          setQuestsLoading(false)
-        }
-      }
-    }
-
-    void loadQuests()
-
-    return () => {
-      active = false
-    }
-  }, [questDialogOpen])
-
-  const createAndOpen = async (payload: {
-    title: string
-    goal: string
-    quest_id?: string
-    requested_connector_bindings?: Array<{ connector: string; conversation_id?: string | null }>
-    requested_baseline_ref?: { baseline_id: string; variant_id?: string | null } | null
-    startup_contract?: Record<string, unknown> | null
-  }) => {
-    if (!payload.goal.trim()) {
-      return
-    }
-
-    setCreating(true)
-    setCreateError(null)
-    try {
-      const result = await client.createQuestWithOptions({
-        goal: payload.goal.trim(),
-        title: payload.title.trim() || undefined,
-        quest_id: payload.quest_id?.trim() || undefined,
-        source: 'web-react',
-        auto_start: true,
-        initial_message: payload.goal.trim(),
-        auto_bind_latest_connectors: false,
-        requested_connector_bindings: payload.requested_connector_bindings,
-        requested_baseline_ref: payload.requested_baseline_ref ?? undefined,
-        startup_contract: payload.startup_contract ?? undefined,
-      })
-      setCreateDialogOpen(false)
-      navigate(`/projects/${result.snapshot.quest_id}`)
-    } catch (caught) {
-      setCreateError(caught instanceof Error ? caught.message : 'Failed to create quest.')
-    } finally {
-      setCreating(false)
-    }
-  }
-
-  const deleteQuest = async (questId: string) => {
-    const trimmed = questId.trim()
-    if (!trimmed) return
-    setDeletingQuestId(trimmed)
-    try {
-      await client.deleteQuest(trimmed)
-      setQuests((current) => current.filter((item) => item.quest_id !== trimmed))
-      setQuestError(null)
-    } catch (caught) {
-      setQuestError(caught instanceof Error ? caught.message : 'Failed to delete quest.')
-    } finally {
-      setDeletingQuestId(null)
-    }
-  }
 
   const scrollStage = useMemo(() => {
     if (progress < 0.25) return 0
@@ -374,9 +337,8 @@ export default function Hero() {
                         <Button
                           className="h-12 rounded-full bg-[#C7AD96] px-7 text-[#2D2A26] shadow-[0_12px_28px_-14px_rgba(45,42,38,0.55)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#D7C6AE]"
                           onClick={() => {
-                            setCreateError(null)
                             window.setTimeout(() => {
-                              setCreateDialogOpen(true)
+                              setActiveDialog('launch')
                             }, 120)
                           }}
                           data-onboarding-id="landing-start-research"
@@ -387,10 +349,7 @@ export default function Hero() {
                       <Button
                         variant="outline"
                         className="h-11 rounded-full border-black/15 bg-white/70 px-6 text-[#2D2A26] hover:bg-white"
-                        onClick={() => {
-                          setQuestError(null)
-                          setQuestDialogOpen(true)
-                        }}
+                        onClick={() => setActiveDialog('quests')}
                       >
                         <FolderOpen className="mr-2 h-4 w-4" />
                         {hero.copy.secondaryCta}
@@ -443,26 +402,80 @@ export default function Hero() {
 
       </div>
 
-      <CreateProjectDialog
-        open={createDialogOpen}
-        loading={creating}
-        error={createError}
-        onClose={() => setCreateDialogOpen(false)}
-        onCreate={createAndOpen}
+      <ExperimentLaunchModeDialog
+        open={activeDialog === 'launch'}
+        locale={locale}
+        onClose={() => setActiveDialog(null)}
+        onSelectMode={(mode) => {
+          setActiveDialog(mode === 'copilot' ? 'copilot' : 'autonomous')
+        }}
       />
-
       <OpenQuestDialog
-        open={questDialogOpen}
+        open={activeDialog === 'quests'}
         quests={quests}
         loading={questsLoading}
-        error={questError}
-        onClose={() => setQuestDialogOpen(false)}
+        error={questsError}
+        deletingQuestId={deletingQuestId}
+        onClose={() => setActiveDialog(null)}
         onOpenQuest={(questId) => {
-          setQuestDialogOpen(false)
+          setActiveDialog(null)
           navigate(`/projects/${questId}`)
         }}
-        onDeleteQuest={deleteQuest}
-        deletingQuestId={deletingQuestId}
+        onDeleteQuest={async (questId) => {
+          setDeletingQuestId(questId)
+          try {
+            await client.deleteQuest(questId)
+            setQuests((current) => current.filter((item) => item.quest_id !== questId))
+            setQuestsError(null)
+          } catch (caught) {
+            setQuestsError(caught instanceof Error ? caught.message : 'Failed to delete quest.')
+          } finally {
+            setDeletingQuestId(null)
+          }
+        }}
+      />
+      <CreateCopilotProjectDialog
+        open={activeDialog === 'copilot'}
+        onClose={() => setActiveDialog(null)}
+        onBack={() => setActiveDialog('launch')}
+        onCreated={(questId) => {
+          setActiveDialog(null)
+          navigate(`/projects/${questId}`)
+        }}
+      />
+      <CreateProjectDialog
+        open={activeDialog === 'autonomous'}
+        onClose={() => setActiveDialog(null)}
+        onBack={() => setActiveDialog('launch')}
+        loading={autonomousCreating}
+        error={autonomousError}
+        onCreate={async (payload) => {
+          if (!payload.goal.trim()) {
+            return
+          }
+          setAutonomousCreating(true)
+          setAutonomousError(null)
+          try {
+            const result = await client.createQuestWithOptions({
+              goal: payload.goal.trim(),
+              title: payload.title.trim() || undefined,
+              quest_id: payload.quest_id?.trim() || undefined,
+              source: 'web-react',
+              auto_start: true,
+              initial_message: payload.goal.trim(),
+              auto_bind_latest_connectors: false,
+              requested_connector_bindings: payload.requested_connector_bindings,
+              requested_baseline_ref: payload.requested_baseline_ref ?? undefined,
+              startup_contract: payload.startup_contract ?? undefined,
+            })
+            setActiveDialog(null)
+            navigate(`/projects/${result.snapshot.quest_id}`)
+          } catch (caught) {
+            setAutonomousError(caught instanceof Error ? caught.message : 'Failed to create quest.')
+          } finally {
+            setAutonomousCreating(false)
+          }
+        }}
       />
       <UpdateReminderDialog />
       <EntryCoachDialog

@@ -6,22 +6,21 @@ import remarkGfm from 'remark-gfm'
 import {
   Brain,
   ChevronDown,
-  Sparkles,
   User2,
 } from 'lucide-react'
 
-import { AgentCommentBlock } from '@/components/feed/AgentCommentBlock'
 import { Badge } from '@/components/ui/badge'
 import { LogoIcon } from '@/components/ui/workspace-icons'
 import { findLatestRenderedOperationId, mergeFeedItemsForRender } from '@/lib/feedOperations'
+import { useI18n } from '@/lib/i18n/useI18n'
 import { deriveMcpIdentity } from '@/lib/mcpIdentity'
 import OrbitLogoStatus from '@/lib/plugins/ai-manus/components/OrbitLogoStatus'
 import { ThinkingIndicator } from '@/lib/plugins/ai-manus/components/ThinkingIndicator'
-import { useTokenStream } from '@/lib/plugins/ai-manus/hooks/useTokenStream'
 import { ChatScrollProvider } from '@/lib/plugins/ai-manus/lib/chat-scroll-context'
 import { buildStudioTurns, type StudioTurn, type StudioTurnBlock } from '@/lib/studioTurns'
 import { useAutoFollowScroll } from '@/lib/useAutoFollowScroll'
-import type { FeedItem, QuestSummary } from '@/types'
+import { cn } from '@/lib/utils'
+import type { AgentComment, FeedItem, QuestSummary } from '@/types'
 import { QuestBashExecOperation } from './QuestBashExecOperation'
 import { StudioToolCard } from './StudioToolCards'
 
@@ -65,21 +64,22 @@ function EmptyState({
   connectionState: QuestStudioDirectTimelineProps['connectionState']
   emptyLabel: string
 }) {
+  const { t } = useI18n('workspace')
   const statusLabel =
     restoring || loading
-      ? 'Restoring recent Studio trace…'
+      ? t('copilot_trace_restoring')
       : connectionState === 'reconnecting'
-        ? 'Studio trace reconnecting…'
+        ? t('copilot_trace_reconnecting')
         : connectionState === 'connecting'
-          ? 'Connecting to Studio trace…'
+          ? t('copilot_trace_connecting')
           : connectionState === 'error'
-            ? 'Studio trace is temporarily unavailable.'
+            ? t('copilot_trace_unavailable')
             : emptyLabel
 
   return (
-    <div className="flex min-h-[280px] items-center justify-center rounded-[28px] border border-dashed border-black/[0.08] px-6 py-10 dark:border-white/[0.10]">
+    <div className="flex min-h-[240px] items-center justify-center rounded-[16px] border border-dashed border-black/[0.08] px-6 py-10 dark:border-white/[0.10]">
       <div className="max-w-sm text-center">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-[20px] border border-black/10 bg-white/[0.85] dark:border-white/[0.12] dark:bg-white/[0.05]">
+        <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-[12px] border border-black/10 bg-white/[0.85] dark:border-white/[0.12] dark:bg-white/[0.05]">
           <OrbitLogoStatus compact sizePx={28} toolCount={0} resetKey={statusLabel} />
         </div>
         <div className="text-sm font-medium text-foreground">{statusLabel}</div>
@@ -89,7 +89,7 @@ function EmptyState({
           </div>
         ) : (
           <div className="mt-2 text-xs text-muted-foreground">
-            Assistant text, tool calls, and durable artifacts will appear here as a conversation timeline.
+            {t('copilot_trace_empty_description')}
           </div>
         )}
       </div>
@@ -97,30 +97,95 @@ function EmptyState({
   )
 }
 
+function normalizeInlinePreview(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function humanizeEventLabel(value: string) {
+  const normalized = String(value || '')
+    .replace(/[._]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!normalized) return ''
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+}
+
+function InlineCommentDetails({
+  comment,
+  className,
+}: {
+  comment?: AgentComment | null
+  className?: string
+}) {
+  const { t } = useI18n('workspace')
+  if (!comment) {
+    return null
+  }
+
+  const entries = [
+    comment.summary ? { label: t('copilot_trace_summary'), value: comment.summary } : null,
+    comment.whyNow ? { label: t('copilot_trace_why_now'), value: comment.whyNow } : null,
+    comment.next ? { label: t('copilot_trace_next'), value: comment.next } : null,
+  ].filter(Boolean) as Array<{ label: string; value: string }>
+  const risks = Array.isArray(comment.risks) ? comment.risks.filter(Boolean) : []
+  const monitorLabel = [comment.checkStage, comment.checkAfterSeconds ? `next ${comment.checkAfterSeconds}s` : '']
+    .filter(Boolean)
+    .join(' · ')
+
+  if (entries.length === 0 && risks.length === 0 && !monitorLabel) {
+    return null
+  }
+
+  return (
+    <div
+      className={cn(
+        'border-l border-black/[0.08] pl-3 text-[11px] leading-5 text-muted-foreground dark:border-white/[0.10]',
+        className
+      )}
+    >
+      {entries.length > 0 ? (
+        <div className="space-y-1">
+          {entries.map((entry) => (
+            <div key={entry.label} className="break-words [overflow-wrap:anywhere]">
+              <span className="font-medium text-foreground">{entry.label}:</span> {entry.value}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {monitorLabel ? <div className={cn(entries.length > 0 && 'mt-1.5')}>{monitorLabel}</div> : null}
+      {risks.length > 0 ? (
+        <div
+          className={cn(
+            'flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.08em]',
+            (entries.length > 0 || monitorLabel) && 'mt-1.5'
+          )}
+        >
+          {risks.map((risk) => (
+            <span key={risk} className="rounded-full border border-black/[0.08] px-2 py-0.5 dark:border-white/[0.10]">
+              {risk}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function StreamMarkdownBlock({
   content,
-  contentKey,
-  animateText,
-  mode = 'assistant',
+  streaming,
   className,
 }: {
   content: string
-  contentKey: string
-  animateText: boolean
-  mode?: 'assistant' | 'reasoning'
+  streaming: boolean
   className: string
 }) {
-  const contentRef = React.useRef<HTMLDivElement | null>(null)
-
-  useTokenStream({
-    ref: contentRef,
-    active: animateText,
-    contentKey,
-    mode,
-  })
+  if (streaming) {
+    return <div className={cn(className, 'whitespace-pre-wrap font-normal')}>{content}</div>
+  }
 
   return (
-    <div ref={contentRef} className={className}>
+    <div className={className}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
     </div>
   )
@@ -128,18 +193,15 @@ function StreamMarkdownBlock({
 
 function StudioMessageBlock({
   block,
-  animateText,
 }: {
   block: Extract<StudioTurnBlock, { kind: 'message' }>
-  animateText: boolean
 }) {
   return (
-    <div className="min-w-0 overflow-hidden rounded-[24px] border border-black/[0.06] bg-white/[0.90] px-4 py-3 shadow-[0_16px_36px_-34px_rgba(17,24,39,0.18)] dark:border-white/[0.08] dark:bg-white/[0.05]">
+    <div className="min-w-0 overflow-hidden pl-0.5">
       <StreamMarkdownBlock
         content={block.item.content || ''}
-        contentKey={`${block.id}:${block.item.content || ''}`}
-        animateText={animateText}
-        className="ds-copilot-markdown prose prose-sm max-w-none break-words [overflow-wrap:anywhere] leading-7 text-foreground dark:prose-invert"
+        streaming={Boolean(block.item.stream)}
+        className="ds-copilot-markdown prose prose-sm prose-p:my-0 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1.5 prose-pre:rounded-md prose-pre:px-3 prose-pre:py-2 prose-code:text-[12px] max-w-none break-words text-[12.5px] leading-[1.72] [overflow-wrap:anywhere] text-foreground dark:prose-invert"
       />
     </div>
   )
@@ -147,38 +209,42 @@ function StudioMessageBlock({
 
 function StudioReasoningBlock({
   block,
-  animateText,
 }: {
   block: Extract<StudioTurnBlock, { kind: 'reasoning' }>
-  animateText: boolean
 }) {
+  const { t } = useI18n('workspace')
   if (!block.item.content.trim()) {
     return null
   }
+  const preview = normalizeInlinePreview(block.item.content).slice(0, 132)
   return (
     <details
-      className="group min-w-0 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[linear-gradient(180deg,rgba(251,249,244,0.88),rgba(244,239,233,0.94))] dark:border-white/[0.08] dark:bg-[linear-gradient(180deg,rgba(40,42,48,0.84),rgba(30,33,39,0.92))]"
-      open={Boolean(block.item.stream)}
+      className="group min-w-0 overflow-hidden border-l border-[rgba(165,146,132,0.45)] pl-3 dark:border-[rgba(183,165,154,0.32)]"
     >
-      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-medium text-foreground [&::-webkit-details-marker]:hidden">
-        <div className="flex h-8 w-8 items-center justify-center rounded-[14px] border border-black/10 bg-[rgba(183,165,154,0.12)] dark:border-white/[0.12] dark:bg-[rgba(183,165,154,0.16)]">
-          <Brain className="h-4 w-4" />
+      <summary className="flex cursor-pointer list-none items-start gap-2 py-0.5 text-[12px] text-foreground [&::-webkit-details-marker]:hidden">
+        <div className="mt-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-sm bg-[rgba(183,165,154,0.12)] dark:bg-[rgba(183,165,154,0.16)]">
+          <Brain className="h-3.5 w-3.5" />
         </div>
         <div className="min-w-0 flex-1">
-          <div>Thinking</div>
-          <div className="text-xs font-normal text-muted-foreground">
-            {block.item.stream ? 'Streaming reasoning' : 'Reasoning trace'}
+          <div className="font-medium leading-4">
+            {t('copilot_trace_thinking')}
+            {block.item.stream ? (
+              <span className="ml-2 text-[10.5px] font-normal text-muted-foreground">
+                {t('copilot_trace_streaming')}
+              </span>
+            ) : null}
+          </div>
+          <div className="truncate pt-0.5 text-[11px] font-normal text-muted-foreground">
+            {preview || t('copilot_trace_reasoning')}
           </div>
         </div>
-        <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+        <ChevronDown className="mt-0.5 h-4 w-4 transition-transform group-open:rotate-180" />
       </summary>
-      <div className="border-t border-black/[0.05] px-4 py-3 dark:border-white/[0.06]">
+      <div className="pt-2">
         <StreamMarkdownBlock
           content={block.item.content}
-          contentKey={`${block.id}:${block.item.content}`}
-          animateText={animateText}
-          mode="reasoning"
-          className="ds-copilot-markdown prose prose-sm max-w-none break-words [overflow-wrap:anywhere] leading-7 text-foreground dark:prose-invert"
+          streaming={Boolean(block.item.stream)}
+          className="ds-copilot-markdown prose prose-sm prose-p:my-0 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1.5 prose-pre:rounded-md prose-pre:px-3 prose-pre:py-2 prose-code:text-[11px] max-w-none break-words text-[12px] leading-[1.65] [overflow-wrap:anywhere] text-foreground dark:prose-invert"
         />
       </div>
     </details>
@@ -229,39 +295,40 @@ function StudioOperationBlock({
 }
 
 function StudioArtifactBlock({ block }: { block: Extract<StudioTurnBlock, { kind: 'artifact' }> }) {
+  const { t } = useI18n('workspace')
   const item = block.item
   const detailEntries = Object.entries(item.details ?? {}).filter(([, value]) => value != null && value !== '')
 
   return (
-    <div className="min-w-0 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[rgba(159,177,194,0.14)] px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.05]">
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-        <span className="font-medium text-foreground">{item.kind}</span>
-        {item.status ? <Badge>{item.status}</Badge> : null}
-        {item.flowType ? <Badge>{item.flowType}</Badge> : null}
+    <div className="min-w-0 overflow-hidden border-l border-[rgba(121,145,182,0.45)] pl-3 dark:border-[rgba(121,145,182,0.34)]">
+      <div className="flex flex-wrap items-center gap-2 text-[11px] leading-4 text-muted-foreground">
+        <span className="font-medium uppercase tracking-[0.08em] text-foreground">{item.kind}</span>
+        {item.status ? <span>{item.status}</span> : null}
+        {item.flowType ? <span>{item.flowType}</span> : null}
         {item.createdAt ? <span className="ml-auto">{formatTime(item.createdAt)}</span> : null}
       </div>
 
-      <div className="mt-2 break-words text-sm leading-7 text-foreground [overflow-wrap:anywhere]">
+      <div className="mt-1 break-words text-[12.5px] leading-[1.72] text-foreground [overflow-wrap:anywhere]">
         {item.content}
       </div>
 
       {item.reason ? (
-        <div className="mt-2 break-words text-xs leading-6 text-muted-foreground [overflow-wrap:anywhere]">
-          <span className="font-medium text-foreground">Reason.</span> {item.reason}
+        <div className="mt-1 break-words text-[12px] leading-[1.6] text-muted-foreground [overflow-wrap:anywhere]">
+          <span className="font-medium text-foreground">{t('copilot_connector_reason')}:</span> {item.reason}
         </div>
       ) : null}
 
       {item.guidance ? (
-        <div className="mt-1 break-words text-xs leading-6 text-muted-foreground [overflow-wrap:anywhere]">
-          <span className="font-medium text-foreground">Next.</span> {item.guidance}
+        <div className="mt-1 break-words text-[12px] leading-[1.6] text-muted-foreground [overflow-wrap:anywhere]">
+          <span className="font-medium text-foreground">{t('copilot_trace_next')}:</span> {item.guidance}
         </div>
       ) : null}
 
-      {item.comment ? <AgentCommentBlock comment={item.comment} className="mt-3" /> : null}
+      <InlineCommentDetails comment={item.comment} className="mt-2" />
 
       {detailEntries.length > 0 ? (
-        <div className="mt-3 rounded-[18px] border border-black/[0.05] bg-white/[0.70] px-3 py-3 text-xs leading-6 text-muted-foreground dark:border-white/[0.06] dark:bg-white/[0.03]">
-          <div className="font-medium text-foreground">Details</div>
+        <div className="mt-2 border-l border-black/[0.08] pl-3 text-[12px] leading-[1.6] text-muted-foreground dark:border-white/[0.10]">
+          <div className="font-medium text-foreground">{t('copilot_trace_details')}</div>
           <div className="mt-1 space-y-1">
             {detailEntries.slice(0, 8).map(([key, value]) => (
               <div key={key} className="break-words [overflow-wrap:anywhere]">
@@ -278,13 +345,12 @@ function StudioArtifactBlock({ block }: { block: Extract<StudioTurnBlock, { kind
 
 function StudioEventBlock({ block }: { block: Extract<StudioTurnBlock, { kind: 'event' }> }) {
   const item = block.item
+  const label = humanizeEventLabel(item.label)
+  const text = [label, item.content ? item.content.trim() : ''].filter(Boolean).join(' · ')
   return (
-    <div className="mx-auto inline-flex max-w-full flex-wrap items-center gap-2 rounded-full border border-black/[0.06] bg-white/[0.82] px-3 py-1.5 text-xs text-muted-foreground dark:border-white/[0.08] dark:bg-white/[0.05]">
-      <Sparkles className="h-3.5 w-3.5" />
-      <span className="font-medium text-foreground">{item.label}</span>
-      {item.content ? (
-        <span className="min-w-0 break-words [overflow-wrap:anywhere]">{item.content}</span>
-      ) : null}
+    <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-black/[0.06] px-3 py-1 text-[11px] text-muted-foreground dark:border-white/[0.10]">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-black/[0.35] dark:bg-white/[0.35]" />
+      <span className="truncate">{text}</span>
     </div>
   )
 }
@@ -293,14 +359,10 @@ function AssistantTurn({
   questId,
   turn,
   latestOperationId,
-  latestAnimatedBlockId,
-  streaming,
 }: {
   questId: string
   turn: StudioTurn
   latestOperationId: string | null
-  latestAnimatedBlockId: string | null
-  streaming: boolean
 }) {
   const hasStreamingMessage = turn.blocks.some(
     (block) =>
@@ -310,12 +372,12 @@ function AssistantTurn({
 
   return (
     <div className="flex min-w-0 items-start gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[18px] border border-black/10 bg-white/[0.90] dark:border-white/[0.12] dark:bg-white/[0.05]">
-        <LogoIcon size={24} />
+      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border border-black/10 bg-white/[0.90] dark:border-white/[0.12] dark:bg-white/[0.05]">
+        <LogoIcon size={14} />
       </div>
 
-      <div className="min-w-0 flex-1 space-y-3">
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+      <div className="min-w-0 flex-1 space-y-2.5">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] leading-4 text-muted-foreground">
           <span className="font-medium text-foreground">@DeepScientist</span>
           {turn.skillId ? <Badge className="bg-black/[0.03] dark:bg-white/[0.04]">{turn.skillId}</Badge> : null}
           {hasStreamingMessage ? (
@@ -326,22 +388,10 @@ function AssistantTurn({
 
         {turn.blocks.map((block) => {
           if (block.kind === 'message') {
-            return (
-              <StudioMessageBlock
-                key={block.id}
-                block={block}
-                animateText={latestAnimatedBlockId === block.id && Boolean(streaming || block.item.stream)}
-              />
-            )
+            return <StudioMessageBlock key={block.id} block={block} />
           }
           if (block.kind === 'reasoning') {
-            return (
-              <StudioReasoningBlock
-                key={block.id}
-                block={block}
-                animateText={latestAnimatedBlockId === block.id && Boolean(streaming || block.item.stream)}
-              />
-            )
+            return <StudioReasoningBlock key={block.id} block={block} />
           }
           if (block.kind === 'operation') {
             return (
@@ -366,28 +416,25 @@ function AssistantTurn({
 }
 
 function UserTurn({ turn }: { turn: StudioTurn }) {
+  const { t } = useI18n('workspace')
   const messageBlock = turn.blocks.find((block) => block.kind === 'message')
   if (!messageBlock || messageBlock.kind !== 'message') {
     return null
   }
 
   return (
-    <div className="flex justify-end">
-      <div className="flex min-w-0 max-w-[92%] items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
-            {turn.createdAt ? <span>{formatTime(turn.createdAt)}</span> : null}
-            <span className="font-medium text-foreground">You</span>
-          </div>
-          <div className="min-w-0 overflow-hidden rounded-[24px] bg-[#2F3437] px-4 py-3 text-sm leading-7 text-white shadow-[0_18px_42px_-34px_rgba(17,24,39,0.3)]">
-            <div className="ds-copilot-markdown prose prose-sm max-w-none whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-7 text-white prose-invert">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{messageBlock.item.content || ''}</ReactMarkdown>
-            </div>
-          </div>
-        </div>
+    <div className="flex min-w-0 items-start gap-3 border-l border-[#2F3437]/18 pl-3 dark:border-white/[0.10]">
+      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border border-black/10 bg-white/[0.90] dark:border-white/[0.12] dark:bg-white/[0.05]">
+        <User2 className="h-3.5 w-3.5" />
+      </div>
 
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[18px] border border-black/10 bg-white/[0.90] dark:border-white/[0.12] dark:bg-white/[0.05]">
-          <User2 className="h-4 w-4" />
+      <div className="min-w-0 flex-1">
+        <div className="mb-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+          <span className="font-medium text-foreground">{t('copilot_connector_you')}</span>
+          {turn.createdAt ? <span>{formatTime(turn.createdAt)}</span> : null}
+        </div>
+        <div className="ds-copilot-markdown prose prose-sm prose-p:my-0 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1.5 prose-pre:rounded-md prose-pre:px-3 prose-pre:py-2 prose-code:text-[12px] max-w-none whitespace-pre-wrap break-words text-[12.5px] leading-[1.72] [overflow-wrap:anywhere] text-foreground dark:prose-invert">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{messageBlock.item.content || ''}</ReactMarkdown>
         </div>
       </div>
     </div>
@@ -422,6 +469,7 @@ export function QuestStudioDirectTimeline({
   emptyLabel = 'Copilot trace appears here.',
   bottomInset = 28,
 }: QuestStudioDirectTimelineProps) {
+  const { t } = useI18n('workspace')
   const turns = React.useMemo(() => buildStudioTurns(feed), [feed])
   const latestOperationId = React.useMemo(
     () => findLatestRenderedOperationId(mergeFeedItemsForRender(feed)),
@@ -434,22 +482,6 @@ export function QuestStudioDirectTimeline({
     scrollHeight: 0,
     scrollTop: 0,
   })
-  const latestAnimatedBlockId = React.useMemo(() => {
-    for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
-      const turn = turns[turnIndex]
-      if (turn.role !== 'assistant') continue
-      for (let blockIndex = turn.blocks.length - 1; blockIndex >= 0; blockIndex -= 1) {
-        const block = turn.blocks[blockIndex]
-        if (
-          (block.kind === 'message' || block.kind === 'reasoning') &&
-          block.item.content.trim()
-        ) {
-          return block.id
-        }
-      }
-    }
-    return null
-  }, [turns])
   const { isNearBottom } = useAutoFollowScroll({
     scrollRef: listRef,
     contentRef,
@@ -488,7 +520,7 @@ export function QuestStudioDirectTimeline({
       <ChatScrollProvider value={{ isNearBottom }}>
         <div
           ref={listRef}
-          className="feed-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto pr-1"
+          className="feed-scrollbar flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto pr-1"
           style={{ paddingBottom: bottomInset }}
           onWheel={(event) => {
             const root = listRef.current
@@ -498,7 +530,7 @@ export function QuestStudioDirectTimeline({
             void handleLoadOlderHistory()
           }}
         >
-          <div ref={contentRef} className="flex min-w-0 flex-col gap-4">
+          <div ref={contentRef} className="flex min-w-0 flex-col gap-5">
             {hasOlderHistory ? (
               <div className="flex justify-center">
                 <button
@@ -507,7 +539,9 @@ export function QuestStudioDirectTimeline({
                   disabled={loadingOlderHistory}
                   onClick={() => void handleLoadOlderHistory()}
                 >
-                  {loadingOlderHistory ? 'Loading older updates...' : 'Load older updates'}
+                  {loadingOlderHistory
+                    ? t('copilot_trace_loading_older', undefined, 'Loading older updates...')
+                    : t('copilot_trace_load_older', undefined, 'Load older updates')}
                 </button>
               </div>
             ) : null}
@@ -516,7 +550,7 @@ export function QuestStudioDirectTimeline({
                 loading={loading}
                 restoring={restoring}
                 connectionState={connectionState}
-                emptyLabel={emptyLabel}
+                emptyLabel={emptyLabel || t('copilot_studio_empty', undefined, 'Copilot trace appears here.')}
               />
             ) : (
               turns.map((turn) => {
@@ -532,8 +566,6 @@ export function QuestStudioDirectTimeline({
                     questId={questId}
                     turn={turn}
                     latestOperationId={latestOperationId}
-                    latestAnimatedBlockId={latestAnimatedBlockId}
-                    streaming={streaming}
                   />
                 )
               })

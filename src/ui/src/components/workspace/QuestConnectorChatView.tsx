@@ -3,18 +3,18 @@
 import * as React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ArrowUp, Check, CheckCheck, Loader2, Slash, Square, TriangleAlert } from 'lucide-react'
+import { Check, CheckCheck, Loader2, TriangleAlert } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/toast'
 import { useI18n } from '@/lib/i18n/useI18n'
+import type { CopilotPrefill } from '@/lib/plugins/ai-manus/view-types'
 import { useTokenStream } from '@/lib/plugins/ai-manus/hooks/useTokenStream'
 import { ChatScrollProvider } from '@/lib/plugins/ai-manus/lib/chat-scroll-context'
 import { buildQuestTranscriptMessages } from '@/lib/questTranscript'
 import { useAutoFollowScroll } from '@/lib/useAutoFollowScroll'
 import { cn } from '@/lib/utils'
 import type { FeedItem } from '@/types'
+import { QuestCopilotComposer } from './QuestCopilotComposer'
 import { QuestCopilotPaneLayout } from './QuestCopilotPaneLayout'
 
 type ConnectorCommand = {
@@ -38,6 +38,7 @@ type QuestConnectorChatViewProps = {
   onLoadOlderHistory?: () => Promise<void>
   onSubmit: (message: string) => Promise<void>
   onStopRun: () => Promise<void>
+  prefill?: CopilotPrefill | null
 }
 
 type ConnectorMessage = {
@@ -119,8 +120,8 @@ function MessageBubble({
           isUser
             ? 'bg-[#2F3437] text-white'
             : item.emphasis === 'artifact'
-              ? 'bg-[rgba(159,177,194,0.16)] text-foreground dark:bg-white/[0.06] dark:text-white/90'
-              : 'bg-white/[0.88] text-foreground dark:bg-white/[0.06] dark:text-white/90'
+              ? 'border border-black/[0.05] bg-[rgba(159,177,194,0.12)] text-foreground dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-white/90'
+              : 'border border-black/[0.05] bg-[rgba(255,251,246,0.9)] text-foreground dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-white/90'
         )}
       >
         {item.badge && isAssistant ? (
@@ -131,7 +132,7 @@ function MessageBubble({
         <div
           ref={contentRef}
           className={cn(
-            'ds-copilot-markdown prose prose-sm max-w-none whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-6',
+            'ds-copilot-markdown prose prose-sm max-w-none whitespace-pre-wrap break-words text-[12.5px] leading-[1.68] [overflow-wrap:anywhere]',
             isUser ? 'prose-invert text-white' : 'text-foreground dark:prose-invert'
           )}
         >
@@ -164,15 +165,16 @@ export function QuestConnectorChatView({
   onLoadOlderHistory,
   onSubmit,
   onStopRun,
+  prefill = null,
 }: QuestConnectorChatViewProps) {
   const { t } = useI18n('workspace')
   const { addToast } = useToast()
   const [input, setInput] = React.useState('')
   const [submitting, setSubmitting] = React.useState(false)
-  const composerRef = React.useRef<HTMLTextAreaElement | null>(null)
   const listRef = React.useRef<HTMLDivElement | null>(null)
   const contentRef = React.useRef<HTMLDivElement | null>(null)
   const chatMessages = React.useMemo(() => buildQuestConnectorMessages(feed), [feed])
+  const displayMessages = chatMessages
   const latestAnimatedMessageId = React.useMemo(() => {
     for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
       const item = chatMessages[index]
@@ -193,21 +195,6 @@ export function QuestConnectorChatView({
     scrollTop: 0,
   })
 
-  const filteredCommands = React.useMemo(() => {
-    const raw = input.trimStart()
-    if (!raw.startsWith('/')) return []
-    const query = raw.slice(1).toLowerCase()
-    return slashCommands
-      .filter((item) => {
-        if (!query) return true
-        return (
-          item.name.toLowerCase().includes(query) ||
-          (item.description || '').toLowerCase().includes(query)
-        )
-      })
-      .slice(0, 6)
-  }, [input, slashCommands])
-
   const handleSubmit = React.useCallback(async () => {
     const trimmed = input.trim()
     if (!trimmed || submitting) return
@@ -215,7 +202,6 @@ export function QuestConnectorChatView({
     try {
       await onSubmit(trimmed)
       setInput('')
-      composerRef.current?.focus()
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught)
       addToast({
@@ -241,6 +227,16 @@ export function QuestConnectorChatView({
       })
     }
   }, [addToast, onStopRun, stopping, t])
+
+  React.useEffect(() => {
+    if (!prefill?.text) return
+    setInput((current) => {
+      const trimmed = current.trim()
+      if (!trimmed) return prefill.text
+      if (trimmed.includes(prefill.text)) return current
+      return `${current.replace(/\s*$/, '')}\n\n${prefill.text}`
+    })
+  }, [prefill])
 
   const handleLoadOlderHistory = React.useCallback(async () => {
     if (!hasOlderHistory || loadingOlderHistory || !onLoadOlderHistory) return
@@ -269,89 +265,46 @@ export function QuestConnectorChatView({
     prependAnchorRef.current.active = false
   }, [chatMessages.length, loadingOlderHistory])
 
+  const statusLine = React.useMemo(() => {
+    if (error) {
+      return error
+    }
+    if (restoring || loading) {
+      return t('copilot_quest_status_restoring')
+    }
+    if (connectionState === 'connecting') {
+      return t('copilot_quest_status_connecting')
+    }
+    if (connectionState === 'reconnecting') {
+      return t('copilot_quest_status_reconnecting')
+    }
+    if (streaming || activeToolCount > 0) {
+      return activeToolCount > 0
+        ? t('copilot_quest_status_working_tools', { count: activeToolCount })
+        : t('copilot_quest_status_working')
+    }
+    return undefined
+  }, [activeToolCount, connectionState, error, loading, restoring, streaming, t])
+
   return (
     <QuestCopilotPaneLayout
-      statusLine={connectionState !== 'connected' || error ? error || connectionState : undefined}
+      statusLine={statusLine}
       footer={
-        <div className="relative">
-          {filteredCommands.length > 0 ? (
-            <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-2xl border border-black/[0.08] bg-white/[0.92] shadow-[0_18px_42px_-34px_rgba(17,24,39,0.22)] dark:border-white/[0.10] dark:bg-[rgba(34,37,44,0.92)]">
-              {filteredCommands.map((item) => (
-                <button
-                  key={item.name}
-                  type="button"
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
-                  onClick={() => {
-                    setInput(`/${item.name} `)
-                    composerRef.current?.focus()
-                  }}
-                >
-                  <Slash className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="font-medium">/{item.name}</span>
-                  {item.description ? (
-                    <span className="ml-auto line-clamp-1 text-xs text-muted-foreground">
-                      {item.description}
-                    </span>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          <Textarea
-            ref={composerRef}
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if ((event.nativeEvent as any)?.isComposing) {
-                return
-              }
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault()
-                void handleSubmit()
-              }
-            }}
-            rows={2}
-            className="min-h-[56px] resize-none rounded-2xl border border-black/[0.08] bg-white/[0.9] px-4 py-3 shadow-sm focus-visible:ring-0 dark:border-white/[0.10] dark:bg-white/[0.05]"
-            placeholder={t('copilot_connector_placeholder')}
-          />
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <div className="text-[11px] text-muted-foreground">{t('copilot_connector_enter_hint')}</div>
-            <div className="flex items-center gap-2">
-              {showStopButton || stopping ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-full"
-                  disabled={stopping}
-                  onClick={() => void handleStop()}
-                >
-                  {stopping ? (
-                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Square className="mr-2 h-3.5 w-3.5" />
-                  )}
-                  {t('copilot_stop')}
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                size="sm"
-                className="h-8 rounded-full"
-                disabled={!input.trim() || submitting}
-                onClick={() => void handleSubmit()}
-              >
-                {submitting ? (
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ArrowUp className="mr-2 h-3.5 w-3.5" />
-                )}
-                {t('copilot_send')}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <QuestCopilotComposer
+          value={input}
+          onValueChange={setInput}
+          onSubmit={handleSubmit}
+          onStop={handleStop}
+          submitting={submitting}
+          stopping={stopping}
+          showStopButton={showStopButton}
+          slashCommands={slashCommands}
+          placeholder={t('copilot_connector_placeholder')}
+          enterHint={t('copilot_connector_enter_hint')}
+          sendLabel={t('copilot_send')}
+          stopLabel={t('copilot_stop')}
+          focusToken={prefill?.focus ? prefill.token : null}
+        />
       }
     >
       {({ bottomInset }) => (
@@ -380,30 +333,32 @@ export function QuestConnectorChatView({
                     disabled={loadingOlderHistory}
                     onClick={() => void handleLoadOlderHistory()}
                   >
-                    {loadingOlderHistory ? 'Loading older updates...' : 'Load older updates'}
+                    {loadingOlderHistory
+                      ? t('copilot_trace_loading_older', undefined, 'Loading older updates...')
+                      : t('copilot_trace_load_older', undefined, 'Load older updates')}
                   </button>
                 </div>
               ) : null}
+              {displayMessages.map((item) => (
+                <MessageBubble
+                  key={item.id}
+                  item={item}
+                  animateText={
+                    item.role === 'assistant' &&
+                    latestAnimatedMessageId === item.id &&
+                    Boolean(item.streaming || streaming)
+                  }
+                />
+              ))}
+
               {chatMessages.length === 0 ? (
-                <div className="flex min-h-full items-center justify-center text-sm text-muted-foreground">
+                <div className="pl-1 text-xs text-muted-foreground">
                   {restoring || loading ? t('copilot_connector_restoring') : t('copilot_connector_ready')}
                 </div>
-              ) : (
-                chatMessages.map((item) => (
-                  <MessageBubble
-                    key={item.id}
-                    item={item}
-                    animateText={
-                      item.role === 'assistant' &&
-                      latestAnimatedMessageId === item.id &&
-                      Boolean(item.streaming || streaming)
-                    }
-                  />
-                ))
-              )}
+              ) : null}
 
               {(loading || restoring) && chatMessages.length === 0 ? (
-                <div className="flex justify-center py-4">
+                <div className="flex justify-start py-1 pl-1">
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                 </div>
               ) : null}

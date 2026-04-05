@@ -7,6 +7,7 @@ export type WorkspaceLeftVisibilityDetail = {
 }
 
 export type QuestStageSelection = {
+  quest_id?: string | null
   selection_ref?: string | null
   selection_type?: string | null
   branch_name?: string | null

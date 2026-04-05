@@ -3890,11 +3890,11 @@ function LabQuestGraphCanvasInner({
                   ? clampCanvasText(String(decisionPayload.justification), 80)
                   : node.branch_name
               : node.stage_title || node.branch_name
-            : isBaselineRoot
-              ? node.status || null
+              : isBaselineRoot
+                ? node.status || null
               : isPlaceholder
                 ? t('quest_graph_next_step_placeholder', undefined, 'Next step')
-                : node.idea_title || branchInsight?.stageLabel || node.idea_id || 'Idea'
+                : node.idea_title || branchInsight?.stageLabel || node.idea_id || 'Branch'
         const nodeStatus =
           viewMode === 'branch'
             ? isPlaceholder

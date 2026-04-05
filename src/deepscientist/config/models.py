@@ -38,6 +38,7 @@ def default_config(home: Path) -> dict:
         "ui": {
             "host": "0.0.0.0",
             "port": 20999,
+            "auth_enabled": False,
             "auto_open_browser": True,
             "default_mode": "web",
         },
@@ -96,7 +97,7 @@ def default_runners() -> dict:
             "binary": "codex",
             "config_dir": "~/.codex",
             "profile": "",
-            "model": "gpt-5.4",
+            "model": "inherit",
             "model_reasoning_effort": "xhigh",
             "approval_policy": "never",
             "sandbox_mode": "danger-full-access",

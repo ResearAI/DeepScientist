@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BashProgress } from '@/lib/types/bash'
 import { getApiBaseUrl } from '@/lib/api/client'
 import { refreshAccessToken } from '@/lib/api/auth'
-import { redirectToLanding } from '@/lib/navigation'
+import { handleUnauthorizedAuth, readRequestAuthContext, type RequestAuthMode } from '@/lib/auth'
 
 export type BashStreamConnectionState = {
   status: 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed' | 'error'
@@ -104,29 +104,15 @@ const buildAuthContext = () => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
-  let authMode: 'user' | 'none' = 'none'
-
-  if (typeof window === 'undefined') return { headers, authMode }
-
-  const userToken = window.localStorage.getItem('ds_access_token')
-
-  if (userToken) {
-    headers.Authorization = `Bearer ${userToken}`
-    authMode = 'user'
+  const { token, mode } = readRequestAuthContext()
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
   }
-
-  return { headers, authMode }
+  return { headers, authMode: mode }
 }
 
-const handleUnauthorized = (headers: Record<string, string>) => {
-  if (typeof window === 'undefined') return
-  const userToken = window.localStorage.getItem('ds_access_token')
-  const hasUserToken = Boolean(userToken)
-
-  if (hasUserToken) {
-    window.localStorage.removeItem('ds_access_token')
-    redirectToLanding('session_expired')
-  }
+const handleUnauthorized = (authMode: RequestAuthMode) => {
+  handleUnauthorizedAuth(authMode, 'session_expired')
 }
 
 export function useBashLogStream({
@@ -234,7 +220,7 @@ export function useBashLogStream({
             }
           }
           setConnection({ status: 'error', error: 'unauthorized' })
-          handleUnauthorized(headers)
+          handleUnauthorized(authMode)
           return
         }
 

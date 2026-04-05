@@ -1,6 +1,7 @@
 ---
 name: experiment
 description: Use when a quest is ready for a concrete implementation pass or a main experiment run tied to a selected idea and an accepted baseline.
+skill_role: stage
 ---
 
 # Experiment
@@ -42,6 +43,13 @@ Use this skill for the main evidence-producing runs of the quest.
 - Hard execution rule: every terminal command in this stage must go through `bash_exec`; do not use any other terminal path for smoke tests, real runs, Git, Python, package-manager, or file-inspection commands.
 - Prefer `bash_exec` for experiment commands so each run gets a durable session id, quest-local log folder, and later `read/list/kill` control.
 - For meaningful long-running runs, include the estimated next reply time or next check-in window whenever it is defensible.
+
+## Tool discipline
+
+- **Do not use native `shell_command` / `command_execution` in this skill.**
+- **All smoke tests, real runs, shell, CLI, Python, bash, node, git, npm, uv, and environment work must go through `bash_exec(...)`.**
+- **For git work inside the current quest repository or worktree, prefer `artifact.git(...)` before raw shell git commands.**
+- **If a scratch repository or isolated test environment is needed, create and drive it through `bash_exec(...)`, not native shell tools.**
 
 ## Stage purpose
 

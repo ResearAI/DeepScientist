@@ -619,19 +619,22 @@ function openBrowser(url: string) {
   spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref()
 }
 
-function buildProjectsUrl(baseUrl: string) {
+function buildProjectsUrl(baseUrl: string, authToken?: string | null) {
   const target = new URL(baseUrl)
   if (target.hostname === '0.0.0.0') {
     target.hostname = '127.0.0.1'
   }
   target.pathname = '/projects'
   target.search = ''
+  if (authToken) {
+    target.searchParams.set('token', authToken)
+  }
   return target.toString()
 }
 
-function buildProjectUrl(baseUrl: string, questId: string | null) {
+function buildProjectUrl(baseUrl: string, questId: string | null, authToken?: string | null) {
   if (!questId) {
-    return buildProjectsUrl(baseUrl)
+    return buildProjectsUrl(baseUrl, authToken)
   }
   const target = new URL(baseUrl)
   if (target.hostname === '0.0.0.0') {
@@ -639,12 +642,16 @@ function buildProjectUrl(baseUrl: string, questId: string | null) {
   }
   target.pathname = `/projects/${questId}`
   target.search = ''
+  if (authToken) {
+    target.searchParams.set('token', authToken)
+  }
   return target.toString()
 }
 
-export const AppContainer: React.FC<{ baseUrl: string; initialQuestId?: string | null }> = ({
+export const AppContainer: React.FC<{ baseUrl: string; initialQuestId?: string | null; authToken?: string | null }> = ({
   baseUrl,
   initialQuestId = null,
+  authToken = null,
 }) => {
   const { exit } = useApp()
   const [quests, setQuests] = useState<QuestSummary[]>([])
@@ -2860,7 +2867,7 @@ export const AppContainer: React.FC<{ baseUrl: string; initialQuestId?: string |
       return
     }
     if (key.ctrl && value.toLowerCase() === 'o') {
-      openBrowser(buildProjectUrl(baseUrl, activeQuestId || browseQuestId))
+      openBrowser(buildProjectUrl(baseUrl, activeQuestId || browseQuestId, authToken))
       return
     }
     if (key.ctrl && value.toLowerCase() === 'g') {

@@ -1,8 +1,8 @@
 import axios, { type AxiosError, type AxiosRequestConfig } from "axios";
-import { redirectToLanding } from "@/lib/navigation";
 import { toast } from "@/components/ui/toast";
 import { redactSensitive, sanitizeUrl, truncateText } from "@/lib/bugbash/sanitize";
 import { recordRequestEvent } from "@/lib/bugbash/repro-recorder";
+import { handleUnauthorizedAuth, readRequestAuthContext } from "@/lib/auth";
 
 /**
  * Resolve API base URL from environment or default configuration.
@@ -154,10 +154,9 @@ apiClient.interceptors.request.use((config) => {
     }
   }
   if (typeof window !== "undefined") {
-    const userToken = localStorage.getItem("ds_access_token");
-
-    if (userToken) {
-      config.headers.Authorization = `Bearer ${userToken}`;
+    const { token } = readRequestAuthContext();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
   }
   return config;
@@ -195,11 +194,9 @@ apiClient.interceptors.response.use(
 
     if (error.response?.status === 401) {
       if (typeof window !== "undefined") {
-        const userToken = localStorage.getItem("ds_access_token");
-        const hasUserToken = Boolean(userToken);
-        if (hasUserToken) {
-          localStorage.removeItem("ds_access_token");
-          redirectToLanding("session_expired");
+        const { mode } = readRequestAuthContext();
+        if (mode !== "none") {
+          handleUnauthorizedAuth(mode, "session_expired");
         }
       }
       return Promise.reject(error);

@@ -25,6 +25,37 @@ type QuestCopilotDockPanelProps = {
 
 type QuestCopilotMode = 'chat' | 'studio'
 
+function isParkedCopilotWorkspace(workspace: QuestWorkspaceState) {
+  const snapshot = workspace.snapshot
+  const workspaceMode = String(snapshot?.workspace_mode || '').trim().toLowerCase()
+  const continuationPolicy = String(snapshot?.continuation_policy || '').trim().toLowerCase()
+  const activeRunId = String(snapshot?.active_run_id || '').trim()
+  const bashRunningCount = Number(snapshot?.counts?.bash_running_count || 0)
+  const latestBashSession =
+    snapshot?.summary?.latest_bash_session &&
+    typeof snapshot.summary.latest_bash_session === 'object' &&
+    !Array.isArray(snapshot.summary.latest_bash_session)
+      ? snapshot.summary.latest_bash_session
+      : null
+  const latestBashKind = String((latestBashSession as Record<string, unknown> | null)?.kind || '')
+    .trim()
+    .toLowerCase()
+  const latestBashId = String((latestBashSession as Record<string, unknown> | null)?.bash_id || '')
+    .trim()
+  return (
+    workspaceMode === 'copilot' &&
+    continuationPolicy === 'wait_for_user_or_resume' &&
+    !activeRunId &&
+    !workspace.loading &&
+    !workspace.restoring &&
+    !workspace.error &&
+    (bashRunningCount === 0 ||
+      (bashRunningCount === 1 &&
+        latestBashKind === 'terminal' &&
+        (latestBashId === '' || latestBashId === 'terminal-main')))
+  )
+}
+
 function resolveStatusText(args: {
   loading: boolean
   restoring: boolean
@@ -34,9 +65,10 @@ function resolveStatusText(args: {
   activeToolCount: number
   connectionState: 'connecting' | 'connected' | 'reconnecting' | 'error'
   snapshotStatus?: string | null
+  readyLabel?: string | null
   t: (key: string, variables?: Record<string, string | number>, fallback?: string) => string
 }) {
-  const { loading, restoring, stopping, hasLiveRun, error, activeToolCount, connectionState, snapshotStatus, t } = args
+  const { loading, restoring, stopping, hasLiveRun, error, activeToolCount, connectionState, snapshotStatus, readyLabel, t } = args
   if (stopping) return t('copilot_quest_status_stopping')
   if (restoring) return t('copilot_quest_status_restoring')
   if (loading) return t('copilot_quest_status_loading')
@@ -49,14 +81,14 @@ function resolveStatusText(args: {
   }
   if (error || connectionState === 'error') return t('copilot_quest_status_interrupted')
   if (snapshotStatus) return snapshotStatus
-  return t('copilot_quest_status_ready')
+  return readyLabel || t('copilot_quest_status_ready')
 }
 
 export function QuestCopilotDockPanel({
   questId,
   title,
   readOnly: _readOnly,
-  prefill: _prefill,
+  prefill,
   workspace: providedWorkspace,
 }: QuestCopilotDockPanelProps) {
   const { t } = useI18n('workspace')
@@ -92,6 +124,11 @@ export function QuestCopilotDockPanel({
     dockCallbacks?.onActionsChange(null)
   }, [dockCallbacks, mode])
 
+  const parkedCopilot = React.useMemo(() => isParkedCopilotWorkspace(workspace), [workspace])
+  const effectiveHasLiveRun = parkedCopilot ? false : workspace.hasLiveRun
+  const effectiveStreaming = parkedCopilot ? false : workspace.streaming
+  const effectiveActiveToolCount = parkedCopilot ? 0 : workspace.activeToolCount
+
   const isResponding = React.useMemo(
     () =>
       stopping ||
@@ -99,17 +136,17 @@ export function QuestCopilotDockPanel({
       workspace.restoring ||
       workspace.connectionState === 'connecting' ||
       workspace.connectionState === 'reconnecting' ||
-      workspace.hasLiveRun ||
-      workspace.activeToolCount > 0 ||
-      workspace.streaming,
+      effectiveHasLiveRun ||
+      effectiveActiveToolCount > 0 ||
+      effectiveStreaming,
     [
+      effectiveActiveToolCount,
+      effectiveHasLiveRun,
+      effectiveStreaming,
       stopping,
-      workspace.activeToolCount,
       workspace.connectionState,
-      workspace.hasLiveRun,
       workspace.loading,
       workspace.restoring,
-      workspace.streaming,
     ]
   )
 
@@ -119,17 +156,23 @@ export function QuestCopilotDockPanel({
         loading: workspace.loading,
         restoring: workspace.restoring,
         stopping,
-        hasLiveRun: isResponding,
+        hasLiveRun: effectiveHasLiveRun || effectiveStreaming,
         error: workspace.error,
-        activeToolCount: workspace.activeToolCount,
+        activeToolCount: effectiveActiveToolCount,
         connectionState: workspace.connectionState,
         snapshotStatus: workspace.snapshot?.summary?.status_line ?? null,
+        readyLabel:
+          mode === 'studio'
+            ? t('copilot_trace_ready', undefined, 'Studio trace ready')
+            : t('copilot_quest_status_ready'),
         t,
       }),
     [
       stopping,
+      effectiveActiveToolCount,
+      effectiveHasLiveRun,
+      effectiveStreaming,
       isResponding,
-      workspace.activeToolCount,
       workspace.connectionState,
       workspace.error,
       workspace.loading,
@@ -163,8 +206,8 @@ export function QuestCopilotDockPanel({
   }, [stopping, workspace])
 
   const showStopButton = React.useMemo(
-    () => stopping || workspace.hasLiveRun || workspace.activeToolCount > 0 || workspace.streaming,
-    [stopping, workspace.activeToolCount, workspace.hasLiveRun, workspace.streaming]
+    () => stopping || effectiveHasLiveRun || effectiveActiveToolCount > 0 || effectiveStreaming,
+    [effectiveActiveToolCount, effectiveHasLiveRun, effectiveStreaming, stopping]
   )
 
   React.useEffect(() => {
@@ -172,7 +215,7 @@ export function QuestCopilotDockPanel({
       threadId: `quest:${questId}:${mode}`,
       historyOpen: false,
       isResponding,
-      toolCount: workspace.activeToolCount,
+      toolCount: effectiveActiveToolCount,
       ready: !workspace.loading,
       isRestoring: workspace.restoring,
       restoreAttempted: true,
@@ -196,8 +239,9 @@ export function QuestCopilotDockPanel({
     title,
     workspace.error,
     workspace.feed.length,
-    workspace.activeToolCount,
-    workspace.hasLiveRun,
+    effectiveActiveToolCount,
+    effectiveHasLiveRun,
+    effectiveStreaming,
     workspace.loading,
     workspace.restoring,
     statusTransition.current,
@@ -241,8 +285,8 @@ export function QuestCopilotDockPanel({
           feed={workspace.feed}
           loading={workspace.loading}
           restoring={workspace.restoring}
-          streaming={workspace.streaming}
-          activeToolCount={workspace.activeToolCount}
+          streaming={effectiveStreaming}
+          activeToolCount={effectiveActiveToolCount}
           connectionState={workspace.connectionState}
           error={workspace.error}
           stopping={stopping}
@@ -253,6 +297,7 @@ export function QuestCopilotDockPanel({
           onLoadOlderHistory={workspace.loadOlderHistory}
           onSubmit={workspace.submit}
           onStopRun={handleStopRun}
+          prefill={prefill}
         />
       ) : (
         <QuestStudioTraceView
@@ -261,8 +306,8 @@ export function QuestCopilotDockPanel({
           snapshot={workspace.snapshot}
           loading={workspace.loading}
           restoring={workspace.restoring}
-          streaming={workspace.streaming}
-          activeToolCount={workspace.activeToolCount}
+          streaming={effectiveStreaming}
+          activeToolCount={effectiveActiveToolCount}
           connectionState={workspace.connectionState}
           error={workspace.error}
           stopping={stopping}
@@ -273,6 +318,7 @@ export function QuestCopilotDockPanel({
           onLoadOlderHistory={workspace.loadOlderHistory}
           onSubmit={workspace.submit}
           onStopRun={handleStopRun}
+          prefill={prefill}
         />
       )}
     </div>

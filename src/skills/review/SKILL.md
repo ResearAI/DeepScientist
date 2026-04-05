@@ -1,6 +1,7 @@
 ---
 name: review
 description: Use when a draft, paper, or paper-like report is substantial enough for an independent skeptical audit before finalization, rebuttal, or revision routing.
+skill_role: companion
 ---
 
 # Review

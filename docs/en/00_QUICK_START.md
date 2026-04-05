@@ -13,7 +13,7 @@ You will do four things:
 
 The screenshots in this guide use the current live web UI at `deepscientist.cc:20999` as an example. Your local UI at `127.0.0.1:20999` should look the same or very close.
 
-Current platform support: DeepScientist fully supports Linux and macOS. Native Windows support is currently experimental; WSL2 remains the most battle-tested option when you need the closest Linux-like terminal behavior.
+Current platform support: DeepScientist fully supports Linux and macOS. Native Windows support is currently experimental (strongly recommend WSL2 when you want the closest Linux-like terminal behavior).
 
 ## Safety First: Isolate Before You Start
 
@@ -60,7 +60,7 @@ If you plan to use a provider-backed Codex profile instead of the default OpenAI
 
 ## 1. Install Node.js and DeepScientist
 
-DeepScientist fully supports Linux and macOS. Native Windows support is currently experimental, and WSL2 is still the most battle-tested option when you want Linux-like shell behavior.
+DeepScientist fully supports Linux and macOS. Native Windows support is currently experimental (strongly recommend WSL2 when you want the most reliable Linux-like shell behavior).
 
 Before installing DeepScientist itself, install Node.js from the official page:
 
@@ -84,6 +84,15 @@ DeepScientist depends on a working Codex CLI. It prefers the `codex` already ava
 ```bash
 npm install -g @openai/codex
 ```
+
+If you want the most reliable path, verify the command immediately:
+
+```bash
+which codex
+codex --login
+```
+
+If `which codex` prints nothing, the issue is usually the npm global bin path rather than DeepScientist itself. Fix the shell PATH first, then rerun `npm install -g @openai/codex`.
 
 If you want local PDF compilation later, also run:
 
@@ -148,18 +157,21 @@ ds --codex /absolute/path/to/codex --codex-profile m27
 
 `m27` is the MiniMax profile name used consistently in this repo. MiniMax's own page currently uses `m21`, but the profile name is only a local alias; if you created a different name, use that same name in all commands.
 
-DeepScientist blocks startup until Codex can pass a real hello probe. By default, the runner model in `~/DeepScientist/config/runners.yaml` is `gpt-5.4`. If your profile expects the model to come from the profile itself, use `model: inherit` in `runners.yaml`, or simply launch with `--codex-profile <name>` and let that session inherit the profile-defined model.
+DeepScientist blocks startup until Codex can pass a real hello probe. The current default runner model in `~/DeepScientist/config/runners.yaml` is `inherit`. If your existing config still pins an explicit model while your provider expects the model to come from the profile itself, change it to `model: inherit`, or simply launch with `--codex-profile <name>` and let that session inherit the profile-defined model.
 
 MiniMax note:
 
 - if the current `@openai/codex` latest does not work with MiniMax, install `npm install -g @openai/codex@0.57.0`
+- when DeepScientist detects a MiniMax profile on startup and the installed Codex CLI is not `0.57.0`, it now offers to reinstall `0.57.0` automatically in interactive terminal launches
 - create a MiniMax `Coding Plan Key` first
-- clear `OPENAI_API_KEY` and `OPENAI_BASE_URL` in the current shell before exporting `MINIMAX_API_KEY`
+- for plain terminal `codex --profile <name>` checks, clear `OPENAI_API_KEY` and `OPENAI_BASE_URL` in the current shell before exporting `MINIMAX_API_KEY`
 - use `https://api.minimaxi.com/v1`
 - the `codex-MiniMax-*` model names shown on MiniMax's current Codex CLI page did not pass reliably through Codex CLI in local testing with the provided key
-- the locally verified working model name is `MiniMax-M2.7`
+- the locally verified DeepScientist model names are `MiniMax-M2.7` and `MiniMax-M2.5`
+- for `m25`, use `MiniMax-M2.5`, not `codex-MiniMax-M2.5`
 - DeepScientist can auto-adapt MiniMax's profile-only `model_provider` / `model` config shape during probe and runtime
-- if you also want plain terminal `codex --profile <name>` to work directly, add `model_provider = "minimax"` and `model = "MiniMax-M2.7"` at the top level of `~/.codex/config.toml`
+- DeepScientist also strips conflicting `OPENAI_*` auth variables automatically for providers that set `requires_openai_auth = false`
+- if you also want plain terminal `codex --profile <name>` to work directly, add `model_provider = "minimax"` and the matching top-level model such as `MiniMax-M2.7` or `MiniMax-M2.5` to `~/.codex/config.toml`
 - DeepScientist automatically downgrades `xhigh` to `high` when it detects an older Codex CLI that does not support `xhigh`
 
 ## 3. Start the Local Runtime
@@ -200,13 +212,14 @@ ds --port 21000
 
 This keeps everything the same, but serves the web UI on port `21000`.
 
-By default, the local web UI is:
+By default, DeepScientist starts without a local browser password gate.
 
-```text
-http://127.0.0.1:20999
-```
-
-If the browser does not open automatically, paste that address into your browser manually.
+- open the normal local URL manually if the browser does not open automatically, such as `http://127.0.0.1:20999`
+- if you want a generated local browser password for one launch, run `ds --auth true`
+- on authenticated launches, DeepScientist prints the generated password in the terminal
+- if the browser is not authenticated yet, DeepScientist shows a password modal before loading the landing page and workspace
+- after the first successful login, the browser keeps the local session and later visits usually do not need the password again
+- if you need to look up the password again for an authenticated launch, check the launch terminal or run `ds --status`
 
 ## 4. Open the Home Page
 
@@ -220,10 +233,18 @@ After 12 hours of running, the projects surface will often look more like this:
 
 The two main entry points are:
 
-- `Start Research`: create a new project and launch a new research run
+- `Start Research` or `Start Experiment`: begin a new project flow
 - `Open Project`: reopen an existing project
 
-For your first run, click `Start Research`.
+For your first run, click `Start Research` or `Start Experiment`.
+
+Important update:
+
+- the product now asks you to choose a start style first
+- `Copilot` creates a quieter project that waits for your first instruction
+- `Autonomous` creates the standard DeepScientist project and starts moving immediately
+
+If you are unsure which one to choose, read [20 Workspace Modes Guide](./20_WORKSPACE_MODES_GUIDE.md) first.
 
 ## 5. Create Your First Project With A Worked Example
 
@@ -236,7 +257,7 @@ The example task is:
 - study how to improve truth-preserving collaboration under mixed correct and incorrect social signals
 - use two local inference endpoints to keep throughput high
 
-Click `Start Research` to open the dialog.
+Click `Start Research` / `Start Experiment`, then choose `Autonomous Mode` to follow the flow below.
 
 ![Start Research dialog](../images/quickstart/01-start-research.png)
 

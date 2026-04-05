@@ -6,7 +6,7 @@ from deepscientist.config import ConfigManager
 from deepscientist.home import ensure_home_layout, repo_root
 from deepscientist.prompts import PromptBuilder
 from deepscientist.quest import QuestService
-from deepscientist.skills import SkillInstaller, discover_skill_bundles
+from deepscientist.skills import SkillInstaller, companion_skill_ids, discover_skill_bundles, stage_skill_ids
 
 
 EXPECTED_STAGE_SKILLS = {
@@ -61,6 +61,19 @@ def test_skill_discovery_prefers_src_skills() -> None:
     for bundle in bundles:
         if bundle.skill_id in EXPECTED_STAGE_SKILLS:
             assert Path(bundle.skill_md).is_relative_to(repo_root() / "src" / "skills")
+
+
+def test_skill_role_metadata_drives_stage_and_companion_catalogs() -> None:
+    root = repo_root()
+    stage_ids = set(stage_skill_ids(root))
+    companion_ids = set(companion_skill_ids(root))
+
+    assert EXPECTED_STAGE_SKILLS.issubset(stage_ids)
+    assert EXPECTED_COMPANION_SKILLS.issubset(companion_ids)
+
+    for skill_id in EXPECTED_STAGE_SKILLS | EXPECTED_COMPANION_SKILLS:
+        text = (root / "src" / "skills" / skill_id / "SKILL.md").read_text(encoding="utf-8")
+        assert "skill_role:" in text
 
 
 def test_new_companion_skill_reference_files_exist() -> None:

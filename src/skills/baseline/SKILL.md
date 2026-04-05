@@ -1,6 +1,7 @@
 ---
 name: baseline
 description: Use when a quest needs to attach, import, reproduce, repair, verify, compare, or publish a baseline and its metrics.
+skill_role: stage
 ---
 
 # Baseline
@@ -15,6 +16,13 @@ The target is one trustworthy baseline line, not an endless reproduction diary.
 - Use richer milestone updates only when the baseline becomes trusted, caveated, blocked, waived, or route-changing.
 - Hard execution rule: every terminal command in this stage must go through `bash_exec`; do not use any other terminal path for setup, reproduction, monitoring, verification, Git, Python, package-manager, or file-inspection commands.
 - Prefer `bash_exec` for setup, reproduction, monitoring, and verification commands so the baseline line stays durable and auditable.
+
+## Tool discipline
+
+- **Do not use native `shell_command` / `command_execution` in this skill.**
+- **All shell, CLI, Python, bash, node, git, npm, uv, and environment work must go through `bash_exec(...)`.**
+- **For git work inside the current quest repository or worktree, prefer `artifact.git(...)` before raw shell git commands.**
+- **If a generic git smoke test is needed outside the quest repo, use `bash_exec(...)` in an isolated scratch repository.**
 
 ## Non-negotiable rules
 

@@ -34,7 +34,7 @@ python "$ROOT_DIR/scripts/setup_git_diff_e2e_fixture.py" \
 
 npm --prefix "$ROOT_DIR/src/ui" run build
 
-python -m deepscientist.cli --home "$HOME_DIR" daemon --host "$BIND_HOST" --port "$PORT" >"$DAEMON_LOG" 2>&1 &
+python -m deepscientist.cli --home "$HOME_DIR" daemon --host "$BIND_HOST" --port "$PORT" --auth false >"$DAEMON_LOG" 2>&1 &
 DAEMON_PID=$!
 
 python - "$BASE_URL" <<'PY'

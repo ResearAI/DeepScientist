@@ -1,4 +1,5 @@
 import type { FeedItem } from '@/types'
+import { dedupeVisibleFeedItems } from '@/lib/feedOperations'
 
 export type QuestTranscriptMessage = {
   id: string
@@ -42,7 +43,7 @@ function buildArtifactBadge(item: Extract<FeedItem, { type: 'artifact' }>) {
 }
 
 export function buildQuestTranscriptMessages(feed: FeedItem[]): QuestTranscriptMessage[] {
-  return feed.flatMap((item) => {
+  return dedupeVisibleFeedItems(feed).flatMap((item) => {
     if (item.type === 'message') {
       if (isVisibleUserMessage(item)) {
         return [

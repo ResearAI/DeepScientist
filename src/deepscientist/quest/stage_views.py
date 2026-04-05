@@ -234,10 +234,11 @@ class QuestStageViewBuilder:
 
     def build(self) -> dict[str, Any]:
         selection_type = str(self.selection.get("selection_type") or "").strip()
+        explicit_stage_key = str(self.selection.get("stage_key") or "").strip()
         self.stage_key = self._resolve_effective_stage_key()
         if selection_type == "idea_candidate":
             return self._build_idea_candidate()
-        if selection_type == "branch_node" and self.stage_key not in {"experiment", "analysis", "paper"}:
+        if selection_type == "branch_node" and not explicit_stage_key:
             return self._build_branch()
         if self.stage_key == "baseline":
             return self._build_baseline()
@@ -1288,11 +1289,15 @@ class QuestStageViewBuilder:
             for item in self.artifacts
             if self._branch_matches(self._payload(item), allow_parent=True, include_unscoped=False)
         ]
+        latest_branch_payload = self._payload(branch_items[-1] if branch_items else {})
         note = (
             str(
                 latest_experiment_payload.get("summary")
                 or latest_idea_payload.get("summary")
                 or latest_idea_payload.get("reason")
+                or latest_branch_payload.get("summary")
+                or latest_branch_payload.get("message")
+                or latest_branch_payload.get("reason")
                 or self.trace.get("summary")
                 or self.selection.get("summary")
                 or ""

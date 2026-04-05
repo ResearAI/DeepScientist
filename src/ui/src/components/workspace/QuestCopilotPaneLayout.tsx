@@ -44,12 +44,12 @@ export function QuestCopilotPaneLayout({
     }
   }, [])
 
-  const bottomInset = Math.max(Math.min(footerHeight, 52), 28)
+  const bottomInset = Math.max(Math.min(footerHeight + 12, 132), 44)
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       {statusLine ? (
-        <div className="px-4 pt-3 text-[11px] text-muted-foreground">{statusLine}</div>
+        <div className="px-4 pt-3 text-[12px] leading-5 text-muted-foreground/90">{statusLine}</div>
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -58,7 +58,7 @@ export function QuestCopilotPaneLayout({
 
       <div
         ref={footerRef}
-        className="border-t border-black/[0.06] bg-white/[0.35] px-4 py-3 backdrop-blur-sm dark:border-white/[0.08] dark:bg-white/[0.03]"
+        className="px-4 py-3"
       >
         {footer}
       </div>

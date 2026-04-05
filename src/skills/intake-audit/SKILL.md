@@ -1,6 +1,7 @@
 ---
 name: intake-audit
 description: Use when a quest does not start from a blank state and the agent must first audit, trust-rank, and reconcile existing baselines, results, drafts, or review materials before choosing the next anchor.
+skill_role: companion
 ---
 
 # Intake Audit
@@ -14,6 +15,13 @@ Use this skill when the quest already has meaningful state and the first job is 
 - Message templates are references only. Adapt to the actual context and vary wording so updates feel natural and non-robotic.
 - If a threaded user reply arrives, interpret it relative to the latest intake-audit progress update before assuming the task changed completely.
 - When the audit reaches a durable route recommendation, send one richer `artifact.interact(kind='milestone', reply_mode='threaded', ...)` update that says what state is trusted, what still needs work, and which anchor should run next.
+
+## Tool discipline
+
+- **Do not use native `shell_command` / `command_execution` in this skill.**
+- **Any shell, CLI, Python, bash, node, git, npm, uv, or repo-audit execution must go through `bash_exec(...)`.**
+- **For git inspection or maintenance inside the current quest repository or worktree, prefer `artifact.git(...)` before raw shell git commands.**
+- **Use shell execution only when durable quest files, artifacts, and memory are insufficient; do not bypass durable state just because shell feels faster.**
 
 ## Purpose
 

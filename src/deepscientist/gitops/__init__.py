@@ -1,4 +1,12 @@
-from .diff import commit_detail, compare_refs, diff_file_between_refs, diff_file_for_commit, list_branch_canvas, log_ref_history
+from .diff import (
+    commit_detail,
+    compare_refs,
+    diff_file_between_refs,
+    diff_file_for_commit,
+    list_branch_canvas,
+    list_commit_canvas,
+    log_ref_history,
+)
 from .graph import export_git_graph
 from .service import (
     branch_exists,
@@ -26,5 +34,6 @@ __all__ = [
     "head_commit",
     "init_repo",
     "list_branch_canvas",
+    "list_commit_canvas",
     "log_ref_history",
 ]

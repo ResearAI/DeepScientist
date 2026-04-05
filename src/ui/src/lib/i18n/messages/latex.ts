@@ -34,12 +34,11 @@ export const latexMessages: Partial<Record<UILanguage, Record<string, string>>> 
     issue_jump_to_line: 'Jump to line {line}',
     issue_jump_to_file: 'Open {file}',
     issue_hint_clickable: 'Click to jump',
-    issue_action_ask_copilot: 'Ask Copilot',
-    issue_action_fix_with_ai: 'Fix with AI',
+    issue_unknown_branch: 'unknown branch',
+    issue_unknown_line: 'unknown',
+    issue_action_ask_deepscientist: 'Ask DeepScientist',
     issue_action_prompt:
-      'Please help me resolve the current LaTeX {severity} at {location}. Explain the cause first, then suggest the smallest safe fix. Focused issue: {message}',
-    issue_fix_prompt:
-      'Fix the current LaTeX {severity} at {location}. Prioritize the focused issue and make the smallest safe patch. Focused issue: {message}',
+      'Please help me inspect this LaTeX {severity}. Current branch: {branch}. File: {file}. Line: {line}. Reported location: {location}. Issue: {message}',
     resize_panels_aria: 'Resize editor and PDF panels',
     zoom_out: 'Zoom out',
     zoom_in: 'Zoom in',
@@ -100,12 +99,11 @@ export const latexMessages: Partial<Record<UILanguage, Record<string, string>>> 
     issue_jump_to_line: '跳转到第 {line} 行',
     issue_jump_to_file: '打开 {file}',
     issue_hint_clickable: '点击可跳转',
-    issue_action_ask_copilot: '询问 Copilot',
-    issue_action_fix_with_ai: '使用 AI 修复',
+    issue_unknown_branch: '未知分支',
+    issue_unknown_line: '未知',
+    issue_action_ask_deepscientist: '询问 DeepScientist',
     issue_action_prompt:
-      '请帮我处理当前位于 {location} 的 LaTeX {severity}。先解释原因，再给出尽量小且安全的修复方案。当前聚焦问题：{message}',
-    issue_fix_prompt:
-      '请修复当前位于 {location} 的 LaTeX {severity}，优先处理当前聚焦问题，并给出尽量小且安全的补丁。当前聚焦问题：{message}',
+      '请帮我检查这个 LaTeX {severity}。当前分支：{branch}。文件：{file}。行号：{line}。报错位置：{location}。具体问题：{message}',
     resize_panels_aria: '调整编辑区与 PDF 预览区宽度',
     zoom_out: '缩小',
     zoom_in: '放大',

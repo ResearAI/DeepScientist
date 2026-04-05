@@ -27,6 +27,19 @@ def test_cli_parser_exposes_doctor_and_removes_metrics() -> None:
         parser.parse_args(["metrics"])
 
 
+def test_cli_parser_reports_clear_argument_errors(capsys) -> None:  # type: ignore[no-untyped-def]
+    parser = build_parser()
+
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["run", "baseline", "--quest-id", "q-001", "--message", "hello", "--bogus"])
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 2
+    assert "DeepScientist argument error:" in captured.err
+    assert "unrecognized arguments: --bogus" in captured.err
+    assert "Run `ds --help` for usage." in captured.err
+
+
 def test_doctor_report_covers_ready_local_install(monkeypatch, temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     manager = ConfigManager(temp_home)

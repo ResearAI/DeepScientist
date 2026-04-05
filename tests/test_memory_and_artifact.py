@@ -4652,6 +4652,39 @@ def test_answer_interaction_is_not_suppressed_like_progress(temp_home: Path) -> 
     assert all(str(item.get("kind") or "") == "answer" for item in outbound)
 
 
+def test_answer_local_fallback_reuses_previous_threaded_answer_in_same_turn(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("answer fallback dedupe quest")
+    quest_root = Path(quest["quest_root"])
+    artifact = ArtifactService(temp_home)
+
+    first = artifact.interact(
+        quest_root,
+        kind="answer",
+        message="你好，这里再做一次流式回复测试。",
+        deliver_to_bound_conversations=True,
+        include_recent_inbound_messages=False,
+    )
+    second = artifact.interact(
+        quest_root,
+        kind="answer",
+        message="你好，这里再做一次流式回复测试。",
+        deliver_to_bound_conversations=False,
+        include_recent_inbound_messages=False,
+    )
+
+    assert first["status"] == "ok"
+    assert second["status"] == "suppressed_duplicate"
+    assert second["artifact_id"] == first["artifact_id"]
+
+    journal = read_jsonl(quest_root / ".ds" / "interaction_journal.jsonl")
+    outbound = [item for item in journal if str(item.get("type") or "") == "artifact_outbound"]
+    assert len(outbound) == 1
+    assert outbound[0]["deliver_to_bound_conversations"] is True
+
+
 def test_answer_interaction_delivers_through_bound_qq_connector(temp_home: Path, monkeypatch) -> None:
     ensure_home_layout(temp_home)
     manager = ConfigManager(temp_home)

@@ -51,6 +51,7 @@ def test_backend_routes_cover_shared_web_and_tui_surface() -> None:
         ("GET", "/api/quests/q-001/graph", "graph"),
         ("GET", "/api/quests/q-001/graph/svg", "graph_asset"),
         ("GET", "/api/quests/q-001/git/branches", "git_branches"),
+        ("GET", "/api/quests/q-001/git/canvas", "git_canvas"),
         ("GET", "/api/quests/q-001/git/log", "git_log"),
         ("GET", "/api/quests/q-001/git/compare", "git_compare"),
         ("GET", "/api/quests/q-001/git/commit", "git_commit"),
@@ -231,6 +232,7 @@ def test_web_workspace_keeps_streaming_operational_views_and_tool_effect_surface
     tool_ops_source = _read("src/ui/src/lib/toolOperations.ts")
     bash_tool_source = _read("src/ui/src/components/workspace/QuestBashExecOperation.tsx")
     workspace_surface_source = _read("src/ui/src/components/workspace/QuestWorkspaceSurface.tsx")
+    workspace_layout_source = _read("src/ui/src/components/workspace/WorkspaceLayout.tsx")
     studio_timeline_source = _read("src/ui/src/components/workspace/QuestStudioDirectTimeline.tsx")
     studio_trace_source = _read("src/ui/src/components/workspace/QuestStudioTraceView.tsx")
     lab_canvas_source = _read("src/ui/src/lib/plugins/lab/components/LabQuestGraphCanvas.tsx")
@@ -243,16 +245,18 @@ def test_web_workspace_keeps_streaming_operational_views_and_tool_effect_surface
     assert "client.workflow(targetQuestId)" in acp_source
     assert "ensureViewData" in acp_source
     assert "detailsEnabledRef.current = true" in acp_source
-    assert "await flushDetailsRefresh(questId)" in acp_source
+    assert "await flushDetailsRefresh(questId, options)" in acp_source
     assert "insertHistoryItemChronologically" in acp_source
     assert "previous_run_id" in acp_source
     assert "collectSealedAssistantRunIds(initialUpdates)" in acp_source
     assert "item.label === 'run_failed'" in acp_source
     assert "void ensureViewData('details')" in workspace_surface_source
     assert "onOpenStageSelection={onOpenStageSelection}" in workspace_surface_source
+    assert "LabQuestGraphCanvas" in workspace_surface_source
     assert "QuestMemorySurface" in workspace_surface_source
     assert 'title="Baseline Compare"' in workspace_surface_source
     assert "updateView('memory')" in workspace_surface_source
+    assert "BUILTIN_PLUGINS.GIT_COMMIT_VIEWER" in workspace_layout_source
     assert "onStageOpen(selection)" in lab_canvas_source
     assert "selectionType !== 'workflow_placeholder'" in lab_canvas_source
     assert "function resolveLocalBaselineAnchorNode" in lab_api_source
@@ -262,7 +266,7 @@ def test_web_workspace_keeps_streaming_operational_views_and_tool_effect_surface
     assert "quest_workspace_memory" in workspace_i18n_source
     assert "function StudioOperationBlock" in studio_timeline_source
     assert "item.type === 'operation'" in tool_ops_source
-    assert "Assistant text, tool calls, and durable artifacts will appear here as a conversation timeline." in studio_timeline_source
+    assert "copilot_trace_empty_description" in studio_timeline_source
     assert "buildToolEffectPreviews" in tool_ops_source
     assert "<QuestStudioDirectTimeline" in studio_trace_source
     assert "McpBashExecView" in bash_tool_source
@@ -339,7 +343,7 @@ def test_local_quest_workspace_uses_real_canvas_and_details_tabs() -> None:
         "openQuestWorkspaceTab('settings')",
         "title: getQuestWorkspaceTitle(view, stageSelection)",
         "return getQuestWorkspaceTabView(resolvedTab)",
-        "view={resolvedQuestWorkspaceView}",
+        "view={getQuestWorkspaceTabView(tab)}",
     ]
     for fragment in expected_workspace_fragments:
         assert fragment in workspace_source, f"Quest workspace tabs should include: {fragment}"
@@ -348,7 +352,7 @@ def test_local_quest_workspace_uses_real_canvas_and_details_tabs() -> None:
         "view: controlledView",
         "onViewChange",
         "const view = controlledView ?? uncontrolledView",
-        "view === 'canvas' ? (",
+        "workspaceLayerClass(view === 'canvas')",
         "view === 'terminal' ? (",
         "view === 'settings' ? (",
         "view === 'stage' ? (",
@@ -496,3 +500,15 @@ def test_update_reminders_show_manual_npm_command_in_web_surface() -> None:
     assert "SystemUpdateButton" in hero_nav_source
     assert "install_latest" not in reminder_source
     assert "updateNow" not in reminder_source
+
+
+def test_local_web_workspace_wraps_routes_with_auth_gate_and_shows_password_button() -> None:
+    app_source = _read("src/ui/src/App.tsx")
+    hero_nav_source = _read("src/ui/src/components/landing/HeroNav.tsx")
+    auth_provider_source = _read("src/ui/src/components/auth/AuthProvider.tsx")
+
+    assert "AuthProvider" in app_source
+    assert "<AuthProvider>" in app_source
+    assert "LocalAuthTokenButton" in hero_nav_source
+    assert "api/auth/login" in auth_provider_source
+    assert "fetchBrowserAuthToken" in auth_provider_source

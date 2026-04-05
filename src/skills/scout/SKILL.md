@@ -1,6 +1,7 @@
 ---
 name: scout
 description: Use when a quest needs problem framing, literature scouting, dataset or metric clarification, or baseline discovery before deeper work.
+skill_role: stage
 ---
 
 # Scout
@@ -14,6 +15,13 @@ Use this skill when the quest does not yet have a stable research frame.
 - Message templates are references only. Adapt to the actual context and vary wording so updates feel natural and non-robotic.
 - If a threaded user reply arrives, interpret it relative to the latest scout progress update before assuming the task changed completely.
 - When scouting actually resolves the framing ambiguity, locks the evaluation contract, or makes the next anchor obvious, send one richer `artifact.interact(kind='milestone', reply_mode='threaded', ...)` update that says what is now clear, why it matters, and which stage should come next.
+
+## Tool discipline
+
+- **Do not use native `shell_command` / `command_execution` in this skill.**
+- **Any shell, CLI, Python, bash, node, git, npm, uv, or repo-inspection execution must go through `bash_exec(...)`.**
+- **For git inspection inside the current quest repository or worktree, prefer `artifact.git(...)` before raw shell git commands.**
+- **If scouting only needs durable quest context, prefer `artifact.read_quest_documents(...)`, `artifact.get_quest_state(...)`, and `memory.*` instead of shelling out.**
 
 ## Stage purpose
 

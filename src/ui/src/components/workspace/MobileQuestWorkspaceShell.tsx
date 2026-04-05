@@ -220,6 +220,37 @@ function formatStatusLine(workspace: QuestWorkspaceState) {
   return workspace.snapshot?.summary?.status_line || workspace.snapshot?.display_status || 'Ready'
 }
 
+function isParkedCopilotWorkspace(workspace: QuestWorkspaceState) {
+  const snapshot = workspace.snapshot
+  const workspaceMode = String(snapshot?.workspace_mode || '').trim().toLowerCase()
+  const continuationPolicy = String(snapshot?.continuation_policy || '').trim().toLowerCase()
+  const activeRunId = String(snapshot?.active_run_id || '').trim()
+  const bashRunningCount = Number(snapshot?.counts?.bash_running_count || 0)
+  const latestBashSession =
+    snapshot?.summary?.latest_bash_session &&
+    typeof snapshot.summary.latest_bash_session === 'object' &&
+    !Array.isArray(snapshot.summary.latest_bash_session)
+      ? snapshot.summary.latest_bash_session
+      : null
+  const latestBashKind = String((latestBashSession as Record<string, unknown> | null)?.kind || '')
+    .trim()
+    .toLowerCase()
+  const latestBashId = String((latestBashSession as Record<string, unknown> | null)?.bash_id || '')
+    .trim()
+  return (
+    workspaceMode === 'copilot' &&
+    continuationPolicy === 'wait_for_user_or_resume' &&
+    !activeRunId &&
+    !workspace.loading &&
+    !workspace.restoring &&
+    !workspace.error &&
+    (bashRunningCount === 0 ||
+      (bashRunningCount === 1 &&
+        latestBashKind === 'terminal' &&
+        (latestBashId === '' || latestBashId === 'terminal-main')))
+  )
+}
+
 function statusDotClass(workspace: QuestWorkspaceState) {
   if (workspace.error || workspace.connectionState === 'error') {
     return 'bg-[#d06c6c]'
@@ -749,7 +780,11 @@ export function MobileQuestWorkspaceShell({
     return formatRelativeTime(workspace.snapshot?.updated_at)
   }, [latestMetric?.key, latestMetric?.value, workspace.snapshot?.updated_at])
 
-  const showStopButton = workspace.hasLiveRun || workspace.activeToolCount > 0 || workspace.streaming
+  const parkedCopilot = React.useMemo(() => isParkedCopilotWorkspace(workspace), [workspace])
+  const effectiveHasLiveRun = parkedCopilot ? false : workspace.hasLiveRun
+  const effectiveStreaming = parkedCopilot ? false : workspace.streaming
+  const effectiveActiveToolCount = parkedCopilot ? 0 : workspace.activeToolCount
+  const showStopButton = effectiveHasLiveRun || effectiveActiveToolCount > 0 || effectiveStreaming
 
   const chatItems = React.useMemo<SegmentedItem<MobileChatMode>[]>(
     () => [
@@ -758,6 +793,10 @@ export function MobileQuestWorkspaceShell({
     ],
     [t]
   )
+
+  React.useEffect(() => {
+    setChatMode('studio')
+  }, [projectId])
 
   const handleQuestViewChange = React.useCallback(
     (view: QuestWorkspaceView, nextStageSelection?: QuestStageSelection | null) => {
@@ -1013,8 +1052,8 @@ export function MobileQuestWorkspaceShell({
                     feed={workspace.feed}
                     loading={workspace.loading}
                     restoring={workspace.restoring}
-                    streaming={workspace.streaming}
-                    activeToolCount={workspace.activeToolCount}
+                    streaming={effectiveStreaming}
+                    activeToolCount={effectiveActiveToolCount}
                     connectionState={workspace.connectionState}
                     error={workspace.error}
                     stopping={false}
@@ -1033,8 +1072,8 @@ export function MobileQuestWorkspaceShell({
                     snapshot={workspace.snapshot}
                     loading={workspace.loading}
                     restoring={workspace.restoring}
-                    streaming={workspace.streaming}
-                    activeToolCount={workspace.activeToolCount}
+                    streaming={effectiveStreaming}
+                    activeToolCount={effectiveActiveToolCount}
                     connectionState={workspace.connectionState}
                     error={workspace.error}
                     stopping={false}

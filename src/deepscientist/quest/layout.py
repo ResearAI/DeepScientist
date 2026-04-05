@@ -52,11 +52,17 @@ def initial_quest_yaml(
     startup_contract: dict | None = None,
 ) -> dict:
     timestamp = utc_now()
+    workspace_mode = (
+        str((startup_contract or {}).get("workspace_mode") or "").strip().lower()
+        if isinstance(startup_contract, dict)
+        else ""
+    )
+    initial_status_value = "idle" if workspace_mode == "copilot" else "active"
     return {
         "quest_id": quest_id,
         "title": title or goal,
         "quest_root": str(quest_root.resolve()),
-        "status": "active",
+        "status": initial_status_value,
         "active_anchor": "baseline",
         "baseline_gate": "pending",
         "confirmed_baseline_ref": None,
@@ -100,7 +106,14 @@ def initial_plan() -> str:
     )
 
 
-def initial_status() -> str:
+def initial_status(startup_contract: dict | None = None) -> str:
+    workspace_mode = (
+        str((startup_contract or {}).get("workspace_mode") or "").strip().lower()
+        if isinstance(startup_contract, dict)
+        else ""
+    )
+    if workspace_mode == "copilot":
+        return "# Status\n\nReady for your first instruction.\n"
     return "# Status\n\nQuest created. Waiting for baseline setup or reuse.\n"
 
 

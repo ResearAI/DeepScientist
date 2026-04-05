@@ -1,6 +1,7 @@
 ---
 name: decision
 description: Use when the quest needs an explicit go, stop, branch, reuse-baseline, write, finalize, reset, or user-decision transition with reasons and evidence.
+skill_role: stage
 ---
 
 # Decision
@@ -17,6 +18,13 @@ Use this skill whenever continuation is non-trivial.
 - Use `reply_mode='blocking'` for the actual decision request only when the user must choose before safe continuation and the quest contract still allows a user-gated decision.
 - If a threaded user reply arrives, interpret it relative to the latest decision or progress interaction before assuming the task changed completely.
 - Quest completion is a special terminal decision: first ask for explicit completion approval with `artifact.interact(kind='decision_request', reply_mode='blocking', reply_schema={'decision_type': 'quest_completion_approval'}, ...)`, and only after an explicit approval reply should you call `artifact.complete_quest(...)`.
+
+## Tool discipline
+
+- **Do not use native `shell_command` / `command_execution` in this skill.**
+- **If decision-making needs shell, CLI, Python, bash, node, git, npm, uv, or environment evidence, gather it through `bash_exec(...)`.**
+- **For git state inside the current quest repository or worktree, prefer `artifact.git(...)` before raw shell git commands.**
+- **Use `decision` to judge the route, not as an excuse to bypass the `bash_exec(...)` / `artifact.git(...)` tool contract.**
 
 ## Stage purpose
 

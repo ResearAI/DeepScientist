@@ -18,6 +18,12 @@ import landingIntroEn from './landing-intro.en.md?raw'
 import landingIntroZh from './landing-intro.zh.md?raw'
 import landingOpenDialogEn from './landing-open-dialog.en.md?raw'
 import landingOpenDialogZh from './landing-open-dialog.zh.md?raw'
+import launchModeAutonomousEn from './launch-mode-autonomous.en.md?raw'
+import launchModeAutonomousZh from './launch-mode-autonomous.zh.md?raw'
+import launchModeCopilotEn from './launch-mode-copilot.en.md?raw'
+import launchModeCopilotZh from './launch-mode-copilot.zh.md?raw'
+import launchModeOverviewEn from './launch-mode-overview.en.md?raw'
+import launchModeOverviewZh from './launch-mode-overview.zh.md?raw'
 import workspaceCanvasEn from './workspace-canvas.en.md?raw'
 import workspaceCanvasZh from './workspace-canvas.zh.md?raw'
 import workspaceCanvasNodeEn from './workspace-canvas-node.en.md?raw'
@@ -58,6 +64,9 @@ import workspaceNavbarZh from './workspace-navbar.zh.md?raw'
 export const onboardingStepBodies = {
   'landing-intro': { en: landingIntroEn, zh: landingIntroZh },
   'landing-open-dialog': { en: landingOpenDialogEn, zh: landingOpenDialogZh },
+  'launch-mode-overview': { en: launchModeOverviewEn, zh: launchModeOverviewZh },
+  'launch-mode-copilot': { en: launchModeCopilotEn, zh: launchModeCopilotZh },
+  'launch-mode-autonomous': { en: launchModeAutonomousEn, zh: launchModeAutonomousZh },
   'dialog-overview': { en: dialogOverviewEn, zh: dialogOverviewZh },
   'dialog-title': { en: dialogTitleEn, zh: dialogTitleZh },
   'dialog-goal': { en: dialogGoalEn, zh: dialogGoalZh },

@@ -10,7 +10,11 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request
 
-from ..codex_cli_compat import adapt_profile_only_provider_config, normalize_codex_reasoning_effort
+from ..codex_cli_compat import (
+    adapt_profile_only_provider_config,
+    normalize_codex_reasoning_effort,
+    provider_profile_metadata_from_home,
+)
 from ..connector.connector_profiles import PROFILEABLE_CONNECTOR_NAMES, list_connector_profiles, normalize_connector_config
 from ..connector_runtime import build_discovered_target, infer_connector_transport
 from ..home import repo_root
@@ -1193,6 +1197,14 @@ Use **Test** when the file exposes runtime dependencies.
         return str(raw_model).strip()
 
     @staticmethod
+    def _codex_effective_model(config: dict) -> str:
+        requested = ConfigManager._codex_requested_model(config)
+        profile = ConfigManager._codex_profile_name(config)
+        if profile and not ConfigManager._codex_should_inherit_model(requested):
+            return "inherit"
+        return requested
+
+    @staticmethod
     def _codex_profile_name(config: dict) -> str:
         raw_profile = config.get("profile")
         if raw_profile is None:
@@ -1361,6 +1373,7 @@ Use **Test** when the file exposes runtime dependencies.
         resolved_binary = resolve_runner_binary(binary, runner_name="codex")
         profile = self._codex_profile_name(config)
         requested_model = self._codex_requested_model(config)
+        effective_model = self._codex_effective_model(config)
         raw_reasoning_effort = config.get("model_reasoning_effort")
         requested_reasoning_effort = (
             str(raw_reasoning_effort).strip()
@@ -1376,9 +1389,9 @@ Use **Test** when the file exposes runtime dependencies.
             "resolved_binary": resolved_binary,
             "config_dir": str(config.get("config_dir") or "~/.codex"),
             "profile": profile,
-            "model": requested_model or "inherit",
+            "model": effective_model or "inherit",
             "requested_model": requested_model or "inherit",
-            "effective_model": requested_model or "inherit",
+            "effective_model": effective_model or "inherit",
             "approval_policy": str(config.get("approval_policy") or "on-request"),
             "sandbox_mode": str(config.get("sandbox_mode") or "workspace-write"),
             "reasoning_effort": reasoning_effort,
@@ -1416,9 +1429,17 @@ Use **Test** when the file exposes runtime dependencies.
             env["CODEX_HOME"] = prepared_home
             if profile_config_warning:
                 compatibility_warnings.append(profile_config_warning)
+        metadata = provider_profile_metadata_from_home(env.get("CODEX_HOME") or config_dir, profile=profile)
+        if metadata.get("requires_openai_auth") is False:
+            env.pop("OPENAI_API_KEY", None)
+            env.pop("OPENAI_BASE_URL", None)
         prompt = "Reply with exactly HELLO."
         if reasoning_effort_warning:
             compatibility_warnings.append(reasoning_effort_warning)
+        if profile and effective_model == "inherit" and not self._codex_should_inherit_model(requested_model):
+            compatibility_warnings.append(
+                f"Codex profile `{profile}` is provider-backed. DeepScientist is probing it with `model: inherit`."
+            )
         base_warnings: list[str] = list(compatibility_warnings)
 
         def run_probe_once(model_for_command: str) -> tuple[list[str], subprocess.CompletedProcess[str] | None, subprocess.TimeoutExpired | None]:
@@ -1445,7 +1466,7 @@ Use **Test** when the file exposes runtime dependencies.
                 return command, None, exc
             return command, result, None
 
-        command, result, timeout_error = run_probe_once(requested_model)
+        command, result, timeout_error = run_probe_once(effective_model)
         if timeout_error is not None:
             details.update(
                 {

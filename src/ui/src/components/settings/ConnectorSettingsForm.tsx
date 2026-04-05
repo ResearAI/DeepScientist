@@ -60,6 +60,26 @@ import {
 } from './connectorSettingsHelpers'
 import { translateSettingsCatalogText } from './settingsCatalogI18n'
 
+function TruncatedLine({
+  value,
+  className,
+  mono = false,
+}: {
+  value: string | null | undefined
+  className?: string
+  mono?: boolean
+}) {
+  const text = String(value || '').trim()
+  return (
+    <div
+      className={cn('truncate', mono && 'font-mono', className)}
+      title={text || undefined}
+    >
+      {text || '—'}
+    </div>
+  )
+}
+
 type ConnectorConfigMap = Record<string, Record<string, unknown>>
 
 const copy = {
@@ -1102,7 +1122,10 @@ function CopyableValueCard({
           className="mt-3 min-h-[120px] rounded-[18px] border-black/[0.08] bg-white/[0.44] text-sm shadow-none dark:bg-white/[0.03]"
         />
       ) : (
-        <div className="mt-3 break-all rounded-[18px] border border-black/[0.06] bg-white/[0.44] px-3 py-3 text-sm dark:border-white/[0.08] dark:bg-white/[0.03]">
+        <div
+          className="mt-3 truncate rounded-[18px] border border-black/[0.06] bg-white/[0.44] px-3 py-3 text-sm dark:border-white/[0.08] dark:bg-white/[0.03]"
+          title={value || undefined}
+        >
           {value || '—'}
         </div>
       )}
@@ -1353,8 +1376,15 @@ function ConnectorTargetList({
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-sm font-medium text-foreground">{connectorTargetLabel(target)}</div>
-              <div className="mt-1 break-all font-mono text-xs text-muted-foreground">{target.conversation_id}</div>
+              <TruncatedLine
+                value={connectorTargetLabel(target)}
+                className="text-sm font-medium text-foreground"
+              />
+              <TruncatedLine
+                value={target.conversation_id}
+                mono
+                className="mt-1 text-xs text-muted-foreground"
+              />
             </div>
             <div className="flex shrink-0 flex-wrap justify-end gap-2">
               {target.is_default ? <Badge variant="default">{t.defaultTarget}</Badge> : null}
@@ -1631,8 +1661,15 @@ function ConnectorProfileSettingsModal({
             </select>
             {selectedTarget ? (
               <div className="mt-3 rounded-[14px] border border-black/[0.06] bg-black/[0.02] px-3 py-2 text-xs text-muted-foreground dark:border-white/[0.08] dark:bg-white/[0.03]">
-                <div className="font-medium text-foreground">{connectorTargetLabel(selectedTarget)}</div>
-                <div className="mt-1 break-all font-mono">{selectedTarget.conversation_id}</div>
+                <TruncatedLine
+                  value={connectorTargetLabel(selectedTarget)}
+                  className="font-medium text-foreground"
+                />
+                <TruncatedLine
+                  value={selectedTarget.conversation_id}
+                  mono
+                  className="mt-1"
+                />
               </div>
             ) : (
               <div className="mt-3 text-xs leading-5 text-muted-foreground">{text.noTargets}</div>
@@ -2454,8 +2491,8 @@ function ConnectorCard({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-foreground">{profileTitle}</div>
-                        <div className="mt-1 break-all font-mono text-xs text-muted-foreground">{profile.app_id || '—'}</div>
+                        <TruncatedLine value={profileTitle} className="text-sm font-medium text-foreground" />
+                        <TruncatedLine value={profile.app_id || '—'} mono className="mt-1 text-xs text-muted-foreground" />
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -2503,8 +2540,15 @@ function ConnectorCard({
                     </div>
                     {selectedTarget ? (
                       <div className="mt-3 rounded-[14px] border border-black/[0.06] bg-black/[0.02] px-3 py-2 text-xs text-muted-foreground dark:border-white/[0.08] dark:bg-white/[0.03]">
-                        <div className="font-medium text-foreground">{connectorTargetLabel(selectedTarget)}</div>
-                        <div className="mt-1 break-all font-mono">{selectedTarget.conversation_id}</div>
+                        <TruncatedLine
+                          value={connectorTargetLabel(selectedTarget)}
+                          className="font-medium text-foreground"
+                        />
+                        <TruncatedLine
+                          value={selectedTarget.conversation_id}
+                          mono
+                          className="mt-1"
+                        />
                       </div>
                     ) : null}
                   </div>
@@ -2611,7 +2655,7 @@ function ConnectorCard({
                       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                         {localizedGuideText(locale, qqPlatformLink.label)}
                       </div>
-                      <div className="mt-2 break-all text-sm text-muted-foreground">{qqPlatformLink.href}</div>
+                      <TruncatedLine value={qqPlatformLink.href} className="mt-2 text-sm text-muted-foreground" />
                     </div>
                     <ArrowUpRight className="h-4 w-4 shrink-0" />
                   </a>
@@ -2731,8 +2775,15 @@ function ConnectorCard({
                           className="flex items-center justify-between gap-3 rounded-[14px] border border-black/[0.06] bg-black/[0.02] px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-white/[0.03]"
                         >
                           <div className="min-w-0">
-                            <div className="truncate font-medium text-foreground">{connectorTargetLabel(target)}</div>
-                            <div className="truncate font-mono text-xs text-muted-foreground">{target.conversation_id}</div>
+                            <TruncatedLine
+                              value={connectorTargetLabel(target)}
+                              className="font-medium text-foreground"
+                            />
+                            <TruncatedLine
+                              value={target.conversation_id}
+                              mono
+                              className="text-xs text-muted-foreground"
+                            />
                           </div>
                           <div className="shrink-0">{target.bound_quest_id ? <Badge variant="secondary">{target.bound_quest_id}</Badge> : null}</div>
                         </div>
@@ -2971,8 +3022,11 @@ function ConnectorCard({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-foreground">{profileSnapshot?.label || genericProfileLabel(connectorName, profile)}</div>
-                        <div className="mt-1 break-all font-mono text-xs text-muted-foreground">{identifier || profileId}</div>
+                        <TruncatedLine
+                          value={profileSnapshot?.label || genericProfileLabel(connectorName, profile)}
+                          className="text-sm font-medium text-foreground"
+                        />
+                        <TruncatedLine value={identifier || profileId} mono className="mt-1 text-xs text-muted-foreground" />
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -3496,7 +3550,7 @@ function ConnectorCard({
                     <img src={logoUrl} alt="DeepScientist logo" className="h-14 w-14 rounded-[14px] border border-black/[0.08] bg-white p-2 dark:border-white/[0.12]" />
                     <div className="min-w-0">
                       <div className="text-sm font-medium">{lingzhuDefaultAgentName(locale)}</div>
-                      <div className="mt-1 break-all text-xs text-muted-foreground">{logoUrl}</div>
+                      <TruncatedLine value={logoUrl} className="mt-1 text-xs text-muted-foreground" />
                     </div>
                   </div>
                   <div className="mt-3 text-xs leading-5 text-muted-foreground">{t.lingzhuIconHint}</div>
@@ -3628,11 +3682,11 @@ function ConnectorCard({
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div className="rounded-[18px] border border-black/[0.06] bg-white/[0.44] px-4 py-4 dark:border-white/[0.08] dark:bg-white/[0.03]">
                 <div className="text-sm font-medium">{t.weixinAccountId}</div>
-                <div className="mt-2 break-all text-sm text-muted-foreground">{accountId || t.weixinNotBoundYet}</div>
+                <TruncatedLine value={accountId || t.weixinNotBoundYet} className="mt-2 text-sm text-muted-foreground" />
               </div>
               <div className="rounded-[18px] border border-black/[0.06] bg-white/[0.44] px-4 py-4 dark:border-white/[0.08] dark:bg-white/[0.03]">
                 <div className="text-sm font-medium">{t.weixinLoginUserId}</div>
-                <div className="mt-2 break-all text-sm text-muted-foreground">{loginUserId || t.weixinNotBoundYet}</div>
+                <TruncatedLine value={loginUserId || t.weixinNotBoundYet} className="mt-2 text-sm text-muted-foreground" />
               </div>
             </div>
             {hasBinding ? (
@@ -3806,30 +3860,45 @@ function ConnectorCard({
                     {entry.name === 'qq' ? normalizeConnectorTargets(snapshot).length : snapshot.target_count ?? snapshot.discovered_targets?.length ?? 0}
                   </div>
                   {snapshot.default_target ? (
-                    <div className="break-all">
-                      <span className="text-foreground">{t.defaultTarget}:</span> {connectorTargetLabel(snapshot.default_target)}
+                    <div className="flex min-w-0 gap-1">
+                      <span className="shrink-0 text-foreground">{t.defaultTarget}:</span>
+                      <span className="min-w-0 flex-1 truncate" title={connectorTargetLabel(snapshot.default_target)}>
+                        {connectorTargetLabel(snapshot.default_target)}
+                      </span>
                     </div>
                   ) : null}
                   {snapshot.main_chat_id && entry.name !== 'qq' ? (
-                    <div className="break-all">
-                      <span className="text-foreground">{t.boundTarget}:</span> {snapshot.main_chat_id}
+                    <div className="flex min-w-0 gap-1">
+                      <span className="shrink-0 text-foreground">{t.boundTarget}:</span>
+                      <span className="min-w-0 flex-1 truncate" title={snapshot.main_chat_id}>
+                        {snapshot.main_chat_id}
+                      </span>
                     </div>
                   ) : null}
                   {snapshot.last_conversation_id ? (
-                    <div className="break-all">
-                      <span className="text-foreground">{t.lastSeen}:</span> {snapshot.last_conversation_id}
+                    <div className="flex min-w-0 gap-1">
+                      <span className="shrink-0 text-foreground">{t.lastSeen}:</span>
+                      <span className="min-w-0 flex-1 truncate" title={snapshot.last_conversation_id}>
+                        {snapshot.last_conversation_id}
+                      </span>
                     </div>
                   ) : null}
                   {entry.name === 'lingzhu' && snapshot.details ? (
                     <>
                       {typeof snapshot.details.health_url === 'string' ? (
-                        <div className="break-all">
-                          <span className="text-foreground">{t.lingzhuLocalHealthUrl}:</span> {String(snapshot.details.health_url)}
+                        <div className="flex min-w-0 gap-1">
+                          <span className="shrink-0 text-foreground">{t.lingzhuLocalHealthUrl}:</span>
+                          <span className="min-w-0 flex-1 truncate" title={String(snapshot.details.health_url)}>
+                            {String(snapshot.details.health_url)}
+                          </span>
                         </div>
                       ) : null}
                       {typeof snapshot.details.public_endpoint_url === 'string' && snapshot.details.public_endpoint_url ? (
-                        <div className="break-all">
-                          <span className="text-foreground">{t.lingzhuPublicSseUrl}:</span> {String(snapshot.details.public_endpoint_url)}
+                        <div className="flex min-w-0 gap-1">
+                          <span className="shrink-0 text-foreground">{t.lingzhuPublicSseUrl}:</span>
+                          <span className="min-w-0 flex-1 truncate" title={String(snapshot.details.public_endpoint_url)}>
+                            {String(snapshot.details.public_endpoint_url)}
+                          </span>
                         </div>
                       ) : null}
                     </>

@@ -116,9 +116,10 @@ def test_prompt_builder_stays_compact_and_avoids_redundant_stage_sop(temp_home: 
     assert "problem-first vs solution-first" not in prompt
 
 
-def test_prompt_builder_prefers_synced_quest_prompt_copy(temp_home: Path) -> None:
+def test_prompt_builder_repairs_drifted_quest_prompt_copy_and_keeps_backup(temp_home: Path) -> None:
     builder, snapshot = _make_builder(temp_home)
     quest_root = Path(snapshot["quest_root"])
+    installer = SkillInstaller(repo_root(), temp_home)
     prompt_copy = quest_root / ".codex" / "prompts" / "system.md"
     original = prompt_copy.read_text(encoding="utf-8")
     prompt_copy.write_text(original + "\n\nQUEST_LOCAL_PROMPT_SENTINEL\n", encoding="utf-8")
@@ -127,6 +128,39 @@ def test_prompt_builder_prefers_synced_quest_prompt_copy(temp_home: Path) -> Non
         quest_id=snapshot["quest_id"],
         skill_id="decision",
         user_message="Use the current system prompt.",
+        model="gpt-5.4",
+    )
+
+    assert "QUEST_LOCAL_PROMPT_SENTINEL" not in prompt
+    backups = installer.list_prompt_versions(quest_root)
+    assert backups
+    backup_id = str(backups[-1]["backup_id"])
+    backup_prompt = quest_root / ".codex" / "prompt_versions" / backup_id / "system.md"
+    assert "QUEST_LOCAL_PROMPT_SENTINEL" in backup_prompt.read_text(encoding="utf-8")
+
+
+def test_prompt_builder_can_use_historical_prompt_backup(temp_home: Path) -> None:
+    builder, snapshot = _make_builder(temp_home)
+    quest_root = Path(snapshot["quest_root"])
+    installer = SkillInstaller(repo_root(), temp_home)
+    prompt_copy = quest_root / ".codex" / "prompts" / "system.md"
+    original = prompt_copy.read_text(encoding="utf-8")
+    prompt_copy.write_text(original + "\n\nQUEST_LOCAL_PROMPT_SENTINEL\n", encoding="utf-8")
+    builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="decision",
+        user_message="Repair the active prompt copy.",
+        model="gpt-5.4",
+    )
+    backups = installer.list_prompt_versions(quest_root)
+    assert backups
+    prompt_version = str(backups[-1]["installed_version"])
+
+    historical_builder = PromptBuilder(repo_root(), temp_home, prompt_version_selection=prompt_version)
+    prompt = historical_builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="decision",
+        user_message="Use the historical system prompt version.",
         model="gpt-5.4",
     )
 
@@ -147,6 +181,50 @@ def test_prompt_builder_includes_shared_interaction_contract(temp_home: Path) ->
     assert "Treat `artifact.interact(...)` as the main long-lived communication thread" in prompt
     assert "Immediately follow any non-empty mailbox poll" in prompt
     assert "1 to 3 concrete options" in prompt
+
+
+def test_prompt_builder_uses_copilot_system_prompt_for_copilot_workspace(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    snapshot = service.create(
+        "copilot prompt quest",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "decision_policy": "user_gated",
+            "launch_mode": "custom",
+            "custom_profile": "freeform",
+        },
+    )
+    quest_root = Path(snapshot["quest_root"])
+    service.update_research_state(quest_root, workspace_mode="copilot")
+    service.set_continuation_state(
+        quest_root,
+        policy="wait_for_user_or_resume",
+        anchor="decision",
+        reason="copilot_mode",
+    )
+
+    builder = PromptBuilder(repo_root(), temp_home)
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="decision",
+        user_message="先帮我看一下接下来怎么做。",
+        model="gpt-5.4",
+    )
+
+    assert "# DeepScientist Copilot System Prompt" in prompt
+    assert "- workspace_mode: copilot" in prompt
+    assert "complete the user-requested unit of work" in prompt
+    assert "arbitrary research tasks" in prompt
+    assert "request-scoped help" in prompt
+    assert "freeform_task_rule" in prompt
+    assert "requested_skill_hint_rule" in prompt
+    assert "shell_tool_mandate" in prompt
+    assert "git_tool_mandate" in prompt
+    assert "decision_entry_rule" in prompt
+    assert "stop_rule: once the current requested unit is done" in prompt
+    assert "user-directed copilot" in prompt
 
 
 def test_prompt_builder_includes_paper_contract_health_block(temp_home: Path) -> None:
@@ -313,16 +391,26 @@ def test_prompt_builder_loads_qq_connector_contract_when_bound(temp_home: Path) 
     assert "/absolute/path/to/main_summary.png" in prompt
 
 
-def test_prompt_builder_prefers_synced_quest_connector_contract_copy(temp_home: Path) -> None:
+def test_prompt_builder_can_use_historical_connector_prompt_backup(temp_home: Path) -> None:
     builder, snapshot = _make_builder(temp_home)
     quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
     quest_service.bind_source(snapshot["quest_id"], "qq:direct:openid-qq-1")
     quest_root = Path(snapshot["quest_root"])
+    installer = SkillInstaller(repo_root(), temp_home)
     prompt_copy = quest_root / ".codex" / "prompts" / "connectors" / "qq.md"
     original = prompt_copy.read_text(encoding="utf-8")
     prompt_copy.write_text(original + "\n\nQUEST_LOCAL_CONNECTOR_PROMPT_SENTINEL\n", encoding="utf-8")
+    builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="decision",
+        user_message="Repair the active connector prompt copy.",
+        model="gpt-5.4",
+    )
+    backups = installer.list_prompt_versions(quest_root)
+    assert backups
+    backup_id = str(backups[-1]["backup_id"])
 
-    prompt = builder.build(
+    prompt = PromptBuilder(repo_root(), temp_home, prompt_version_selection=backup_id).build(
         quest_id=snapshot["quest_id"],
         skill_id="decision",
         user_message="Continue the quest.",
@@ -479,6 +567,34 @@ def test_prompt_builder_includes_active_user_requirements_for_auto_continue_turn
         content="Keep going until the experiment, analysis, and paper draft are all complete.",
         source="web-react",
     )
+    quest_service.append_message(
+        snapshot["quest_id"],
+        role="assistant",
+        content="I finished the previous checkpoint and next I will monitor the detached experiment.",
+        source="codex",
+        run_id="run-prev-001",
+        skill_id="experiment",
+    )
+    run_root = Path(snapshot["quest_root"]) / ".ds" / "runs" / "run-prev-001"
+    run_root.mkdir(parents=True, exist_ok=True)
+    write_json(
+        run_root / "result.json",
+        {
+            "run_id": "run-prev-001",
+            "exit_code": 0,
+            "completed_at": "2026-04-04T00:00:00+00:00",
+            "output_text": "Previous final result: detached experiment is running and the next check should focus on real progress.",
+        },
+    )
+    memory_service = MemoryService(temp_home)
+    memory_service.write_card(
+        scope="quest",
+        kind="episodes",
+        title="Long run checkpoint",
+        body="The detached experiment is the active long-running process and should be checked at low frequency.",
+        quest_root=Path(snapshot["quest_root"]),
+        quest_id=snapshot["quest_id"],
+    )
 
     prompt = builder.build(
         quest_id=snapshot["quest_id"],
@@ -501,6 +617,13 @@ def test_prompt_builder_includes_active_user_requirements_for_auto_continue_turn
     assert "Active User Requirements" in prompt
     assert "Keep going until the experiment, analysis, and paper draft are all complete." in prompt
     assert "(no new user message for this turn; continue from active user requirements and durable state)" in prompt
+    assert "## Resume Context Spine" in prompt
+    assert "latest_assistant_checkpoint:" in prompt
+    assert "latest_run_result:" in prompt
+    assert "recent_memory_cues:" in prompt
+    assert "auto_continue_interval_rule:" in prompt
+    assert "240 seconds" in prompt
+    assert "autonomous_prepare_rule:" in prompt
 
 
 def test_prompt_builder_includes_active_interactions(temp_home: Path) -> None:
@@ -1196,6 +1319,8 @@ def test_prompt_builder_mentions_long_running_bash_exec_monitoring_protocol(temp
     assert "long_run_reporting_protocol:" in prompt
     assert "intervention_threshold_protocol:" in prompt
     assert "timeout_protocol:" in prompt
+    assert "auto_continue_monitoring_protocol:" in prompt
+    assert "240 seconds" in prompt
     assert "judge health by forward progress" in prompt
     assert "do not kill or restart a run merely because a short watch window passed without final completion" in prompt
 

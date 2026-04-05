@@ -1,12 +1,13 @@
 {
   "name": "deepscientist-ui",
-  "version": "1.5.15",
+  "version": "1.5.16",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js --host 0.0.0.0 --port 21888",
-    "build": "node ./node_modules/vite/bin/vite.js build",
+    "build": "node ./node_modules/vite/bin/vite.js build && node ./scripts/copy-public.mjs",
     "preview": "node ./node_modules/vite/bin/vite.js preview --host 0.0.0.0 --port 21888",
+    "test:e2e:copilot-workspace": "playwright test e2e/copilot-workspace.spec.ts",
     "test:e2e:git-diff": "playwright test e2e/git-diff-viewer.spec.ts",
     "test:e2e:lab-canvas": "playwright test e2e/lab-canvas-workflow.spec.ts"
   },

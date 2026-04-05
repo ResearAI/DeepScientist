@@ -56,6 +56,14 @@ DeepScientist 不是靠一份静态大 prompt 工作的。
 - `SKILL.md`：定义各个阶段的执行纪律
 - `mcp/server.py`：定义内建工具面
 
+受管 quest-local prompt 镜像：
+
+- DeepScientist 仍然会优先读取 `quest_root/.codex/prompts/` 下存在的 prompt 片段。
+- 但这棵树现在是“自动维护的受管副本”，不再默认视为永久手工 fork。
+- 每次真实 runner turn 开始前，DeepScientist 都会把当前 active quest-local prompt 树与仓库 `src/prompts/` 做比较；只要仓库源变了，或者 quest 本地副本漂移了，就会刷新 active 副本。
+- 刷新之前，旧的 active prompt 树会先备份到 `quest_root/.codex/prompt_versions/<backup_id>/`。
+- 所以默认情况下，旧 quest 也会吃到最新 prompt 合同；如果你需要回放历史 prompt，再显式选择某个备份版本。
+
 ## 3. 一轮 prompt 是怎么组装的
 
 当前运行时大致按下面顺序组装 turn prompt：
@@ -72,11 +80,12 @@ DeepScientist 不是靠一份静态大 prompt 工作的。
 10. research delivery policy
 11. paper and evidence snapshot
 12. 如果是 retry turn，则加入 retry recovery packet
-13. interaction style
-14. priority memory for this turn
-15. recent conversation window
-16. current turn attachments
-17. current user message
+13. 如果是 auto-continue turn，则加入 resume context spine
+14. interaction style
+15. priority memory for this turn
+16. recent conversation window
+17. current turn attachments
+18. current user message
 
 这个顺序不是随便排的。
 
@@ -210,6 +219,16 @@ builder 会直接把这些 quest 文件读进 prompt：
 - `src/deepscientist/prompts/builder.py`
 - 当前 quest 所处的 stage skill
 
+它现在还明确承载了 continuation 的模式分叉：
+
+- `workspace_mode = copilot`
+  - 以当前请求为单位提供帮助
+  - 做完这一小段之后，通常停驻，等待下一条用户消息或 `/resume`
+- `workspace_mode = autonomous`
+  - 默认继续往前推进
+  - 如果真实长任务还没跑起来，就继续用接下来的 turns 做准备、启动或耐久决策
+  - 一旦真实长任务已经在跑，后台 auto-continue 就切成低频巡检
+
 ### 4.8 Interaction style
 
 这个 block 决定这轮该怎么“说话”。
@@ -229,7 +248,27 @@ builder 会直接把这些 quest 文件读进 prompt：
 - 写作阶段
 - 等待用户决策的阶段
 
-### 4.9 Priority memory
+它现在也编码了 auto-continue 的节奏分叉：
+
+- autonomous 下，如果还在准备 / 启动真实长任务，可以较快地连续推进
+- 如果真实外部长任务已经在跑，则默认切成低频检查，默认大约每 `240` 秒一轮
+- copilot 模式则通常在当前请求单元完成后停驻，不继续自动扩展
+
+### 4.9 Resume context spine
+
+现在在 auto-continue turn 中，prompt 会额外注入一个紧凑的 resume spine，避免模型只凭一个 stage 名称硬续。
+
+里面包括：
+
+- 最近一条持久化用户消息
+- 最近一条 assistant checkpoint
+- 最近一条 run result 摘要
+- 少量最近 memory cues
+- 当前 `bash_exec` 状态，包括是否有长时间 shell 会话正在运行
+
+这也是为什么 auto-continue 能更贴着“最新用户意图 + 最新检查点”继续，而不是漂回泛泛的 stage narration。
+
+### 4.10 Priority memory
 
 DeepScientist 不是随机往 prompt 里塞 memory 的。
 
@@ -246,22 +285,33 @@ DeepScientist 不是随机往 prompt 里塞 memory 的。
 
 agent 不应该在每一轮都看到完全同一批 memory。
 
-## 5. 哪些 prompt 可以本地覆盖
+## 5. 本地 active prompt 与历史版本
 
-当前支持按 quest 在下面路径覆盖 prompt 片段：
+当前 quest 的 active prompt 树仍在这些路径下：
 
 - `.codex/prompts/system.md`
 - `.codex/prompts/contracts/shared_interaction.md`
 - `.codex/prompts/connectors/<connector>.md`
 
-也就是说：
+仓库默认 prompt 仍然在 `src/prompts/`。
 
-- 仓库默认 prompt 在 `src/prompts/`
-- quest 私有覆盖在 `.codex/prompts/`
+但现在有一个关键变化：
 
-只有当某个 quest 确实需要局部特殊合同，才建议这样覆盖。
+- `.codex/prompts/` 不应再理解为长期手工维护的 override 树。
+- 每次真实运行前，DeepScientist 都会把 active quest-local copy 修回当前仓库 prompt 真相。
+- 所以如果你手工改了 active copy，这种改动会在下次运行时被视为漂移：先备份，再替换。
+- 历史 prompt 会保存在 `.codex/prompt_versions/<backup_id>/`。
 
-如果这个改动应该影响整个产品，就不该做 quest-local override，而应该直接改仓库默认 prompt。
+如果你确实想让某个 quest 临时按旧 prompt 跑，启动时优先传正式版本号即可：
+
+- `ds daemon --prompt-version <official_version>`
+- `ds run --prompt-version <official_version> ...`
+
+DeepScientist 会把它解析成“该正式版本号下最新的一份 prompt 备份”。如果你想精确回放某一次具体备份，而不是该版本下最新的一份，也仍然可以直接传备份目录名。
+
+如果只是想继续使用当前受管 active prompt，就用 `latest`。
+
+如果这个改动应该影响正常未来行为，就不该只改 quest-local active copy，而应该直接改仓库默认 prompt。
 
 ## 6. Skills 是怎么分层的
 

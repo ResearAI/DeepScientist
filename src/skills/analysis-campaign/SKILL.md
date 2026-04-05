@@ -1,6 +1,7 @@
 ---
 name: analysis-campaign
 description: Use when a quest needs one or more follow-up runs such as ablations, robustness checks, error analysis, or failure analysis after a main experiment.
+skill_role: stage
 ---
 
 # Analysis Campaign

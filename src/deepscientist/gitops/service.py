@@ -100,7 +100,10 @@ def checkpoint_repo(repo: Path, message: str, allow_empty: bool = False) -> dict
             "branch": current_branch(repo),
             "head": head_commit(repo),
         }
-    result = run_command(["git", "commit", "-m", message], cwd=repo, check=False)
+    command = ["git", "commit", "-m", message]
+    if allow_empty:
+        command.insert(2, "--allow-empty")
+    result = run_command(command, cwd=repo, check=False)
     return {
         "committed": result.returncode == 0,
         "branch": current_branch(repo),

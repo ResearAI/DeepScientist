@@ -50,6 +50,10 @@ function asString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value : null
 }
 
+function asLowerString(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
+}
+
 function toUnixSeconds(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value > 1_000_000_000_000 ? Math.floor(value / 1000) : Math.floor(value)
@@ -114,6 +118,34 @@ function canonicalToolFunction(
   if (normalized === 'web_fetch') return 'webfetch'
   if (normalized === 'web_search' || normalized === 'websearch') return 'web_search'
   return normalized || toolName || 'tool'
+}
+
+function snapshotBashRunningCount(snapshot: QuestSnapshot): number {
+  const counts = asRecord(snapshot.counts)
+  const raw = counts?.bash_running_count
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return Math.max(0, Math.floor(raw))
+  }
+  if (typeof raw === 'string') {
+    const parsed = Number(raw)
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.floor(parsed))
+    }
+  }
+  return 0
+}
+
+function isCopilotSnapshotParkedForUser(snapshot: QuestSnapshot): boolean {
+  const workspaceMode = asLowerString(snapshot.workspace_mode)
+  const continuationPolicy = asLowerString((snapshot as Record<string, unknown>).continuation_policy)
+  const activeRunId = asString(snapshot.active_run_id)
+  const runtimeStatus = asLowerString(snapshot.runtime_status) || asLowerString(snapshot.status)
+  if (workspaceMode !== 'copilot') return false
+  if (continuationPolicy !== 'wait_for_user_or_resume') return false
+  if (activeRunId) return false
+  if (snapshotBashRunningCount(snapshot) > 0) return false
+  if (runtimeStatus === 'failed' || runtimeStatus === 'error') return false
+  return true
 }
 
 function buildEventMetadata(
@@ -280,6 +312,19 @@ function normalizeQuestMessageEvent(
           agent_label: 'DeepScientist',
         }
   )
+  if (role === 'assistant') {
+    const runId =
+      typeof message?.run_id === 'string' && message.run_id.trim().length > 0
+        ? message.run_id
+        : null
+    const skillId =
+      typeof message?.skill_id === 'string' && message.skill_id.trim().length > 0
+        ? message.skill_id
+        : null
+    metadata.quest_event_type = eventType || undefined
+    metadata.quest_run_id = runId ?? undefined
+    metadata.quest_skill_id = skillId ?? undefined
+  }
   const data: MessageEventData = {
     event_id: eventId,
     timestamp,
@@ -549,6 +594,9 @@ function resolveMessagePreview(events: AgentSSEEvent[]) {
 }
 
 function inferQuestSessionActive(snapshot: QuestSnapshot, events: AgentSSEEvent[]) {
+  // Copilot quests deliberately park after creation and after user-approved stops.
+  // Trust the snapshot over stale tail events so the UI doesn't show a fake running state.
+  if (isCopilotSnapshotParkedForUser(snapshot)) return false
   if (snapshot.active_run_id) return true
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]
@@ -572,6 +620,9 @@ function inferQuestSessionActive(snapshot: QuestSnapshot, events: AgentSSEEvent[
 }
 
 function inferQuestSessionStatus(snapshot: QuestSnapshot, events: AgentSSEEvent[]) {
+  if (isCopilotSnapshotParkedForUser(snapshot)) {
+    return events.length > 0 ? 'completed' : 'pending'
+  }
   const active = inferQuestSessionActive(snapshot, events)
   if (active) return 'running'
   for (let index = events.length - 1; index >= 0; index -= 1) {
@@ -688,6 +739,12 @@ function buildQuestSessionLike(
       quest_root: snapshot.quest_root,
       active_anchor: snapshot.active_anchor,
       runner: snapshot.runner,
+      workspace_mode: snapshot.workspace_mode,
+      continuation_policy:
+        typeof (snapshot as Record<string, unknown>).continuation_policy === 'string'
+          ? (snapshot as Record<string, unknown>).continuation_policy
+          : null,
+      active_run_id: snapshot.active_run_id,
       runtime_status: snapshot.runtime_status,
       stop_reason: snapshot.stop_reason,
       updated_at: snapshot.updated_at,

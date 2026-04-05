@@ -52,6 +52,7 @@ daemon:
 ui:
   host: 0.0.0.0
   port: 20999
+  auth_enabled: false
   auto_open_browser: true
   default_mode: both
 logging:
@@ -165,6 +166,17 @@ acp:
 - UI label: `UI port`
 - Meaning: listening port for the local UI server.
 
+**`ui.auth_enabled`**
+
+- Type: `boolean`
+- Default: `false`
+- UI label: `Require local password`
+- Meaning: require a locally generated 16-character browser password for the web workspace and all `/api/*` routes.
+- Behavior:
+  - `true`: `ds` prints the generated password in the terminal, the browser prompts for the password if no valid local login exists, and successful login persists in the browser.
+  - `false`: disable the local password gate and keep the plain local URL behavior.
+- CLI override: `ds --auth true` or `ds --auth false`
+
 **`ui.auto_open_browser`**
 
 - Type: `boolean`
@@ -263,6 +275,7 @@ Palette selection is no longer exposed in `Settings` or `config.yaml`.
 - Default: `true`
 - UI label: `Sync project skills on create`
 - Meaning: mirror skills into project-local runner homes when a project is created.
+- Prompt note: this also seeds the managed quest-local prompt mirror under `.codex/prompts/`.
 
 **`skills.sync_quest_on_open`**
 
@@ -270,6 +283,26 @@ Palette selection is no longer exposed in `Settings` or `config.yaml`.
 - Default: `true`
 - UI label: `Sync project skills on open`
 - Meaning: refresh project-local skill mirrors when an existing project is opened.
+- Prompt note: this refreshes quest-local skill and prompt mirrors for quests discovered under the configured DeepScientist home.
+
+Managed prompt behavior:
+
+- DeepScientist now treats `.codex/prompts/` as a managed active prompt tree rather than as a permanent hand-edited override.
+- Before each real runner turn, it compares the active quest-local prompt tree against the current repository `src/prompts/` tree and automatically repairs drift.
+- If the active prompt tree differs, the previous tree is backed up under `.codex/prompt_versions/<backup_id>/` before the new active copy is written.
+- This run-time prompt sync happens against the actual quest root used for the turn, so it still works even when a quest lives outside the default `home/quests` path.
+- Runtime override: `ds daemon --prompt-version latest` uses the managed active tree, while `ds daemon --prompt-version <official_version>` runs that daemon session against the newest backup recorded for that formal DeepScientist version.
+- If you need one exact historical backup rather than the newest backup for that version, you may still pass the exact backup directory name from `.codex/prompt_versions/`.
+- The same override also exists for one-off CLI runs: `ds run --prompt-version <official_version> ...`.
+
+Managed auto-continue behavior:
+
+- `workspace_mode = copilot`
+  - after the current requested unit, DeepScientist normally parks and waits for the next user message or `/resume`
+- `workspace_mode = autonomous`
+  - if no real external long-running task exists yet, DeepScientist keeps using the next turns to prepare, launch, or durably route that real task
+  - once a real external long-running task exists, auto-continue becomes low-frequency monitoring, roughly every `240` seconds by default
+- Auto-continue prompts now also carry a compact resume spine: latest user message, latest assistant checkpoint, latest run summary, recent memory cues, and current `bash_exec` state
 
 ### Connector policy
 
