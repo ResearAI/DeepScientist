@@ -879,6 +879,75 @@ model_provider = "minimax"
     assert captured["prepared_prompt"] == "GLOBAL PROMPT\n"
 
 
+def test_codex_probe_overrides_conflicting_top_level_model_selection_for_provider_profile(monkeypatch, temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+
+    source_codex_home = temp_home / "provider-codex-home-conflict"
+    source_codex_home.mkdir(parents=True, exist_ok=True)
+    (source_codex_home / "config.toml").write_text(
+        """model = "gpt-5.4"
+model_provider = "OpenAI"
+model_reasoning_effort = "xhigh"
+
+[model_providers.minimax]
+name = "MiniMax Chat Completions API"
+base_url = "https://api.minimaxi.com/v1"
+env_key = "MINIMAX_API_KEY"
+wire_api = "chat"
+requires_openai_auth = false
+
+[profiles.m27]
+model = "MiniMax-M2.7"
+model_provider = "minimax"
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("deepscientist.config.service.resolve_runner_binary", lambda binary, runner_name=None: "/tmp/fake-codex")
+    captured: dict[str, object] = {}
+
+    def fake_run(command, **kwargs):  # noqa: ANN001
+        if list(command) == ["/tmp/fake-codex", "--version"]:
+            class VersionResult:
+                returncode = 0
+                stdout = "codex-cli 0.57.0"
+                stderr = ""
+
+            return VersionResult()
+        captured["command"] = list(command)
+        captured["env"] = dict(kwargs.get("env") or {})
+        prepared_home = Path(str(captured["env"]["CODEX_HOME"]))
+        captured["prepared_config"] = (prepared_home / "config.toml").read_text(encoding="utf-8")
+
+        class Result:
+            returncode = 0
+            stdout = '{"type":"item.completed","item":{"text":"HELLO"}}'
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr("deepscientist.config.service.subprocess.run", fake_run)
+
+    result = manager._probe_codex_runner(
+        {
+            "binary": "codex",
+            "profile": "m27",
+            "model": "inherit",
+            "config_dir": str(source_codex_home),
+        }
+    )
+
+    assert result["ok"] is True
+    assert 'model_provider = "minimax"' in str(captured["prepared_config"])
+    assert 'model = "MiniMax-M2.7"' in str(captured["prepared_config"])
+    assert 'model_provider = "OpenAI"' not in str(captured["prepared_config"])
+    assert 'model = "gpt-5.4"' not in str(captured["prepared_config"])
+    assert 'model_reasoning_effort = "xhigh"' in str(captured["prepared_config"])
+    assert any("overrode conflicting top-level" in warning for warning in result["warnings"])
+
+
 def test_codex_probe_forces_inherit_model_for_provider_profile(monkeypatch, temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     manager = ConfigManager(temp_home)

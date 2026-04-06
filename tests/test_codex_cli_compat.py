@@ -57,7 +57,7 @@ model_provider = "minimax"
     assert 'model = "MiniMax-M2.7"' in adapted
 
 
-def test_adapt_profile_only_provider_config_is_noop_when_top_level_fields_exist() -> None:
+def test_adapt_profile_only_provider_config_is_noop_when_top_level_fields_match_profile() -> None:
     config = """
 model = "MiniMax-M2.7"
 model_provider = "minimax"
@@ -71,3 +71,33 @@ model_provider = "minimax"
 
     assert adapted == config
     assert warning is None
+
+
+def test_adapt_profile_only_provider_config_overrides_conflicting_top_level_fields() -> None:
+    config = """
+model = "gpt-5.4"
+model_provider = "OpenAI"
+model_reasoning_effort = "xhigh"
+
+[model_providers.minimax]
+name = "MiniMax Chat Completions API"
+base_url = "https://api.minimaxi.com/v1"
+env_key = "MINIMAX_API_KEY"
+wire_api = "chat"
+requires_openai_auth = false
+
+[profiles.m27]
+model = "MiniMax-M2.7"
+model_provider = "minimax"
+""".strip()
+
+    adapted, warning = codex_cli_compat.adapt_profile_only_provider_config(config, profile="m27")
+
+    assert warning is not None
+    assert "overrode conflicting top-level" in warning
+    header = adapted.split("[model_providers.minimax]", 1)[0]
+    assert 'model_provider = "minimax"' in header
+    assert 'model = "MiniMax-M2.7"' in header
+    assert 'model_provider = "OpenAI"' not in adapted
+    assert 'model = "gpt-5.4"' not in adapted
+    assert 'model_reasoning_effort = "xhigh"' in adapted

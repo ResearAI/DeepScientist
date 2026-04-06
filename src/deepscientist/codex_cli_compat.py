@@ -15,6 +15,10 @@ _CODEX_VERSION_PATTERN = re.compile(r"codex-cli\s+(\d+)\.(\d+)\.(\d+)", re.IGNOR
 _CODEX_HOME_SYNCED_FILES = ("config.toml", "auth.json")
 _CODEX_HOME_SYNCED_DIRS = ("skills", "agents", "prompts")
 _CODEX_HOME_QUEST_OVERLAY_DIRS = ("skills", "prompts")
+_ROOT_TABLE_SECTION_PATTERN = re.compile(r"^\s*\[")
+_ROOT_MODEL_ASSIGNMENT_PATTERN = re.compile(r"^\s*(model_provider|model)\s*=")
+_COMPAT_BEGIN_MARKER = "# BEGIN DEEPSCIENTIST PROFILE COMPAT"
+_COMPAT_END_MARKER = "# END DEEPSCIENTIST PROFILE COMPAT"
 
 
 def parse_codex_cli_version(text: str) -> tuple[int, int, int] | None:
@@ -46,6 +50,46 @@ def format_codex_cli_version(version: tuple[int, int, int] | None) -> str:
     if version is None:
         return ""
     return ".".join(str(part) for part in version)
+
+
+def _split_root_table_lines(config_text: str) -> tuple[list[str], list[str]]:
+    lines = str(config_text or "").splitlines()
+    for index, line in enumerate(lines):
+        if _ROOT_TABLE_SECTION_PATTERN.match(line):
+            return lines[:index], lines[index:]
+    return lines, []
+
+
+def _strip_root_model_assignments(lines: list[str]) -> list[str]:
+    filtered: list[str] = []
+    skipping_compat_block = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == _COMPAT_BEGIN_MARKER:
+            skipping_compat_block = True
+            continue
+        if skipping_compat_block:
+            if stripped == _COMPAT_END_MARKER:
+                skipping_compat_block = False
+            continue
+        if _ROOT_MODEL_ASSIGNMENT_PATTERN.match(line):
+            continue
+        filtered.append(line)
+    while filtered and not filtered[0].strip():
+        filtered.pop(0)
+    while filtered and not filtered[-1].strip():
+        filtered.pop()
+    return filtered
+
+
+def _join_field_names(fields: list[str]) -> str:
+    if not fields:
+        return ""
+    if len(fields) == 1:
+        return fields[0]
+    if len(fields) == 2:
+        return f"{fields[0]} and {fields[1]}"
+    return ", ".join(fields[:-1]) + f", and {fields[-1]}"
 
 
 def normalize_codex_reasoning_effort(
@@ -93,33 +137,54 @@ def adapt_profile_only_provider_config(
     if not isinstance(profile_payload, dict):
         return config_text, None
 
-    prefix_lines: list[str] = []
-    injected_fields: list[str] = []
-    if "model_provider" not in parsed:
-        model_provider = str(profile_payload.get("model_provider") or "").strip()
-        if model_provider:
-            prefix_lines.append(f"model_provider = {json.dumps(model_provider, ensure_ascii=False)}")
-            injected_fields.append("model_provider")
-    if "model" not in parsed:
-        model = str(profile_payload.get("model") or "").strip()
-        if model:
-            prefix_lines.append(f"model = {json.dumps(model, ensure_ascii=False)}")
-            injected_fields.append("model")
+    profile_model_provider = str(profile_payload.get("model_provider") or "").strip()
+    profile_model = str(profile_payload.get("model") or "").strip()
+    top_level_model_provider = str(parsed.get("model_provider") or "").strip()
+    top_level_model = str(parsed.get("model") or "").strip()
 
-    if not prefix_lines:
+    root_lines: list[str] = []
+    changed_fields: list[str] = []
+    conflicted_fields: list[str] = []
+    if profile_model_provider and top_level_model_provider != profile_model_provider:
+        root_lines.append(f"model_provider = {json.dumps(profile_model_provider, ensure_ascii=False)}")
+        changed_fields.append("model_provider")
+        if top_level_model_provider:
+            conflicted_fields.append("model_provider")
+    elif profile_model_provider:
+        root_lines.append(f"model_provider = {json.dumps(profile_model_provider, ensure_ascii=False)}")
+    if profile_model and top_level_model != profile_model:
+        root_lines.append(f"model = {json.dumps(profile_model, ensure_ascii=False)}")
+        changed_fields.append("model")
+        if top_level_model:
+            conflicted_fields.append("model")
+    elif profile_model:
+        root_lines.append(f"model = {json.dumps(profile_model, ensure_ascii=False)}")
+
+    if not changed_fields:
         return config_text, None
 
-    adapted = (
-        "# BEGIN DEEPSCIENTIST PROFILE COMPAT\n"
-        + "\n".join(prefix_lines)
-        + "\n# END DEEPSCIENTIST PROFILE COMPAT\n\n"
-        + config_text.lstrip()
-    )
+    root_prefix, body_lines = _split_root_table_lines(config_text)
+    cleaned_root = _strip_root_model_assignments(root_prefix)
+    adapted_lines: list[str] = [
+        _COMPAT_BEGIN_MARKER,
+        *root_lines,
+        _COMPAT_END_MARKER,
+    ]
+    if cleaned_root:
+        adapted_lines.append("")
+        adapted_lines.extend(cleaned_root)
+    if body_lines:
+        adapted_lines.append("")
+        adapted_lines.extend(body_lines)
+    adapted = "\n".join(adapted_lines).rstrip() + "\n"
+    field_text = _join_field_names(changed_fields)
     return (
         adapted,
         (
-            f"DeepScientist promoted `{normalized_profile}` profile "
-            f"{', '.join(injected_fields)} to the top level for Codex compatibility."
+            f"DeepScientist overrode conflicting top-level {field_text} with values from profile "
+            f"`{normalized_profile}` for Codex compatibility."
+            if conflicted_fields
+            else f"DeepScientist promoted `{normalized_profile}` profile {field_text} to the top level for Codex compatibility."
         ),
     )
 
