@@ -37,7 +37,7 @@ Prepare these first:
 
 - Node.js `>=18.18` and npm `>=9`; install them from the official download page: https://nodejs.org/en/download
 - one working Codex path:
-  - default OpenAI login path: `codex --login` (or `codex`)
+  - default OpenAI login path: `codex login` (or just `codex`)
   - provider-backed path: one working Codex profile such as `minimax`, `glm`, `ark`, or `bailian`
 - a model or API credential if your project needs external inference
 - GPU or server access if your experiments are compute-heavy
@@ -90,7 +90,7 @@ If you want the most reliable path, verify the command immediately:
 
 ```bash
 which codex
-codex --login
+codex login
 ```
 
 If `which codex` prints nothing, the issue is usually the npm global bin path rather than DeepScientist itself. Fix the shell PATH first, then rerun `npm install -g @openai/codex`.
@@ -112,10 +112,10 @@ Choose one of these two paths.
 Run:
 
 ```bash
-codex --login
+codex login
 ```
 
-If your Codex CLI version does not expose `--login`, run:
+If you prefer the interactive first-run flow, run:
 
 ```bash
 codex

@@ -37,7 +37,7 @@
 
 - 安装好 Node.js `>=18.18` 和 npm `>=9`；请优先参考官方页面安装：https://nodejs.org/en/download
 - 一条已经可用的 Codex 路径：
-  - 默认 OpenAI 登录路径：`codex --login`（或 `codex`）
+  - 默认 OpenAI 登录路径：`codex login`（或直接运行 `codex`）
   - provider-backed 路径：一个已经可用的 Codex profile，例如 `minimax`、`glm`、`ark`、`bailian`
 - 模型或 API 凭证
 - 如果任务比较重，准备好 GPU 或远程服务器
@@ -90,7 +90,7 @@ npm install -g @openai/codex
 
 ```bash
 which codex
-codex --login
+codex login
 ```
 
 如果 `which codex` 没有输出，问题通常不是 DeepScientist 本身，而是 npm 全局 bin 目录没有正确进入 shell 的 PATH。先修复 PATH，再重新执行 `npm install -g @openai/codex`。
@@ -112,10 +112,10 @@ ds latex install-runtime
 运行：
 
 ```bash
-codex --login
+codex login
 ```
 
-如果你的 Codex CLI 版本没有 `--login`，就运行：
+如果你更喜欢交互式首次配置，就运行：
 
 ```bash
 codex

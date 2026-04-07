@@ -713,7 +713,7 @@ def test_codex_probe_missing_binary_includes_explicit_install_guidance(monkeypat
 
     assert result["ok"] is False
     assert "npm install -g @openai/codex" in "\n".join(result["guidance"])
-    assert "codex --login" in "\n".join(result["guidance"])
+    assert "codex login" in "\n".join(result["guidance"])
 
 
 def test_codex_probe_passes_profile_and_runner_env_to_subprocess(monkeypatch, temp_home: Path) -> None:
@@ -1107,10 +1107,10 @@ def test_codex_probe_failure_guidance_mentions_login_doctor_and_model(monkeypatc
     assert result["ok"] is False
     guidance_text = "\n".join(result["guidance"])
     error_text = "\n".join(result["errors"])
-    assert "codex --login" in guidance_text
+    assert "codex login" in guidance_text
     assert "ds doctor" in guidance_text
     assert "configured model" in guidance_text
-    assert "codex --login" in error_text
+    assert "codex login" in error_text
 
 
 def test_codex_probe_falls_back_to_codex_default_model_when_configured_model_is_unavailable(

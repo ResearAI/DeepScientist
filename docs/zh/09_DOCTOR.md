@@ -15,7 +15,7 @@
    默认 OpenAI 路径：
 
    ```bash
-   codex --login
+   codex login
    ```
 
    provider-backed profile 路径：
@@ -30,7 +30,7 @@
    npm install -g @openai/codex
    ```
 
-   如果你的 Codex CLI 版本没有 `--login`，就运行 `codex` 并在交互式界面里完成认证。
+   如果你更喜欢交互式首次配置，就运行 `codex` 并在交互式界面里完成认证。
 
 3. 先直接尝试启动：
 
@@ -82,10 +82,10 @@ npm install -g @openai/codex
 运行：
 
 ```bash
-codex --login
+codex login
 ```
 
-如果你的 Codex CLI 版本没有 `--login`，就运行 `codex` 并在交互式界面里完成认证。
+如果你更喜欢交互式首次配置，就运行 `codex` 并在交互式界面里完成认证。
 
 先完成一次登录，再重新执行 `ds doctor`。
 

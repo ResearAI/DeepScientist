@@ -1032,10 +1032,10 @@ function writeCodexPreflightReport(home, probe) {
   const profile = typeof details.profile === 'string' ? details.profile.trim() : '';
   const intro = profile
     ? `DeepScientist blocked startup because the Codex hello probe did not pass for profile \`${profile}\`. Verify that \`codex --profile ${profile}\` works on this machine and that the profile's provider-specific API key, Base URL, and model configuration are already set up.`
-    : 'DeepScientist blocked startup because the Codex hello probe did not pass. In most installs, `npm install -g @researai/deepscientist` also installs the bundled Codex dependency. If `codex` is still missing, repair it with `npm install -g @openai/codex`. Then run `codex --login` (or `codex`), finish authentication, run `ds doctor`, and launch `ds` again.';
+    : 'DeepScientist blocked startup because the Codex hello probe did not pass. In most installs, `npm install -g @researai/deepscientist` also installs the bundled Codex dependency. If `codex` is still missing, repair it with `npm install -g @openai/codex`. Then run `codex login` (or just `codex`), finish authentication, run `ds doctor`, and launch `ds` again.';
   const introZh = profile
     ? `DeepScientist 启动前进行了 Codex 可用性检查，但 profile \`${profile}\` 的 hello 探测没有通过。请先确认 \`codex --profile ${profile}\` 在当前机器上可以正常启动，并确保该 profile 依赖的 provider API Key、Base URL 和模型配置都已经在 Codex 中配置好。`
-    : 'DeepScientist 启动前进行了 Codex 可用性检查，但 hello 探测没有通过。正常情况下，`npm install -g @researai/deepscientist` 也会一并安装 bundled Codex 依赖；如果此后 `codex` 仍不可用，请再执行 `npm install -g @openai/codex` 修复。然后运行 `codex --login`（或 `codex`）完成认证，再执行 `ds doctor`，最后重新启动 `ds`。';
+    : 'DeepScientist 启动前进行了 Codex 可用性检查，但 hello 探测没有通过。正常情况下，`npm install -g @researai/deepscientist` 也会一并安装 bundled Codex 依赖；如果此后 `codex` 仍不可用，请再执行 `npm install -g @openai/codex` 修复。然后运行 `codex login`（或直接运行 `codex`）完成认证，再执行 `ds doctor`，最后重新启动 `ds`。';
   const renderItems = (items, tone) =>
     items
       .map(
@@ -4861,7 +4861,7 @@ function handleCodexPreflightFailure(error) {
     : [
         'In most installs, `npm install -g @researai/deepscientist` also installs the bundled Codex dependency.',
         'If `codex` is still missing, run `npm install -g @openai/codex`.',
-        'Run `codex --login` (or `codex`) and finish authentication.',
+        'Run `codex login` (or just `codex`) and finish authentication.',
         'Run `ds doctor` and confirm the Codex check passes.',
         'Run `ds` again.',
       ];

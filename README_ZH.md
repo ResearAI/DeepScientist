@@ -248,7 +248,7 @@ DeepScientist 最容易让人持续使用的原因有四个：
 
 ```bash
 npm install -g @researai/deepscientist
-codex --login
+codex login
 ds --here
 ```
 
@@ -258,7 +258,7 @@ ds --here
 ds --stop
 ```
 
-如果 `codex --login` 不可用，先单独运行一次：
+如果你更喜欢交互式首次配置，也可以先单独运行一次：
 
 ```bash
 codex
@@ -269,10 +269,10 @@ codex
 ```bash
 npm install -g @openai/codex
 which codex
-codex --login
+codex login
 ```
 
-如果 `which codex` 仍然没有输出，就先修好 npm global bin 路径，再重试 `codex --login` 和 `ds doctor`。
+如果 `which codex` 仍然没有输出，就先修好 npm global bin 路径，再重试 `codex login` 和 `ds doctor`。
 
 启动后，默认本地地址是：
 

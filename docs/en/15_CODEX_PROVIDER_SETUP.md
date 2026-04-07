@@ -18,7 +18,7 @@ The recommended order is always:
 Use this when your Codex CLI works through the standard OpenAI login flow.
 
 ```bash
-codex --login
+codex login
 ds doctor
 ds
 ```
@@ -78,7 +78,7 @@ Important:
 ### What to prepare
 
 - a normal Codex CLI install
-- a successful `codex --login` or `codex` interactive first-run setup
+- a successful `codex login` or `codex` interactive first-run setup
 
 ### DeepScientist commands
 

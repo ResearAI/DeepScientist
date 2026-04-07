@@ -465,7 +465,7 @@ claude:
 - `Test` behavior: checks whether the binary is on `PATH`.
 - Resolution order for `codex`: env override, explicit path, local `PATH`, then bundled fallback.
 - One-off note: you can temporarily override this with `ds --codex /absolute/path/to/codex`.
-- First-run note: DeepScientist does not finish Codex authentication for you. Before the first `ds`, make sure `codex --login` (or `codex`) has completed successfully.
+- First-run note: DeepScientist does not finish Codex authentication for you. Before the first `ds`, make sure `codex login` (or just `codex`) has completed successfully.
 - Repair note: if the bundled dependency is missing after `npm install -g @researai/deepscientist`, install Codex explicitly with `npm install -g @openai/codex`.
 
 **`config_dir`**

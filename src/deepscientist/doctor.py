@@ -284,7 +284,7 @@ def _check_codex(config_manager: ConfigManager) -> dict[str, Any]:
         )
     if not probe_guidance:
         probe_guidance = [
-            "Run `codex --login` (or `codex`) manually once and complete login, then retry `ds doctor`.",
+            "Run `codex login` (or just `codex`) manually once and complete login, then retry `ds doctor`.",
         ]
     return _make_check(
         check_id="codex",

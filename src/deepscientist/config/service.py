@@ -1267,7 +1267,7 @@ Use **Test** when the file exposes runtime dependencies.
                 ]
             )
         else:
-            guidance.append("Run `codex --login` (or `codex`) once and finish authentication before starting DeepScientist.")
+            guidance.append("Run `codex login` (or just `codex`) once and finish authentication before starting DeepScientist.")
         guidance.append(
             "If you use a custom Codex path, either set `runners.codex.binary` or launch with `ds --codex /absolute/path/to/codex`."
         )
@@ -1289,10 +1289,10 @@ Use **Test** when the file exposes runtime dependencies.
             )
         return (
             [
-                "Run `codex --login` (or `codex`) once and complete login before starting DeepScientist.",
+                "Run `codex login` (or just `codex`) once and complete login before starting DeepScientist.",
             ],
             [
-                "Run `codex --login` (or `codex`) in a terminal and complete login or first-run setup.",
+                "Run `codex login` (or just `codex`) in a terminal and complete login or first-run setup.",
                 "If `codex` is missing, install it explicitly with `npm install -g @openai/codex`.",
                 "If the configured model is not available to your Codex account, update `~/DeepScientist/config/runners.yaml` and try again.",
                 "Then run `ds doctor` and start DeepScientist again.",

@@ -479,7 +479,7 @@ claude:
 - `Test` 行为：检查该二进制是否在 `PATH` 上。
 - `codex` 的解析顺序：环境变量覆盖、显式路径、本机 `PATH`、最后才是 bundled fallback。
 - 临时使用说明：你也可以直接用 `ds --codex /absolute/path/to/codex` 临时覆盖这里的设置。
-- 首次使用说明：DeepScientist 不会替你完成 Codex 认证。第一次运行 `ds` 前，必须先确保 `codex --login`（或 `codex`）已经成功完成。
+- 首次使用说明：DeepScientist 不会替你完成 Codex 认证。第一次运行 `ds` 前，必须先确保 `codex login`（或直接运行 `codex`）已经成功完成。
 - 修复说明：如果执行 `npm install -g @researai/deepscientist` 之后 bundled Codex 依赖仍然缺失，请显式安装 `npm install -g @openai/codex`。
 
 **`config_dir`**

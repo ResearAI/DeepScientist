@@ -15,7 +15,7 @@ Use `ds doctor` when DeepScientist does not start cleanly after installation.
    Default OpenAI path:
 
    ```bash
-   codex --login
+   codex login
    ```
 
    Provider-backed profile path:
@@ -80,10 +80,10 @@ npm install -g @openai/codex
 Run:
 
 ```bash
-codex --login
+codex login
 ```
 
-If your Codex CLI version does not expose `--login`, run `codex` and finish the interactive setup there.
+If you prefer the interactive first-run flow, run `codex` and finish the setup there.
 
 Finish login once, then rerun `ds doctor`.
 

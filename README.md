@@ -248,7 +248,7 @@ Platform note: DeepScientist fully supports Linux and macOS. Native Windows supp
 
 ```bash
 npm install -g @researai/deepscientist
-codex --login
+codex login
 ds --here
 ```
 
@@ -258,7 +258,7 @@ To stop the managed local daemon and all currently running agents:
 ds --stop
 ```
 
-If `codex --login` is unavailable, run this once first:
+If you prefer the interactive first-run flow, run this once first:
 
 ```bash
 codex
@@ -269,10 +269,10 @@ If `codex` still appears to be missing after installing DeepScientist, take the 
 ```bash
 npm install -g @openai/codex
 which codex
-codex --login
+codex login
 ```
 
-If `which codex` still prints nothing after that, fix the npm global bin path first, then retry `codex --login` and `ds doctor`.
+If `which codex` still prints nothing after that, fix the npm global bin path first, then retry `codex login` and `ds doctor`.
 
 After startup, the default local address is:
 
