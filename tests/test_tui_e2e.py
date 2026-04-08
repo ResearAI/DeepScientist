@@ -170,6 +170,69 @@ def default_connector_routes(state: dict[str, Any]) -> dict[str, RouteHandler]:
     }
 
 
+def test_tui_backspace_deletes_input_in_config_editor() -> None:
+    state: dict[str, Any] = {
+        "config_files": [
+            {
+                "name": "config",
+                "path": "/tmp/config.yaml",
+                "required": True,
+                "exists": True,
+            }
+        ],
+        "config_document": {
+            "document_id": "config::config",
+            "title": "config.yaml",
+            "path": "/tmp/config.yaml",
+            "writable": True,
+            "content": "seed: true\n",
+            "revision": "cfg-rev-bs-1",
+        },
+        "saved_requests": [],
+    }
+
+    def get_config_document(current: dict[str, Any], _body: dict[str, Any] | None) -> dict[str, Any]:
+        return current["config_document"]
+
+    def save_config(current: dict[str, Any], body: dict[str, Any] | None) -> dict[str, Any]:
+        assert body is not None
+        current["saved_requests"].append(body)
+        current["config_document"] = {
+            **current["config_document"],
+            "content": body["content"],
+            "revision": "cfg-rev-bs-2",
+        }
+        return {"ok": True, "revision": "cfg-rev-bs-2"}
+
+    get_routes = {
+        **default_quest_routes(),
+        **default_connector_routes(state),
+        "/api/config/config": get_config_document,
+    }
+    put_routes = {
+        "/api/config/config": save_config,
+    }
+
+    with MockDaemon(state=state, get_routes=get_routes, put_routes=put_routes) as daemon:
+        with spawn_tui(daemon.base_url) as child:
+            open_config_root(child)
+            press_down(child)
+            child.expect("> 2. Global Config Files")
+            press_enter(child)
+            child.expect("Global Config Files")
+            press_enter(child)
+            child.expect("Config Editor")
+
+            child.send("ABCDE")
+            child.send("\x7f" * 2)
+            child.send("\r")
+            child.expect("Saved config.yaml")
+
+    assert len(state["saved_requests"]) == 1
+    assert state["saved_requests"][0]["content"] == "seed: true\nABC"
+
+
+
 def test_tui_can_edit_and_save_global_config_files() -> None:
     state: dict[str, Any] = {
         "config_files": [

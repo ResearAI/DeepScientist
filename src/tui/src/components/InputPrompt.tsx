@@ -454,7 +454,13 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
       }
 
       if (key.delete) {
-        deleteAtCursor(1)
+        const current = valueRef.current
+        const cursor = clampCursor(current, cursorIndexRef.current)
+        if (cursor < current.length) {
+          deleteAtCursor(1)
+        } else {
+          deleteBeforeCursor(1)
+        }
         return
       }
 
