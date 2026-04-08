@@ -3,7 +3,18 @@
 Use this for the campaign-level plan.
 Treat it as the durable version of the charter, not a separate optional memo.
 
-## 1. Objective
+## 1. Map Link
+
+- parent_map_node:
+- loop_id:
+- node_objective:
+- node_deliverable:
+- success_condition:
+- abandonment_condition:
+- next_on_success:
+- next_on_failure:
+
+## 2. Objective
 
 - campaign id:
 - parent run or idea:
@@ -14,20 +25,28 @@ Treat it as the durable version of the charter, not a separate optional memo.
 - paper experiment matrix path:
 - current matrix execution frontier:
 
-## 2. Boundary And Comparability
+## 3. Current Node Tasks
+
+- [ ] sync the campaign node status and parent claim
+- [ ] confirm slice ordering and comparability boundary
+- [ ] launch the first claim-critical slice
+- [ ] aggregate campaign evidence
+- [ ] update the next map edge
+
+## 4. Boundary And Comparability
 
 - baseline comparison contract:
 - fixed conditions:
 - variables that may change:
 - non-comparable slices to watch for:
 
-## 3. Slice Plan
+## 5. Slice Plan
 
 | Exp id | Slice id | Tier | Slice class | Experiment type | Research question | Expected value | Priority | Paper placement | Needs code change? | Needs extra baseline? |
 |---|---|---|---|---|---|---|---|---|---|---|
 | | | main_required / main_optional / appendix / optional | auxiliary / claim-carrying / supporting | ablation / sensitivity / robustness / efficiency / highlight / boundary / case-study | | | | main_text / appendix / maybe / omit | yes / no | yes / no |
 
-## 4. Highlight Hypotheses
+## 6. Highlight Hypotheses
 
 - highlight id:
 - one-line claim:
@@ -35,14 +54,14 @@ Treat it as the durable version of the charter, not a separate optional memo.
 - which slices validate or falsify it:
 - what happens if it fails:
 
-## 5. Assets And Dependencies
+## 7. Assets And Dependencies
 
 - quest-local assets already available:
 - checkpoints / baselines already available:
 - downloads or services still needed:
 - fallback options if external assets are blocked:
 
-## 6. Execution Strategy
+## 8. Execution Strategy
 
 - first slices to run:
 - smoke-test policy:
@@ -60,7 +79,7 @@ Monitoring and sleep plan:
 - health signals that justify continued monitoring:
 - conditions that trigger slice redesign, kill, or campaign revision:
 
-## 7. Reporting Plan
+## 9. Reporting Plan
 
 - what will count as stable support:
 - what will count as contradiction:
@@ -69,12 +88,12 @@ Monitoring and sleep plan:
 - matrix refresh rule after every slice:
 - main-text gating rule:
 
-## 8. Checklist Link
+## 10. Checklist Link
 
 - checklist path:
 - next unchecked item:
 
-## 9. Revision Log
+## 11. Revision Log
 
 | Time | What changed | Why it changed | Impact on slices or interpretation |
 |---|---|---|---|

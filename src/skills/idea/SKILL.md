@@ -23,6 +23,32 @@ When doing that handoff, prefer the brief-shaping discipline later used by `opti
 - Message templates are references only. Adapt to the actual context and vary wording so updates feel natural and non-robotic.
 - If a threaded user reply arrives, interpret it relative to the latest idea progress update before assuming the task changed completely.
 
+## Three-layer todo contract
+
+- keep quest-root `plan.md` as the research map for the whole quest loop
+- keep workspace `PLAN.md` as the active idea-node contract when ideation is multi-step, literature-heavy, or route-sensitive
+- keep workspace `CHECKLIST.md` as the active ideation frontier with one real in-progress item and a short `Next` list
+- if the execution frontier stops changing across repeated passes, revise the node contract or the research map instead of nesting more substeps
+
+## Research-map role
+
+- `idea` selects or refreshes the next route within the current loop; it does not replace the whole quest roadmap
+- when an idea is selected, rejected, or downgraded, update quest-root `plan.md` so the next experiment node or fallback decision node is explicit
+- when a strong result later becomes the new incumbent, the next idea pass should open a new loop entry in quest-root `plan.md` rather than drifting into ad hoc brainstorming
+
+## Current-node plan and checklist
+
+When ideation becomes multi-step, create or refresh:
+
+- workspace `PLAN.md` as the current idea-node contract
+- workspace `CHECKLIST.md` as the ideation frontier
+
+The idea node should make explicit:
+
+- which bottleneck is being attacked now
+- which candidate families are still live
+- what selection gate must be cleared before experiment
+
 ## Stage purpose
 
 The idea stage should not generate vague inspiration.

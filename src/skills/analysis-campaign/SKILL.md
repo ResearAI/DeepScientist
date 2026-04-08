@@ -59,6 +59,18 @@ Do not invent a separate experiment system for those cases.
 - Progress message templates are references only. Adapt to the actual context and vary wording so messages feel human, respectful, and non-robotic.
 - If a threaded user reply arrives, interpret it relative to the latest campaign progress update before assuming the task changed completely.
 
+## Three-layer todo contract
+
+- keep quest-root `plan.md` as the quest-level research map and parent loop tracker
+- keep workspace `PLAN.md` as the current campaign-node charter
+- keep workspace `CHECKLIST.md` as the campaign execution frontier; when writing-facing `todo_items` exist, treat them as the bottom-layer frontier rather than as a second parallel planning system
+- if the frontier stops changing across repeated passes, revise the campaign node or route instead of opening nested slice subtrees in chat
+
+## Research-map role
+
+- an analysis campaign is a subordinate evidence node under a parent experiment or paper-facing loop state
+- finishing or blocking a campaign should update quest-root `plan.md` with the next edge back to write, decision, another experiment node, or stop
+
 ## Stage purpose
 
 The analysis-campaign stage exists to test the strength, boundaries, and failure modes of a result.
@@ -156,6 +168,7 @@ Before launching any real campaign slice, create a quest-visible `PLAN.md` and `
 
 - Use `references/campaign-plan-template.md` as the canonical structure for `PLAN.md`.
 - Use `references/campaign-checklist-template.md` as the canonical structure for `CHECKLIST.md`.
+- keep quest-root `plan.md` synced with the parent experiment or paper-facing node and the campaign's actual next edge
 - `PLAN.md` is the durable campaign charter and should cover the claim under test, slice table, comparability boundary, available assets, required comparators, smoke and main-run strategy, monitoring and sleep rules, reporting expectations, and a revision log.
 - `CHECKLIST.md` is the living campaign execution list; update it during launch, asset preparation, slice execution, aggregation, and route changes.
 - If slice ordering, feasibility, required baselines, campaign interpretation, or the writing-facing outline mapping changes materially, revise `PLAN.md` before continuing.

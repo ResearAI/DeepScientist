@@ -20,6 +20,33 @@ Use this skill to close or pause a quest responsibly.
 - Rechecking that the same bundle files still exist, or re-aligning status surfaces without changing the closure judgment, does not by itself count as a fresh milestone.
 - Hard execution rule: if this stage needs terminal work such as Git inspection, packaging checks, document builds, or file inspection, every such command must go through `bash_exec`.
 
+## Three-layer todo contract
+
+- keep quest-root `plan.md` as the top-level research map and closure map
+- keep workspace `PLAN.md` as the active finalize-node contract when closure work is multi-step
+- keep workspace `CHECKLIST.md` as the finalize execution frontier with one real in-progress item and a short `Next` list
+- if the frontier stops changing, stop nesting closure chores and make the route judgment explicit
+
+## Research-map role
+
+- `finalize` is the loop-closure controller, not automatic quest death
+- the finalize outcome should update quest-root `plan.md` to one of: `stop`, `park_and_continue_later`, or `publish_and_continue_from_new_incumbent`
+- every finalize handoff should leave explicit reopen conditions and, when relevant, the next loop candidate
+
+## Current-node plan and checklist
+
+When finalize work is multi-step, create or refresh:
+
+- workspace `PLAN.md` as the finalize-node contract
+- workspace `CHECKLIST.md` as the finalize execution frontier
+
+The finalize node should make explicit:
+
+- which closure state is currently most justified
+- what evidence still blocks closure
+- what reopen condition still matters
+- whether the next edge is stop, park, or a new loop
+
 ## Stage purpose
 
 The finalize stage should not pretend every line succeeded.

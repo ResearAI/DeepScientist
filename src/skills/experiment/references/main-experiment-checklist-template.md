@@ -4,9 +4,29 @@ Update this while planning, modifying code, running pilots, monitoring the full 
 
 ## Identity
 
+- parent_map_node:
+- loop_id:
 - run id:
 - idea id:
 - stage:
+
+## In Progress
+
+- [ ] one concrete experiment frontier item is actively in progress
+
+## Next
+
+- [ ] next code / run / validation step is explicit
+- [ ] next map transition is explicit
+- [ ] next reporting checkpoint is explicit
+
+## Later
+
+- [ ] deferred but still relevant items live here
+
+## Blocked
+
+- [ ] blockers or unresolved dependencies are recorded here
 
 ## Planning
 
@@ -45,6 +65,10 @@ Update this while planning, modifying code, running pilots, monitoring the full 
 - [ ] baseline delta is comparable
 - [ ] main claim is classified as supported / refuted / inconclusive
 - [ ] result recorded durably
+
+## Done
+
+- [ ] completed frontier items are moved here instead of staying mixed into `Next`
 
 ## Closeout
 

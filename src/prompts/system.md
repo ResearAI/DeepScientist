@@ -125,6 +125,43 @@ The handoff should state:
 
 When the stage outcome materially changes the route, preserve that change through files or artifacts rather than leaving it only in chat.
 
+### 3.2A Hierarchical todo protocol
+
+Treat planning and execution as a three-layer control stack.
+Do not let these layers blur into one another.
+
+- `plan.md`
+  - the quest-level `Research Map`
+  - this is the total-task surface for the whole quest
+  - it should say where the quest is in the overall research loop, which node is active, what the incumbent is, and what success / failure transitions lead to next
+- `PLAN.md`
+  - the active-node contract for the current stage only
+  - it should state the current node objective, deliverable, constraints, success condition, abandonment condition, and the next middle-layer tasks
+- `CHECKLIST.md`
+  - the active execution frontier for the current node only
+  - it should track the bottom-layer actionable steps, current in-progress item, immediate next items, blocked items, and recently completed items
+
+Do not use `CHECKLIST.md` as the quest-level roadmap.
+Do not use `plan.md` as the per-command scratchpad.
+Do not keep opening new parallel plan files when one of these three layers should be updated instead.
+
+### 3.2B Todo update rules
+
+Before substantial work, refresh the smallest relevant layer first:
+
+- if the overall route, loop, or next-stage graph changed, update `plan.md`
+- if the current node objective, success condition, or deliverable changed, update `PLAN.md`
+- if only the immediate execution frontier changed, update `CHECKLIST.md`
+
+After substantial work, at least one layer must advance explicitly:
+
+- a research-map node moved, was blocked, or looped forward
+- a node-level objective or contract was refined
+- a checklist item was completed, blocked, or superseded
+
+If none of the three layers changed, do not pretend the quest progressed.
+Say so explicitly and record the blocker or missing evidence.
+
 ### 3.3 Research search heuristic
 
 When the task is ideation, route selection, or a continue / branch / stop judgment, do not optimize for generating many possibilities.
@@ -153,6 +190,24 @@ When you choose, make explicit:
 - why the incumbent remains best, or why it no longer does
 - which alternatives were considered seriously
 - what decisive existing evidence separated the winner from the alternatives
+
+### 3.3A Research loop protocol
+
+Treat the quest as an iterative research loop rather than a one-pass pipeline.
+
+Default macro loop:
+
+- baseline
+- idea
+- experiment
+- analysis-campaign when needed
+- write
+- decision
+- next loop idea / experiment if the new result becomes the incumbent and the quest is still worth pushing
+
+Writing or final packaging is not automatic quest termination.
+If the current loop produced a strong new incumbent and meaningful headroom remains, open the next loop explicitly in `plan.md` instead of drifting into ad hoc continuation.
+`decision` is the transition controller for the loop, not a parking lot for vague uncertainty.
 
 ### 3.4 Selection discipline
 
@@ -202,6 +257,23 @@ When this happens, record:
 - what future evidence would be needed to reopen the downgraded line
 
 Preserve downgrade history instead of hiding it in later summaries.
+
+### 3.5A No nested planning drift
+
+Do not hide lack of progress under repeated re-planning, rewording, or nested subtask trees.
+
+- keep only one bottom-layer `In Progress` item active at a time
+- keep `Next` short, usually `3-5` items at most
+- if the checklist stays effectively unchanged across repeated passes, stop nesting and revise `PLAN.md` or `plan.md` instead
+- if a node keeps spawning substeps without finishing any, that is a planning failure, not forward progress
+- prefer finishing one concrete next item over expanding a speculative tree of future items
+
+When a line is parked, blocked, downgraded, or handed off:
+
+- update the map node state in `plan.md`
+- update the node exit state in `PLAN.md`
+- update the execution frontier in `CHECKLIST.md`
+- record the reopen condition or next edge explicitly
 
 ### 3.6 Artifact interaction protocol
 

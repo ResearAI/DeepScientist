@@ -24,6 +24,20 @@ The target is one trustworthy baseline line, not an endless reproduction diary.
 - **For git work inside the current quest repository or worktree, prefer `artifact.git(...)` before raw shell git commands.**
 - **If a generic git smoke test is needed outside the quest repo, use `bash_exec(...)` in an isolated scratch repository.**
 
+## Three-layer todo contract
+
+- keep quest-root `plan.md` as the quest-level research map for the whole loop
+- keep workspace `PLAN.md` or compatibility alias `analysis_plan.md` as the active baseline-node contract
+- keep workspace `CHECKLIST.md` or compatibility alias `REPRO_CHECKLIST.md` as the baseline execution frontier
+- update the smallest affected layer first instead of opening a new parallel plan surface
+- keep only one bottom-layer checklist item truly in progress at a time
+
+## Research-map role
+
+- baseline is usually the first durable node of a research loop
+- once the baseline gate is durably resolved, update quest-root `plan.md` and push the active map node toward `idea` by default
+- if the baseline line is blocked, waived, or downgraded, record the next edge explicitly in quest-root `plan.md` instead of leaving the transition only in chat
+
 ## Non-negotiable rules
 
 - no fabricated metrics, logs, run status, or success claims
@@ -126,6 +140,7 @@ Before substantial baseline setup, code edits, or a real baseline run, create a 
 
 - Use `references/baseline-plan-template.md` as the canonical structure for `PLAN.md`.
 - Use `references/baseline-checklist-template.md` as the canonical structure for `CHECKLIST.md`.
+- keep quest-root `plan.md` synced with the current baseline map node, its status, and its `on_success` / `on_failure` edges
 - `analysis_plan.md` and `REPRO_CHECKLIST.md` remain acceptable compatibility alias files when an older quest already depends on them.
 - For fast-path attach/import/prebound validation or a simple reproduce path with no expected code changes, short-form `PLAN.md` and `CHECKLIST.md` are enough.
 - The plan should put the user's explicit requirements and non-negotiable constraints first.

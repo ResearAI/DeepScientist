@@ -22,6 +22,12 @@ It is also not the same as `rebuttal`.
 - When the review report, revision plan, or follow-up experiment TODO list becomes durable, send a richer `artifact.interact(kind='milestone', reply_mode='threaded', ...)` update that says what the main risks are, what should be fixed next, and whether the next route is writing, experiment, or claim downgrade.
 - Hard execution rule: if this stage needs terminal work such as document builds, scripted checks, Git inspection, or file inspection, every such command must go through `bash_exec`.
 
+## Three-layer todo contract
+
+- treat quest-root `plan.md` as the top-level research map whose next anchor must become explicit after the review
+- if the review pass is multi-step, use workspace `PLAN.md` as the current review-node contract and `CHECKLIST.md` as the execution frontier
+- treat `paper/review/experiment_todo.md` as a review-facing frontier subset, not as a replacement for the quest-level map
+
 ## Purpose
 
 `review` is an auxiliary audit skill for paper-like deliverables.

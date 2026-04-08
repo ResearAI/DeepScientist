@@ -20,6 +20,19 @@ It does not replace the normal quest runtime. It tells you how to use the existi
 - When the user asks for the current optimization state, answer from the frontier and durable artifacts rather than from chat memory.
 - Hard execution rule: every terminal command in this stage must go through `bash_exec`; do not use any other terminal path for smoke checks, quick validations, long runs, Git, Python, package-manager, or file-inspection commands.
 
+## Three-layer todo contract
+
+- keep quest-root `plan.md` as the research map and loop tracker for the whole quest
+- keep workspace `PLAN.md` as the active optimize-node contract
+- keep `OPTIMIZE_CHECKLIST.md` as the optimize-specific execution frontier and mirror the immediate next move into workspace `CHECKLIST.md` when that file exists
+- keep only one bottom-layer optimize move truly in progress at a time
+- if the frontier and checklist stop changing, revise the node contract or route instead of nesting more local tweaks
+
+## Research-map role
+
+- `optimize` is the looped search controller for algorithm-first quests, not a replacement for the quest-level roadmap
+- when a result becomes the new incumbent, plateaus, or stops, update quest-root `plan.md` so the next loop edge is explicit
+
 ## Stage purpose
 
 The optimize stage should do four things:

@@ -38,6 +38,34 @@ This skill intentionally absorbs the strongest old DeepScientist writing discipl
   - white background, restrained grid, minimal decorative elements
   - legends and labels should read cleanly in PDF export
   - do not use bright dashboard colors or connector-style clutter in paper figures
+
+## Three-layer todo contract
+
+- keep quest-root `plan.md` as the research map for the whole loop, including whether writing is closing the loop or preparing the next one
+- keep workspace `PLAN.md` as the active writing-node contract when drafting or revision is multi-step
+- keep workspace `CHECKLIST.md` as the current writing frontier with one real in-progress item and a short `Next` list
+- if revision passes do not change the execution frontier, stop nesting edits and revise the node contract or return to `decision`
+
+## Research-map role
+
+- `write` turns the current loop state into a faithful output, but it does not automatically mean the quest is complete
+- when the paper state becomes strong enough, weak enough, or route-changing enough, update quest-root `plan.md` with the actual next edge: finalize, return to experiment/analysis, or open the next loop from a new incumbent
+
+## Current-node plan and checklist
+
+When writing work is multi-step, create or refresh:
+
+- workspace `PLAN.md` as the active writing-node contract
+- workspace `CHECKLIST.md` as the writing execution frontier
+
+At minimum the writing-node contract should state:
+
+- parent map node
+- draft or bundle objective
+- current deliverable
+- success condition
+- abandonment or route-back condition
+- next-on-success and next-on-failure edges
 - Choose chart type by the paper claim:
   - line chart for ordered trends
   - bar chart only for a small number of categorical end-point comparisons

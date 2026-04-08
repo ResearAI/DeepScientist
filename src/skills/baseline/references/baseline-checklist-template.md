@@ -5,11 +5,31 @@ Keep it short by default. For a fast path, complete the core checklist first and
 
 ## Identity
 
+- parent_map_node:
+- loop_id:
 - baseline id:
 - route:
 - owner stage:
 
-## Core
+## In Progress
+
+- [ ] one concrete baseline item is actively in progress
+
+## Next
+
+- [ ] next baseline route check is explicit
+- [ ] next execution or verification step is explicit
+- [ ] next map transition is explicit
+
+## Later
+
+- [ ] optional deeper audit items live here instead of crowding `Next`
+
+## Blocked
+
+- [ ] blockers or unresolved dependencies are recorded here
+
+## Core Gate
 
 - [ ] baseline object and route are explicit
 - [ ] dataset / split and metric contract are explicit enough to judge comparability
@@ -20,6 +40,10 @@ Keep it short by default. For a fast path, complete the core checklist first and
   - skipped for a justified reason, or launched/read with durable evidence
 - [ ] expected result files and required metrics are checked
 - [ ] baseline is accepted, blocked, or waived with a durable note
+
+## Done
+
+- [ ] completed frontier items are moved here instead of remaining mixed into `Next`
 
 ## Closeout
 

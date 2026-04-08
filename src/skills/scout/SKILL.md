@@ -23,6 +23,12 @@ Use this skill when the quest does not yet have a stable research frame.
 - **For git inspection inside the current quest repository or worktree, prefer `artifact.git(...)` before raw shell git commands.**
 - **If scouting only needs durable quest context, prefer `artifact.read_quest_documents(...)`, `artifact.get_quest_state(...)`, and `memory.*` instead of shelling out.**
 
+## Three-layer todo contract
+
+- keep quest-root `plan.md` as the research map and framing surface for the whole quest
+- create or refresh workspace `PLAN.md` / `CHECKLIST.md` only when scouting becomes multi-step enough to need a current-node contract and frontier
+- when scout resolves the frame, update quest-root `plan.md` with the next anchor instead of leaving that transition only in chat
+
 ## Stage purpose
 
 The scout stage exists to answer the smallest set of framing questions required to make the rest of the quest efficient:

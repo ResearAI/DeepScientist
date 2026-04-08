@@ -26,6 +26,28 @@ Use this skill whenever continuation is non-trivial.
 - **For git state inside the current quest repository or worktree, prefer `artifact.git(...)` before raw shell git commands.**
 - **Use `decision` to judge the route, not as an excuse to bypass the `bash_exec(...)` / `artifact.git(...)` tool contract.**
 
+## Three-layer todo contract
+
+- keep quest-root `plan.md` as the research map whose active node and next edge are being judged
+- keep workspace `PLAN.md` as the active node contract whose success / abandon boundary is under review
+- keep workspace `CHECKLIST.md` as the current frontier; if it is not changing, that is evidence for a route decision rather than a reason to create nested subtasks
+
+## Research-map role
+
+- `decision` is the loop transition controller
+- every consequential decision should update quest-root `plan.md` with `from_node`, chosen edge, and `to_node`
+- do not leave a durable decision artifact without also making the map transition explicit
+
+## Current-node plan and checklist
+
+Before a non-trivial decision pass, re-check:
+
+- the active quest-level map node in quest-root `plan.md`
+- the current node contract in workspace `PLAN.md` when it exists
+- the current execution frontier in workspace `CHECKLIST.md` when it exists
+
+If the frontier is stagnant, treat that as evidence for a route decision rather than a reason to open a deeper nested plan.
+
 ## Stage purpose
 
 `decision` is not a normal anchor.

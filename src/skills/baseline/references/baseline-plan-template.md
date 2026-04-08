@@ -4,7 +4,18 @@ Use this when the `baseline` stage becomes concrete enough to act.
 Keep it short when the route is simple. For fast-path attach/import/prebound validation, a one-screen plan is enough if it preserves the route, command path, outputs, acceptance condition, and fallback.
 Expand the optional sections only when the route is ambiguous, code-touching, broken, multi-variant, or intended for reuse beyond the current quest.
 
-## 1. Core Contract
+## 1. Map Link
+
+- parent_map_node:
+- loop_id:
+- node_objective:
+- node_deliverable:
+- success_condition:
+- abandonment_condition:
+- next_on_success:
+- next_on_failure:
+
+## 2. Core Contract
 
 - quest goal:
 - user's core requirements:
@@ -24,7 +35,15 @@ Expand the optional sections only when the route is ambiguous, code-touching, br
 - acceptance condition:
 - cheapest fallback:
 
-## 2. Execution Path
+## 3. Current Node Tasks
+
+- [ ] sync the active research-map node and status
+- [ ] confirm the concrete baseline route
+- [ ] validate the command path or justify skipping smoke
+- [ ] launch or verify the real validation path
+- [ ] classify the node outcome and update the next edge
+
+## 4. Execution Path
 
 - working directory:
 - environment plan:
@@ -39,13 +58,13 @@ Expand the optional sections only when the route is ambiguous, code-touching, br
 - verification targets:
 - fastest failure signal:
 
-## 3. Risks And Revision
+## 5. Risks And Revision
 
 - main risks:
 - when to escalate from fast path to full audit:
 - revision note:
 
-## 4. Optional Expansion
+## 6. Optional Expansion
 
 Fill this only when the route is no longer simple.
 
@@ -61,7 +80,7 @@ Fill this only when the route is no longer simple.
 - what the likely bottlenecks or brittle points are:
 - what still needs verification:
 
-## 5. Optional Code Touchpoints
+## 7. Optional Code Touchpoints
 
 List the main files or modules only when you expect real inspection or edits.
 
@@ -69,7 +88,7 @@ List the main files or modules only when you expect real inspection or edits.
 |---|---|---|---|---|
 | | | | inspect / modify / leave alone | |
 
-## 6. Optional Verification Plan
+## 8. Optional Verification Plan
 
 - required result files:
 - required metric keys:
@@ -77,12 +96,12 @@ List the main files or modules only when you expect real inspection or edits.
 - acceptance condition:
 - downgrade / blocked condition:
 
-## 7. Checklist Link
+## 9. Checklist Link
 
 - checklist path:
 - which item should move next:
 
-## 8. Revision Log
+## 10. Revision Log
 
 | Time | What changed | Why it changed | Impact on execution |
 |---|---|---|---|

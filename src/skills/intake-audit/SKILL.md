@@ -23,6 +23,12 @@ Use this skill when the quest already has meaningful state and the first job is 
 - **For git inspection or maintenance inside the current quest repository or worktree, prefer `artifact.git(...)` before raw shell git commands.**
 - **Use shell execution only when durable quest files, artifacts, and memory are insufficient; do not bypass durable state just because shell feels faster.**
 
+## Three-layer todo contract
+
+- treat quest-root `plan.md` as the top-level research map whose next active node must become explicit after intake
+- if the audit is multi-step, use workspace `PLAN.md` as the current intake-node contract and `CHECKLIST.md` as the execution frontier
+- when the audit resolves the route, update quest-root `plan.md` instead of leaving the recommendation only in a report artifact
+
 ## Purpose
 
 `intake-audit` is an auxiliary entry skill, not a normal long-running anchor.

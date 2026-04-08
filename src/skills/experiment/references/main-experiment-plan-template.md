@@ -3,7 +3,18 @@
 Use this before substantial code edits or the real main run.
 Treat it as the implementation-and-execution plan for the selected idea, not just a metadata form.
 
-## 1. Objective
+## 1. Map Link
+
+- parent_map_node:
+- loop_id:
+- node_objective:
+- node_deliverable:
+- success_condition:
+- abandonment_condition:
+- next_on_success:
+- next_on_failure:
+
+## 2. Objective
 
 - run id:
 - selected idea in `1-2` sentences:
@@ -13,7 +24,15 @@ Treat it as the implementation-and-execution plan for the selected idea, not jus
 - null hypothesis:
 - alternative hypothesis:
 
-## 2. Baseline And Comparability
+## 3. Current Node Tasks
+
+- [ ] sync the experiment node status and current incumbent context
+- [ ] confirm comparability and code translation plan
+- [ ] run the smoke or pilot path
+- [ ] launch or validate the main run
+- [ ] classify the result and update the next map edge
+
+## 4. Baseline And Comparability
 
 - baseline id:
 - baseline variant:
@@ -22,7 +41,7 @@ Treat it as the implementation-and-execution plan for the selected idea, not jus
 - required metric keys:
 - comparability risks:
 
-## 3. Code Translation Plan
+## 5. Code Translation Plan
 
 Map the idea into concrete code changes.
 
@@ -30,7 +49,7 @@ Map the idea into concrete code changes.
 |---|---|---|---|---|
 | | | | | |
 
-## 4. Execution Design
+## 6. Execution Design
 
 - minimal experiment:
 - smoke / pilot plan:
@@ -40,7 +59,7 @@ Map the idea into concrete code changes.
 - abandonment condition:
 - strongest alternative hypothesis:
 
-## 5. Runtime Strategy
+## 7. Runtime Strategy
 
 - command for smoke:
 - command for main run:
@@ -60,19 +79,19 @@ Monitoring and sleep plan:
 - health signals that justify continuing to monitor:
 - conditions that trigger kill / relaunch:
 
-## 6. Fallbacks And Recovery
+## 8. Fallbacks And Recovery
 
 - if the intended model / endpoint / download path fails:
 - if hardware or memory is tighter than expected:
 - if the code path is wrong after smoke:
 - if the first full run becomes non-comparable:
 
-## 7. Checklist Link
+## 9. Checklist Link
 
 - checklist path:
 - next unchecked item:
 
-## 8. Revision Log
+## 10. Revision Log
 
 | Time | What changed | Why it changed | Impact on comparability or runtime |
 |---|---|---|---|

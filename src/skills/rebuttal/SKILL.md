@@ -21,6 +21,12 @@ The task is “respond to concrete reviewer pressure with the smallest honest se
 - When the rebuttal plan, the main supplementary-evidence package, or the final response bundle becomes durable, send one richer `artifact.interact(kind='milestone', reply_mode='threaded', ...)` update that says what reviewer concerns are now addressed, what still remains open, and what happens next.
 - Hard execution rule: if this stage needs terminal work such as manuscript builds, scripted checks, Git inspection, or reviewer-linked experiment launches, every such command must go through `bash_exec`.
 
+## Three-layer todo contract
+
+- keep quest-root `plan.md` as the top-level research map and reviewer-driven route surface
+- if rebuttal work is multi-step, use workspace `PLAN.md` as the current rebuttal-node contract and `CHECKLIST.md` as the execution frontier
+- when reviewer-driven follow-up becomes clear, update quest-root `plan.md` so the next edge to analysis, write, or decision is explicit instead of living only in the rebuttal packet
+
 ## Purpose
 
 `rebuttal` is an auxiliary orchestration skill for review-driven work.

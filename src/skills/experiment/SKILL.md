@@ -38,6 +38,19 @@ Use this skill for the main evidence-producing runs of the quest.
 - If the figure matters beyond transient debugging, open `figure-polish/SKILL.md` and follow its render-inspect-revise workflow before treating the image as final.
 - If plotting in Python, reuse the fixed Morandi plotting starter from the system prompt rather than inventing a new bright style for each run.
 - If the runtime starts an auto-continue turn with no new user message, continue from the current run state, logs, artifacts, and active requirements instead of replaying the previous user turn.
+
+## Three-layer todo contract
+
+- keep quest-root `plan.md` as the quest-level research map and loop tracker
+- keep workspace `PLAN.md` as the active experiment-node contract
+- keep workspace `CHECKLIST.md` as the active execution frontier with one real in-progress item and a short `Next` list
+- if the checklist stops changing across repeated passes, revise the node contract or route instead of nesting more execution subtasks
+
+## Research-map role
+
+- `experiment` is the evidence-producing node inside the current loop, not the whole loop itself
+- after each measured result, update quest-root `plan.md` with the actual next edge: analysis, write, decision, or a new loop entry
+- if a result becomes the new incumbent and the quest still has headroom, create the next loop entry in quest-root `plan.md` instead of treating writing as automatic termination
 - Progress message templates are references only. Adapt to the actual context and vary wording so messages feel human, respectful, and non-robotic.
 - If a threaded user reply arrives, interpret it relative to the latest experiment progress update before assuming the task changed completely.
 - Hard execution rule: every terminal command in this stage must go through `bash_exec`; do not use any other terminal path for smoke tests, real runs, Git, Python, package-manager, or file-inspection commands.
@@ -149,6 +162,7 @@ Before substantial implementation work or a real main run, create a quest-visibl
 
 - Use `references/main-experiment-plan-template.md` as the canonical structure for `PLAN.md`.
 - Use `references/main-experiment-checklist-template.md` as the canonical structure for `CHECKLIST.md`.
+- keep quest-root `plan.md` synced with the current experiment map node, incumbent context, and next-loop transitions
 - `PLAN.md` should lead with the selected idea summarized in `1-2` sentences, put the user's explicit requirements and non-negotiable constraints first, and then make the run contract concrete: baseline and comparability rules, safe efficiency levers, code touchpoints, minimal code-change map, smoke / pilot path, full-run path, fallback options, monitoring and sleep rules, expected outputs, and a revision log.
 - `CHECKLIST.md` is the living execution list; update it during planning, implementation, smoke testing, main execution, validation, and every material route change.
 - If the code path, comparability contract, runtime strategy, or execution route changes materially, revise `PLAN.md` before spending more code or compute.

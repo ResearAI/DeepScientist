@@ -4,8 +4,28 @@ Use this as the living execution checklist for the campaign.
 
 ## Identity
 
+- parent_map_node:
+- loop_id:
 - campaign id:
 - parent run / idea:
+
+## In Progress
+
+- [ ] one concrete campaign frontier item is actively in progress
+
+## Next
+
+- [ ] next slice or aggregation step is explicit
+- [ ] next map transition is explicit
+- [ ] next reporting checkpoint is explicit
+
+## Later
+
+- [ ] deferred but still relevant slices or aggregation work live here
+
+## Blocked
+
+- [ ] blockers or missing comparators are recorded here
 
 ## Launch
 
@@ -34,6 +54,10 @@ Use this as the living execution checklist for the campaign.
 - [ ] stable support vs contradiction vs ambiguity classified
 - [ ] highest-impact slices summarized first
 - [ ] campaign report written
+
+## Done
+
+- [ ] completed frontier items are moved here instead of staying mixed into `Next`
 
 ## Closeout
 
