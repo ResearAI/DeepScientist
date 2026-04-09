@@ -22,6 +22,32 @@ _COPILOT_LEAD_MESSAGE = (
     "你可以让我读论文、改代码、看实验、整理思路，或者直接开始执行一个任务。"
 )
 
+_STATIC_MIME_OVERRIDES = {
+    ".js": "text/javascript",
+    ".mjs": "text/javascript",
+    ".cjs": "text/javascript",
+    ".css": "text/css",
+    ".map": "application/json",
+    ".json": "application/json",
+    ".wasm": "application/wasm",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+    ".otf": "font/otf",
+    ".eot": "application/vnd.ms-fontobject",
+    ".pdf": "application/pdf",
+    ".zip": "application/zip",
+    ".txt": "text/plain; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+}
+
 
 class ApiHandlers:
     def __init__(self, app: "DaemonApp") -> None:
@@ -51,7 +77,7 @@ class ApiHandlers:
         path = resolve_within(dist_root, ui_path)
         if not path.exists() or not path.is_file():
             return 404, {"Content-Type": "text/plain; charset=utf-8"}, b"Not Found"
-        mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        mime_type = self._guess_static_mime_type(path)
         return 200, self._asset_headers(mime_type), path.read_bytes()
 
     @staticmethod
@@ -67,6 +93,13 @@ class ApiHandlers:
             "Content-Type": mime_type,
             "Cache-Control": "no-store, max-age=0, must-revalidate",
         }
+
+    @staticmethod
+    def _guess_static_mime_type(path: Path) -> str:
+        extension = path.suffix.lower()
+        if extension in _STATIC_MIME_OVERRIDES:
+            return _STATIC_MIME_OVERRIDES[extension]
+        return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
     def _ui_dist_root(self) -> Path | None:
         dist_root = self.app.repo_root / "src" / "ui" / "dist"
@@ -1348,7 +1381,7 @@ npm --prefix src/ui run build</pre>
         if not path.exists() or not path.is_file():
             return 404, {"Content-Type": "text/plain; charset=utf-8"}, b"Not Found"
 
-        mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        mime_type = self._guess_static_mime_type(path)
         return 200, {"Content-Type": mime_type}, path.read_bytes()
 
     def runs(self, quest_id: str) -> list[dict]:
@@ -1605,13 +1638,13 @@ npm --prefix src/ui run build</pre>
             if not quest_service._git_revision_exists(quest_root, revision):
                 return 404, {"Content-Type": "text/plain; charset=utf-8"}, b"Not Found"
             file_path = Path(relative)
-            mime_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+            mime_type = self._guess_static_mime_type(file_path)
             content = quest_service._read_git_bytes(quest_root, revision, relative)
             return 200, self._asset_headers(mime_type), content
         path, _writable, _scope, _source_kind = quest_service.resolve_document(quest_id, document_id)
         if not path.exists() or not path.is_file():
             return 404, {"Content-Type": "text/plain; charset=utf-8"}, b"Not Found"
-        mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        mime_type = self._guess_static_mime_type(path)
         return 200, self._asset_headers(mime_type), path.read_bytes()
 
     def document_open(self, quest_id: str, body: dict) -> dict:
@@ -2033,7 +2066,7 @@ npm --prefix src/ui run build</pre>
         path = resolve_within(docs_root, relative)
         if not path.exists() or not path.is_file():
             return 404, {"Content-Type": "text/plain; charset=utf-8"}, b"Not Found"
-        mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        mime_type = self._guess_static_mime_type(path)
         return 200, self._asset_headers(mime_type), path.read_bytes()
 
     def config_files(self) -> list[dict]:
@@ -2120,7 +2153,7 @@ npm --prefix src/ui run build</pre>
                 break
         if path is None:
             return 404, {"Content-Type": "text/plain; charset=utf-8"}, b"Not Found"
-        mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        mime_type = self._guess_static_mime_type(path)
         return 200, {"Content-Type": mime_type}, path.read_bytes()
 
     @staticmethod

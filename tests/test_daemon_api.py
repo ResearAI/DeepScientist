@@ -24,6 +24,7 @@ from deepscientist.artifact import ArtifactService
 from deepscientist.config import ConfigManager
 from deepscientist.connector.connector_profiles import list_connector_profiles
 from deepscientist.connector_runtime import format_conversation_id
+from deepscientist.daemon.api import handlers as daemon_api_handlers
 from deepscientist.daemon.api.router import match_route
 from deepscientist.daemon.app import DaemonApp, _STALLED_RUNNING_TURN_INACTIVITY_SECONDS
 from deepscientist.prompts.builder import classify_turn_intent
@@ -2733,6 +2734,43 @@ def test_ui_root_shows_build_instructions_when_bundle_missing(
     assert headers["Content-Type"] == "text/html; charset=utf-8"
     assert "DeepScientist UI bundle is not built yet" in html
     assert "npm --prefix src/ui run build" in html
+
+
+def test_ui_asset_prefers_explicit_javascript_mime_over_platform_guess(
+    temp_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+
+    dist_root = temp_home / "fake-ui-dist"
+    assets_root = dist_root / "assets"
+    assets_root.mkdir(parents=True, exist_ok=True)
+    (dist_root / "index.html").write_text("<!doctype html><html><body>ok</body></html>", encoding="utf-8")
+    (assets_root / "index-test.js").write_text("console.log('ok')\n", encoding="utf-8")
+    (assets_root / "worker-test.mjs").write_text("export const value = 1\n", encoding="utf-8")
+
+    original_guess_type = daemon_api_handlers.mimetypes.guess_type
+
+    def _fake_guess_type(url: str, strict: bool = True):
+        normalized = str(url)
+        if normalized.endswith(".js") or normalized.endswith(".mjs"):
+            return ("text/plain", None)
+        return original_guess_type(url, strict=strict)
+
+    monkeypatch.setattr(app.handlers, "_ui_dist_root", lambda: dist_root)
+    monkeypatch.setattr(daemon_api_handlers.mimetypes, "guess_type", _fake_guess_type)
+
+    status, headers, body = app.handlers.ui_asset("assets/index-test.js")
+    assert status == 200
+    assert headers["Content-Type"] == "text/javascript"
+    assert body.startswith(b"console.log")
+
+    status, headers, body = app.handlers.ui_asset("assets/worker-test.mjs")
+    assert status == 200
+    assert headers["Content-Type"] == "text/javascript"
+    assert body.startswith(b"export const")
 
 
 def test_health_reports_daemon_identity(monkeypatch: pytest.MonkeyPatch, temp_home: Path) -> None:
