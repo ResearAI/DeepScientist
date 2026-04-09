@@ -4091,11 +4091,26 @@ class QuestService:
                 active_run_id=active_run_id or None,
                 last_transition_at=last_transition_at,
             )
+            # Reconcile continuation_policy with current workspace_mode so that
+            # a mode switch that happened before/during the crash is respected.
+            research_state = self.read_research_state(quest_root)
+            workspace_mode = str(research_state.get("workspace_mode") or "").strip().lower()
+            current_policy = str(runtime_state.get("continuation_policy") or "").strip().lower()
+            reconciled_policy_updates: dict[str, Any] = {}
+            if workspace_mode == "autonomous" and current_policy == "wait_for_user_or_resume":
+                reconciled_policy_updates["continuation_policy"] = "auto"
+                reconciled_policy_updates["continuation_reason"] = "autonomous_mode_reconciled"
+                reconciled_policy_updates["continuation_updated_at"] = utc_now()
+            elif workspace_mode == "copilot" and current_policy not in {"wait_for_user_or_resume", "none"}:
+                reconciled_policy_updates["continuation_policy"] = "wait_for_user_or_resume"
+                reconciled_policy_updates["continuation_reason"] = "copilot_mode_reconciled"
+                reconciled_policy_updates["continuation_updated_at"] = utc_now()
             self.update_runtime_state(
                 quest_root=quest_root,
                 status="stopped",
                 active_run_id=None,
                 stop_reason="crash_recovered",
+                **reconciled_policy_updates,
             )
             summary = (
                 f"Recovered quest from stale runtime state; previous status `{previous_status}`"

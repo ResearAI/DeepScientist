@@ -2345,6 +2345,24 @@ class DaemonApp:
             last_recovery_abandoned_run_id=recovery_abandoned_run_id,
             last_recovery_summary=recovery_summary,
         )
+        # Ensure continuation_policy matches current workspace_mode after resume.
+        snapshot = self.quest_service.snapshot(quest_id)
+        workspace_mode = self._workspace_mode_for(snapshot)
+        current_policy = str(snapshot.get("continuation_policy") or "auto").strip().lower()
+        if workspace_mode == "autonomous" and current_policy == "wait_for_user_or_resume":
+            self.quest_service.update_runtime_state(
+                quest_root=self.quest_service._quest_root(quest_id),
+                continuation_policy="auto",
+                continuation_reason="autonomous_mode_reconciled",
+                continuation_updated_at=utc_now(),
+            )
+        elif workspace_mode == "copilot" and current_policy not in {"wait_for_user_or_resume", "none"}:
+            self.quest_service.update_runtime_state(
+                quest_root=self.quest_service._quest_root(quest_id),
+                continuation_policy="wait_for_user_or_resume",
+                continuation_reason="copilot_mode_reconciled",
+                continuation_updated_at=utc_now(),
+            )
         summary = f"Quest {quest_id} resumed."
         event = self._append_control_event(
             quest_id,
