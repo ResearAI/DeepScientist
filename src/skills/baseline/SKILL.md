@@ -175,10 +175,10 @@ The stage should leave one accepted baseline or one explicit blocker.
 
 - `PLAN.md` and `CHECKLIST.md` when the route is non-trivial
 - `setup.md` when environment or layout choices are non-trivial
-- `execution.md` when the run is long, multi-step, or rerun-heavy
-- `verification.md` as a filename when a separate verification note is clearer
-- `attachment.yaml` for attached or imported baselines
-- `<baseline_root>/json/metric_contract.json` as the canonical accepted comparison contract
+- `execution.md` is optional unless the run is long, multi-step, or rerun-heavy
+- `verification.md` is optional as a filename but required in substance
+- `attachment.yaml` is required for attached or imported baselines
+- `<baseline_root>/json/metric_contract.json` is the canonical accepted comparison contract
 - one accepted baseline artifact or one explicit blocked report
 - one concise `1-2` sentence summary naming trust state and next anchor
 
@@ -260,6 +260,7 @@ For Python baselines, environment setup should be standardized around `uv` unles
 - prefer `uv run python ...` or `uv run bash ...` over relying on shell activation state
 - prefer a quest-local or baseline-local environment over global shell state
 - switch only when a repo-native conda, docker, or poetry route is concretely more trustworthy or required
+- only accept a non-`uv` route when there is a concrete blocker or a clearly more trustworthy repo-native path
 
 Setup should record:
 
