@@ -278,6 +278,7 @@ For slices that are longer than a quick validation:
   - do not set `timeout_seconds` exactly equal to `N`
   - if you are waiting on an already running session, prefer `bash_exec(mode='await', id=..., timeout_seconds=...)` instead of starting a new sleep command
 - when you control the slice code, prefer a throttled `tqdm` progress reporter and concise structured progress markers when feasible
+- if the same failure class appears again without a real route or evidence change, stop widening the campaign and route through `decision`
 
 ### 3. Keep comparability
 

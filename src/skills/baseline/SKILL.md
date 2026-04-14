@@ -184,8 +184,8 @@ The stage should leave one accepted baseline or one explicit blocker.
 
 ## File-by-file contract
 
-- `PLAN.md` or a compatibility alias such as `analysis_plan.md` is the route contract for non-trivial baseline work
-- `CHECKLIST.md` or a compatibility alias such as `REPRO_CHECKLIST.md` is the living baseline frontier
+- `PLAN.md` or compatibility alias `analysis_plan.md` is the route contract for non-trivial baseline work
+- `CHECKLIST.md` or compatibility alias `REPRO_CHECKLIST.md` is the living baseline frontier
 - `setup.md` when environment or layout choices are non-trivial
 - `execution.md` when the run is long, multi-step, or rerun-heavy
 - `verification.md` as a filename when a separate verification note is clearer
@@ -248,6 +248,8 @@ Prepare the selected route:
 For Python baselines, prefer `uv` unless a repo-native route is clearly more trustworthy or required.
 
 ### Python environment rule: prefer `uv`
+
+### Python environment rule: use `uv`
 
 For Python baselines, environment setup should be standardized around `uv` unless a repo-native route is concretely more trustworthy or required.
 

@@ -43,6 +43,7 @@ It is also the stage that should decide the next route once the measured result 
 Within the user's explicit constraints, maximize valid evidence per unit time and compute.
 Prefer equivalence-preserving efficiency upgrades first: larger safe batch size, mixed precision, gradient accumulation, dataloader workers, cache reuse, checkpoint resume, precomputed features, and smaller pilots.
 If a proposed efficiency change alters optimization dynamics, effective budget, or baseline comparability, treat it as a real experiment change and record it as such.
+For `comparison_ready`, `verify-local-existing`, attach, or import should usually beat full reproduction.
 
 Use `references/evidence-ladder.md` when deciding whether the current package is merely executable, solid enough to carry the main claim, or already in the stage where broader polish is justified.
 
