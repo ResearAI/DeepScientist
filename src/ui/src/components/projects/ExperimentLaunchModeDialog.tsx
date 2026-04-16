@@ -17,13 +17,14 @@ const copy = {
     body: 'Either way, DeepScientist stays with you.',
     copilot: {
       hero: 'Copilot Mode',
-      title: 'Create first. You decide when to start.',
+      title: 'Simple and lightweight, supports any task, start anytime and stop anytime.',
       cta: 'Enter Copilot',
       badge: 'Fast',
     },
     autonomous: {
       hero: 'Autonomous Mode',
-      title: 'Create and run immediately.',
+      title: 'A fully autonomous research agent that works day and night to complete the research.',
+      note: 'Suitable for all disciplines where research can be automated on a computer.',
       cta: 'Start Research',
       badge: 'Recommended',
     },
@@ -33,13 +34,14 @@ const copy = {
     body: '无论哪种，DeepScientist 都会在你身边。',
     copilot: {
       hero: '协作模式',
-      title: '先创建，再由你决定何时开始。',
+      title: '简单、轻量，支持任何任务，随时启动随时停止',
       cta: '进入 Copilot',
       badge: '快速',
     },
     autonomous: {
       hero: '全自动模式',
-      title: '创建后立即开始推进。',
+      title: '完全自动化的研究Agent，日以继夜地完成研究',
+      note: '适用于所有可基于计算机进行自动化研究的学科',
       cta: '开始研究',
       badge: '推荐',
     },
@@ -50,6 +52,7 @@ function ModeChoiceCard(props: {
   mode: LaunchModeKind
   hero: string
   title: string
+  note?: string
   cta: string
   badge?: string
   onClick: () => void
@@ -93,6 +96,11 @@ function ModeChoiceCard(props: {
         <div className="text-[24px] font-semibold tracking-[-0.03em] text-[#2D2A26]">
           {props.title}
         </div>
+        {props.note ? (
+          <div className="mt-2 text-xs leading-5 text-[#8D867C]">
+            {props.note}
+          </div>
+        ) : null}
         <div
           className={cn(
             'mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-sm font-semibold transition',
@@ -141,6 +149,7 @@ export function ExperimentLaunchModeDialog({
             mode="autonomous"
             hero={t.autonomous.hero}
             title={t.autonomous.title}
+            note={t.autonomous.note}
             cta={t.autonomous.cta}
             badge={t.autonomous.badge}
             onboardingId="launch-mode-autonomous-card"

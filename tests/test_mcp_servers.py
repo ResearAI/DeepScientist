@@ -300,6 +300,9 @@ def test_artifact_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
             "get_paper_contract_health",
             "get_quest_state",
             "get_global_status",
+            "get_research_map_status",
+            "get_benchstore_catalog",
+            "get_start_setup_context",
             "get_method_scoreboard",
             "get_optimization_frontier",
             "read_quest_documents",
@@ -325,6 +328,28 @@ def test_artifact_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
         assert tool_map["get_quest_state"].annotations.readOnlyHint is True
         assert tool_map["read_quest_documents"].annotations.readOnlyHint is True
         assert tool_map["get_conversation_context"].annotations.readOnlyHint is True
+        assert tool_map["get_research_map_status"].annotations.readOnlyHint is True
+
+        research_map_result = _unwrap_tool_result(
+            await server.call_tool(
+                "get_research_map_status",
+                {
+                    "detail": "summary",
+                    "locale": "en",
+                },
+            )
+        )
+        assert research_map_result["ok"] is True
+        assert research_map_result["detail"] == "summary"
+        snapshot = research_map_result["research_map_status"]
+        assert "canvas_summary" in snapshot
+        assert "runtime_refs" in snapshot
+        assert "activation_refs" in snapshot
+        assert "recommended_activation_ref" in snapshot
+        assert "node_history" in snapshot
+        assert "usage_notes" in snapshot
+        assert "git" in snapshot
+        assert snapshot["git"]["head_commit"]
 
         record_result = _unwrap_tool_result(
             await server.call_tool(
@@ -709,6 +734,131 @@ def test_artifact_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
         )
         assert completion_result["ok"] is True
         assert completion_result["snapshot"]["status"] == "completed"
+
+    asyncio.run(scenario())
+
+
+def test_artifact_prepare_github_issue_tool_returns_route_effect(
+    temp_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        ensure_home_layout(temp_home)
+        ConfigManager(temp_home).ensure_files()
+        quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create("mcp issue draft quest")
+        quest_root = Path(quest["quest_root"])
+        context = McpContext(
+            home=temp_home,
+            quest_id=quest["quest_id"],
+            quest_root=quest_root,
+            run_id="run-mcp-issue-draft",
+            active_anchor="baseline",
+            conversation_id="quest:test",
+            agent_role="pi",
+            worker_id="worker-main",
+            worktree_root=None,
+            team_mode="single",
+            custom_profile="settings_issue",
+        )
+        server = build_artifact_server(context)
+
+        monkeypatch.setattr(
+            "deepscientist.mcp.server._prepare_github_issue_payload_via_daemon",
+            lambda home, **kwargs: {
+                "ok": True,
+                "title": "GPU scheduling issue on local daemon",
+                "body_markdown": "# Summary\n\nGPU scheduling issue on local daemon\n",
+                "issue_url_base": "https://github.com/ResearAI/DeepScientist/issues/new",
+                "repo_url": "https://github.com/ResearAI/DeepScientist",
+                "generated_at": "2026-04-14T00:00:00+00:00",
+            },
+        )
+
+        result = _unwrap_tool_result(
+            await server.call_tool(
+                "prepare_github_issue",
+                {
+                    "summary": "GPU scheduling issue on local daemon",
+                    "user_notes": "Generated from MCP test.",
+                },
+            )
+        )
+
+        assert result["ok"] is True
+        assert result["title"] == "GPU scheduling issue on local daemon"
+        assert result["ui_effects"][0]["name"] == "route:navigate"
+        assert result["ui_effects"][0]["data"]["to"] == "/settings/issues"
+        assert result["ui_effects"][0]["data"]["issueDraft"]["title"] == result["title"]
+
+    asyncio.run(scenario())
+
+
+def test_settings_issue_profile_artifact_server_exposes_only_issue_tool(temp_home: Path) -> None:
+    async def scenario() -> None:
+        ensure_home_layout(temp_home)
+        ConfigManager(temp_home).ensure_files()
+        quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create("settings issue profile quest")
+        quest_root = Path(quest["quest_root"])
+        context = McpContext(
+            home=temp_home,
+            quest_id=quest["quest_id"],
+            quest_root=quest_root,
+            run_id="run-settings-issue",
+            active_anchor="baseline",
+            conversation_id="quest:test",
+            agent_role="pi",
+            worker_id="worker-main",
+            worktree_root=None,
+            team_mode="single",
+            custom_profile="settings_issue",
+        )
+        server = build_artifact_server(context)
+        tools = await server.list_tools()
+        assert [tool.name for tool in tools] == ["prepare_github_issue"]
+
+    asyncio.run(scenario())
+
+
+def test_start_setup_prepare_profile_artifact_server_exposes_only_prepare_form_tool(temp_home: Path) -> None:
+    async def scenario() -> None:
+        ensure_home_layout(temp_home)
+        ConfigManager(temp_home).ensure_files()
+        quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create("start setup prepare profile quest")
+        quest_root = Path(quest["quest_root"])
+        context = McpContext(
+            home=temp_home,
+            quest_id=quest["quest_id"],
+            quest_root=quest_root,
+            run_id="run-start-setup-prepare",
+            active_anchor="baseline",
+            conversation_id="quest:test",
+            agent_role="pi",
+            worker_id="worker-main",
+            worktree_root=None,
+            team_mode="single",
+            custom_profile="start_setup_prepare",
+        )
+        server = build_artifact_server(context)
+        tools = await server.list_tools()
+        assert [tool.name for tool in tools] == ["prepare_start_setup_form"]
+
+        result = _unwrap_tool_result(
+            await server.call_tool(
+                "prepare_start_setup_form",
+                {
+                    "form_patch": {
+                        "title": "Bench Demo Autonomous Research",
+                        "goal": "Run the benchmark faithfully.",
+                        "need_research_paper": True,
+                    },
+                    "message": "Prepared the launch form.",
+                },
+            )
+        )
+        assert result["ok"] is True
+        assert result["form_patch"]["title"] == "Bench Demo Autonomous Research"
+        assert result["ui_effects"][0]["name"] == "start_setup:patch"
+        assert result["ui_effects"][0]["data"]["patch"]["goal"] == "Run the benchmark faithfully."
 
     asyncio.run(scenario())
 
@@ -1736,6 +1886,55 @@ def test_bash_exec_sleep_protocol_supports_sleep_and_existing_session_waits(temp
     asyncio.run(scenario())
 
 
+def test_bash_exec_mcp_server_normalizes_list_wrapped_commands(temp_home: Path) -> None:
+    async def scenario() -> None:
+        ensure_home_layout(temp_home)
+        ConfigManager(temp_home).ensure_files()
+        quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create("mcp bash list command quest")
+        quest_root = Path(quest["quest_root"])
+        context = McpContext(
+            home=temp_home,
+            quest_id=quest["quest_id"],
+            quest_root=quest_root,
+            run_id="run-mcp-bash-list-command",
+            active_anchor="experiment",
+            conversation_id=f"quest:{quest['quest_id']}",
+            agent_role="pi",
+            worker_id="worker-main",
+            worktree_root=None,
+            team_mode="single",
+        )
+        server = build_bash_exec_server(context)
+
+        singleton = _unwrap_tool_result(
+            await server.call_tool(
+                "bash_exec",
+                {
+                    "command": ["printf 'singleton-list-ok\n'"],
+                    "mode": "await",
+                    "timeout_seconds": 5,
+                },
+            )
+        )
+        assert singleton["status"] == "completed"
+        assert singleton["command"] == "printf 'singleton-list-ok\n'"
+
+        argv_style = _unwrap_tool_result(
+            await server.call_tool(
+                "bash_exec",
+                {
+                    "command": ["printf", "argv-style-ok\n"],
+                    "mode": "await",
+                    "timeout_seconds": 5,
+                },
+            )
+        )
+        assert argv_style["status"] == "completed"
+        assert "printf" in str(argv_style["command"] or "")
+
+    asyncio.run(scenario())
+
+
 def test_bash_exec_mcp_server_default_read_truncates_long_logs_with_hint(temp_home: Path) -> None:
     async def scenario() -> None:
         ensure_home_layout(temp_home)
@@ -1780,6 +1979,10 @@ def test_bash_exec_mcp_server_default_read_truncates_long_logs_with_hint(temp_ho
         assert result["log_preview_head_lines"] == 500
         assert result["log_preview_tail_lines"] == 1500
         assert result["log_preview_omitted_lines"] == 300
+        assert result["log_is_partial"] is True
+        assert result["seq_has_more_after"] is True
+        assert result["seqs_after_window"] == 300
+        assert "partial window" in result["log_truncation_notice"].lower() or "truncated" in result["log_truncation_notice"].lower()
         assert "line-1" in result["log"]
         assert "line-500" in result["log"]
         assert "line-501" not in result["log"]
@@ -1840,6 +2043,11 @@ def test_bash_exec_mcp_server_read_supports_start_and_tail_windows(temp_home: Pa
         assert result["returned_line_count"] == 5
         assert result["has_more_before"] is True
         assert result["has_more_after"] is True
+        assert result["log_is_partial"] is True
+        assert result["log_lines_before_window"] == 10
+        assert result["log_lines_after_window"] == 25
+        assert result["seqs_before_window"] == 10
+        assert result["seqs_after_window"] == 25
         assert result["log"] == "\n".join([f"line-{index}" for index in range(11, 16)])
 
         latest = _unwrap_tool_result(
@@ -1854,7 +2062,78 @@ def test_bash_exec_mcp_server_read_supports_start_and_tail_windows(temp_home: Pa
         )
         assert latest["line_start"] == 38
         assert latest["line_end"] == 40
+        assert latest["seqs_before_window"] == 37
+        assert latest["seqs_after_window"] == 0
         assert latest["log"] == "line-38\nline-39\nline-40"
+
+    asyncio.run(scenario())
+
+
+def test_bash_exec_mcp_server_seq_tail_reports_remaining_seq_ranges(temp_home: Path) -> None:
+    async def scenario() -> None:
+        ensure_home_layout(temp_home)
+        ConfigManager(temp_home).ensure_files()
+        quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create(
+            "mcp bash seq tail quest"
+        )
+        quest_root = Path(quest["quest_root"])
+        context = McpContext(
+            home=temp_home,
+            quest_id=quest["quest_id"],
+            quest_root=quest_root,
+            run_id="run-mcp-bash-seq-tail",
+            active_anchor="experiment",
+            conversation_id=f"quest:{quest['quest_id']}",
+            agent_role="pi",
+            worker_id="worker-main",
+            worktree_root=None,
+            team_mode="single",
+        )
+        _write_fake_bash_session(
+            temp_home,
+            quest_root,
+            "bash-seq-preview",
+            log_lines=[f"line-{index}" for index in range(1, 41)],
+        )
+        service = BashExecService(temp_home)
+        log_path = service.log_path(quest_root, "bash-seq-preview")
+        entries = [
+            {
+                "seq": index,
+                "stream": "stdout",
+                "line": f"line-{index}",
+                "timestamp": "2026-03-20T00:00:00+00:00",
+            }
+            for index in range(1, 41)
+        ]
+        log_path.write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in entries) + "\n", encoding="utf-8")
+        meta_path = service.meta_path(quest_root, "bash-seq-preview")
+        meta = read_json(meta_path, {})
+        meta["latest_seq"] = 40
+        meta["last_output_seq"] = 40
+        write_json(meta_path, meta)
+
+        server = build_bash_exec_server(context)
+        result = _unwrap_tool_result(
+            await server.call_tool(
+                "bash_exec",
+                {
+                    "mode": "read",
+                    "id": "bash-seq-preview",
+                    "tail_limit": 5,
+                    "after_seq": 10,
+                },
+            )
+        )
+
+        assert result["tail_is_partial"] is True
+        assert result["seq_window_start"] == 36
+        assert result["seq_window_end"] == 40
+        assert result["seq_has_more_before"] is True
+        assert result["seqs_before_window"] == 35
+        assert result["seq_has_more_after"] is False
+        assert result["seqs_after_window"] == 0
+        assert "partial window" in result["log_truncation_notice"].lower()
 
     asyncio.run(scenario())
 

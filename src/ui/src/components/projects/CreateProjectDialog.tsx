@@ -1,27 +1,35 @@
 import { ArrowLeft, ArrowUpRight, BookmarkPlus, CircleHelp, Lock, RotateCcw, Sparkles } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { ConnectorTargetRadioGroup, type ConnectorTargetRadioItem } from '@/components/connectors/ConnectorTargetRadioGroup'
 import { OverlayDialog } from '@/components/home/OverlayDialog'
 import { LAUNCH_DIALOG_SHELL_CLASS } from '@/components/projects/LaunchModeVisuals'
+import { SetupAgentRail } from '@/components/projects/SetupAgentRail'
+import { SetupAgentQuestPanel } from '@/components/projects/SetupAgentQuestPanel'
 import { connectorCatalog } from '@/components/settings/connectorCatalog'
+import { DeepXivSetupDialog } from '@/components/settings/DeepXivSetupDialog'
 import { AnimatedCheckbox } from '@/components/ui/animated-checkbox'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { useQuestWorkspace } from '@/lib/acp'
 import { client } from '@/lib/api'
 import { connectorInstanceMode, connectorTargetLabel, normalizeConnectorTargets, parseConversationId, recentConversationLabel } from '@/lib/connectors'
 import { useI18n } from '@/lib/i18n'
 import { normalizeZhUiCopy } from '@/lib/i18n/normalizeZhUiCopy'
 import { useOnboardingStore } from '@/lib/stores/onboarding'
 import { resetDemoRuntime } from '@/demo/runtime'
+import { normalizeBuiltinRunnerName, runnerLabel } from '@/lib/runnerBranding'
 import {
   applyStartResearchIntensityPreset,
+  type BaselineAcceptanceTarget,
+  type BaselineSourceMode,
   compileStartResearchPrompt,
   defaultStartResearchTemplate,
   detectStartResearchIntensity,
+  type ExecutionStartMode,
   loadStartResearchHistory,
   loadStartResearchTemplate,
   listReferenceStartResearchTemplates,
@@ -47,13 +55,17 @@ import type {
   BaselineRegistryEntry,
   ConnectorSnapshot,
 } from '@/types'
+import type { BenchSetupPacket } from '@/lib/types/benchstore'
 
 const copy = {
   en: {
     title: 'Start Research',
     body: 'Create and start.',
     formTitle: 'Context Form',
-    formHint: 'Left form, right prompt.',
+    formHint: 'Use the left side to prepare launch context. The right side can switch between live assist and the generated kickoff preview.',
+    setupAgentPanel: 'SetupAgent',
+    setupAgentToggle: 'Assist',
+    previewPanel: 'Kickoff Preview',
     essentialsTitle: 'Essentials',
     essentialsHint: 'Title, goal, references.',
     advancedTitle: 'Advanced options',
@@ -61,7 +73,7 @@ const copy = {
     advancedShow: 'Show advanced options',
     advancedHide: 'Hide advanced options',
     preview: 'Prompt preview',
-    previewBody: 'This is the exact kickoff content that will be written into the new project.',
+    previewBody: 'This preview is generated from the current form. Launch still uses the current form state as the source of truth.',
     manual: 'Manual edit active',
     manualTitle: 'Preview edited manually: form is now locked.',
     manualBody: 'Use “Restore form editing” to regenerate the prompt from the left form and unlock inputs.',
@@ -110,7 +122,7 @@ const copy = {
     connectorSuggestLater: 'Not now',
     connectorSuggestGo: 'Go',
     basics: 'Core research brief',
-    references: 'Baseline & references',
+    references: 'Reference starting point & sources',
     policy: 'Research contract',
     launchModeLabel: 'Launch path',
     launchModeHelp:
@@ -127,6 +139,15 @@ const copy = {
     baselineExecutionPolicyLabel: 'Baseline handling',
     baselineExecutionPolicyHelp:
       'Only shown in custom mode. Use this to tell the agent whether it should verify/reproduce a baseline first, reuse current evidence only, or skip baseline reruns unless a reviewer-linked issue truly blocks on them.',
+    baselineSourceModeLabel: 'Baseline source preference',
+    baselineSourceModeHelp:
+      'Choose whether baseline work should prefer verifying an existing local system, attaching a reusable baseline, reproducing from source, repairing a stale baseline, or staying out of the way until baseline work truly blocks progress.',
+    executionStartModeLabel: 'Execution start',
+    executionStartModeHelp:
+      'This only controls the startup baseline route. Choose whether the project should first produce a bounded startup plan and wait for approval, or execute immediately once the startup baseline route is already clear.',
+    baselineAcceptanceTargetLabel: 'Baseline acceptance target',
+    baselineAcceptanceTargetHelp:
+      'Choose how strong the baseline must be before the quest should move into idea selection and experiments.',
     manuscriptEditModeLabel: 'Manuscript update mode',
     manuscriptEditModeHelp:
       'Use this to control whether the system should only give review/rebuttal planning artifacts, produce copy-ready revision text, or require LaTeX-ready revision text and edits.',
@@ -176,16 +197,16 @@ const copy = {
     goalLabel: 'Primary research request',
     goalPlaceholder: 'State the core scientific question, target paper, hypothesis, and what success would look like.',
     goalHelp: 'This should describe the actual problem to solve, not implementation details.',
-    baselineRoot: 'Reusable baseline',
-    baselineRootPlaceholder: 'Select a reusable baseline entry (optional)',
+    baselineRoot: 'Reference starting point',
+    baselineRootPlaceholder: 'Select a reusable reference starting point (optional)',
     baselineRootHelp:
-      'Pick a previously confirmed reusable baseline entry from the global registry. Runtime will attach and confirm it before the new project starts.',
-    baselineVariant: 'Baseline variant',
-    baselineVariantHelp: 'Optional: choose a specific baseline variant when the entry contains multiple variants.',
-    baselineUrls: 'Baseline links / local paths',
+      'This is the comparator starting point for this project, not necessarily an industry baseline. It can be a previously confirmed run, an official implementation, or a local existing system that you want DeepScientist to reuse first.',
+    baselineVariant: 'Reference variant',
+    baselineVariantHelp: 'Optional: choose a specific variant when the reference entry contains multiple variants.',
+    baselineUrls: 'Reference implementation links / local paths',
     baselineUrlsPlaceholder: 'One URL or one absolute local file/folder path per line',
     baselineUrlsHelp:
-      'Provide repositories, artifacts, or local file/folder paths that help recover the baseline quickly.',
+      'Provide repositories, artifacts, or local file/folder paths for the implementation you want to use as the starting comparator or reference implementation.',
     paperUrls: 'Paper / reference sources',
     paperUrlsPlaceholder: 'Papers, repos, or absolute local file/folder paths',
     paperUrlsHelp:
@@ -207,7 +228,9 @@ const copy = {
     languageLabel: 'User language',
     languageHelp: 'The kickoff prompt and later communication should prefer this language by default.',
     promptRequired: 'Prompt preview cannot be empty.',
-    goalRequired: 'Please provide a research request, or edit the preview manually.',
+    goalRequired: 'Please provide a clear research request first.',
+    benchAutoAssistPending:
+      'SetupAgent is still preparing the BenchStore launch form. The create button stays disabled until the first structured form patch arrives.',
     footer: 'Create project immediately after review.',
     create: 'Create project',
     cancel: 'Cancel',
@@ -327,6 +350,67 @@ const copy = {
         body: 'Do not spend time rerunning baselines by default. Only do it if a named reviewer-linked issue truly requires a missing comparator.',
       },
     },
+    baselineSourceModeOptions: {
+      auto: {
+        title: 'Automatic',
+        meta: 'Recommended',
+        body: 'Choose the lightest trustworthy comparator route from the current local evidence, baseline registry, and provided links.',
+      },
+      verify_local_existing: {
+        title: 'Verify local existing',
+        meta: 'Local-first',
+        body: 'If local code or a local service already exists, verify it as the comparator before reproducing from scratch.',
+      },
+      attach_registry_baseline: {
+        title: 'Attach reusable baseline',
+        meta: 'Registry-first',
+        body: 'Prefer attaching a reusable registered baseline entry when it already exists.',
+      },
+      reproduce_from_source: {
+        title: 'Reproduce from source',
+        meta: 'Full restore',
+        body: 'Treat source reproduction as the expected route unless a stronger local shortcut is clearly valid.',
+      },
+      repair_existing_baseline: {
+        title: 'Repair existing baseline',
+        meta: 'Repair-first',
+        body: 'Prefer repairing the current stale local baseline over rebuilding it from zero.',
+      },
+      skip_until_blocking: {
+        title: 'Skip until blocking',
+        meta: 'Research-first',
+        body: 'Do not front-load baseline work unless the missing comparator is actually blocking the next research step.',
+      },
+    },
+    executionStartModeOptions: {
+      plan_then_execute: {
+        title: 'Plan first',
+        meta: 'Approval gate',
+        body: 'Write a bounded execution plan first, then wait for explicit user approval before heavy reproduction or expensive setup.',
+      },
+      execute_immediately: {
+        title: 'Execute immediately',
+        meta: 'Fast start',
+        body: 'If the route is already concrete, begin with the smallest useful validating action instead of stopping for a separate planning round.',
+      },
+    },
+    baselineAcceptanceTargetOptions: {
+      comparison_ready: {
+        title: 'Comparison ready',
+        meta: 'Fastest',
+        body: 'Once the comparator is trustworthy enough for downstream idea and experiment comparison, continue instead of polishing it indefinitely.',
+      },
+      paper_repro_ready: {
+        title: 'Paper-grade reproduction',
+        meta: 'Stricter',
+        body: 'Do not treat the baseline as complete until the reproduction is strong enough for paper-facing claims.',
+      },
+      registry_publishable: {
+        title: 'Registry publishable',
+        meta: 'Strictest',
+        body: 'Treat the baseline as complete only when it is reusable and clean enough to publish as a durable baseline package.',
+      },
+    },
     reviewFollowupPolicyOptions: {
       audit_only: {
         title: 'Audit only',
@@ -366,7 +450,10 @@ const copy = {
     title: 'Start Research',
     body: '创建后立即开始。',
     formTitle: '上下文表单',
-    formHint: '左侧表单，右侧 prompt。',
+    formHint: '左侧用于整理启动信息，右侧可在实时协助和启动预览之间切换。',
+    setupAgentPanel: 'SetupAgent',
+    setupAgentToggle: '协助',
+    previewPanel: '启动预览',
     essentialsTitle: '必要信息',
     essentialsHint: '标题、目标、参考资料。',
     advancedTitle: '高级设置',
@@ -374,7 +461,7 @@ const copy = {
     advancedShow: '展开高级设置',
     advancedHide: '收起高级设置',
     preview: 'Prompt 预览',
-    previewBody: '这里展示的是即将写入新项目的完整启动内容。',
+    previewBody: '这里的文本由当前表单自动生成。真正启动时，仍然以当前表单内容为准。',
     manual: '手工编辑已启用',
     manualTitle: '你已手工修改预览，左侧表单暂时锁定。',
     manualBody: '点击“恢复表单驱动”后，会重新根据左侧表单生成 prompt，并解除锁定。',
@@ -440,6 +527,15 @@ const copy = {
     baselineExecutionPolicyLabel: 'Baseline 处理方式',
     baselineExecutionPolicyHelp:
       '仅在 Custom 模式下显示。用来明确告诉 agent：是先验证/复现 baseline，还是只复用现有证据，还是除非 reviewer-linked 问题卡住否则先跳过 baseline 重跑。',
+    baselineSourceModeLabel: 'Baseline 来源偏好',
+    baselineSourceModeHelp:
+      '选择 baseline 更应优先走哪条路：验证本地已有系统、附着可复用 baseline、从源码复现、修复已有 baseline，还是除非真正卡住否则先别让 baseline 变成主线。',
+    executionStartModeLabel: '执行启动方式',
+    executionStartModeHelp:
+      '这只控制启动时的 baseline 路线。选择先输出一个有边界的启动计划并等待你确认，还是在 baseline 启动路线已经足够清楚时直接开始执行。',
+    baselineAcceptanceTargetLabel: 'Baseline 验收目标',
+    baselineAcceptanceTargetHelp:
+      '选择 baseline 至少要达到什么强度，quest 才应该继续进入 idea 和 experiment。',
     manuscriptEditModeLabel: '论文修改模式',
     manuscriptEditModeHelp:
       '用来控制系统是只输出 review/rebuttal 规划产物，还是给出可直接使用的修改文本，还是要求 LaTeX-ready 的修改文本和编辑结果。',
@@ -488,15 +584,16 @@ const copy = {
     goalLabel: '核心研究请求',
     goalPlaceholder: '清楚说明科学问题、目标论文、核心假设，以及什么结果算成功。',
     goalHelp: '这里应该描述真正要解决的问题，而不是过早写实现细节。',
-    baselineRoot: '复用 Baseline',
-    baselineRootPlaceholder: '选择一个可复用的 baseline 条目（可选）',
-    baselineRootHelp: '选择全局 registry 中已经确认可复用的 baseline。运行时会在新项目创建前自动 attach 并 confirm；留空则从零开始建立 baseline。',
-    baselineVariant: 'Baseline variant',
-    baselineVariantHelp: '可选：当 baseline entry 里包含多个 variant 时，可以在这里指定。',
-    baselineUrls: 'Baseline 链接 / 本地路径',
+    baselineRoot: '参考起点',
+    baselineRootPlaceholder: '选择一个可复用的参考起点（可选）',
+    baselineRootHelp:
+      '这里的“参考起点”不是特指业界公开基线，而是这次研究准备先复用、恢复或验证的对照起点。它可以是你之前确认过的方案、论文官方实现，或本地已有版本。运行时会在新项目创建前自动 attach 并 confirm；留空则从零开始建立起点。',
+    baselineVariant: '参考实现版本',
+    baselineVariantHelp: '可选：当参考实现条目里包含多个版本时，可以在这里指定。',
+    baselineUrls: '参考实现链接 / 本地路径',
     baselineUrlsPlaceholder: '每行一个 URL，或一个绝对本地文件/文件夹路径',
     baselineUrlsHelp:
-      '这些来源既可以是仓库、artifact，也可以是本地文件或文件夹路径，用于帮助系统更快恢复或修复 baseline。',
+      '这些来源既可以是仓库、artifact，也可以是本地文件或文件夹路径，用于帮助系统更快恢复你想作为对照起点的参考实现。',
     paperUrls: '论文 / 参考来源',
     paperUrlsPlaceholder: '论文、仓库，或绝对本地文件/文件夹路径',
     paperUrlsHelp:
@@ -518,7 +615,9 @@ const copy = {
     languageLabel: '用户语言',
     languageHelp: '默认希望 kickoff prompt 与后续交流优先使用的语言。',
     promptRequired: 'Prompt 预览不能为空。',
-    goalRequired: '请填写研究请求，或直接在右侧手工编辑 prompt。',
+    goalRequired: '请先填写清楚研究请求。',
+    benchAutoAssistPending:
+      'SetupAgent 仍在整理这次 BenchStore 启动表单。在首轮结构化表单 patch 到达之前，创建项目按钮会保持禁用。',
     footer: '确认后会立即创建项目。',
     create: '创建项目',
     cancel: '取消',
@@ -638,6 +737,67 @@ const copy = {
         body: '默认先不花时间重跑 baseline；只有当某个 reviewer-linked 问题明确依赖缺失 comparator 时才补跑。',
       },
     },
+    baselineSourceModeOptions: {
+      auto: {
+        title: '自动',
+        meta: '推荐',
+        body: '根据当前本地证据、baseline registry 与提供的链接，自动选择最轻量但可信的 comparator 路线。',
+      },
+      verify_local_existing: {
+        title: '验证本地已有系统',
+        meta: '本地优先',
+        body: '如果本地代码或本地服务已经存在，就先把它验证成 comparator，而不是默认从零复现。',
+      },
+      attach_registry_baseline: {
+        title: '附着可复用 baseline',
+        meta: 'Registry 优先',
+        body: '如果已经存在可复用的 baseline 条目，就优先附着并验证它。',
+      },
+      reproduce_from_source: {
+        title: '从源码复现',
+        meta: '完整恢复',
+        body: '默认按源码/仓库恢复 baseline，除非后续发现更强的本地捷径。',
+      },
+      repair_existing_baseline: {
+        title: '修复已有 baseline',
+        meta: '先修复',
+        body: '优先修复当前已有但陈旧或损坏的本地 baseline，而不是从零重建。',
+      },
+      skip_until_blocking: {
+        title: '除非卡住否则跳过',
+        meta: '研究优先',
+        body: '不要一开始就把 baseline 当主线；只有当缺少 comparator 真正卡住下一步研究时才补。',
+      },
+    },
+    executionStartModeOptions: {
+      plan_then_execute: {
+        title: '先出计划',
+        meta: '需确认',
+        body: '先输出一个有边界的执行计划，再等待你的确认后进入重型复现或昂贵 setup。',
+      },
+      execute_immediately: {
+        title: '直接执行',
+        meta: '快速启动',
+        body: '如果路线已经足够清楚，就直接从最小有用验证动作开始，而不是先单独停下来写计划。',
+      },
+    },
+    baselineAcceptanceTargetOptions: {
+      comparison_ready: {
+        title: '比较可用即可',
+        meta: '最快',
+        body: '只要 comparator 已经足够可信，能支撑后续 idea 与 experiment 对比，就继续往前走。',
+      },
+      paper_repro_ready: {
+        title: '论文级复现',
+        meta: '更严格',
+        body: '在 baseline 足够强、足够稳定、能支撑 paper-facing 结论前，不要轻易视为完成。',
+      },
+      registry_publishable: {
+        title: '可发布到 registry',
+        meta: '最严格',
+        body: '只有当 baseline 已经足够干净、可复用、可发布成 durable baseline package 时才算完成。',
+      },
+    },
     reviewFollowupPolicyOptions: {
       audit_only: {
         title: '只做审计',
@@ -710,6 +870,89 @@ const normalizedCopy = {
   en: copy.en,
   zh: normalizeZhUiCopy(copy.zh),
 } as const
+
+function buildBenchstoreAutoAssistMessage(setupPacket: BenchSetupPacket, locale: 'en' | 'zh') {
+  const startupContract =
+    setupPacket.launch_payload?.startup_contract &&
+    typeof setupPacket.launch_payload.startup_contract === 'object'
+      ? (setupPacket.launch_payload.startup_contract as Record<string, unknown>)
+      : null
+  const benchmarkContext =
+    startupContract?.benchstore_context &&
+    typeof startupContract.benchstore_context === 'object'
+      ? (startupContract.benchstore_context as Record<string, unknown>)
+      : null
+  const entryId = String(benchmarkContext?.entry_id || setupPacket.entry_id || '').trim()
+  const entryName = String(benchmarkContext?.entry_name || setupPacket.project_title || '').trim()
+  const taskDescription =
+    String(benchmarkContext?.task_description || setupPacket.benchmark_goal || '').trim() || 'none'
+  const sourceFile = String(benchmarkContext?.catalog_source_file || '').trim() || 'unknown'
+  const benchmarkLocalPath = String(setupPacket.benchmark_local_path || '').trim() || 'not available'
+  const latexPath = String(setupPacket.latex_markdown_path || '').trim() || 'not available'
+  const datasetPaths =
+    (setupPacket.local_dataset_paths || []).filter((item) => String(item || '').trim().length > 0)
+  const constraints = (setupPacket.constraints || []).filter((item) => String(item || '').trim().length > 0)
+
+  if (locale === 'zh') {
+    return [
+      '这是一次来自 BenchStore Start 的自动启动协助。',
+      '当前选中的 benchmark 已经通过上下文完整注入，请把它当成这次 setup 会话的主要事实来源。',
+      '',
+      '当前 benchmark 信息：',
+      `- entry_id: ${entryId || 'unknown'}`,
+      `- entry_name: ${entryName || 'unknown'}`,
+      `- source_file: ${sourceFile}`,
+      `- benchmark_local_path: ${benchmarkLocalPath}`,
+      `- local_dataset_paths: ${datasetPaths.length > 0 ? datasetPaths.join(', ') : 'none'}`,
+      `- latex_markdown_path: ${latexPath}`,
+      `- device_summary: ${setupPacket.device_summary || 'unknown'}`,
+      `- device_fit: ${setupPacket.device_fit || 'unknown'}`,
+      `- task_description: ${taskDescription}`,
+      '',
+      '重要规则：',
+      '- 完整 benchmark 描述文件已经在 benchmark_context 里注入，尤其是 raw_payload、task_description、paper、resources、environment、download、dataset_download、credential_requirements。不要只看标题或一行摘要。',
+      '- 先结合完整 benchmark 描述、当前机器硬件、任务要求和左侧已预填表单，判断哪些信息还缺失。',
+      '- 如果仍有会实质影响启动路线的缺口，请主动向用户提出 1 到 3 个最关键的问题，问题要短、具体、可直接回答。',
+      '- 如果当前信息已经足够，不要为了问问题而问问题，直接使用 artifact.prepare_start_setup_form(form_patch={...}) 提交完整表单。',
+      '- 第一轮优先 faithful、小步、保守启动，不要扩展到 benchmark 之外。',
+      '- 在首轮表单整理完成前，创建项目按钮会保持禁用，请尽快收敛到一个可提交的表单版本。',
+      '',
+      constraints.length > 0 ? '当前硬性约束：' : '',
+      constraints.length > 0 ? constraints.join('\n') : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  return [
+    'This is an automatic setup-assist session triggered from BenchStore Start.',
+    'The selected benchmark is already injected into context and should be treated as the main source of truth for this setup session.',
+    '',
+    'Current benchmark facts:',
+    `- entry_id: ${entryId || 'unknown'}`,
+    `- entry_name: ${entryName || 'unknown'}`,
+    `- source_file: ${sourceFile}`,
+    `- benchmark_local_path: ${benchmarkLocalPath}`,
+    `- local_dataset_paths: ${datasetPaths.length > 0 ? datasetPaths.join(', ') : 'none'}`,
+    `- latex_markdown_path: ${latexPath}`,
+    `- device_summary: ${setupPacket.device_summary || 'unknown'}`,
+    `- device_fit: ${setupPacket.device_fit || 'unknown'}`,
+    `- task_description: ${taskDescription}`,
+    '',
+    'Important rules:',
+    '- The full benchmark description file is already injected through benchmark_context, especially raw_payload, task_description, paper, resources, environment, download, dataset_download, and credential_requirements. Do not rely on the title or one-line summary alone.',
+    '- First combine the full benchmark description, the current machine boundary, the task requirements, and the prefilled form on the left to judge what information is still missing.',
+    '- If material gaps remain, proactively ask the user only 1 to 3 short questions that would meaningfully affect the launch path.',
+    '- If the current information is already sufficient, do not ask extra questions. Call artifact.prepare_start_setup_form(form_patch={...}) directly and submit the completed form.',
+    '- Keep the first launch faithful, conservative, and benchmark-bounded.',
+    '- The create button stays disabled until the first structured setup form patch arrives, so converge quickly on a launch-ready form.',
+    '',
+    constraints.length > 0 ? 'Current hard constraints:' : '',
+    constraints.length > 0 ? constraints.join('\n') : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
 
 function titleCaseConnector(name: string) {
   const normalized = String(name || '').trim()
@@ -845,6 +1088,8 @@ function resolveStartConnectorChoice(snapshot: ConnectorSnapshot): StartConnecto
     targets: normalizedTargets,
   }
 }
+
+type StartResearchRightPaneMode = 'assistant' | 'preview'
 
 function FieldHelp({
   text,
@@ -1105,8 +1350,9 @@ function compactTemplateLabel(item: StartResearchTemplateEntry, locale: 'en' | '
   return `${title}${goal}`.slice(0, 72)
 }
 
-function splitOptionCopy(text: string) {
-  const [title, ...rest] = text.split(/\s+[—-]{1,2}\s+/)
+function splitOptionCopy(text: unknown, fallback = 'Unknown option') {
+  const normalized = typeof text === 'string' && text.trim() ? text : fallback
+  const [title, ...rest] = normalized.split(/\s+[—-]{1,2}\s+/)
   return {
     title: title.trim(),
     description: rest.join(' — ').trim() || title.trim(),
@@ -1131,6 +1377,9 @@ function buildTutorialStartResearchExample(language: 'en' | 'zh'): Partial<Start
       ].join('\n'),
       baseline_id: '',
       baseline_variant_id: '',
+      baseline_source_mode: 'reproduce_from_source',
+      execution_start_mode: 'plan_then_execute',
+      baseline_acceptance_target: 'paper_repro_ready',
       baseline_urls: '',
       paper_urls: '',
       runtime_constraints: [
@@ -1169,6 +1418,9 @@ function buildTutorialStartResearchExample(language: 'en' | 'zh'): Partial<Start
     ].join('\n'),
     baseline_id: '',
     baseline_variant_id: '',
+    baseline_source_mode: 'reproduce_from_source',
+    execution_start_mode: 'plan_then_execute',
+    baseline_acceptance_target: 'paper_repro_ready',
     baseline_urls: '',
     paper_urls: '',
     runtime_constraints: [
@@ -1246,21 +1498,48 @@ function formatBaselineStatus(value: string | null | undefined, locale: 'en' | '
   return normalized.replace(/_/g, ' ')
 }
 
+const deepxivCopy = {
+  en: {
+    title: 'DeepXiv literature',
+    body: 'If configured, `idea` and `scout` can use DeepXiv-first paper discovery and paper triage. Without a token, the prompt should stay on the legacy route.',
+    openSetup: 'Open setup',
+    openSettings: 'Settings',
+  },
+  zh: {
+    title: 'DeepXiv 文献能力',
+    body: '如果已配置 token，`idea` 和 `scout` 可以优先走 DeepXiv 的论文发现与速读路径；如果没有 token，系统提示词应继续使用旧路线。',
+    openSetup: '打开配置引导',
+    openSettings: '前往设置',
+  },
+} as const
+
 export function CreateProjectDialog({
   open,
   loading,
   error,
   initialGoal = '',
+  setupPacket = null,
+  setupQuestId = null,
+  setupQuestCreating = false,
   onBack,
   onClose,
+  onRequestSetupAgent,
   onCreate,
 }: {
   open: boolean
   loading?: boolean
   error?: string | null
   initialGoal?: string
+  setupPacket?: BenchSetupPacket | null
+  setupQuestId?: string | null
+  setupQuestCreating?: boolean
   onBack?: () => void
   onClose: () => void
+  onRequestSetupAgent?: (payload: {
+    message: string
+    form: StartResearchTemplate
+    setupPacket?: BenchSetupPacket | null
+  }) => Promise<void>
   onCreate: (payload: {
     title: string
     goal: string
@@ -1274,7 +1553,9 @@ export function CreateProjectDialog({
   const { locale } = useI18n()
   const onboardingStatus = useOnboardingStore((state) => state.status)
   const t = normalizedCopy[locale]
+  const deepxivT = deepxivCopy[locale]
   const backLabel = locale === 'zh' ? '返回' : 'Back'
+  const [rightPaneMode, setRightPaneMode] = useState<StartResearchRightPaneMode>('assistant')
   const [showAdvanced, setShowAdvanced] = useState(true)
   const [form, setForm] = useState<StartResearchTemplate>(defaultStartResearchTemplate(locale))
   const [promptDraft, setPromptDraft] = useState('')
@@ -1290,8 +1571,35 @@ export function CreateProjectDialog({
   const [connectors, setConnectors] = useState<ConnectorSnapshot[]>([])
   const [connectorsLoading, setConnectorsLoading] = useState(false)
   const [connectorsError, setConnectorsError] = useState<string | null>(null)
+  const [deepxivSetupOpen, setDeepxivSetupOpen] = useState(false)
+  const [activeRunnerName, setActiveRunnerName] = useState(() => normalizeBuiltinRunnerName("codex"))
   const [selectedConnectorBindings, setSelectedConnectorBindings] = useState<Record<string, string | null>>({})
+  const [agentManagedValues, setAgentManagedValues] = useState<Partial<StartResearchTemplate>>({})
+  const [benchAutoAssistReady, setBenchAutoAssistReady] = useState(() => !setupPacket)
   const referenceTemplates = useMemo(() => listReferenceStartResearchTemplates(), [])
+  const setupWorkspace = useQuestWorkspace(setupQuestId)
+  const processedPatchMessageIdsRef = useRef<Set<string>>(new Set())
+  const autoBenchAssistStartedRef = useRef<string | null>(null)
+  const latestFormRef = useRef(form)
+
+  useEffect(() => {
+    latestFormRef.current = form
+  }, [form])
+
+  useEffect(() => {
+    if (!open) return
+    let active = true
+    void client.configDocument('config').then((payload) => {
+      if (!active) return
+      const structured = payload.meta?.structured_config && typeof payload.meta.structured_config === 'object'
+        ? (payload.meta.structured_config as Record<string, unknown>)
+        : {}
+      setActiveRunnerName(normalizeBuiltinRunnerName(structured.default_runner))
+    }).catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [open])
 
   const activeResearchIntensity = useMemo(
     () => detectStartResearchIntensity(form),
@@ -1334,7 +1642,16 @@ export function CreateProjectDialog({
   const launchModeItems = useMemo(
     () =>
       (['standard', 'custom'] as const).map((value) => {
-        const copy = splitOptionCopy(t.launchModeOptions[value])
+        const copy = splitOptionCopy(
+          t.launchModeOptions?.[value],
+          value === 'custom'
+            ? locale === 'zh'
+              ? '自定义入口'
+              : 'Custom entry'
+            : locale === 'zh'
+              ? '标准工作流'
+              : 'Standard workflow'
+        )
         return {
           value,
           title: copy.title,
@@ -1384,6 +1701,48 @@ export function CreateProjectDialog({
     [t]
   )
 
+  const baselineSourceModeItems = useMemo(
+    () =>
+      (
+        [
+          'auto',
+          'verify_local_existing',
+          'attach_registry_baseline',
+          'reproduce_from_source',
+          'repair_existing_baseline',
+          'skip_until_blocking',
+        ] as const
+      ).map((value) => ({
+        value,
+        title: t.baselineSourceModeOptions[value].title,
+        meta: t.baselineSourceModeOptions[value].meta,
+        description: t.baselineSourceModeOptions[value].body,
+      })),
+    [t]
+  )
+
+  const executionStartModeItems = useMemo(
+    () =>
+      (['plan_then_execute', 'execute_immediately'] as const).map((value) => ({
+        value,
+        title: t.executionStartModeOptions[value].title,
+        meta: t.executionStartModeOptions[value].meta,
+        description: t.executionStartModeOptions[value].body,
+      })),
+    [t]
+  )
+
+  const baselineAcceptanceTargetItems = useMemo(
+    () =>
+      (['comparison_ready', 'paper_repro_ready', 'registry_publishable'] as const).map((value) => ({
+        value,
+        title: t.baselineAcceptanceTargetOptions[value].title,
+        meta: t.baselineAcceptanceTargetOptions[value].meta,
+        description: t.baselineAcceptanceTargetOptions[value].body,
+      })),
+    [t]
+  )
+
   const manuscriptEditModeItems = useMemo(
     () =>
       (['none', 'copy_ready_text', 'latex_required'] as const).map((value) => ({
@@ -1417,12 +1776,45 @@ export function CreateProjectDialog({
     [derivedContract.git_strategy, t]
   )
   const launchModeCopy = useMemo(
-    () => splitOptionCopy(t.launchModeOptions[form.launch_mode]),
-    [form.launch_mode, t]
+    () =>
+      splitOptionCopy(
+        t.launchModeOptions?.[form.launch_mode],
+        form.launch_mode === 'custom'
+          ? locale === 'zh'
+            ? '自定义入口'
+            : 'Custom entry'
+          : locale === 'zh'
+            ? '标准工作流'
+            : 'Standard workflow'
+      ),
+    [form.launch_mode, locale, t]
   )
 
   useEffect(() => {
     if (!open) {
+      return
+    }
+    setRightPaneMode('assistant')
+    setBenchAutoAssistReady(!(setupPacket && onRequestSetupAgent))
+    autoBenchAssistStartedRef.current = null
+    if (setupPacket && setupPacket.suggested_form && typeof setupPacket.suggested_form === 'object') {
+      const suggested = setupPacket.suggested_form as Partial<StartResearchTemplate>
+      const next = {
+        ...defaultStartResearchTemplate(locale),
+        ...suggested,
+        quest_id: '',
+        user_language: locale,
+      }
+      setForm(next)
+      setTemplates(loadStartResearchHistory())
+      setSelectedTemplateId('__new__')
+      setManualOverride(false)
+      setQuestIdManualOverride(false)
+      setSuggestedQuestId('')
+      setSelectedConnectorBindings({})
+      setShowAdvanced(true)
+      setAgentManagedValues(suggested)
+      processedPatchMessageIdsRef.current = new Set()
       return
     }
     const next = loadStartResearchTemplate(locale)
@@ -1444,7 +1836,20 @@ export function CreateProjectDialog({
     setSuggestedQuestId('')
     setSelectedConnectorBindings({})
     setShowAdvanced(true)
-  }, [initialGoal, locale, onboardingStatus, open])
+    setAgentManagedValues({})
+    processedPatchMessageIdsRef.current = new Set()
+  }, [initialGoal, locale, onboardingStatus, onRequestSetupAgent, open, setupPacket])
+
+  useEffect(() => {
+    if (open) return
+    setBenchAutoAssistReady(true)
+    autoBenchAssistStartedRef.current = null
+  }, [open])
+
+  useEffect(() => {
+    if (!setupQuestId) return
+    setRightPaneMode('assistant')
+  }, [setupQuestId])
 
   const setField = <K extends keyof StartResearchTemplate>(
     key: K,
@@ -1456,6 +1861,113 @@ export function CreateProjectDialog({
       return next
     })
   }
+
+  const applyFormPatch = useCallback((patch: Partial<StartResearchTemplate>) => {
+    setForm((current) => {
+      const next = { ...current, ...patch }
+      saveStartResearchDraft(next)
+      return next
+    })
+    setAgentManagedValues((current) => ({ ...current, ...patch }))
+  }, [])
+
+  const applyAgentPatch = useCallback(
+    (patch: Partial<StartResearchTemplate>) => {
+      setForm((current) => {
+        const next = { ...current }
+        const nextManaged = { ...agentManagedValues }
+        for (const key of Object.keys(patch) as Array<keyof StartResearchTemplate>) {
+          const proposed = patch[key]
+          const currentValue = current[key]
+          const previousManaged = nextManaged[key]
+          const canApply =
+            previousManaged === undefined ||
+            currentValue === previousManaged ||
+            currentValue === '' ||
+            currentValue === null ||
+            currentValue === undefined
+          if (!canApply) {
+            continue
+          }
+          ;(next as Record<string, unknown>)[key] = proposed as unknown
+          ;(nextManaged as Record<string, unknown>)[key as string] = proposed as unknown
+        }
+        saveStartResearchDraft(next)
+        setAgentManagedValues(nextManaged)
+        return next
+      })
+      if (setupPacket && Object.keys(patch).length > 0) {
+        setBenchAutoAssistReady(true)
+      }
+    },
+    [agentManagedValues, setupPacket]
+  )
+
+  const benchAutoAssistMessage = useMemo(
+    () => (setupPacket ? buildBenchstoreAutoAssistMessage(setupPacket, locale) : ''),
+    [locale, setupPacket]
+  )
+
+  useEffect(() => {
+    if (!open || !setupPacket || !onRequestSetupAgent) return
+    if (setupQuestId || setupQuestCreating) return
+    const triggerKey = [
+      setupPacket.entry_id,
+      setupPacket.benchmark_local_path || '',
+      setupPacket.latex_markdown_path || '',
+    ].join('::')
+    if (autoBenchAssistStartedRef.current === triggerKey) return
+    autoBenchAssistStartedRef.current = triggerKey
+    void onRequestSetupAgent({
+      message: benchAutoAssistMessage,
+      form: latestFormRef.current,
+      setupPacket,
+    }).catch(() => {
+      autoBenchAssistStartedRef.current = null
+    })
+  }, [
+    benchAutoAssistMessage,
+    onRequestSetupAgent,
+    open,
+    setupPacket,
+    setupQuestCreating,
+    setupQuestId,
+  ])
+
+  useEffect(() => {
+    if (!setupQuestId) return
+    for (const item of setupWorkspace.feed) {
+      if (item.type !== 'message' || item.role !== 'assistant' || item.stream) continue
+      if (processedPatchMessageIdsRef.current.has(item.id)) continue
+      processedPatchMessageIdsRef.current.add(item.id)
+      const match = item.content.match(/```start_setup_patch\s*([\s\S]*?)```/i)
+      if (!match) continue
+      try {
+        const parsed = JSON.parse(match[1].trim())
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          applyAgentPatch(parsed as Partial<StartResearchTemplate>)
+        }
+      } catch {
+        continue
+      }
+    }
+  }, [applyAgentPatch, setupQuestId, setupWorkspace.feed])
+
+  useEffect(() => {
+    if (!setupQuestId) return
+    const handleStartSetupPatch = (event: Event) => {
+      const detail = (event as CustomEvent<{ patch?: Partial<StartResearchTemplate> }>).detail
+      const patch =
+        detail?.patch && typeof detail.patch === 'object' && !Array.isArray(detail.patch)
+          ? (detail.patch as Partial<StartResearchTemplate>)
+          : null
+      if (!patch) return
+      applyAgentPatch(patch)
+    }
+    window.addEventListener('ds:start-setup:patch', handleStartSetupPatch as EventListener)
+    return () =>
+      window.removeEventListener('ds:start-setup:patch', handleStartSetupPatch as EventListener)
+  }, [applyAgentPatch, setupQuestId])
 
   const applyStandardProfile = useCallback((profile: StandardProfile) => {
     setForm((current) => {
@@ -1662,9 +2174,10 @@ export function CreateProjectDialog({
     setPromptDraft(compiledPromptPreview)
   }, [compiledPromptPreview, manualOverride, open])
 
-  const finalPrompt = promptDraft.trim() || (!manualOverride ? compiledPromptPreview.trim() : '')
-  const promptRequired = open && !finalPrompt
+  const finalPrompt = compiledPromptPreview.trim()
+  const promptRequired = open && !compiledPromptPreview.trim()
   const goalRequired = open && !manualOverride && !form.goal.trim()
+  const benchAutoAssistLocked = Boolean(setupPacket && onRequestSetupAgent && (!benchAutoAssistReady || setupQuestCreating))
 
   const handlePromptChange = (value: string) => {
     if (!manualOverride && value !== compiledPromptPreview) {
@@ -1714,6 +2227,9 @@ export function CreateProjectDialog({
       goal: next.goal,
       baseline_id: next.baseline_id,
       baseline_variant_id: next.baseline_variant_id || '',
+      baseline_source_mode: next.baseline_source_mode,
+      execution_start_mode: next.execution_start_mode,
+      baseline_acceptance_target: next.baseline_acceptance_target,
       baseline_urls: next.baseline_urls,
       paper_urls: next.paper_urls,
       runtime_constraints: next.runtime_constraints,
@@ -1758,6 +2274,9 @@ export function CreateProjectDialog({
   const handleCreate = async () => {
     if (onboardingStatus === 'running') {
       handleLaunchTutorialDemo()
+      return
+    }
+    if (benchAutoAssistLocked) {
       return
     }
     if (!manualOverride && !form.goal.trim()) {
@@ -1809,6 +2328,9 @@ export function CreateProjectDialog({
       custom_profile: saved.custom_profile,
       review_followup_policy: effectiveReviewFollowupPolicy,
       baseline_execution_policy: saved.baseline_execution_policy,
+      baseline_source_mode: saved.baseline_source_mode,
+      execution_start_mode: saved.execution_start_mode,
+      baseline_acceptance_target: saved.baseline_acceptance_target,
       manuscript_edit_mode: effectiveManuscriptEditMode,
       scope: derivedFields.scope,
       baseline_mode: derivedFields.baseline_mode,
@@ -1848,12 +2370,12 @@ export function CreateProjectDialog({
         className={LAUNCH_DIALOG_SHELL_CLASS}
       >
         <div
-          className="feed-scrollbar flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:overflow-hidden lg:p-5"
+          className="feed-scrollbar modal-scrollbar flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:items-stretch lg:overflow-hidden lg:p-5"
           data-onboarding-id="start-research-dialog"
         >
         <div
           className={cn(
-            'flex flex-none flex-col overflow-visible lg:min-h-0 lg:flex-auto lg:overflow-hidden lg:rounded-[28px] lg:border lg:border-black/[0.06] lg:bg-[rgba(255,250,245,0.76)] lg:shadow-[0_22px_72px_-54px_rgba(15,23,42,0.3)] lg:backdrop-blur-xl'
+            'flex flex-none flex-col overflow-visible lg:h-full lg:min-h-0 lg:flex-auto lg:overflow-hidden lg:rounded-[28px] lg:border lg:border-black/[0.06] lg:bg-[rgba(255,250,245,0.76)] lg:shadow-[0_22px_72px_-54px_rgba(15,23,42,0.3)] lg:backdrop-blur-xl'
           )}
         >
           <div className="shrink-0 px-1 py-1 lg:border-b lg:border-[rgba(45,42,38,0.08)] lg:px-4 lg:py-4 dark:lg:border-[rgba(45,42,38,0.08)]">
@@ -1865,7 +2387,7 @@ export function CreateProjectDialog({
             </div>
           </div>
 
-          <div className="px-0 py-1 sm:px-0 sm:py-1 lg:feed-scrollbar lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:p-4">
+          <div className="px-0 py-1 sm:px-0 sm:py-1 lg:feed-scrollbar lg:modal-scrollbar lg:min-h-0 lg:flex-1 lg:overflow-y-scroll lg:overscroll-contain lg:p-4">
             <div className="flex min-h-full flex-col gap-4">
               {manualOverride ? (
                 <div className="rounded-lg border border-[#c4a066]/50 bg-[#c4a066]/10 px-3 py-2 text-xs text-[rgba(56,49,35,0.92)]">
@@ -2002,6 +2524,38 @@ export function CreateProjectDialog({
                     disabled={manualOverride}
                   />
                 </InlineField>
+                <div
+                  className="rounded-[18px] border border-[rgba(45,42,38,0.08)] bg-[linear-gradient(145deg,rgba(253,247,241,0.94),rgba(239,229,220,0.84)_42%,rgba(226,235,239,0.82))] px-4 py-4 shadow-[0_16px_44px_-34px_rgba(44,39,34,0.24)]"
+                  data-onboarding-id="start-research-deepxiv"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">{deepxivT.title}</div>
+                      <div className="mt-2 text-[11px] leading-6 text-[rgba(75,73,69,0.78)] dark:text-[rgba(75,73,69,0.78)]">
+                        {deepxivT.body}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="rounded-full"
+                        onClick={() => setDeepxivSetupOpen(true)}
+                        data-onboarding-id="start-research-deepxiv-setup"
+                      >
+                        {deepxivT.openSetup}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-full"
+                        onClick={() => navigate('/settings/deepxiv')}
+                      >
+                        {deepxivT.openSettings}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
                 {showAdvanced ? (
                   <InlineField label={t.languageLabel} help={t.languageHelp}>
                     <select
@@ -2052,7 +2606,7 @@ export function CreateProjectDialog({
                   </div>
                   <div className="rounded-lg border border-[rgba(45,42,38,0.08)] bg-white/70 px-3 py-3 dark:border-[rgba(45,42,38,0.08)] dark:bg-white/76">
                     <div className="text-[11px] text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.targetRunner}</div>
-                    <div className="mt-1 text-sm font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">{t.targetRunnerValue}</div>
+                    <div className="mt-1 text-sm font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">{`${runnerLabel(activeRunnerName)} / ${locale === 'zh' ? '本地 daemon' : 'local daemon'}`}</div>
                   </div>
                 </div>
                 <div data-onboarding-id="start-research-connector">
@@ -2194,6 +2748,38 @@ export function CreateProjectDialog({
                   />
                 )}
                 <ChoiceField
+                  label={t.baselineSourceModeLabel}
+                  help={t.baselineSourceModeHelp}
+                  hint={t.baselineSourceModeHelp}
+                  value={form.baseline_source_mode}
+                  items={baselineSourceModeItems}
+                  onChange={(value) => setField('baseline_source_mode', value as BaselineSourceMode)}
+                  disabled={manualOverride}
+                />
+                <ChoiceField
+                  label={t.executionStartModeLabel}
+                  help={t.executionStartModeHelp}
+                  hint={t.executionStartModeHelp}
+                  value={form.execution_start_mode}
+                  items={executionStartModeItems}
+                  onChange={(value) => setField('execution_start_mode', value as ExecutionStartMode)}
+                  disabled={manualOverride}
+                />
+                <ChoiceField
+                  label={t.baselineAcceptanceTargetLabel}
+                  help={t.baselineAcceptanceTargetHelp}
+                  hint={t.baselineAcceptanceTargetHelp}
+                  value={form.baseline_acceptance_target}
+                  items={baselineAcceptanceTargetItems}
+                  onChange={(value) => setField('baseline_acceptance_target', value as BaselineAcceptanceTarget)}
+                  disabled={manualOverride}
+                />
+                <div className="rounded-[14px] border border-[rgba(45,42,38,0.08)] bg-[rgba(244,239,233,0.52)] px-3 py-3 text-[11px] leading-5 text-[rgba(86,82,77,0.82)] dark:border-[rgba(45,42,38,0.08)] dark:bg-[rgba(244,239,233,0.62)] dark:text-[rgba(86,82,77,0.82)]">
+                  {locale === 'zh'
+                    ? '上面这 3 个控制项只影响“Start Research 刚开始时如何处理 baseline”。它们不会把后续所有 stage 都变成必须先计划后执行。'
+                    : 'These 3 controls only affect how Start Research enters baseline work. They do not force every later stage into plan-then-execute mode.'}
+                </div>
+                <ChoiceField
                   label={t.researchIntensityLabel}
                   help={t.researchIntensityHelp}
                   hint={t.researchIntensityHelp}
@@ -2309,98 +2895,87 @@ export function CreateProjectDialog({
         <div
           data-onboarding-id="start-research-preview"
           className={cn(
-            'flex flex-none flex-col overflow-visible p-0 sm:p-0 lg:min-h-0 lg:flex-auto lg:overflow-hidden lg:rounded-[28px] lg:border lg:border-black/[0.06] lg:bg-[rgba(255,250,245,0.74)] lg:p-4 lg:shadow-[0_22px_72px_-54px_rgba(15,23,42,0.28)] lg:backdrop-blur-xl'
+            'flex flex-none flex-col overflow-visible p-0 sm:p-0 lg:h-full lg:min-h-0 lg:flex-auto lg:overflow-hidden lg:rounded-[28px] lg:bg-transparent lg:p-0'
           )}
         >
-          <div className="mb-2 flex shrink-0 flex-wrap items-start justify-between gap-2 px-1 lg:mb-3 lg:px-0">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(107,103,97,0.8)] dark:text-[rgba(107,103,97,0.8)] lg:text-sm lg:normal-case lg:tracking-normal lg:text-[rgba(38,36,33,0.95)]">
-                {t.preview}
-              </div>
-              <div className="mt-1 text-[11px] leading-5 text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)] lg:text-xs">
-                {t.previewBody}
-              </div>
-            </div>
-            {manualOverride ? (
-              <Badge className="rounded-full px-2.5 py-1 text-[10px] uppercase tracking-wide">{t.manual}</Badge>
-            ) : null}
+          <div className="mb-3 flex shrink-0 items-center justify-end gap-2 px-1 lg:px-0" data-onboarding-id="start-research-preview-mode-tabs">
+            <Button
+              type="button"
+              variant={rightPaneMode === 'assistant' ? 'secondary' : 'ghost'}
+              className="rounded-full"
+              onClick={() => setRightPaneMode('assistant')}
+              data-onboarding-id="start-research-toggle-assistant"
+            >
+              {t.setupAgentToggle}
+            </Button>
+            <Button
+              type="button"
+              variant={rightPaneMode === 'preview' ? 'secondary' : 'ghost'}
+              className="rounded-full"
+              onClick={() => setRightPaneMode('preview')}
+              data-onboarding-id="start-research-toggle-preview"
+            >
+              {t.previewPanel}
+            </Button>
           </div>
 
-          <div className="mb-3 shrink-0 grid grid-cols-2 gap-2 px-1 sm:grid-cols-3 lg:px-0 xl:grid-cols-6">
-            <div className="rounded-lg border border-[rgba(45,42,38,0.09)] bg-[rgba(244,239,233,0.55)] px-3 py-2 text-[11px] dark:border-[rgba(45,42,38,0.09)] dark:bg-[rgba(244,239,233,0.65)]">
-              <div className="text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.repoLabel}</div>
-              <div
-                className="mt-1 truncate font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]"
-                title={displayedQuestId || (suggestedQuestIdLoading ? t.repoLoading : t.repoAutoAssigned)}
-              >
-                {displayedQuestId || (suggestedQuestIdLoading ? t.repoLoading : t.repoAutoAssigned)}
+          <div className="min-h-0 flex-1">
+            {rightPaneMode === 'assistant' ? (
+              <div data-onboarding-id="start-research-assistant-surface" className="h-full min-h-0">
+                {setupQuestId ? (
+                  <SetupAgentQuestPanel
+                    questId={setupQuestId}
+                    locale={locale}
+                  />
+                ) : (
+                  <SetupAgentRail
+                    locale={locale}
+                    setupPacket={setupPacket}
+                    assistantLabel={`${runnerLabel(activeRunnerName)} · SetupAgent`}
+                    loading={setupQuestCreating}
+                    error={error}
+                    onStartAssist={async (message) => {
+                      await onRequestSetupAgent?.({
+                        message,
+                        form,
+                        setupPacket,
+                      })
+                    }}
+                  />
+                )}
               </div>
-            </div>
-            <div className="rounded-lg border border-[rgba(45,42,38,0.09)] bg-[rgba(244,239,233,0.55)] px-3 py-2 text-[11px] dark:border-[rgba(45,42,38,0.09)] dark:bg-[rgba(244,239,233,0.65)]">
-              <div className="text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.researchIntensityLabel}</div>
-              <div className="mt-1 font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">
-                {t.intensityOptions[activeResearchIntensity].title}
+            ) : (
+              <div className="flex h-full min-h-0 flex-col rounded-[24px] border border-[rgba(45,42,38,0.08)] bg-[rgba(255,255,255,0.78)] shadow-[0_20px_56px_-42px_rgba(45,42,38,0.28)] backdrop-blur-xl" data-onboarding-id="start-research-preview-surface">
+                <div className="shrink-0 border-b border-[rgba(45,42,38,0.08)] px-4 py-3">
+                  <div className="text-sm font-semibold text-[rgba(38,36,33,0.95)]">{t.preview}</div>
+                  <div className="mt-1 text-xs leading-5 text-[rgba(107,103,97,0.72)]">{t.previewBody}</div>
+                </div>
+                <div className="min-h-0 flex-1 p-4">
+                  <Textarea
+                    value={compiledPromptPreview}
+                    readOnly
+                    aria-label={t.preview}
+                    containerClassName="flex h-full min-h-0"
+                    className={`h-full min-h-full overflow-y-auto rounded-[18px] border-[rgba(45,42,38,0.08)] bg-white/70 text-xs leading-6 ${fieldToneClassName} dark:border-[rgba(45,42,38,0.08)] dark:bg-white/78`}
+                  />
+                </div>
               </div>
-            </div>
-            <div className="rounded-lg border border-[rgba(45,42,38,0.09)] bg-[rgba(244,239,233,0.55)] px-3 py-2 text-[11px] dark:border-[rgba(45,42,38,0.09)] dark:bg-[rgba(244,239,233,0.65)]">
-              <div className="text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.connectorSummaryLabel}</div>
-              <div className="mt-1 font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">
-                {selectedConnectorTarget ? selectedConnectorTarget.connector : t.connectorSummaryAuto}
-              </div>
-              <div
-                className="mt-1 truncate text-[10px] leading-4 text-[rgba(107,103,97,0.78)] dark:text-[rgba(107,103,97,0.78)]"
-                title={
-                  selectedConnectorTarget
-                    ? `${selectedConnectorTarget.connector} · ${selectedConnectorTarget.target.compactLabel}`
-                    : t.connectorSummaryLocalBody
-                }
-              >
-                {selectedConnectorTarget ? selectedConnectorTarget.target.compactLabel : t.connectorSummaryLocalBody}
-              </div>
-            </div>
-            <div className="hidden rounded-lg border border-[rgba(45,42,38,0.09)] bg-[rgba(244,239,233,0.55)] px-3 py-2 text-[11px] sm:block dark:border-[rgba(45,42,38,0.09)] dark:bg-[rgba(244,239,233,0.65)]">
-              <div className="text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.decisionPolicyLabel}</div>
-              <div className="mt-1 font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">
-                {t.decisionPolicyOptions[form.decision_policy].title}
-              </div>
-            </div>
-            <div className="hidden rounded-lg border border-[rgba(45,42,38,0.09)] bg-[rgba(244,239,233,0.55)] px-3 py-2 text-[11px] sm:block dark:border-[rgba(45,42,38,0.09)] dark:bg-[rgba(244,239,233,0.65)]">
-              <div className="text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.deliveryModeLabel}</div>
-              <div className="mt-1 font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">
-                {form.need_research_paper ? t.researchPaperEnabled : t.researchPaperDisabled}
-              </div>
-            </div>
-            <div className="hidden rounded-lg border border-[rgba(45,42,38,0.09)] bg-[rgba(244,239,233,0.55)] px-3 py-2 text-[11px] sm:block dark:border-[rgba(45,42,38,0.09)] dark:bg-[rgba(244,239,233,0.65)]">
-              <div className="text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">{t.launchModeLabel}</div>
-              <div className="mt-1 font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">
-                {launchModeCopy.title}
-              </div>
-            </div>
+            )}
           </div>
-
-          <textarea
-            aria-label={t.preview}
-            value={promptDraft}
-            onChange={(event) => handlePromptChange(event.target.value)}
-            className="feed-scrollbar min-h-[28svh] flex-1 overflow-y-auto overscroll-contain resize-none rounded-[18px] border border-[rgba(45,42,38,0.09)] bg-white/72 p-3 font-mono text-xs leading-5 text-[rgba(38,36,33,0.95)] outline-none dark:border-[rgba(45,42,38,0.09)] dark:bg-white/82 dark:text-[rgba(38,36,33,0.95)] sm:min-h-[34svh] lg:min-h-0"
-          />
-
-          <div className="mt-2 flex shrink-0 flex-col items-start justify-between gap-1 px-1 text-[11px] text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)] sm:flex-row sm:items-center sm:gap-2 lg:px-0">
-            <span>{t.footer}</span>
-            <span>{promptDraft.length}</span>
-          </div>
-
-          {promptRequired ? <div className="mt-2 shrink-0 px-1 text-xs text-[#9a1b1b] lg:px-0">{t.promptRequired}</div> : null}
-          {error ? <div className="mt-2 shrink-0 px-1 text-xs text-[#9a1b1b] lg:px-0">{error}</div> : null}
 
           <div className="mt-3 flex shrink-0 flex-col gap-3 px-1 sm:flex-row sm:items-center sm:justify-between lg:px-0">
-            <div className="inline-flex items-center gap-2 text-[11px] text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">
-              <BookmarkPlus className="h-3.5 w-3.5" />
-              <span>{templateOptions.length} template(s)</span>
+            <div className="flex flex-col gap-1">
+              <div className="inline-flex items-center gap-2 text-[11px] text-[rgba(107,103,97,0.72)] dark:text-[rgba(107,103,97,0.72)]">
+                <BookmarkPlus className="h-3.5 w-3.5" />
+                <span>{templateOptions.length} template(s)</span>
+              </div>
+              {benchAutoAssistLocked ? (
+                <div className="text-[11px] text-[rgba(107,103,97,0.8)] dark:text-[rgba(107,103,97,0.78)]">
+                  {t.benchAutoAssistPending}
+                </div>
+              ) : null}
             </div>
-            <div
-              className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3"
-            >
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
               {onBack ? (
                 <Button
                   variant="outline"
@@ -2411,22 +2986,28 @@ export function CreateProjectDialog({
                   {backLabel}
                 </Button>
               ) : null}
-              <Button
-                variant="secondary"
-                disabled={!manualOverride || loading}
-                onClick={handleRestore}
-                className="w-full sm:w-auto"
-              >
-                <RotateCcw className="h-4 w-4" />
-                {t.restore}
-              </Button>
+              {manualOverride ? (
+                <Button
+                  variant="secondary"
+                  disabled={loading}
+                  onClick={handleRestore}
+                  className="w-full sm:w-auto"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  {t.restore}
+                </Button>
+              ) : null}
               <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto">
                 {t.cancel}
               </Button>
               <Button
                 onClick={() => void handleCreate()}
-                disabled={loading || goalRequired || promptRequired}
-                className="w-full sm:w-auto"
+                disabled={loading || goalRequired || promptRequired || benchAutoAssistLocked}
+                className={cn(
+                  'w-full sm:w-auto',
+                  benchAutoAssistLocked &&
+                    'bg-[rgba(45,42,38,0.14)] text-[rgba(107,103,97,0.78)] shadow-none'
+                )}
                 data-onboarding-id="start-research-create"
               >
                 <Sparkles className="h-4 w-4" />
@@ -2436,6 +3017,7 @@ export function CreateProjectDialog({
           </div>
         </div>
         </div>
+      <DeepXivSetupDialog open={deepxivSetupOpen} onClose={() => setDeepxivSetupOpen(false)} locale={locale} />
       </OverlayDialog>
     </>
   )
