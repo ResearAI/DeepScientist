@@ -250,6 +250,12 @@ If you want to try it right now, the shortest path is:
 
 Platform note: DeepScientist fully supports Linux and macOS. Native Windows support is currently experimental (strongly recommend WSL2).
 
+**Windows + WSL2 users**: Copy the following line to your AI coding agent (Claude Code, Codex, Cursor, etc.) and let it handle the full setup for you:
+
+> Install DeepScientist on this Windows machine using WSL2. Follow the skill at `skills/deepscientist-windows-wsl-setup/SKILL.md` in the DeepScientist repo for the full procedure. Keep going until `ds doctor` passes and I can open http://127.0.0.1:20999 in my Windows browser.
+
+For manual installation on Linux / macOS:
+
 ```bash
 npm install -g @researai/deepscientist
 codex login

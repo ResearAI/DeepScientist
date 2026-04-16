@@ -1,0 +1,7 @@
+interface:
+  display_name: "DeepScientist WSL Setup"
+  short_description: "Install DeepScientist on Windows WSL2"
+  default_prompt: "Use $deepscientist-windows-wsl-setup to install or repair DeepScientist on this Windows machine until the Web UI opens from Windows."
+
+policy:
+  allow_implicit_invocation: true
