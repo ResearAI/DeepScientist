@@ -584,10 +584,13 @@ class ClaudeRunner:
             "--verbose",
             "--permission-mode",
             "dontAsk",
+            "--tools",
+            "",
             "--allowedTools",
             _ALLOWED_MCP_TOOLS,
             "--mcp-config",
             str(mcp_config_path),
+            "--strict-mcp-config",
         ]
         normalized_model = str(request.model or "").strip().lower()
         if normalized_model not in {"", "inherit", "default", "claude-default"}:

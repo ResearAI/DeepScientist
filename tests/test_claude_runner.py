@@ -38,7 +38,10 @@ def test_claude_runner_build_command_includes_mcp_config_and_allowed_tools(temp_
 
     assert Path(command[0]).name.lower() in {"claude", "claude.exe", "claude.cmd"}
     assert command[1] == "-p"
+    assert "--tools" in command
+    assert command[command.index("--tools") + 1] == ""
     assert "--mcp-config" in command
+    assert "--strict-mcp-config" in command
     assert "mcp__memory,mcp__artifact,mcp__bash_exec" in command
     assert "--model" not in command
 
