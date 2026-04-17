@@ -55,6 +55,7 @@ def test_prompt_builder_includes_layered_runtime_context(temp_home: Path) -> Non
     assert "Canonical stage skills root:" in prompt
     assert "Standard stage skill paths:" in prompt
     assert "Companion skill paths:" in prompt
+    assert "paper-plot" in prompt
     assert "figure-polish" in prompt
     assert "intake-audit" in prompt
     assert "review" in prompt

@@ -22,6 +22,7 @@ EXPECTED_STAGE_SKILLS = {
 }
 
 EXPECTED_COMPANION_SKILLS = {
+    "paper-plot",
     "figure-polish",
     "intake-audit",
     "review",
@@ -29,6 +30,7 @@ EXPECTED_COMPANION_SKILLS = {
 }
 
 INTERACTION_CONTRACT_SKILLS = EXPECTED_STAGE_SKILLS | {
+    "paper-plot",
     "intake-audit",
     "review",
     "rebuttal",
@@ -78,6 +80,12 @@ def test_skill_role_metadata_drives_stage_and_companion_catalogs() -> None:
 
 def test_new_companion_skill_reference_files_exist() -> None:
     root = repo_root() / "src" / "skills"
+    assert (root / "paper-plot" / "references" / "bar_grouped_hatch.md").exists()
+    assert (root / "paper-plot" / "references" / "line_confidence_band.md").exists()
+    assert (root / "paper-plot" / "references" / "scatter_tsne_cluster.md").exists()
+    assert (root / "paper-plot" / "scripts" / "bar_spice.py").exists()
+    assert (root / "paper-plot" / "scripts" / "line_selfdistill.py").exists()
+    assert (root / "paper-plot" / "scripts" / "scatter_tsne.py").exists()
     assert (root / "intake-audit" / "references" / "state-audit-template.md").exists()
     assert (root / "review" / "references" / "review-report-template.md").exists()
     assert (root / "review" / "references" / "revision-log-template.md").exists()
@@ -377,6 +385,7 @@ def test_write_skill_documents_reviewer_first_reader_first_contract_and_referenc
     assert "paper/related_work_map.md" in text
     assert "paper/paper_experiment_matrix.md" in text
     assert "paper/proofing/language_issues.md" in text
+    assert "`paper-plot`" in text
     assert (root / "references" / "paper-experiment-matrix-template.md").exists()
     assert (root / "references" / "reviewer-first-writing.md").exists()
     assert (root / "references" / "section-contracts.md").exists()
@@ -413,6 +422,18 @@ def test_figure_polish_skill_requires_render_inspect_revise_workflow_and_style_a
     assert "https://github.com/ResearAI/AutoFigure-Edit" in text
     assert "https://deepscientist" in text
     assert style_asset.exists()
+
+
+def test_paper_plot_skill_requires_template_copy_and_figure_polish_handoff() -> None:
+    text = (repo_root() / "src" / "skills" / "paper-plot" / "SKILL.md").read_text(encoding="utf-8")
+    openai_yaml = (repo_root() / "src" / "skills" / "paper-plot" / "agents" / "openai.yaml").read_text(encoding="utf-8")
+
+    assert "Trae1ounG/paper-plot-skills" in text
+    assert "Follow the shared interaction contract injected by the system prompt." in text
+    assert "keep the bundled template immutable" in text
+    assert "hand the result to `figure-polish`" in text
+    assert "bar, line, scatter, and radar" in text
+    assert "display_name: \"Paper Plot\"" in openai_yaml
 
 
 def test_idea_skill_requires_review_of_prior_ideas_and_experiment_outcomes() -> None:

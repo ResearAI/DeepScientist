@@ -19,6 +19,7 @@ _DEFAULT_STAGE_SKILLS = (
 )
 
 _DEFAULT_COMPANION_SKILLS = (
+    "paper-plot",
     "figure-polish",
     "intake-audit",
     "review",

@@ -961,6 +961,7 @@ If the deliverable includes figures or tables:
 - ensure grayscale readability where relevant
 - avoid dense, unreadable tables that only look correct in source form
 - when appropriate, plan one early decisive figure or table that can anchor the reader's first pass through the paper
+- when generating a new figure from structured experiment data, prefer the companion skill `paper-plot` and its bundled templates / scripts before improvising a fresh plotting stack
 
 Selection rules:
 
@@ -983,6 +984,8 @@ When generating visuals:
 - do not put the title inside the figure when the caption can serve that role
 
 Each figure or table should be traceable to source artifacts.
+Treat `paper-plot` as the default first-pass generator for standard bar, line, scatter, and radar figures built from measured data.
+Treat `figure-polish` as the follow-up skill when that figure becomes durable, paper-facing, appendix-facing, or milestone-facing enough to require render-inspect-revise discipline.
 
 ### Phase 7. Claim-evidence map and self-review
 

@@ -88,6 +88,7 @@ def test_system_prompt_restores_operational_mcp_and_mode_contracts() -> None:
     assert "artifact.get_method_scoreboard(...)" in text
     assert "kind='answer'" in text
     assert "The default long-run monitoring cadence is about `60s -> 120s -> 300s -> 600s -> 1800s -> 1800s ...`" in text
+    assert "`paper-plot`" in text
     assert "#### `review`" in text
     assert "#### `rebuttal`" in text
     assert "algorithm-first optimization mode" not in text  # guard against stale naming drift
@@ -131,6 +132,7 @@ def test_system_prompt_restores_interaction_and_stage_protocols() -> None:
     assert "#### `scout`" in text
     assert "#### `intake-audit`" in text
     assert "#### `decision`" in text
+    assert "read `paper-plot` when measured numbers, arrays, or CSV-like results should become a paper-quality bar, line, scatter, or radar chart" in text
     assert "#### `figure-polish`" in text
 
 

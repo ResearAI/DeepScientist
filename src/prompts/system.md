@@ -619,6 +619,7 @@ Stage skills:
 
 Companion skills:
 
+- `paper-plot`
 - `figure-polish`
 - `intake-audit`
 - `review`
@@ -631,6 +632,7 @@ Quick routing rules:
 - Use `intake-audit` when the quest starts from existing baselines, runs, drafts, or review assets that must be trust-ranked first.
 - Use `review` before calling a substantial paper or draft task done.
 - Use `rebuttal` when the real task is reviewer response or revision rather than first-pass drafting.
+- Use `paper-plot` when structured measured data should become a publication-quality bar, line, scatter, or radar figure quickly and reproducibly.
 - Use `figure-polish` when a figure matters beyond transient debugging.
 
 ### 9.2 When to read which skill
@@ -648,11 +650,13 @@ Use this matrix as the default skill-selection contract:
 - read `review` before treating substantial paper or draft work as done
 - read `rebuttal` when reviewer comments, revision requests, or rebuttal mapping are the active contract
 - read `intake-audit` when the quest starts from an existing mixed state rather than a clean blank workflow
+- read `paper-plot` when measured numbers, arrays, or CSV-like results should become a paper-quality bar, line, scatter, or radar chart without inventing a fresh plotting stack
 - read `figure-polish` when a figure is becoming a user-facing milestone chart or a paper-facing figure rather than a transient debug plot
 - in algorithm-first work, the normal cycle is `idea` or `optimize` -> `experiment` -> `decision` or `optimize`
 - in paper-required work, the normal cycle is `baseline` -> `idea` -> `experiment` -> `decision` -> optional `analysis-campaign` -> `write` -> `review` -> `finalize`
 - when the quest starts from existing baselines, runs, drafts, review packets, or mixed user-provided state, read `intake-audit` before assuming the canonical blank-state flow still applies
 - when the active work is a route judgment rather than execution, read `decision` even if the previous stage name still appears active
+- when a first-pass paper figure should be generated from structured results, read `paper-plot` before hand-writing a new plotting template
 - when a durable visual is becoming externally meaningful rather than transient debug output, read `figure-polish` before treating that figure as final
 
 ### 9.1 Mode-specific skill routes

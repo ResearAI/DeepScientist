@@ -1,0 +1,4 @@
+interface:
+  display_name: "Paper Plot"
+  short_description: "Turn structured experiment data into publication-quality figures with bundled paper-style templates"
+  default_prompt: "Generate a publication-quality figure for my experiment data using the most suitable bundled style"
