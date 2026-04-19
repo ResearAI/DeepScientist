@@ -5977,7 +5977,7 @@ export function AiManusChatView({
           if (event.type === 'tool_call' || event.type === 'tool_result') {
             const data = event.data as CopilotToolEvent
             const status =
-              data.status === 'calling' || data.status === 'called'
+              data.status === 'calling' || data.status === 'called' || data.status === 'failed'
                 ? data.status
                 : event.type === 'tool_call'
                   ? 'calling'
@@ -6867,7 +6867,7 @@ export function AiManusChatView({
             ? toolData.tool_call_id
             : createMessageId('tool')
         const status =
-          toolData.status === 'calling' || toolData.status === 'called' ? toolData.status : 'called'
+          toolData.status === 'calling' || toolData.status === 'called' || toolData.status === 'failed' ? toolData.status : 'called'
         const toolName = typeof toolData.name === 'string' ? toolData.name : ''
         const activeLock = displayLockRef.current
         closeAssistantSegment()
@@ -7166,7 +7166,7 @@ export function AiManusChatView({
                 ? baseArgs.text
                 : ''
           const status =
-            toolData.status === 'calling' || toolData.status === 'called' ? toolData.status : 'called'
+            toolData.status === 'calling' || toolData.status === 'called' || toolData.status === 'failed' ? toolData.status : 'called'
           const shouldRender = status === 'calling' || toolData.status == null
           if (!shouldRender || !statusMessage) {
             if (isCopilotSurface) {

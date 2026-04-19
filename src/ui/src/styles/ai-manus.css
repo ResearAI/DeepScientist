@@ -1477,6 +1477,28 @@
   pointer-events: none;
 }
 
+.ai-manus-root [data-tool-status="failed"] .ai-manus-tool-chip {
+  border-color: rgba(184, 107, 119, 0.55);
+  background: rgba(184, 107, 119, 0.08);
+  color: #8d4c58;
+}
+
+.ai-manus-root [data-tool-status="failed"] .ai-manus-tool-chip::before {
+  content: '!';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  border-radius: 999px;
+  background: #b86b77;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
 @keyframes aiManusToolSweep {
   0% {
     transform: translateX(-120%);

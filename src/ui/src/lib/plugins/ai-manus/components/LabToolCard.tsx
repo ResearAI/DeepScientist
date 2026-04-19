@@ -191,7 +191,8 @@ export function LabToolCard({
 
   let label = 'Tool'
   let summary = ''
-  let status = tool.status === 'calling' ? 'Running' : 'Done'
+  let status =
+    tool.status === 'calling' ? 'Running' : tool.status === 'failed' ? 'Failed' : 'Done'
   let waiting = false
 
   const questionIdCandidate =
@@ -603,7 +604,13 @@ export function LabToolCard({
     return (
       <div
         className="group flex items-start gap-2"
-        data-tool-status={tool.status === 'calling' ? 'calling' : undefined}
+        data-tool-status={
+          tool.status === 'calling'
+            ? 'calling'
+            : tool.status === 'failed'
+              ? 'failed'
+              : undefined
+        }
       >
         <div className="min-w-0 flex-1">
           <div
