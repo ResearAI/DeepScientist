@@ -8,6 +8,7 @@ import { resolveDemoProject } from '@/demo/projects'
 import { getProject, type Project } from '@/lib/api/projects'
 import { useI18n } from '@/lib/i18n/useI18n'
 import { scheduleCommonPluginPreload } from '@/lib/plugin/init'
+import { isQuestRuntimeSurface } from '@/lib/runtime/quest-runtime'
 
 function AtmosphereFrame({ children }: { children: ReactNode }) {
   return (
@@ -30,9 +31,10 @@ export function ProjectWorkspacePage() {
   const { t } = useI18n('workspace')
   const { t: tCommon } = useI18n('common')
   const demoProject = resolveDemoProject(projectId)
+  const optimisticQuestRoute = Boolean(projectId && !demoProject && isQuestRuntimeSurface())
 
   const [project, setProject] = useState<Project | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!optimisticQuestRoute)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -74,6 +76,13 @@ export function ProjectWorkspacePage() {
       return
     }
 
+    if (optimisticQuestRoute) {
+      setProject(null)
+      setError(null)
+      setLoading(false)
+      return
+    }
+
     let cancelled = false
 
     async function fetchProject() {
@@ -101,7 +110,7 @@ export function ProjectWorkspacePage() {
     return () => {
       cancelled = true
     }
-  }, [demoProject, projectId, t])
+  }, [demoProject, optimisticQuestRoute, projectId, t])
 
   if (loading) {
     return (
@@ -116,7 +125,7 @@ export function ProjectWorkspacePage() {
     )
   }
 
-  const projectName = project?.name || `Project ${projectId}`
+  const projectName = project?.name || (projectId ? `Project ${projectId}` : 'Project')
 
   if (error) {
     return (
@@ -139,7 +148,9 @@ export function ProjectWorkspacePage() {
       projectSource={
         typeof project?.settings?.source === 'string'
           ? project.settings.source
-          : null
+          : optimisticQuestRoute
+            ? 'quest'
+            : null
       }
       demoScenarioId={
         typeof project?.settings?.demo_scenario_id === 'string'
