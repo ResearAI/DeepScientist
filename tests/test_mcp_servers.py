@@ -53,6 +53,40 @@ def _detailed_metric_contract(
     return payload
 
 
+def test_artifact_mcp_server_confirm_baseline_schema_exposes_structured_metric_contract_fields(temp_home: Path) -> None:
+    async def scenario() -> None:
+        ensure_home_layout(temp_home)
+        ConfigManager(temp_home).ensure_files()
+        quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create("mcp schema quest")
+        quest_root = Path(quest["quest_root"])
+        context = McpContext(
+            home=temp_home,
+            quest_id=quest["quest_id"],
+            quest_root=quest_root,
+            run_id="run-mcp-schema",
+            active_anchor="baseline",
+            conversation_id="quest:test",
+            agent_role="pi",
+            worker_id="worker-main",
+            worktree_root=None,
+            team_mode="single",
+        )
+        server = build_artifact_server(context)
+        tools = await server.list_tools()
+        confirm_tool = next(tool for tool in tools if tool.name == "confirm_baseline")
+        schema_text = json.dumps(confirm_tool.inputSchema, ensure_ascii=False)
+
+        assert '"MetricContractPayload"' in schema_text
+        assert '"MetricEntryPayload"' in schema_text
+        assert '"PrimaryMetricPayload"' in schema_text
+        assert '"origin_path"' in schema_text
+        assert '"source_ref"' in schema_text
+        assert '"derivation"' in schema_text
+        assert '"description"' in schema_text
+
+    asyncio.run(scenario())
+
+
 def _write_fake_bash_session(
     temp_home: Path,
     quest_root: Path,
