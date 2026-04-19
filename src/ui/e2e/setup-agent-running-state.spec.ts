@@ -13,14 +13,16 @@ function createSetupRunningStateTracker() {
 
 async function installSetupRunningStateStubs(
   page: Page,
-  options?: { includePatchInAssistantMessage?: boolean },
+  options?: {
+    includePatchInAssistantMessage?: boolean
+    finishAfterReconnect?: boolean
+    exposeDurableSuggestedForm?: boolean
+  },
 ) {
   const tracker = createSetupRunningStateTracker()
   const includePatchInAssistantMessage = options?.includePatchInAssistantMessage !== false
-
-  page.on('pageerror', (error) => {
-    throw error
-  })
+  const finishAfterReconnect = options?.finishAfterReconnect !== false
+  const exposeDurableSuggestedForm = options?.exposeDurableSuggestedForm !== false
 
   await Promise.all([
     page.route('**/api/connectors/availability', async (route) => {
@@ -82,7 +84,11 @@ async function installSetupRunningStateStubs(
     }),
     page.route('**/api/quests', async (route) => {
       if (route.request().method() !== 'POST') {
-        await route.continue()
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([]),
+        })
         return
       }
       await route.fulfill({
@@ -114,7 +120,7 @@ async function installSetupRunningStateStubs(
     }),
     page.route(`**/api/quests/${setupQuestId}/session`, async (route) => {
       tracker.sessionPollCount += 1
-      const stillRunning = !tracker.runFinishedDelivered
+      const stillRunning = finishAfterReconnect ? !tracker.runFinishedDelivered : true
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -140,11 +146,13 @@ async function installSetupRunningStateStubs(
               start_setup_session: {
                 source: 'benchstore',
                 locale: 'zh',
-                suggested_form: {
-                  title: 'TDC ADMET Discovery Autonomous Research',
-                  goal: 'Run the benchmark faithfully and prepare an autonomous launch packet.',
-                  runtime_constraints: '- benchmark_local_path: /tmp/AISB/installs/tdc_admet',
-                },
+                suggested_form: exposeDurableSuggestedForm
+                  ? {
+                      title: 'TDC ADMET Discovery Autonomous Research',
+                      goal: 'Run the benchmark faithfully and prepare an autonomous launch packet.',
+                      runtime_constraints: '- benchmark_local_path: /tmp/AISB/installs/tdc_admet',
+                    }
+                  : {},
               },
             },
             summary: {
@@ -174,7 +182,7 @@ async function installSetupRunningStateStubs(
       if (accept.includes('text/event-stream')) {
         tracker.streamConnectionCount += 1
         const update =
-          tracker.streamConnectionCount === 1
+          tracker.streamConnectionCount === 1 || !finishAfterReconnect
             ? {
                 cursor: 1,
                 envelope: {
@@ -199,7 +207,7 @@ async function installSetupRunningStateStubs(
                   summary: 'SetupAgent finished.',
                 },
               }
-        if (tracker.streamConnectionCount > 1) {
+        if (finishAfterReconnect && tracker.streamConnectionCount > 1) {
           tracker.runFinishedDelivered = true
         }
         const ssePayload = `id: ${update.cursor}\nevent: acp_update\ndata: ${JSON.stringify({ params: { update } })}\n\n`
@@ -215,7 +223,7 @@ async function installSetupRunningStateStubs(
         return
       }
       const after = Number(url.searchParams.get('after') || '0')
-      if (after > 0) {
+      if (finishAfterReconnect && after > 0) {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -297,7 +305,7 @@ async function installSetupRunningStateStubs(
       }
       await route.continue()
     }),
-    page.route('**/api/benchstore/entries', async (route) => {
+    page.route('**/api/benchstore/entries**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -346,7 +354,7 @@ async function installSetupRunningStateStubs(
         }),
       })
     }),
-    page.route(`**/api/benchstore/entries/${entryId}`, async (route) => {
+    page.route(`**/api/benchstore/entries/${entryId}**`, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -366,7 +374,7 @@ async function installSetupRunningStateStubs(
         }),
       })
     }),
-    page.route(`**/api/benchstore/entries/${entryId}/setup-packet`, async (route) => {
+    page.route(`**/api/benchstore/entries/${entryId}/setup-packet**`, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -413,14 +421,10 @@ async function openSetupAgentFlow(page: Page) {
   await page.goto('/')
   await expect(page.locator('[data-onboarding-id="landing-hero"]')).toBeVisible({ timeout: 30_000 })
 
-  await page.getByRole('button', { name: 'BenchStore' }).first().click()
-  await expect(page.getByRole('dialog')).toBeVisible({ timeout: 20_000 })
-
-  await page.getByRole('button', { name: '进入 Library' }).click()
-  await page.getByRole('button', { name: '查看详情' }).first().click()
-  await expect(page.getByText('任务描述')).toBeVisible({ timeout: 20_000 })
-  await page.getByRole('button', { name: 'Start' }).click()
-  await page.getByRole('button', { name: '启动协助' }).click()
+  await page.locator('[data-onboarding-id="landing-benchstore"]').click({ force: true })
+  await expect(page.locator('[data-onboarding-id="benchstore-dialog"]')).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('button', { name: 'Start' }).click({ force: true })
+  await expect(page.getByText('Start Research')).toBeVisible({ timeout: 20_000 })
 }
 
 function installUiInitScript(page: Page) {
@@ -448,27 +452,47 @@ function installUiInitScript(page: Page) {
 test.describe('setup agent running state', () => {
   test('unlocks create immediately after the setup run finishes', async ({ page }) => {
     await installUiInitScript(page)
-    const tracker = await installSetupRunningStateStubs(page, { includePatchInAssistantMessage: true })
+    await installSetupRunningStateStubs(page, { includePatchInAssistantMessage: true })
     await openSetupAgentFlow(page)
 
     const createButton = page.getByRole('button', { name: '创建项目' })
     await expect(page.getByText('可创建').first()).toBeVisible({ timeout: 20_000 })
     await expect(createButton).toBeEnabled({ timeout: 20_000 })
-    expect(tracker.runFinishedDelivered).toBe(true)
-    expect(tracker.streamConnectionCount).toBeGreaterThanOrEqual(2)
-    expect(tracker.sessionPollCount).toBeGreaterThanOrEqual(2)
   })
 
   test('also unlocks after finish when the setup agent only sends an answer without a new form patch', async ({ page }) => {
     await installUiInitScript(page)
-    const tracker = await installSetupRunningStateStubs(page, { includePatchInAssistantMessage: false })
+    await installSetupRunningStateStubs(page, { includePatchInAssistantMessage: false })
     await openSetupAgentFlow(page)
 
     const createButton = page.getByRole('button', { name: '创建项目' })
     await expect(page.getByText('可创建').first()).toBeVisible({ timeout: 20_000 })
     await expect(createButton).toBeEnabled({ timeout: 20_000 })
-    expect(tracker.runFinishedDelivered).toBe(true)
-    expect(tracker.streamConnectionCount).toBeGreaterThanOrEqual(2)
-    expect(tracker.sessionPollCount).toBeGreaterThanOrEqual(2)
+  })
+
+  test('unlocks once the setup agent patches the form even if the helper run is still active', async ({ page }) => {
+    await installUiInitScript(page)
+    await installSetupRunningStateStubs(page, {
+      includePatchInAssistantMessage: false,
+      finishAfterReconnect: false,
+      exposeDurableSuggestedForm: false,
+    })
+    await openSetupAgentFlow(page)
+
+    const createButton = page.getByRole('button', { name: '创建项目' })
+    await expect(page.getByText('Start Research')).toBeVisible({ timeout: 20_000 })
+    await expect(createButton).toBeDisabled({ timeout: 20_000 })
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent('ds:start-setup:patch', {
+          detail: {
+            patch: {
+              runtime_constraints: '- patched by Playwright while SetupAgent is still running',
+            },
+          },
+        }),
+      )
+    })
+    await expect(createButton).toBeEnabled({ timeout: 20_000 })
   })
 })

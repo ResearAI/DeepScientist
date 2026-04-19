@@ -2318,6 +2318,7 @@ export function CreateProjectDialog({
   const benchAutoAssistLocked = Boolean(
     setupPacket &&
       onRequestSetupAgent &&
+      !benchAutoAssistReady &&
       (benchAutoAssistWaitingForPatch || setupQuestStillRunning)
   )
   const createDisabledReason = loading
