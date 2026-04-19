@@ -3216,7 +3216,6 @@ export function CreateProjectDialog({
           </div>
         </div>
         </div>
-      <DeepXivSetupDialog open={deepxivSetupOpen} onClose={() => setDeepxivSetupOpen(false)} locale={locale} />
       <Dialog open={validationDialogOpen} onOpenChange={handleValidationDialogChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

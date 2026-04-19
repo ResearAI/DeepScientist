@@ -206,7 +206,6 @@ export function DeepXivSetupDialog({
     }
   }, [open])
 
-  const structuredDraft = useMemo(() => mergeDraft(document, draft), [document, draft])
   const previewText = useMemo(() => {
     if (testResult?.preview?.trim()) return testResult.preview.trim()
     if (testResult?.summary && (testResult.errors?.length || testResult.warnings?.length)) {
@@ -231,11 +230,12 @@ export function DeepXivSetupDialog({
   }
 
   const handleTest = async () => {
+    const nextStructuredDraft = mergeDraft(document, draft)
     setTesting(true)
     setError("")
     setMessage("")
     try {
-      const result = await client.deepxivTest(structuredDraft)
+      const result = await client.deepxivTest(nextStructuredDraft)
       setTestResult(result)
       if (!result.ok) {
         setError((result.errors || [result.summary || ""]).filter(Boolean).join("\n"))
@@ -247,15 +247,28 @@ export function DeepXivSetupDialog({
 
   const handleSave = async () => {
     if (!document) return
+    const nextStructuredDraft = mergeDraft(document, draft)
     setSaving(true)
     setError("")
     setMessage("")
     try {
       const result = await client.saveConfig("config", {
-        structured: structuredDraft,
+        structured: nextStructuredDraft,
         revision: document.revision,
       })
       if (result.ok) {
+        setDocument((current) =>
+          current
+            ? {
+                ...current,
+                revision: result.revision || current.revision,
+                meta: {
+                  ...(current.meta || {}),
+                  structured_config: nextStructuredDraft,
+                },
+              }
+            : current
+        )
         setMessage(t.saved)
         onClose()
       } else if (result.message) {
@@ -388,7 +401,7 @@ export function DeepXivSetupDialog({
               <aside className="rounded-[24px] border border-[rgba(45,42,38,0.08)] bg-[rgba(22,26,31,0.94)] px-5 py-5 shadow-[0_20px_70px_-56px_rgba(14,18,24,0.58)]">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">{t.previewTitle}</div>
                 <pre
-                  className="mt-4 min-h-[360px] overflow-x-auto whitespace-pre-wrap break-words rounded-[16px] border border-white/10 bg-black/20 px-4 py-4 text-[12px] leading-[1.75] text-white"
+                  className="mt-4 min-h-[360px] max-h-[min(62vh,720px)] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-[16px] border border-white/10 bg-black/20 px-4 py-4 text-[12px] leading-[1.75] text-white"
                   style={{ WebkitTextFillColor: "#ffffff" }}
                 >
                   {previewText}
