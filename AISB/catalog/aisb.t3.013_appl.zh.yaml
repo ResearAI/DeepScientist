@@ -1,0 +1,126 @@
+schema_version: 1
+id: aisb.t3.013_appl
+name: 'APPL: A Prompt Programming Language for Harmonious Integration of Programs
+  and Large Language Model Prompts'
+version: 0.1.0
+one_line: 通过对论文中的规范代码片段运行代码支持评估器，测量并优化APPL提示程序结构的AST紧凑性。
+task_description: '该基准测试用于评估APPL（一种原生Python提示编程语言，可将LLM调用无缝集成到传统程序中）的结构紧凑性。主要任务是优化APPL运行时和语言结构，使规范的提示程序模式（例如论文图7a中的带自洽的思维链）生成更小的Python AST，通过捆绑的eval_ast_size.py脚本统计AST节点数量来测量。评估器使用Python的ast模块解析固定代码片段并报告总节点数。不涉及模型训练；基准测试仅需CPU，专注于编译器风格的简化和语言设计效率。如果您希望在AST指标之外对APPL运行时进行端到端练习，则需要LLM API密钥（如OpenAI）；核心AST评估本身无需外部API。
+
+  '
+capability_tags:
+- research_code_optimization
+- prompt_programming
+- software_language_tools
+- llm_tooling
+- python
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: low
+time_band: 30-60m
+difficulty: medium
+data_access: public
+primary_outputs:
+- ast_size
+- runtime_output
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '运行eval_ast_size.py计算规范CoT-SC代码片段的AST节点数。无需LLM API密钥。几秒内完成。
+
+    '
+- id: ast_eval
+  label: AST评估
+  description: '运行完整的以紧凑性为重点的APPL评估工作流程，包括对APPL语言结构应用的任何优化，并报告最终的ast_size指标。
+
+    '
+- id: runtime_exercise
+  label: 运行时练习
+  description: '安装applang，配置LLM后端（如OpenAI），并运行捆绑的示例以验证端到端运行时行为以及AST指标。
+
+    '
+dataset_download:
+  primary_method: self_contained
+  sources: []
+  notes:
+  - 无需外部数据集下载。评估代码片段已嵌入eval_ast_size.py中。
+  - 完整的APPL库源代码包含在快照的src/appl/目录下。
+credential_requirements:
+  mode: optional
+  items:
+  - OpenAI API密钥（仅用于端到端运行时练习，不用于核心AST指标）
+  notes:
+  - 主要的ast_size指标无需凭据或网络访问。
+  - 如果需要运行运行时示例，请在.env中设置OPENAI_API_KEY或作为环境变量。
+  - 通过litellm支持的其他LLM后端可能需要各自的API密钥。
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.9'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - applang>=0.2.2
+  - litellm>=1.59.8
+  - openai>=1.13.3
+  - pydantic>=2.6.3
+  - libcst>=1.4.0
+  notes:
+  - 纯CPU执行足以完成核心AST评估指标。
+  - 需要Python 3.9+；已测试至3.13版本。
+  - 可通过pip install -U applang安装，或使用pdm从捆绑的pyproject.toml安装。
+  - 完整的依赖项集合（包括可选的lunary、instructor、langfuse）请参见pyproject.toml。
+risk_flags:
+- optional_api_dependency
+risk_notes:
+- 核心ast_size指标完全自包含，无需任何外部服务即可复现。
+- 端到端运行时练习需要可用的LLM API（OpenAI或其他litellm支持的后端），会产生API费用，并在生成的文本中引入非确定性。
+- 打包过程中未执行基准测试；应通过运行eval_ast_size.py来验证指标值。
+recommended_when: '当您需要一个强调运行时行为、提示程序结构和代码紧凑性而非GPU训练的面向软件的LLM任务时使用此基准测试。适用于评估对提示编程语言结构的编译器风格优化。
+
+  '
+not_recommended_when: '如果您正在寻找重型模型训练基准测试、完全离线且无LLM后端集成路径的任务，或测量模型在下游NLP任务上准确性的基准测试，请勿使用此基准测试。
+
+  '
+paper:
+  title: 'APPL: A Prompt Programming Language for Harmonious Integration of Programs
+    and Large Language Model Prompts'
+  venue: arXiv preprint
+  year: 2024
+  url: https://arxiv.org/abs/2406.13161
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.013_appl.zip
+  archive_type: zip
+  local_dir_name: paper-13-APPL
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.013_appl.zip
+  sha256: 92f377259bd60724229ee6c61adda761177ee60e47813ebb71dc37f43c0e24f2
+  size_bytes: 2259394
+commercial:
+  annual_fee: null
+display:
+  palette_seed: apple-ink-notebook
+  art_style: language-design
+  accent_priority: medium
+image_path: ../image/013_aisb.t3.013_appl.jpg

@@ -1,8 +1,15 @@
-This top bar is the global control strip.
+Top navigation: Your compass
 
-When a project becomes larger, this area turns into the quickest place to understand what workspace you are in, how the walkthrough is progressing, and how to jump or reset without losing context.
+This bar is like a mini-map in a game—it shows you "where am I?"
 
-- project identity and current branch context
-- tutorial replay entry
-- walkthrough playback controls
-- high-level navigation back to the landing page
+You'll see:
+- Current location: Which project, which branch
+- Tutorial controls: Replay, pause, skip
+- Quick jumps: Back to home, switch projects
+
+When to check it?
+- Lost? Check the navigation bar
+- Want to switch projects? Click here
+- Want to replay the tutorial? Also here
+
+Tip: Always there to help you find your way.

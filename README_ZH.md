@@ -30,11 +30,16 @@
 </p>
 
 <p align="center">
+  <strong>内建 runner：Codex（主路径）、Claude Code（supported experimental）、OpenCode（supported experimental）</strong>
+</p>
+
+<p align="center">
   <a href="docs/zh/00_QUICK_START.md">快速开始</a> •
   <a href="docs/zh/02_START_RESEARCH_GUIDE.md">启动第一个课题</a> •
   <a href="docs/zh/12_GUIDED_WORKFLOW_TOUR.md">产品导览</a> •
-  <a href="docs/zh/15_CODEX_PROVIDER_SETUP.md">模型配置</a> •
-  <a href="docs/zh/22_WINDOWS_WSL2_DEPLOYMENT_GUIDE.md">Windows + WSL2 部署</a>
+  <a href="docs/zh/15_CODEX_PROVIDER_SETUP.md">Codex 配置</a> •
+  <a href="docs/zh/24_CLAUDE_CODE_PROVIDER_SETUP.md">Claude 配置</a> •
+  <a href="docs/zh/25_OPENCODE_PROVIDER_SETUP.md">OpenCode 配置</a>
 </p>
 
 ![deepscientist_install](https://github.com/user-attachments/assets/d8244944-4f70-4e08-94e3-002b74ce70fb)
@@ -244,11 +249,25 @@ DeepScientist 最容易让人持续使用的原因有四个：
 
 如果这正是你想要的工作方式，那 DeepScientist 值得现在就试。
 
-## 30 秒开始上手
+## 🚀 30 秒开始上手
 
-如果你现在就想试一下，最短路径如下：
+如果你现在就想试一下，这里就是最短路径：
 
 平台说明：DeepScientist 完整支持 Linux 和 macOS。Windows 原生支持目前仍然是实验性的，强烈建议优先使用 WSL2。
+
+DeepScientist 现在内建三条 runner 路径：
+
+- `codex`：主路径，也是目前最稳妥的路径
+- `claude`：supported experimental，适合你本机里的 `claude` 已经能直接工作时使用
+- `opencode`：supported experimental，适合你本机里的 `opencode` 已经能直接工作时使用
+
+如果你已经把其中一个 CLI 跑通了，DeepScientist 通常就可以直接接上它，不需要你把整套环境重新折腾一遍。
+
+你也可以把启动思路理解成一句话：先带来一个已经可用的 runner，DeepScientist 再把它包成一个能长期推进的本地科研工作区。
+
+如果你只是想先走最稳的一条，优先从 Codex 开始。
+
+🎯 推荐第一次先走 `codex`
 
 ```bash
 npm install -g @researai/deepscientist
@@ -256,10 +275,44 @@ codex login
 ds --here
 ```
 
+如果 Claude Code 已经在你的 shell 里直接可用，可以走这条：
+
+```bash
+npm install -g @researai/deepscientist
+claude --version
+ds doctor --runner claude
+ds --here --runner claude
+```
+
+如果 OpenCode 已经在你的 shell 里直接可用，可以走这条：
+
+```bash
+npm install -g @researai/deepscientist
+opencode --version
+ds doctor --runner opencode
+ds --here --runner opencode
+```
+
 如需停止当前本地托管 daemon 和所有运行中的 agent：
 
 ```bash
 ds --stop
+```
+
+🛠 如果你更喜欢从 `git clone` 的源码仓库安装，而不是直接走 npm，也可以这样：
+
+```bash
+git clone https://github.com/ResearAI/DeepScientist.git
+cd DeepScientist
+bash install.sh
+ds
+```
+
+如果你还准备直接改 Web / TUI 源码，再额外安装前端依赖：
+
+```bash
+npm --prefix src/ui install
+npm --prefix src/tui install
 ```
 
 如果你更喜欢交互式首次配置，也可以先单独运行一次：
@@ -277,6 +330,11 @@ codex login
 ```
 
 如果 `which codex` 仍然没有输出，就先修好 npm global bin 路径，再重试 `codex login` 和 `ds doctor`。
+
+关于 runner，还有一个重要说明：
+
+- `codex` 缺失时，DeepScientist 可以回退到 npm 安装里 bundled 的 helper copy
+- `claude` 和 `opencode` 不会由 DeepScientist 自动替你完成安装或登录；这两条路径都应先让 CLI 本身跑通，再执行 `ds doctor --runner <name>`
 
 启动后，默认本地地址是：
 
@@ -300,27 +358,31 @@ ds --auth true
 
 - [00 快速开始](docs/zh/00_QUICK_START.md)
 - [15 Codex Provider 配置](docs/zh/15_CODEX_PROVIDER_SETUP.md)
+- [24 Claude Code 配置指南](docs/zh/24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [25 OpenCode 配置指南](docs/zh/25_OPENCODE_PROVIDER_SETUP.md)
 - [09 启动诊断](docs/zh/09_DOCTOR.md)
 
-## 选择你的上手方式
+## 🧭 选择你的上手方式
 
-### 我只想先跑起来看看
+### ⚡ 我只想先跑起来看看
 
 - [00 快速开始](docs/zh/00_QUICK_START.md)
 - [12 引导式工作流教程](docs/zh/12_GUIDED_WORKFLOW_TOUR.md)
 
-### 我想今天就启动一个真实课题
+### 🧪 我想今天就启动一个真实课题
 
 - [02 Start Research 参考](docs/zh/02_START_RESEARCH_GUIDE.md)
 - [01 设置参考](docs/zh/01_SETTINGS_REFERENCE.md)
 
-### 我主要在服务器和终端里工作
+### 🖥 我主要在服务器和终端里工作
 
 - [05 TUI 指南](docs/zh/05_TUI_GUIDE.md)
 
-### 我想接自己的模型或外部协作面
+### 🔌 我想接自己的模型或外部协作面
 
 - [15 Codex Provider 配置](docs/zh/15_CODEX_PROVIDER_SETUP.md)
+- [24 Claude Code 配置指南](docs/zh/24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [25 OpenCode 配置指南](docs/zh/25_OPENCODE_PROVIDER_SETUP.md)
 - [21 本地模型后端指南](docs/zh/21_LOCAL_MODEL_BACKENDS_GUIDE.md)
 - [微信连接器指南](docs/zh/10_WEIXIN_CONNECTOR_GUIDE.md)
 - [QQ 连接器指南](docs/zh/03_QQ_CONNECTOR_GUIDE.md)
@@ -328,7 +390,7 @@ ds --auth true
 - [WhatsApp Connector 指南](docs/zh/17_WHATSAPP_CONNECTOR_GUIDE.md)
 - [Feishu Connector 指南](docs/zh/18_FEISHU_CONNECTOR_GUIDE.md)
 
-### 我想先理解它的系统设计
+### 🧠 我想先理解它的系统设计
 
 - [文档总览](docs/zh/README.md)
 - [核心架构说明](docs/zh/13_CORE_ARCHITECTURE_GUIDE.md)
@@ -393,7 +455,24 @@ ds --auth true
 
 ## 引用
 
-如果 DeepScientist 对你的研究或工程工作有帮助，请引用下方论文。DeepScientist 由 Yixuan Weng、Weixu Zhao、Shichen Li、Zhen Lin、Minjun Zhu 共同开发。
+如果 DeepScientist 对你的论文、报告或研究工作流产生了实质性帮助，我们强烈建议你引用 DeepScientist 论文，并诚实披露有意义的 AI assistance。
+
+这里强调一下：这是一项温和但明确的学术归因请求，不是额外的软件许可证条件。
+
+相关入口：
+
+- 论文链接：`https://openreview.net/forum?id=cZFgsLq8Gs`
+- 仓库引用元数据：[CITATION.cff](CITATION.cff)
+- 引用与致谢说明：[docs/zh/26_CITATION_AND_ATTRIBUTION.md](docs/zh/26_CITATION_AND_ATTRIBUTION.md)
+- 名称与 Logo 使用说明：[TRADEMARK.md](TRADEMARK.md)
+
+可直接参考的致谢模板：
+
+```text
+We used DeepScientist to assist parts of the research workflow, including selected planning, implementation, experiment orchestration, analysis, and/or writing support. Final judgments, claims, and reported real experimental results remain the responsibility of the human authors.
+```
+
+DeepScientist 由 Yixuan Weng、Weixu Zhao、Shichen Li、Zhen Lin、Minjun Zhu 共同开发。
 
 ```bibtex
 @inproceedings{
@@ -413,7 +492,7 @@ url={https://openreview.net/forum?id=cZFgsLq8Gs}
 欢迎加入微信讨论群。
 
 <p align="center">
-  <img src="assets/readme/wechat6.jpg" alt="DeepScientist WeChat group" width="360" />
+  <img src="assets/readme/wechat7.jpg" alt="DeepScientist WeChat group" width="360" />
 </p>
 
 ## 路线图

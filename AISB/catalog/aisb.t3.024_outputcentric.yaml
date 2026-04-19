@@ -1,0 +1,148 @@
+id: aisb.t3.024_outputcentric
+name: Enhancing Automated Interpretability with Output-Centric Feature Descriptions
+version: 0.1.0
+one_line: Two-faceted interpretability evaluation pipeline describing LLM features
+  through input-activation and output-behavior lenses.
+task_description: 'This packaged benchmark covers an interpretability evaluation pipeline
+  that describes features through their output behavior. The task characterizes latent
+  features in large language models by what they do at the model output level, proposing
+  output-centric methods (VocabProj, TokenChange) alongside the standard MaxAct approach.
+  The benchmark evaluates feature descriptions along two complementary dimensions:
+  input-based evaluation (how accurately descriptions identify activating inputs)
+  and output-based evaluation (how effectively descriptions capture causal impact
+  on model generation). Experiments span neuron-aligned and sparse autoencoder (SAE)
+  features from residual and MLP layers across multiple LLMs including GPT-small,
+  LLaMA-3.1-8B, and Gemma-2-2B.
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- output_based_evaluation_score
+- input_based_evaluation_score
+- feature_descriptions
+launch_profiles:
+- id: notebook_eval
+  label: Notebook Eval
+  description: Run the packaged feature_descriptions_pipeline.ipynb notebook for output-centric
+    feature description evaluation across all model variants.
+dataset_download:
+  primary_method: direct_archive
+  sources:
+  - url: https://deepscientist.cc/AISB/024_outputcentric
+    type: primary_archive
+  notes:
+  - Archive contains pre-computed feature descriptions in descriptions/ directory
+  - Includes CSV files for gpt-small, llama-3.1-8b, llama-3.1-8b-it, and gemma-2-2b
+  - CPU-only execution feasible for minimum route
+credential_requirements:
+  mode: optional_api_keys
+  items:
+  - name: HF_TOKEN
+    description: Hugging Face token for model access
+    required: false
+  - name: GAI_KEY
+    description: Gemini API key for description generation
+    required: false
+  notes:
+  - OPENAI key expected in environment variable if used
+  - Evaluation can proceed without API keys using pre-computed descriptions
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes: CPU-only execution supported for minimum route
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: GPU acceleration recommended for full pipeline evaluation
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - transformers
+  - torch
+  - pandas
+  - numpy
+  - jupyter
+  notes:
+  - See bundled README/requirements.txt for full dependency set
+  - CPU-only execution plausible for minimum route
+  - Additional packages may be required for SAE feature evaluation
+risk_flags:
+- metric_provisional
+- api_key_optional
+risk_notes:
+- Static code audit confirms executable anchors for all staged metrics
+- No benchmark execution was performed in packaging pass
+- Runtime execution required before trusting metric values
+- API keys optional; evaluation can use pre-computed feature descriptions
+recommended_when: 'Use this benchmark when conducting interpretability research on
+  LLM features, developing automated description pipelines, comparing input-centric
+  versus output-centric description methods, evaluating SAE features, or assessing
+  feature description quality for steering applications. Ideal for benchmarking description
+  faithfulness across both input-activation and output-behavior dimensions.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you require a large-scale supervised
+  training benchmark, dense multimodal data processing, or retraining-focused workflows.
+  Not suitable for tasks requiring dense annotation pipelines or non-LLM model interpretability.
+
+  '
+paper:
+  title: Enhancing Automated Interpretability with Output-Centric Feature Descriptions
+  authors:
+  - Yoav Gur-Arieh
+  - Roy Mayan
+  - Chen Agassy
+  - Atticus Geiger
+  - Mor Geva
+  venue: arXiv preprint
+  year: 2025
+  eprint: '2501.08319'
+  primary_class: cs.CL
+  url: https://arxiv.org/abs/2501.08319
+  code_url: https://github.com/yoavgur/Feature-Descriptions
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.024_outputcentric.zip
+  archive_type: zip
+  local_dir_name: paper-24-OutputCentric
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.024_outputcentric.zip
+  sha256: 98fbc91e990b4a6c440895a60947c3f09069c8e5d5cce6283f925f6f27876614
+  size_bytes: 3484257
+display:
+  palette_seed: ivory-rose-neuron
+  art_style: interpretability-atlas
+  accent_priority: medium
+image_path: ../image/024_aisb.t3.024_outputcentric.jpg
+capability_tags:
+- research_code_optimization
+- mechanistic_interpretability
+- automated_evaluation
+- large_language_models
+- feature_analysis
+- sparse_autoencoders
+- model_steering
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

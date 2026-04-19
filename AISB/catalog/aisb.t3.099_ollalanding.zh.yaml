@@ -1,0 +1,182 @@
+id: aisb.t3.099_ollalanding
+name: OLLA 约束采样
+version: 0.1.0
+one_line: 使用无投影 OLLA/OLLA-H 采样器和多样化基准套件进行约束非对数凹采样。
+task_description: 该打包基准测试实现了 OLLA（Overdamped Langevin with LANDing），这是一套无投影随机动力学，用于从受约束的统计分布中进行采样。该框架无需依赖投影或松弛变量即可处理非线性等式和不等式约束。 OLLA 通过将过阻尼朗之万漂移和扩散投影到可行集的切线空间上来强制约束，并使用恢复（“着陆”）机制来保证收敛到约束流形。该基准测试包括五个采样器实现（OLLA、OLLA-H、CLangevin、CHMC、CGHMC）和涵盖 2D 玩具几何形状、高维合成压力测试、聚合物链模拟和公平感知贝叶斯神经网络的七个约束问题。 OLLA-H 使用 Hutchinson 迹估计来实现可扩展的高维性能。该基准测试通过测试负对数似然 (test_nll)、有效样本大小 (ESS)、CPU 时间和约束违规指标来评估采样质量。
+capability_tags:
+- research_code_optimization
+- sampling
+- constrained_optimization
+- probabilistic_modeling
+- monte_carlo
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- test_nll
+- cpu_time
+- ess
+- constraint_violations
+- sampling_report
+- csv_summaries
+- pdf_plots
+snapshot_status: runnable
+support_level: advanced
+recommended_when: 当您需要在具有挑战性的非凸约束集上评估约束采样算法、将 OLLA/OLLA-H 与经典约束采样器（Langevin、HMC、GHMC）进行比较，或者跨低维 (2D) 到高维（100+ 暗淡）问题对采样器可扩展性进行压力测试时，请使用此基准测试。
+not_recommended_when: 不要将此基准用于简单的监督学习任务、无约束采样问题或仅需要基本对数凹凸约束采样时。
+dataset_download:
+  primary_method: automatic
+  sources:
+  - url: https://deepscientist.cc/AISB/099_ollalanding
+    type: archive
+  - name: OpenML
+    type: runtime
+    description: German Credit dataset (german_credit experiment) downloaded automatically on first use
+  notes:
+  - 确保运行 german_credit 约束实验时出站网络访问可用
+  - 存档包含完整的源代码、environment.yml 和实验运行程序
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 数据集下载无需身份验证
+  - OpenML 访问需要标准互联网连接
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes: 所有最小路由实验完全支持仅 CPU 执行
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 120
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: GPU 仅推荐用于并行多链采样；标准实验首选 CPU
+environment:
+  python: '3.11'
+  cuda: null
+  pytorch: 2.3.0
+  flash_attn: null
+  key_packages:
+  - numpy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  - arviz
+  - tqdm
+  - torch
+  notes:
+  - 通过 conda/environment.yml 管理的环境
+  - 以可编辑模式安装的软件包 (pip install -e .)
+  - 在所有实验中，仅 CPU 执行是首选，除非为多链运行并行采样
+  - 通过 PyTorch CUDA 构建提供 GPU 支持（e.g.、cu130）；初级实验不需要
+risk_flags:
+- network_on_first_run
+- long_runtime
+risk_notes:
+- 德国信用实验首次执行时从 OpenML 下载
+- 完整的采样器套件可能需要长达 24 小时，具体取决于维度和采样器数量
+launch_profiles:
+- id: quick_analysis
+  label: 快速分析
+  description: 对小型实验子集运行约束抽样分析。在 CPU 上使用默认约束和采样器选择执行experiments/run_analysis.py。适合验证运行和方法熟悉。典型运行时间：1-4 小时。
+  command_template: python experiments/run_analysis.py --experiments circle --samplers OLLA-H --device cpu
+- id: full_sampler_suite
+  label: 完整的采样器套件
+  description: 跨所有约束问题和所有五个采样器（OLLA、OLLA-H、CLangevin、CHMC、CGHMC）执行完整的 OLLA 基准工作流程。包括 PDF 可视化、高维压力测试、聚合物链采样和德国信贷贝叶斯神经网络的 2D 实验。生成 CSV 摘要、ESS 指标、约束违规诊断和 test_nll 比较。典型运行时间：6-24 小时。
+  command_template: python experiments/run_analysis.py --experiments circle two_lobe quadratic_poly mix_gaussian highdim_stress highdim_polymer german_credit --samplers OLLA OLLA-H CLangevin CHMC CGHMC --device cpu
+paper:
+  title: Fast Non-Log-Concave Sampling under Nonconvex Equality and Inequality Constraints with Landing
+  venue: NeurIPS
+  year: 2025
+  url: https://arxiv.org/abs/2510.22044
+  authors:
+  - Jeon, Kijung
+  - Muehlebach, Michael
+  - Tao, Molei
+  institution:
+  - Georgia Institute of Technology
+  - MPI-IS
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.099_ollalanding.zip
+  archive_type: zip
+  local_dir_name: paper-99-OLLALanding
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.099_ollalanding.zip
+  sha256: 65bf98fd2de3dabac25cdb41e57ac2f63756a3336378835d48cb5462ec3e9d4a
+  size_bytes: 845998
+display:
+  palette_seed: charcoal-mint-landing
+  art_style: constrained-geometry
+  accent_priority: high
+  tags:
+  - sampling
+  - constrained-optimization
+  - langevin-dynamics
+  - bayesian-inference
+image_path: ../image/099_aisb.t3.099_ollalanding.jpg
+citation: "@inproceedings{jeon2025olla,\n  title     = {Fast Non-Log-Concave Sampling under Nonconvex Equality and Inequality Constraints with Landing},\n  author    = {Jeon, Kijung and Muehlebach, Michael and Tao, Molei},\n  booktitle = {Advances in Neural Information Processing Systems},\n  year      = {2025},\n}\n"
+metric_evidence:
+  test_nll:
+    origin: experiments/run_analysis.py
+    status: code_backed
+  cpu_time:
+    origin: experiments/run_analysis.py
+    status: code_backed
+  ess:
+    origin: src/constraints/highdim_stress.py
+    status: code_backed
+constraint_library:
+- id: circle
+  description: 二维高斯仅限于单位圆 (x1^2 + x2^2 = 1)。解析流形初始化。
+- id: quadratic_poly
+  description: 多项式等式 (x1^4 x2^2 + x1^2 + x2 = 1) 和不等式 (x1^3 - x2^3 <= 1)。基于拒绝的 init。
+- id: mix_gaussian
+  description: 九分量各向同性高斯混合约束为具有多项式不等式的七瓣星形轮廓。
+- id: two_lobe
+  description: 通过不等式约束的双月密度。突出显示不等式的弯曲边界。
+- id: highdim_stress
+  description: 随机高维线性和球面等式以及球面障碍物不等式。可扩展性测试。
+- id: highdim_polymer
+  description: 可配置的 3D 聚合物链，具有键长、键角约束、空间不等式、扭转/WCA 势。
+- id: german_credit
+  description: 具有 TPR/FPR 奇偶性和特征单调性不等式的公平感知 2 层贝叶斯神经网络。
+sampler_implementations:
+- id: OLLA
+  class: OLLA
+  path: src/samplers/olla.py
+  description: 带有分析迹线校正的原始 OLLA。低到中等尺寸。
+- id: OLLA-H
+  class: OLLA_H
+  path: src/samplers/olla_h.py
+  description: 哈金森踪迹变体。对于高维问题或许多约束的首选。设置 Hutchinson 探针 N=0 以获得最大速度。
+- id: CLangevin
+  class: CLangevin
+  path: src/samplers/clangevin.py
+  description: 使用松弛变量增强和 SHAKE 式预测来约束 Langevin，以处理不平等问题。
+- id: CHMC
+  class: CHMC
+  path: src/samplers/chmc.py
+  description: 在具有松弛变量的增强状态上使用 RATTLE 积分器进行约束哈密顿蒙特卡罗。
+- id: CGHMC
+  class: CGHMC
+  path: src/samplers/cghmc.py
+  description: 具有 Metropolis-Hastings 校正的约束广义 HMC。 MH 步骤期间通过拒绝进行不平等约束。
+execution_notes: 'All samplers inherit from BaseSampler (src/samplers/__init__.py) which standardizes RNG handling, step-size configuration, and return conventions (trajectory, h_vals, g_vals). The experiment runner (run_analysis.py) generates CSV summaries, optional PDF plots for 2D experiments, and prints diagnostics including ESS, constraint violations, and task-specific metrics. Each constraint module exposes EXPERIMENT_SETTINGS (steps, particle counts) and SAMPLER_SETTINGS (per-sampler hyperparameters) consumed by the runner.
+
+  '

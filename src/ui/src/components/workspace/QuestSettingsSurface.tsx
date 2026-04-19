@@ -1,11 +1,13 @@
 'use client'
 
 import * as React from 'react'
-import { AlertTriangle, Link2, Moon, Plus, RefreshCw, Sun, Trash2 } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronUp, Link2, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { ConnectorTargetRadioGroup, type ConnectorTargetRadioItem } from '@/components/connectors/ConnectorTargetRadioGroup'
 import { EnhancedCard } from '@/components/ui/enhanced-card'
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { ConfirmModal } from '@/components/ui/modal'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -14,8 +16,6 @@ import { useToast } from '@/components/ui/toast'
 import { client } from '@/lib/api'
 import { conversationIdentityKey, normalizeConnectorTargets, parseConversationId } from '@/lib/connectors'
 import { useI18n } from '@/lib/i18n/useI18n'
-import { useThemeStore, type Theme } from '@/lib/stores/theme'
-import { cn } from '@/lib/utils'
 import type { ConnectorSnapshot, ConnectorTargetSnapshot, QuestSummary } from '@/types'
 
 type ConflictItem = {
@@ -31,13 +31,18 @@ type RunnerEnvRow = {
 
 type WorkspaceMode = 'copilot' | 'autonomous'
 
-const DEFAULT_CODEX_ENV_KEYS = ['OPENAI_BASE_URL', 'OPENAI_API_KEY'] as const
+const DEFAULT_RUNNER_ENV_KEYS: Record<string, readonly string[]> = {
+  codex: ['OPENAI_BASE_URL', 'OPENAI_API_KEY'],
+  claude: ['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_MAX_OUTPUT_TOKENS'],
+  opencode: [],
+}
 
-function normalizeRunnerEnvRows(raw: unknown): RunnerEnvRow[] {
+function normalizeRunnerEnvRows(raw: unknown, runnerName: string = 'codex'): RunnerEnvRow[] {
   const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}
   const rows: RunnerEnvRow[] = []
   const seen = new Set<string>()
-  for (const key of DEFAULT_CODEX_ENV_KEYS) {
+  const defaultKeys = DEFAULT_RUNNER_ENV_KEYS[runnerName] || []
+  for (const key of defaultKeys) {
     rows.push({
       key,
       value: typeof source[key] === 'string' ? source[key] : '',
@@ -143,13 +148,15 @@ export function QuestSettingsSurface({
   questId,
   snapshot,
   onRefresh,
+  layout = 'bounded',
 }: {
   questId: string
   snapshot: QuestSummary | null
   onRefresh: () => Promise<void>
+  layout?: 'bounded' | 'document'
 }) {
   const { toast } = useToast()
-  const { t } = useI18n('workspace')
+  const { t, language } = useI18n('workspace')
   const currentExternalBinding = React.useMemo(() => {
     for (const raw of snapshot?.bound_conversations || []) {
       const parsed = parseConversationId(raw)
@@ -187,9 +194,7 @@ export function QuestSettingsSurface({
     normalizeWorkspaceMode(snapshot?.workspace_mode)
   )
   const [workspaceModeSaving, setWorkspaceModeSaving] = React.useState(false)
-
-  const theme = useThemeStore((state) => state.theme)
-  const setTheme = useThemeStore((state) => state.setTheme)
+  const [runnerEnvOpen, setRunnerEnvOpen] = React.useState(false)
 
   const reloadConnectors = React.useCallback(async () => {
     setLoadingConnectors(true)
@@ -199,7 +204,7 @@ export function QuestSettingsSurface({
     } finally {
       setLoadingConnectors(false)
     }
-  }, [])
+  }, [snapshot?.default_runner, snapshot?.runner])
 
   React.useEffect(() => {
     void reloadConnectors()
@@ -217,15 +222,16 @@ export function QuestSettingsSurface({
       document.meta?.structured_config && typeof document.meta.structured_config === 'object'
         ? (document.meta.structured_config as Record<string, unknown>)
         : {}
-    const codex =
-      structured.codex && typeof structured.codex === 'object'
-        ? (structured.codex as Record<string, unknown>)
+    const activeRunnerName = String(snapshot?.runner || snapshot?.default_runner || 'codex').trim().toLowerCase() || 'codex'
+    const runnerConfig =
+      structured[activeRunnerName] && typeof structured[activeRunnerName] === 'object'
+        ? (structured[activeRunnerName] as Record<string, unknown>)
         : {}
-    const rows = normalizeRunnerEnvRows(codex.env)
+    const rows = normalizeRunnerEnvRows(runnerConfig.env, activeRunnerName)
     setRunnerEnvRows(rows)
     setSavedRunnerEnvRows(rows)
     setRunnerConfigRevision(document.revision || null)
-  }, [])
+  }, [snapshot?.default_runner, snapshot?.runner])
 
   React.useEffect(() => {
     void reloadRunnerEnv()
@@ -411,15 +417,6 @@ export function QuestSettingsSurface({
   }, [pendingBinding, selectableTargets])
   const selectedCardValue = pendingBinding?.conversation_id || '__none__'
 
-  const themeItems = React.useMemo(
-    () => [
-      { value: 'system' as Theme, label: 'System', icon: <Sun className="h-4 w-4" /> },
-      { value: 'light' as Theme, label: 'Light', icon: <Sun className="h-4 w-4" /> },
-      { value: 'dark' as Theme, label: 'Dark', icon: <Moon className="h-4 w-4" /> },
-    ],
-    []
-  )
-
   const saveRunnerEnv = React.useCallback(async () => {
     setRunnerEnvSaving(true)
     try {
@@ -428,12 +425,13 @@ export function QuestSettingsSurface({
         document.meta?.structured_config && typeof document.meta.structured_config === 'object'
           ? ({ ...(document.meta.structured_config as Record<string, unknown>) } as Record<string, unknown>)
           : {}
-      const codex =
-        structured.codex && typeof structured.codex === 'object'
-          ? ({ ...(structured.codex as Record<string, unknown>) } as Record<string, unknown>)
+      const activeRunnerName = String(snapshot?.runner || snapshot?.default_runner || 'codex').trim().toLowerCase() || 'codex'
+      const currentRunnerConfig =
+        structured[activeRunnerName] && typeof structured[activeRunnerName] === 'object'
+          ? ({ ...(structured[activeRunnerName] as Record<string, unknown>) } as Record<string, unknown>)
           : {}
-      codex.env = runnerEnvRowsToPayload(runnerEnvRows)
-      structured.codex = codex
+      currentRunnerConfig.env = runnerEnvRowsToPayload(runnerEnvRows)
+      structured[activeRunnerName] = currentRunnerConfig
       const result = await client.saveConfig('runners', {
         structured,
         revision: document.revision || runnerConfigRevision || undefined,
@@ -441,7 +439,7 @@ export function QuestSettingsSurface({
       if (!result.ok) {
         toast({
           title: 'Save failed',
-          description: String(result.message || 'Unable to update Codex environment variables.'),
+          description: String(result.message || 'Unable to update runner environment variables.'),
           variant: 'destructive',
         })
         return
@@ -449,18 +447,20 @@ export function QuestSettingsSurface({
       await Promise.all([reloadRunnerEnv(), onRefresh()])
       toast({
         title: 'Saved',
-        description: 'Codex environment variables will be injected automatically on the next run.',
+        description: 'Runner environment variables will be injected automatically on the next run.',
       })
     } finally {
       setRunnerEnvSaving(false)
     }
-  }, [onRefresh, reloadRunnerEnv, runnerConfigRevision, runnerEnvRows, toast])
+  }, [onRefresh, reloadRunnerEnv, runnerConfigRevision, runnerEnvRows, snapshot?.default_runner, snapshot?.runner, toast])
 
   const runnerEnvDirty = React.useMemo(
     () => JSON.stringify(runnerEnvRows) !== JSON.stringify(savedRunnerEnvRows),
     [runnerEnvRows, savedRunnerEnvRows]
   )
   const workspaceModeDirty = workspaceMode !== savedWorkspaceMode
+  const activeRunnerName = String(snapshot?.runner || snapshot?.default_runner || 'codex').trim().toLowerCase() || 'codex'
+  const activeRunnerDefaultEnvKeys = DEFAULT_RUNNER_ENV_KEYS[activeRunnerName] || []
 
   const workspaceModeItems = React.useMemo(
     () => [
@@ -505,13 +505,18 @@ export function QuestSettingsSurface({
   }, [onRefresh, questId, t, toast, workspaceMode])
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden p-4 sm:p-5">
-      <div className="flex min-h-0 flex-1 flex-col gap-4 rounded-[28px] border border-black/[0.06] bg-white/[0.42] p-4 shadow-card backdrop-blur-xl dark:border-white/[0.08] dark:bg-white/[0.03] sm:p-5">
+    <div className={layout === 'document' ? 'p-4 sm:p-5' : 'feed-scrollbar h-full min-h-0 overflow-y-auto p-4 sm:p-5'}>
+      <div className="space-y-5 rounded-[28px] border border-black/[0.06] bg-white/[0.42] p-4 shadow-card backdrop-blur-xl dark:border-white/[0.08] dark:bg-white/[0.03] sm:p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-foreground">Project settings</div>
+            <div className="text-sm font-semibold text-foreground">
+              {language === 'zh' ? 'Quest 配置' : 'Quest Configuration'}
+            </div>
             <div className="mt-1 text-xs text-muted-foreground">
-              Select which connector receives progress updates for <span className="font-mono">{questId}</span>.
+              {language === 'zh'
+                ? `配置 ${questId} 的工作模式、环境变量和通知目标`
+                : `Configure workspace mode, environment variables, and notification target for ${questId}`
+              }
             </div>
           </div>
           <Button
@@ -523,11 +528,11 @@ export function QuestSettingsSurface({
             className="shrink-0"
           >
             <RefreshCw className={cn('mr-2 h-4 w-4', loadingConnectors && 'animate-spin')} />
-            Refresh
+            {language === 'zh' ? '刷新' : 'Refresh'}
           </Button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-auto pr-1 space-y-5">
+        <div className="space-y-5">
           <EnhancedCard
             enableSpotlight={false}
             className="border border-border/60 bg-[var(--ds-panel-elevated)]/70 backdrop-blur-xl shadow-[var(--ds-shadow-md)]"
@@ -572,118 +577,118 @@ export function QuestSettingsSurface({
             </div>
           </EnhancedCard>
 
-          <EnhancedCard
-            enableSpotlight={false}
-            className="border border-border/60 bg-[var(--ds-panel-elevated)]/70 backdrop-blur-xl shadow-[var(--ds-shadow-md)]"
-          >
-            <div className="p-4 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-medium text-foreground">Theme</div>
-                <SegmentedControl
-                  value={theme}
-                  onValueChange={(value) => setTheme(value)}
-                  items={themeItems}
-                  size="sm"
-                  ariaLabel="Theme selection"
-                />
-              </div>
-              <div className="text-xs text-muted-foreground">
-                This setting applies to the whole web workspace (not just this project).
-              </div>
-            </div>
-          </EnhancedCard>
-
-          <EnhancedCard
-            enableSpotlight={false}
-            className="border border-border/60 bg-[var(--ds-panel-elevated)]/70 backdrop-blur-xl shadow-[var(--ds-shadow-md)]"
-          >
-            <div className="p-4 space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-medium text-foreground">Codex environment</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    These variables are injected when DeepScientist starts Codex. Empty values are ignored.
-                  </div>
-                  {runnerEnvDirty ? (
-                    <div className="mt-2 text-xs font-medium text-[var(--ds-brand)]">
-                      Unsaved changes. Click `Save env vars` to apply them.
+          <Collapsible open={runnerEnvOpen} onOpenChange={setRunnerEnvOpen}>
+            <EnhancedCard
+              enableSpotlight={false}
+              className="border border-border/60 bg-[var(--ds-panel-elevated)]/70 backdrop-blur-xl shadow-[var(--ds-shadow-md)]"
+            >
+              <div className="p-4 space-y-4">
+                <CollapsibleTrigger asChild>
+                  <button className="flex w-full items-start justify-between gap-3 text-left">
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-foreground">
+                        {language === 'zh' ? '环境变量' : 'Environment Variables'}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {language === 'zh'
+                          ? '为这个 quest 设置自定义环境变量。空值将被忽略。'
+                          : 'Set custom environment variables for this quest. Empty values are ignored.'
+                        }
+                      </div>
+                      {runnerEnvDirty ? (
+                        <div className="mt-2 text-xs font-medium text-[var(--ds-brand)]">
+                          {language === 'zh' ? '有未保存的更改。点击"保存环境变量"以应用。' : 'Unsaved changes. Click "Save variables" to apply.'}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() =>
-                      setRunnerEnvRows((current) => [...current, { key: '', value: '' }])
-                    }
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => void saveRunnerEnv()}
-                    disabled={runnerEnvSaving || !runnerEnvDirty}
-                  >
-                    <Link2 className="mr-2 h-4 w-4" />
-                    Save env vars
-                  </Button>
-                </div>
-              </div>
+                    {runnerEnvOpen ? (
+                      <ChevronUp className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                    ) : (
+                      <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                    )}
+                  </button>
+                </CollapsibleTrigger>
 
-              <Separator className="bg-border/50" />
-
-              <div className="space-y-3">
-                {runnerEnvRows.map((row, index) => (
-                  <div key={`${row.key || 'env'}-${index}`} className="grid gap-3 md:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)_auto]">
-                    <Input
-                      value={row.key}
-                      onChange={(event) =>
-                        setRunnerEnvRows((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index ? { ...item, key: event.target.value } : item
-                          )
-                        )
-                      }
-                      placeholder={index < DEFAULT_CODEX_ENV_KEYS.length ? DEFAULT_CODEX_ENV_KEYS[index] : 'ENV_NAME'}
-                    />
-                    <Input
-                      value={row.value}
-                      onChange={(event) =>
-                        setRunnerEnvRows((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index ? { ...item, value: event.target.value } : item
-                          )
-                        )
-                      }
-                      placeholder="value"
-                    />
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="shrink-0"
-                      onClick={() =>
-                        setRunnerEnvRows((current) => {
-                          if (index < DEFAULT_CODEX_ENV_KEYS.length) {
-                            return current.map((item, itemIndex) =>
-                              itemIndex === index ? { ...item, value: '' } : item
-                            )
+                <CollapsibleContent>
+                  {runnerEnvOpen && (
+                    <>
+                      <div className="flex items-center gap-2 pt-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() =>
+                            setRunnerEnvRows((current) => [...current, { key: '', value: '' }])
                           }
-                          return current.filter((_, itemIndex) => itemIndex !== index)
-                        })
-                      }
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          {language === 'zh' ? '添加' : 'Add'}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => void saveRunnerEnv()}
+                          disabled={runnerEnvSaving || !runnerEnvDirty}
+                        >
+                          <Link2 className="mr-2 h-4 w-4" />
+                          {language === 'zh' ? '保存环境变量' : 'Save variables'}
+                        </Button>
+                      </div>
+
+                      <Separator className="bg-border/50" />
+
+                      <div className="space-y-3">
+                        {runnerEnvRows.map((row, index) => (
+                          <div key={`${row.key || 'env'}-${index}`} className="grid gap-3 md:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)_auto]">
+                            <Input
+                              value={row.key}
+                              onChange={(event) =>
+                                setRunnerEnvRows((current) =>
+                                  current.map((item, itemIndex) =>
+                                    itemIndex === index ? { ...item, key: event.target.value } : item
+                                  )
+                                )
+                              }
+                              placeholder={index < activeRunnerDefaultEnvKeys.length ? activeRunnerDefaultEnvKeys[index] : 'ENV_NAME'}
+                            />
+                            <Input
+                              value={row.value}
+                              onChange={(event) =>
+                                setRunnerEnvRows((current) =>
+                                  current.map((item, itemIndex) =>
+                                    itemIndex === index ? { ...item, value: event.target.value } : item
+                                  )
+                                )
+                              }
+                              placeholder={language === 'zh' ? '值' : 'value'}
+                            />
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="shrink-0"
+                              onClick={() =>
+                                setRunnerEnvRows((current) => {
+                                  if (index < activeRunnerDefaultEnvKeys.length) {
+                                    return current.map((item, itemIndex) =>
+                                      itemIndex === index ? { ...item, value: '' } : item
+                                    )
+                                  }
+                                  return current.filter((_, itemIndex) => itemIndex !== index)
+                                })
+                              }
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </CollapsibleContent>
               </div>
-            </div>
-          </EnhancedCard>
+            </EnhancedCard>
+          </Collapsible>
 
           <EnhancedCard
             enableSpotlight={false}
@@ -766,6 +771,31 @@ export function QuestSettingsSurface({
                   ) : null}
                 </div>
               )}
+            </div>
+          </EnhancedCard>
+
+          <EnhancedCard
+            enableSpotlight={false}
+            className="border border-border/60 bg-[var(--ds-panel-elevated)]/70 backdrop-blur-xl shadow-[var(--ds-shadow-md)]"
+          >
+            <div className="p-4 space-y-3">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-sm font-medium text-foreground">
+                    {language === 'zh' ? '最近活动已移到单独页面' : 'Recent activity now lives on its own page'}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {language === 'zh'
+                      ? '设置页只保留会影响这个 quest 行为的选项。最近活动、错误趋势和工具分布请到 Activity 页面查看。'
+                      : 'Settings now stays focused on options that change this quest. Open Activity when you want trends, tool mix, or recent movement.'}
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" asChild>
+                  <Link to={`/settings/quests/${encodeURIComponent(questId)}?view=activity`}>
+                    {language === 'zh' ? '打开 Activity' : 'Open Activity'}
+                  </Link>
+                </Button>
+              </div>
             </div>
           </EnhancedCard>
         </div>

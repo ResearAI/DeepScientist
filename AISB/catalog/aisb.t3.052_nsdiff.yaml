@@ -1,0 +1,155 @@
+id: aisb.t3.052_nsdiff
+name: Non-stationary Diffusion For Probabilistic Time Series Forecasting
+version: 0.1.0
+one_line: Diffusion-based probabilistic forecasting framework for non-stationary time-series
+  dynamics, evaluated via CRPS on ETTh benchmarks.
+task_description: 'NsDiff is a diffusion-based theoretical framework for probabilistic
+  forecasting designed specifically for non-stationary scenarios. The packaged benchmark
+  covers the training and evaluation pipeline for this method, including pretraining
+  scripts, main experiment entry point at ./src/experiments/NsDiff.py, and configuration
+  files. However, the current local snapshot does not preserve the full executable
+  source tree referenced in the README; the code-bearing roots (configs/, notebooks/)
+  provide partial anchors only. The benchmark requires upstream restoration before
+  full benchmark execution can be performed. Datasets are downloaded automatically
+  during execution. Evaluation uses CRPS (Continuous Ranked Probability Score) as
+  the primary metric.
+
+  '
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- crps
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: Inspect preserved notebook at notebooks/uncertainty_variation.ipynb,
+    configuration at configs/nsdiff.yml, and bundled documentation for the NsDiff
+    route.
+- id: restore_first
+  label: Restore First
+  description: Restore the missing source tree referenced in the README before attempting
+    benchmark execution. Requires recovering ./src/experiments/NsDiff.py and ./scripts/
+    directory from upstream.
+dataset_download:
+  primary_method: automatic
+  sources:
+  - The README states datasets are downloaded automatically during execution.
+  - Referenced benchmarks include ETTh1, ETTh2, ETTm1, ETTm2, and other ETT dataset
+    variants.
+  notes:
+  - Treat dataset setup as part of upstream restoration; no bundled download scripts
+    preserved in current snapshot.
+  - Execution commands reference dataset_type parameter (e.g., --dataset_type="ETTh1").
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.8'
+  cuda: '11.8'
+  pytorch: '2.0'
+  flash_attn: null
+  key_packages:
+  - See ./requirements.txt for full dependency set
+  - Core dependencies inferred from configs/nsdiff.yml testing configuration
+  notes:
+  - The current local package does not preserve executable setup files or runnable
+    source code beyond partial configs/ and notebooks/ roots.
+  - Environment hints are provisional pending upstream restoration.
+  - Install command: pip install -r ./requirements.txt
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- crps_metric_blocked
+risk_notes:
+- The current snapshot does not expose executable code files that can anchor the CRPS
+  metric.
+- No benchmark execution was performed in this packaging pass; treat all metric claims
+  as provisional.
+- The configs/nsdiff.yml provides sampling and testing parameters (batch_size=256,
+  sampling_size=1000, n_z_samples=200, n_bins=10) but no executable evaluation anchor.
+recommended_when: Use this entry when you want paper-backed planning, upstream restoration
+  guidance, or exploratory analysis of the preserved notebook and configuration files
+  for the NsDiff diffusion forecasting route.
+not_recommended_when: Do not treat this local package as a ready-to-run diffusion
+  benchmark. The README-referenced source tree (src/experiments/, scripts/) is not
+  preserved locally. Full benchmark execution requires upstream restoration of the
+  executable source tree before CRPS evaluation can be performed.
+paper:
+  title: Non-stationary Diffusion For Probabilistic Time Series Forecasting
+  venue: ICML 2025 Spotlight
+  year: 2025
+  url: https://arxiv.org/abs/2505.08613
+  authors:
+  - Weiwei Ye (equal contribution)
+  - Zhuopeng Xu (equal contribution)
+  - Ning Gui (corresponding author)
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.052_nsdiff.zip
+  archive_type: zip
+  local_dir_name: paper-52-NsDiff
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.052_nsdiff.zip
+  sha256: cc513276d021fd69cb749c3d843a64dc99b18428e9d1d66f040d07d62bed139a
+  size_bytes: 435952
+display:
+  palette_seed: navy-mint-diffusion
+  art_style: probabilistic-signal
+  accent_priority: high
+image_path: ../image/052_aisb.t3.052_nsdiff.jpg
+execution_evidence:
+  pretrain_script: bash ./scripts/pretrain_F/ETTh1.sh
+  main_entry: python3 ./src/experiments/NsDiff.py
+  example_args:
+  - --dataset_type=ETTh1
+  - --device=cuda:0
+  - --batch_size=32
+  - --horizon=1
+  - --pred_len=192
+  - --windows=168
+  - --load_pretrain=True
+  notes:
+  - PYTHONPATH must be set to project root during execution.
+  - CUDA_DEVICE_ORDER=PCI_BUS_ID recommended for multi-GPU setups.
+  - Seeds parameter accepts list format: --seeds='[1232132, 3]'
+  - --load_pretrain=False option available for non-pretrained runs.
+config_anchors:
+- path: configs/nsdiff.yml
+  role: Primary configuration file
+  contains:
+  - sampling: batch_size=256, sampling_size=1000, last_only=True
+  - testing: batch_size=256, n_z_samples=200, n_bins=10, minisample=1
+  - coverage and NLL tracking parameters
+- path: notebooks/uncertainty_variation.ipynb
+  role: Analysis notebook anchor
+- path: configs/csbi.yaml
+  role: Additional config (not primary)
+- path: configs/tmdm.yml
+  role: Additional config (not primary)
+code_audit_status: blocked
+metric_blocking_reason: No executable code anchor for CRPS evaluation in current snapshot.
+  The configs/nsdiff.yml contains testing parameters but the actual evaluation code
+  path is not preserved.

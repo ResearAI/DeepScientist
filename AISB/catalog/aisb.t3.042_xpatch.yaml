@@ -1,0 +1,216 @@
+id: aisb.t3.042_xpatch
+name: 'xPatch: Dual-Stream Time Series Forecasting with Exponential Seasonal-Trend
+  Decomposition'
+version: 0.1.0
+one_line: CNN-MLP dual-stream long-term time-series forecasting with EMA-based seasonal-trend
+  decomposition and long-context patching.
+task_description: 'This packaged benchmark covers xPatch, a dual-stream long-term
+  time series forecasting (LTSF) architecture that decomposes input series into seasonal
+  and trend components using Exponential Moving Average (EMA) rather than simple moving
+  average. The linear stream employs MLP layers for trend prediction while the nonlinear
+  stream uses depthwise separable CNN for seasonal patterns. The model investigates
+  patching and channel-independence techniques within a non-transformer backbone,
+  evaluating against transformer baselines (PatchTST, Autoformer, FEDformer, CARD)
+  and linear baselines (DLinear, RLinear) on standard LTSF benchmark datasets.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- mse
+- mae
+- forecast_checkpoints
+- ablation_outputs
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run xPatch on a single prepared forecasting dataset using unified
+    experimental settings. Executes xPatch_unified script with default hyperparameters.
+    Suitable for rapid validation of model behavior on one benchmark dataset.
+
+    '
+- id: hyper_search
+  label: Hyperparameter Search
+  description: 'Run comprehensive hyperparameter search across patch length, lookback
+    windows, prediction lengths, and EMA alpha parameter. Uses xPatch_search script.
+    Produces results for fair comparison against baseline papers that report with
+    drop-last trick.
+
+    '
+- id: fair_benchmark
+  label: Fair Benchmark (TFB/OpenTS)
+  description: 'Execute fair experiments without the drop-last trick following the
+    TFB benchmark protocol. Uses xPatch_fair script. Results are comparable to OpenTS
+    leaderboard entries.
+
+    '
+- id: ablation_suite
+  label: Ablation Suite
+  description: 'Run ablation studies from the paper appendix including EMA decomposition
+    impact, arctangent loss effect, sigmoid learning rate adjustment scheme, and inference
+    time comparisons against baseline models in ./ablation directory.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: Google Drive
+    url: https://drive.google.com/u/0/uc?id=1NF7VEefXCmXuWNbnNe858WvQAkJ_7wuP&export=download
+    format: csv
+  - name: Baidu Pan
+    url: https://pan.baidu.com/share/init?surl=r3KhGd0Q9PJIUZdfEYoymg&pwd=i9iy
+    format: csv
+  - name: Kaggle Datasets
+    url: https://www.kaggle.com/datasets/wentixxiaogege/time-series-dataset
+    format: csv
+  notes:
+  - Download all preprocessed datasets into ./dataset directory
+  - Benchmark datasets include: ETTh1, ETTh2, ETTm1, ETTm2, Weather, Traffic, Electricity
+  - Datasets are pre-processed and ready for direct use without additional normalization
+    steps
+credential_requirements:
+  mode: optional
+  items:
+  - kaggle_api_token
+  notes:
+  - Kaggle download requires kaggle credentials or API token
+  - Google Drive and Baidu links available without authentication
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: Single GPU sufficient; RTX 6000-class or equivalent recommended
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 'Original experiments used single Quadro RTX 6000 (24GB). Hyperparameter
+      search and ablation studies benefit from additional RAM for larger batch sizes.
+
+      '
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.5.1
+  flash_attn: null
+  key_packages:
+  - pytorch>=2.0.0
+  - numpy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  notes:
+  - Environment file (environment.yml) specifies conda CUDA 11.8 toolkit with pip-installed
+    PyTorch 2.5.1
+  - Mixed conda/pip stack requires careful environment management
+  - Create conda environment with: conda env create -f environment.yml
+  - See bundled README for full dependency set
+  - Experiment scripts in ./scripts directory handle runtime configuration
+risk_flags:
+- mixed_environment_stack
+- data_download_external
+- hyperparameter_sensitivity
+risk_notes:
+- Mixed conda CUDA 11.8 with pip PyTorch 2.5.1 may cause version conflicts; verify
+  CUDA runtime matches PyTorch built-in CUDA
+- External dataset downloads from Google Drive/Baidu may require VPN or regional access
+- Performance is sensitive to patch length, lookback window, prediction length, and
+  EMA alpha parameter
+- Fair benchmark results exclude drop-last trick per TFB protocol; verify which experimental
+  setting matches your evaluation goals
+recommended_when: 'Use this benchmark when evaluating dual-stream non-transformer
+  forecasting architectures, studying EMA-based seasonal-trend decomposition effects,
+  investigating patching and channel-independence outside transformer backbones, or
+  comparing CNN/MLP approaches against established transformer and linear baselines
+  on long-term forecasting tasks.
+
+  '
+not_recommended_when: 'Do not use this benchmark for non-time-series tasks, real-time/online
+  forecasting scenarios, scenarios without access to workstation-class GPU with 24GB
+  VRAM, or when requiring models with built-in uncertainty quantification.
+
+  '
+paper:
+  title: 'xPatch: Dual-Stream Time Series Forecasting with Exponential Seasonal-Trend
+    Decomposition'
+  authors:
+  - Artyom Stitsyuk
+  - Jaesik Choi
+  venue: AAAI 2025
+  year: 2025
+  volume: '39'
+  number: '19'
+  pages: 20601-20609
+  url: https://ojs.aaai.org/index.php/AAAI/article/view/34270
+  arxiv_url: https://arxiv.org/pdf/2412.17323
+  bibtex: "@inproceedings{stitsyuk2025xpatch,\n  title={xPatch: Dual-Stream Time Series\
+    \ Forecasting with Exponential Seasonal-Trend Decomposition},\n  author={Stitsyuk,\
+    \ Artyom and Choi, Jaesik},\n  booktitle={Proceedings of the AAAI Conference on\
+    \ Artificial Intelligence},\n  volume={39}, number={19}, pages={20601--20609},\
+    \ year={2025}\n}\n"
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.042_xpatch.zip
+  archive_type: zip
+  local_dir_name: paper-42-xPatch
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.042_xpatch.zip
+  sha256: 72c8e6fd7e1a8b2eb184077ce9a37fb36514ef7bb148d8d0ff4ed79d4aa9de25
+  size_bytes: 3621184
+display:
+  palette_seed: teal-sunrise-trend
+  art_style: signal-geometry
+  accent_priority: high
+image_path: ../image/042_aisb.t3.042_xpatch.jpg
+metric_contract:
+  mse:
+    origin_path: utils/metrics.py
+    source_ref: MSE function
+    evaluation_protocol:
+      code_paths:
+      - run.py
+      - utils/metrics.py
+    status: code_backed
+  mae:
+    origin_path: utils/metrics.py
+    source_ref: MAE function
+    evaluation_protocol:
+      code_paths:
+      - run.py
+      - utils/metrics.py
+    status: code_backed
+  forecast_checkpoints:
+    origin_path: exp/exp_main.py
+    source_ref: model state saving
+    status: provisional
+code_anchors:
+- environment.yml
+- run.py
+- utils/metrics.py
+- exp/exp_main.py
+- layers/decomp.py
+- layers/network.py
+- layers/network_cnn.py
+- layers/network_mlp.py
+- models/xPatch.py
+caveat_snapshot: 'Static code audit found executable anchors for MSE and MAE metrics
+  in utils/metrics.py and run.py. No benchmark execution was performed in this packaging
+  pass. Runtime execution is required before trusting metric values. Fair benchmark
+  requires TFB/OpenTS protocol compliance; confirm drop-last trick handling matches
+  evaluation goals.
+
+  '

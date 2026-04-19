@@ -1,0 +1,140 @@
+id: aisb.t3.088_channelnorm
+name: Channel Normalization for Time Series Channel Identification
+version: 0.1.0
+one_line: Channel-specific affine normalization to enhance channel identifiability
+  in time-series forecasting models.
+task_description: 'This benchmark entry covers Channel Normalization (CN), a normalization
+  strategy that assigns distinct affine transformation parameters to each channel
+  in time-series models, enabling channel identifiability (CID). The current local
+  snapshot preserves paper metadata and latex source but does not contain executable
+  benchmark code or runnable evaluation scripts. The packaged benchmark is intended
+  for paper-backed planning and upstream restoration of the CN forecasting implementation.
+  Two variants are proposed: Adaptive CN (ACN) dynamically adjusts parameters based
+  on input time series, while Prototypical CN (PCN) uses learnable prototypes to handle
+  datasets with unknown or varying numbers of channels, facilitating use in time-series
+  foundation models.
+
+  '
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- mse
+- channel_identifiability_metrics
+- forecasting_accuracy
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: Review preserved channel-normalization benchmark metadata, metric definitions,
+    and target MSE evaluation criteria.
+- id: restore_first
+  label: Restore First
+  description: Restore the missing ChannelNorm forecasting implementation from upstream
+    before attempting benchmark execution. Upstream restoration required for executable
+    code paths.
+dataset_download:
+  primary_method: restoration_required
+  sources: []
+  notes:
+  - The current local package does not preserve an executable benchmark route; dataset
+    and code setup are part of upstream restoration rather than a bundled run path.
+  - The paper references standard time-series benchmarks (ETTm1, Weather, PEMS03)
+    but these are not bundled in the current snapshot.
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 8
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages: []
+  notes:
+  - The current local package does not preserve executable setup files or runnable
+    source code; environment specifications here are provisional based on typical
+    time-series deep learning setups.
+  - The paper applies CN to various backbones including Transformers (iTransformer),
+    MLPs (RMLP, TSMixer), and SSMs (Mamba variants).
+  - Treat environment hints as pending upstream restoration; see bundled README/requirements
+    for full dependency set when available.
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- no_executable_anchor
+risk_notes:
+- The current snapshot is blocked; no executable code files detected that can anchor
+  staged metrics.
+- No benchmark execution was performed in this packaging pass.
+- Primary metric (mse) is blocked-no-code in the current snapshot.
+- Top-level README is absent in the current snapshot.
+- Do not treat this local package as a ready-to-run normalization benchmark.
+recommended_when: 'Use this entry when planning paper-backed research on channel-identifiable
+  time-series models, evaluating upstream restoration candidates for the ChannelNorm
+  forecasting route, or analyzing normalization strategies for time-series forecasting
+  architectures.
+
+  '
+not_recommended_when: 'Do not use when seeking a ready-to-run normalization benchmark;
+  the staged snapshot preserves metadata only. Do not attempt execution without prior
+  upstream restoration of missing code.
+
+  '
+paper:
+  title: Channel Normalization for Time Series Channel Identification
+  venue: ICML 2025
+  year: 2025
+  url: https://arxiv.org/abs/2506.00432
+  code_url: https://github.com/seunghan96/CN
+  authors:
+  - Seunghan Lee
+  - Taeyoung Park
+  - Kibok Lee
+  institution: Yonsei University
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.088_channelnorm.zip
+  archive_type: zip
+  local_dir_name: paper-88-ChannelNorm
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.088_channelnorm.zip
+  sha256: bb1b5c0c7b3d2731d2698c1b4b9ec11f9601967281315c37e6548078eeb28913
+  size_bytes: 39531
+display:
+  palette_seed: cyan-slate-channel
+  art_style: normalization-grid
+  accent_priority: medium
+image_path: ../image/088_aisb.t3.088_channelnorm.jpg
+capability_tags:
+- research_code_optimization
+- time_series
+- normalization_layers
+- forecasting
+- channel_modeling
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+commercial:
+  annual_fee: null

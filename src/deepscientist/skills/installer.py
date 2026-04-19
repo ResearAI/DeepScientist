@@ -26,10 +26,13 @@ class SkillInstaller:
     def sync_global(self) -> dict:
         codex_root = ensure_dir(Path.home() / ".codex" / "skills")
         claude_root = ensure_dir(Path.home() / ".claude" / "agents")
+        opencode_root = ensure_dir(Path.home() / ".config" / "opencode" / "skills")
         copied_codex: list[str] = []
         copied_claude: list[str] = []
+        copied_opencode: list[str] = []
         expected_codex: set[str] = set()
         expected_claude: set[str] = set()
+        expected_opencode: set[str] = set()
         for bundle in self.discover():
             target = codex_root / f"deepscientist-{bundle.skill_id}"
             expected_codex.add(target.name)
@@ -38,11 +41,17 @@ class SkillInstaller:
             claude_target = self._sync_claude_projection(bundle, claude_root)
             expected_claude.add(claude_target.name)
             copied_claude.append(str(claude_target))
+            opencode_target = opencode_root / f"deepscientist-{bundle.skill_id}"
+            expected_opencode.add(opencode_target.name)
+            self._sync_bundle_tree(bundle.root, opencode_target)
+            copied_opencode.append(str(opencode_target))
         self._prune_bundle_targets(codex_root, expected_codex)
         self._prune_bundle_targets(claude_root, expected_claude)
+        self._prune_bundle_targets(opencode_root, expected_opencode)
         return {
             "codex": copied_codex,
             "claude": copied_claude,
+            "opencode": copied_opencode,
             "notes": [],
         }
 
@@ -51,10 +60,13 @@ class SkillInstaller:
         prompts_root = ensure_dir(quest_root / ".codex" / "prompts")
         codex_root = ensure_dir(quest_root / ".codex" / "skills")
         claude_root = ensure_dir(quest_root / ".claude" / "agents")
+        opencode_root = ensure_dir(quest_root / ".opencode" / "skills")
         copied_codex: list[str] = []
         copied_claude: list[str] = []
+        copied_opencode: list[str] = []
         expected_codex: set[str] = set()
         expected_claude: set[str] = set()
+        expected_opencode: set[str] = set()
         for bundle in self.discover():
             target = codex_root / f"deepscientist-{bundle.skill_id}"
             expected_codex.add(target.name)
@@ -63,13 +75,19 @@ class SkillInstaller:
             claude_target = self._sync_claude_projection(bundle, claude_root)
             expected_claude.add(claude_target.name)
             copied_claude.append(str(claude_target))
+            opencode_target = opencode_root / f"deepscientist-{bundle.skill_id}"
+            expected_opencode.add(opencode_target.name)
+            self._sync_bundle_tree(bundle.root, opencode_target)
+            copied_opencode.append(str(opencode_target))
         self._prune_bundle_targets(codex_root, expected_codex)
         self._prune_bundle_targets(claude_root, expected_claude)
+        self._prune_bundle_targets(opencode_root, expected_opencode)
         return {
             "prompts": [str(path) for path in sorted(prompts_root.rglob("*")) if path.is_file()],
             "prompt_sync": prompt_sync,
             "codex": copied_codex,
             "claude": copied_claude,
+            "opencode": copied_opencode,
             "notes": [],
         }
 

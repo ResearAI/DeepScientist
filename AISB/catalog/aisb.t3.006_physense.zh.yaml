@@ -1,0 +1,118 @@
+schema_version: 1
+id: aisb.t3.006_physense
+name: 'PhySense：用于精确物理感知的传感器布局优化'
+version: 0.1.0
+one_line: '基于双阶段流匹配方法的物理场重建与传感器布局优化，涵盖湍流、海温及汽车空气动力学基准。'
+task_description: '本基准实现了PhySense，一个协同式双阶段物理感知框架。第一阶段训练基于流匹配的条件生成模型（规则网格使用DiT，不规则网格使用Transolver），通过交叉注意力机制从稀疏传感器观测中重建稠密物理场，传感器可放置在任意位置。第二阶段在空间约束下通过投影梯度下降优化传感器位置，利用重建反馈发现信息量最大的放置方案。智能体需在三个捆绑的科学领域运行训练和推理：（1）湍流（规则网格管道模拟），（2）海温（带陆面掩码的规则网格全球海表温度再分析），（3）汽车空气动力学（不规则网格上的3D表面压力）。每个领域提供了基础模型推理脚本（随机放置）和步行推理脚本（优化放置）。主要指标为相对L2误差和MSE损失；次要输出为优化后的传感器布局。推理脚本中的数据路径指向外部位置，需自行填充数据。预训练检查点应存放在各领域的./checkpoints/目录下。无需外部评估服务，所有指标在推理脚本中本地计算。'
+capability_tags:
+- research_code_optimization
+- physics_ml
+- sensor_placement
+- scientific_ml
+- field_reconstruction
+- flow_matching
+- generative_models
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- relative_l2
+- mse_loss
+- sensor_layout
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '使用预训练检查点运行单领域推理（如pipe_infer.py或sea_infer.py），验证流水线能否输出relative_l2和mse_loss指标。'
+- id: full_benchmark
+  label: 完整基准测试
+  description: '在全部三个领域（湍流、海温、汽车空气动力学）上训练基础重建模型并运行传感器布局优化，然后评估随机放置和优化放置两种方案的重建质量。'
+- id: placement_only
+  label: 仅布局优化
+  description: '基于预训练基础模型，仅运行第二阶段传感器布局优化（步行脚本），并与随机放置基线进行对比。'
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: github
+    url: https://github.com/thuml/PhySense
+    access: public
+    note: '源代码仓库。各基准数据需单独获取，详见各领域README文件中的下载链接。'
+  notes:
+  - '海温数据从推理脚本中的硬编码路径（/workspace/mayuezhou/ddim/sea_data_large/）加载。智能体需下载海温.npy文件并相应更新路径。'
+  - '湍流数据通过datasets/senseiver_dataloader.py加载；需获取底层数据源并放置到预期位置。'
+  - '汽车空气动力学使用DDP训练脚本；数据路径通过Car-Aerodynamics/scripts/下shell脚本的命令行参数配置。'
+  - '三个领域的数据集总大小估计为20-60GB，取决于分辨率选择；README中未注明确切大小。'
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  key_packages:
+  - dotwiz
+  - pyyaml
+  - numpy
+  - matplotlib
+  notes:
+  - 完整依赖列表见requirements.txt。
+  - '推理脚本使用torch.cuda.amp.autocast并硬编码GPU设备索引（如cuda:5、cuda:0）。请根据您的硬件调整设备ID。'
+  - '汽车空气动力学使用DDP（DistributedDataParallel）；训练可能需要多GPU，但推理仅需单GPU即可。'
+risk_flags:
+- hardcoded_paths
+- hardcoded_device_ids
+- dataset_not_bundled
+- checkpoint_not_verified
+risk_notes:
+- '推理脚本包含硬编码的绝对数据路径（如/workspace/mayuezhou/ddim/sea_data_large/）和硬编码的CUDA设备索引（torch.cuda.set_device(5)）。运行前必须编辑修改。'
+- '预训练检查点（如pipe_best_base_model.pth、sea_best_base_model.pth、pipe_50sensor_opt.pth）应存放在各领域./checkpoints/目录下。是否可用取决于快照打包情况；如缺失需先运行训练。'
+- '打包过程中未执行基准测试；指标值未经运行时验证。'
+- '步行推理脚本（传感器布局优化评估）需要优化后的检查点，该检查点仅在第二阶段训练后产生。'
+recommended_when: '当您需要一项结合物理场重建与约束传感器布局优化的科学机器学习任务，且该任务需测试跨异构物理领域的生成式建模（流匹配）能力，涉及规则和不规则几何构型时，请使用此基准。'
+not_recommended_when: '如果需要轻量级基准（存储需求小、无迭代优化循环、无GPU要求），请勿使用。此外，如无法修改源代码脚本中的硬编码路径和设备索引，也不适用。'
+paper:
+  title: 'PhySense: Sensor Placement Optimization for Accurate Physics Sensing'
+  venue: NeurIPS 2025 Oral
+  year: 2025
+  url: https://arxiv.org/abs/2505.18190
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.006_physense.zip
+  archive_type: zip
+  local_dir_name: paper-6-PhySense
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.006_physense.zip
+  sha256: b35419c897e1c56bad7037fc90249da8589f432ba58831550a257b99d19e8b6c
+  size_bytes: 94438
+commercial:
+  annual_fee: null
+display:
+  palette_seed: slate-cyan-fluid
+  art_style: scientific-visualization
+  accent_priority: high
+image_path: ../image/006_aisb.t3.006_physense.jpg

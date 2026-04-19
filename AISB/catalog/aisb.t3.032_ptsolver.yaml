@@ -1,0 +1,169 @@
+schema_version: 1
+id: aisb.t3.032_ptsolver
+name: 'Personal Travel Solver: RealTravel Data Foundation'
+version: 0.1.0
+one_line: 'Data-only snapshot of the RealTravel dataset (1,000 test + 155 validation
+  samples across 77 US cities) with LLM-driven user-preference extraction scripts;
+  the full PTS planner and SCIP solver are not bundled.
+
+  '
+task_description: 'This benchmark packages the RealTravel dataset—an extension of
+  the TravelPlanner benchmark that incorporates real user reviews and POI metadata
+  from Google Local for 77 US cities. The snapshot contains structured travel queries,
+  user review histories, POI databases (restaurants, attractions, accommodations),
+  and four Python data-processing scripts that use LLM APIs (GPT-4o / DeepSeek) to
+  extract user preferences, summarize profiles, standardize preference tags, and generate
+  POI pro/con descriptions. The full Personal Travel Solver (PTS) system—including
+  the Translator, Search, Re-rank (SASRec), and Planning (SCIP solver) modules—is
+  NOT included in this snapshot. The primary metric (pass_rate) is blocked because
+  no executable evaluation or planning code is present. To use this benchmark as a
+  runnable evaluation, the downstream PTS planner must be restored from the paper''s
+  external code release.
+
+  '
+capability_tags:
+- research_code_optimization
+- travel_planning
+- llm_tooling
+- constraint_solving
+- personalization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: data_only
+support_level: recovery
+cost_band: low
+time_band: 1-2h
+difficulty: medium
+data_access: public
+primary_outputs:
+- user_profiles
+- poi_summaries
+- structured_travel_data
+- preference_tags
+launch_profiles:
+- id: data_prep
+  label: Data Preparation
+  description: 'Run the four bundled data-processing scripts to extract user preferences,
+    summarize profiles, standardize tags, and generate POI pro/con descriptions. Requires
+    LLM API credentials (OpenAI or DeepSeek). No GPU needed.
+
+    '
+- id: planner_restore
+  label: Planner Restore
+  description: 'Restore the full PTS pipeline (Translator, Search, Re-rank with SASRec,
+    Planning with SCIP solver) from the paper''s external code release before treating
+    this benchmark as a runnable end-to-end evaluation.
+
+    '
+dataset_download:
+  primary_method: bundled
+  sources:
+  - kind: archive
+    url: https://deepscientist.cc/AISB/032_ptsolver
+    access: public
+    note: 'ZIP archive containing RealTravel dataset (1,000 test / 155 validation
+      samples), POI databases for 77 cities, user review data, and data-processing
+      scripts.
+
+      '
+  notes:
+  - The dataset is derived from Google Local (Yan et al., 2023) and TravelPlanner
+    (Xie et al., 2024).
+  - Database subdirectories contain accommodations, attractions, restaurants, and
+    background data.
+  - Total disk footprint is modest (under 20 GB uncompressed).
+credential_requirements:
+  mode: api_keys
+  items:
+  - OpenAI API key (GPT-4o) or DeepSeek API key for running data-processing scripts
+  - Optional ChatGLM / SiliconFlow / Yi API keys referenced in attraction-pro-con.py
+  notes:
+  - Scripts read keys from environment variables (Gpt_API_KEY, DEEPSEEK_API_KEY, CHATGLM_API_KEY).
+  - Some hardcoded API keys appear in the source code but may be expired or invalid.
+  - No credentials needed if you only inspect the pre-existing dataset files.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - langchain
+  - openai
+  - tqdm
+  notes:
+  - CPU-only execution is sufficient for all bundled scripts.
+  - The data-processing scripts use langchain ChatOpenAI and openai client libraries.
+  - Full PTS system (not bundled) would additionally require PySCIPOpt, SASRec, BGE
+    embeddings, and scikit-learn for PCA.
+  - See bundled requirements files for the complete dependency set.
+risk_flags:
+- blocked_metric
+- incomplete_pipeline
+- api_key_exposure
+- external_code_dependency
+risk_notes:
+- The primary metric (pass_rate) is blocked—no evaluation or planning code is in the
+  snapshot.
+- The full PTS system (5 modules) is not bundled; only data-processing scripts are
+  present.
+- Hardcoded API keys appear in attraction-pro-con.py; these may be leaked credentials
+  and should not be reused.
+- Running data-processing scripts will incur LLM API costs proportional to the number
+  of users/POIs processed.
+- The Re-rank module (SASRec + BGE embeddings) and Planning module (SCIP solver) must
+  be restored externally.
+recommended_when: 'Use this benchmark when you want a realistic travel-planning dataset
+  grounded in real user reviews and POI data, for tasks that mix symbolic constraint
+  satisfaction with user preference modeling, without requiring heavyweight GPU training.
+  Suitable for evaluating LLM-based preference extraction, user profiling, or as a
+  data foundation for building constraint-based travel planners.
+
+  '
+not_recommended_when: 'Do not use this if you need a fully self-contained, end-to-end
+  runnable benchmark. The planning and evaluation pipeline is not bundled. Also not
+  suitable if you need a benchmark focused on large-scale model fine-tuning, multimodal
+  data, or non-US travel destinations.
+
+  '
+paper:
+  title: 'Personal Travel Solver: A Preference-Driven LLM-Solver System for Travel
+    Planning'
+  venue: ACL 2025
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.1339/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.032_ptsolver.zip
+  archive_type: zip
+  local_dir_name: paper-32-PTSolver
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.032_ptsolver.zip
+  sha256: 26f7f39e12eb28552ada092809b289f77090a229d0b745e9dfbcbb7b7b4f9d5c
+  size_bytes: 38141816
+commercial:
+  annual_fee: null
+display:
+  palette_seed: sand-teal-itinerary
+  art_style: trip-planner
+  accent_priority: medium
+image_path: ../image/032_aisb.t3.032_ptsolver.jpg

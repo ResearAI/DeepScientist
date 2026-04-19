@@ -1,0 +1,132 @@
+id: aisb.t3.037_dementiamask
+name: 痴呆症掩码
+version: 0.1.0
+one_line: 基于权重掩码的语音痴呆检测去偏基准，用于隔离Transformer模型中与性别相关的混杂因素。
+task_description: |
+  此打包基准测试涵盖使用两种权重掩码方法进行语音痴呆检测中的性别混杂因素缓解：扩展混杂过滤器（ECF）和双过滤器（DF）。工作流程在语音衍生转录文本上训练基于BERT的分类器，然后应用基于梯度的权重追踪来识别并消融编码混杂信息的参数。主要评估指标包括AUPRC和delta-FPR（不同人口统计学组之间的假阳性率差距），以评估分布偏移下的诊断性能和公平性。基准测试通过cf_train_test_split生成训练/评估/测试集划分，并对混杂因素分布进行控制，支持可配置的混杂因素比例和测试集不平衡。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: restricted
+primary_outputs:
+- diagnostic_scores
+- debiasing_report
+- delta_fpr
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 使用预配置超参数运行单一DualFilter评估路径（alpha_train=0.2, mask_ratio=0.10, 5次重复）。
+- id: full_train_eval
+  label: 完整训练+评估
+  description: 通过run_df.sh运行完整的基于掩码的去偏工作流，支持可配置的混杂因素比例，包括下游公平性评估。
+- id: cf_evaluation
+  label: 混杂过滤器评估
+  description: 通过run_cf.sh运行原始Confounding Filter基线进行对比。
+- id: ecf_evaluation
+  label: 扩展混杂过滤器评估
+  description: 通过run_ecf.sh运行ECF，使用逐层解冻策略。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - deepscientist_url
+  notes:
+  - 压缩包包含pitts语音数据集及受控的混杂因素划分
+  - 数据划分参数：train_pos_z0、train_pos_z1、alpha_test控制混杂因素分布
+credential_requirements:
+  mode: external_access
+  items:
+  - deepscientist_download_token
+  notes:
+  - 需要ACL 2025论文工件访问权限
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 30
+    gpu_count: 1
+    gpu_vram_gb: 8
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - transformers
+  - torch
+  - numpy
+  - pandas
+  notes:
+  - 模型权重（bert-base-uncased）必须在本地可用或已下载
+  - 完整的依赖项列表见捆绑的requirements.txt
+risk_flags:
+- distribution_shift
+- demographic_disparity
+risk_notes:
+- 观察到公平性-准确性权衡：去偏可能略微降低痴呆检测AUPRC
+- 训练和测试混杂因素分布之间的分布偏移会影响delta_FPR
+- 性别混杂因素缓解效果随mask_ratio超参数变化
+recommended_when: |
+  在评估临床NLP中的偏差缓解技术、研究痴呆检测中的性别混杂因素，或比较语音衍生医学文本分类中的权重掩码方法（ECF vs DF vs 朴素基线）时使用此基准测试。
+not_recommended_when: |
+  当无法获得语音或临床数据集访问权限，或当纯粹追求诊断准确性而不考虑公平性时，不建议使用此基准测试。
+paper:
+  title: Mitigating Confounding in Speech-Based Dementia Detection through Weight
+    Masking
+  authors: Sheng, Ding, Hur, Li, Cohen, Pakhomov
+  venue: ACL 2025 Main
+  year: 2025
+  url: https://arxiv.org/abs/2506.05610
+  pages: 8
+  abstract: |
+    深度Transformer模型通过检测患者转录文本中的语言异常来进行早期阿尔茨海默病筛查。本工作通过扩展混杂过滤器（ECF）和双过滤器（DF）处理性别混杂因素，这两种方法可隔离并消融性别相关权重。结果表明Transformer模型倾向于过度拟合训练分布；破坏性别相关权重会产生去偏分类器，代价是痴呆检测性能略有下降。
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.037_dementiamask.zip
+  archive_type: zip
+  local_dir_name: paper-37-DementiaMask
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.037_dementiamask.zip
+  sha256: d759476e5d109aae5e6177cd9e294126e5d9fd1e1e21af1b40d16f855455ba5c
+  size_bytes: 98039
+display:
+  palette_seed: wine-silver-clinic
+  art_style: clinical-notebook
+  accent_priority: medium
+image_path: ../image/037_aisb.t3.037_dementiamask.jpg
+metric_evidence:
+- metric: auprc
+  origin: run_experiment.py
+  status: code_backed
+  protocol: |
+    在DualFilter训练和消融后，按组（full、confounder_0、confounder_1）计算平均精度分数（APS）。报告每组及聚合结果。
+- metric: delta_fpr
+  origin: run_experiment.py
+  status: code_backed
+  protocol: |
+    Delta FPR = FPR_confounder_1 - FPR_confounder_0，其中FPR = 1 - recall_neg。衡量去偏后不同人口统计学组之间的公平性差距。
+execution_anchors:
+  primary: run_experiment.py
+  shell_scripts:
+  - run_df.sh
+  - run_cf.sh
+  - run_ecf.sh
+  model_modules:
+  - src/model/weights_filter.py
+  preprocessing: src/preprocessing/data_generator.py
+hardware_notes: |
+  单GPU执行足够。bert-base-uncased推理需要约1.1GB GPU内存。在完整数据集上用5次重复和每次30个epoch进行训练，配合梯度累积可能需要8GB以上显存。不建议CPU-only执行训练。
+dataset_notes: |
+  pitts语音数据集包含来自痴呆症患者和健康对照组的第一人称叙事转录文本。cf_train_test_split生成受控的混杂因素分布，支持可配置的P(Y=1|Z)用于训练和测试集。关键参数：train_pos_z0（Z=0的基线痴呆率）、train_pos_z1（Z=1的基线痴呆率）、alpha_test（测试集不平衡比例）。测试集固定150个样本，验证集120个样本。

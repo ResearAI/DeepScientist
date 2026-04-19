@@ -1,0 +1,163 @@
+schema_version: 1
+id: aisb.t3.011_osd
+name: 正交子空间分解用于可泛化的AI生成图像检测
+version: 0.1.0
+one_line: 训练并评估一个使用基于SVD的正交子空间分解（Effort）的CLIP-ViT-L/14检测器，以在DeepfakeBench和GenImage基准上跨深度伪造和合成图像伪造家族实现泛化。
+task_description: '本基准将"Effort"方法打包用于AI生成图像检测。核心思想是通过SVD将CLIP-ViT-L/14权重矩阵分解为冻结的主成分（保留预训练知识）和可训练的残差成分（学习伪造模式），并强制正交性以防止对已知伪造类型的过拟合。执行流程包括：（1）从Google Drive下载CLIP-ViT-L/14主干网络和预训练的Effort检查点，（2）从外部获取深度伪造数据集（DeepfakeBench的FaceForensics++、Celeb-DF-v2、DF40）或GenImage/Chameleon用于合成图像评估，（3）在保持SVD主成分冻结的同时，在一个源数据集上训练Effort检测器头部，（4）在多个未见过的伪造方法上评估跨数据集泛化准确率。打包了两个代码库：DeepfakeBench（面部深度伪造检测，表1结果）和UniversalFakeDetect_Benchmark（通用合成图像检测，表2结果）。主要指标是在未见伪造家族上的检测准确率（如BigGAN、CycleGAN、SimSwap）。数据集必须从外部来源单独下载，且体积较大（数十到数百GB）。检查点托管在Google Drive上。
+
+  '
+capability_tags:
+- research_code_optimization
+- computer_vision
+- deepfake_detection
+- image_forensics
+- benchmark_evaluation
+- clip_finetuning
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 1d+
+difficulty: hard
+data_access: public
+primary_outputs:
+- biggan_accuracy
+- detection_scores
+- benchmark_report
+- cross_dataset_auc
+launch_profiles:
+- id: quick_check
+  label: 快速检查（仅推理）
+  description: '从Google Drive下载预训练的Effort检查点，并在单个图像或文件夹上运行DeepfakeBench/training/demo.py，以验证推理流程是否产生伪造概率分数。
+
+    '
+- id: single_dataset_train
+  label: 单数据集训练+测试
+  description: '使用单个GPU在一个源数据集（如FaceForensics++）上训练Effort检测器，然后在一个保留数据集（如Celeb-DF-v2）上进行测试。验证训练循环、SVD分解、正交/KSV损失和检查点保存功能。
+
+    '
+- id: cross_benchmark_eval
+  label: 跨基准评估
+  description: '在多个未见过的伪造数据集（通过DF40的SimSwap、BlendFace、DeepFaceLab等）上评估训练或预训练的Effort检测器，以复现论文中的跨数据集泛化结果。
+
+    '
+- id: univfd_benchmark
+  label: UniversalFakeDetect基准
+  description: '使用UniversalFakeDetect_Benchmark/代码库复现表2中关于通用合成图像检测（GenImage、Chameleon）的结果。
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: external_repo
+    url: https://github.com/SCLBD/DeepfakeBench
+    access: public
+    note: 'FaceForensics++、Celeb-DF-v2及其他面部深度伪造数据集。通过DeepfakeBench可获取预处理后的帧和人脸crop。
+
+      '
+  - kind: external_repo
+    url: https://github.com/YZY-stack/DF40
+    access: public
+    note: DF40数据集，包含40种不同的伪造方法，用于更广泛的评估。
+  - kind: google_drive
+    url: https://drive.google.com/drive/folders/19kQwGDjF18uk78EnnypxxOLaG4Aa4v1h?usp=sharing
+    access: public
+    note: 预训练的Effort检查点（FF++、GenImage、Chameleon）。
+  - kind: google_drive
+    url: https://drive.google.com/drive/folders/1fm3Jd8lFMiSP1qgdmsxfqlJZGpr_bXsx?usp=drive_link
+    access: public
+    note: effort_detector.py所需的CLIP-ViT-L/14主干网络权重。
+  notes:
+  - 深度伪造数据集解压后为数十到数百GB。
+  - GenImage和Chameleon数据集必须单独获取以复现表2。
+  - 每个数据集的JSON索引文件必须通过预处理脚本生成或从DeepfakeBench/DF40获取。
+  - CLIP主干路径在effort_detector.py中硬编码，必须调整为本地路径。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 所有数据集和检查点均可公开获取，但托管在外部的Google Drive和GitHub仓库上。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 300
+    gpu_count: 4
+    gpu_vram_gb: 24
+environment:
+  python: 3.7.2
+  cuda: '11.3'
+  pytorch: 1.12.0
+  flash_attn: null
+  key_packages:
+  - transformers
+  - loralib
+  - dlib==19.24.0
+  - opencv-python==4.6.0.66
+  - scikit-learn==1.0.2
+  - albumentations==1.1.0
+  - timm==0.6.12
+  - efficientnet-pytorch==0.7.1
+  - openai-clip (from git)
+  - kornia
+  - einops
+  notes:
+  - README指定Python 3.7.2和PyTorch 1.11，但install.sh安装torch==1.12.0+cu113；请以install.sh作为权威安装路径。
+  - install.sh固定numpy==1.21.5、scipy==1.7.3及其他众多特定版本。
+  - CLIP主干使用HuggingFace transformers的CLIPModel，而非直接使用OpenAI CLIP包用于检测器，但也安装了OpenAI CLIP。
+  - dlib用于人脸深度伪造预处理期间的人脸特征点提取。
+risk_flags:
+- external_dataset_dependency
+- external_checkpoint_dependency
+- hardcoded_paths
+- large_dataset_route
+- google_drive_download
+risk_notes:
+- 数据集（FaceForensics++、DF40、GenImage、Chameleon）未打包，必须从外部来源下载，总量可能达数百GB。
+- CLIP主干路径在effort_detector.py中硬编码为"../models--openai--clip-vit-large-patch14"，必须手动调整。
+- 预训练检查点托管在Google Drive上，可能会有速率限制或需要手动浏览器下载。
+- 该基准已进行静态审计，但在打包过程中未执行运行时验证；指标值未经验证。
+- install.sh安装torch 1.12配合CUDA 11.3，可能与更新版本的驱动设置冲突。
+- 必须通过预处理脚本生成JSON数据集索引文件，或从DeepfakeBench/DF40仓库获取。
+recommended_when: '当您需要一个涉及基于CLIP的微调与SVD正交分解的真实图像取证优化任务、跨多个伪造家族的数据集泛化评估，以及大规模视觉数据集时，请使用此基准。适用于参数高效微调、深度伪造检测鲁棒性和基础模型适应方面的研究。
+
+  '
+not_recommended_when: '如果您无法为数据集和检查点提供150GB以上的磁盘空间、缺乏至少16GB显存的CUDA GPU、需要轻量级纯CPU基准，或无法从Google Drive和外部GitHub仓库下载大文件，请勿使用此基准。
+
+  '
+paper:
+  title: 'Effort: Efficient Orthogonal Modeling for Generalizable AI-Generated Image
+    Detection'
+  venue: ICML 2025 Oral
+  year: 2025
+  url: https://arxiv.org/abs/2411.15633
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.011_osd.zip
+  archive_type: zip
+  local_dir_name: paper-11-OSD
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.011_osd.zip
+  sha256: db6c786efc3503420d8269cff59b8abd9ac07786364bc130a811615db99364d8
+  size_bytes: 29719270
+commercial:
+  annual_fee: null
+display:
+  palette_seed: obsidian-coral-vision
+  art_style: forensic-clean
+  accent_priority: high
+image_path: ../image/011_aisb.t3.011_osd.jpg

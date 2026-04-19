@@ -2,7 +2,7 @@ import axios, { type AxiosError, type AxiosRequestConfig } from "axios";
 import { toast } from "@/components/ui/toast";
 import { redactSensitive, sanitizeUrl, truncateText } from "@/lib/bugbash/sanitize";
 import { recordRequestEvent } from "@/lib/bugbash/repro-recorder";
-import { handleUnauthorizedAuth, readRequestAuthContext } from "@/lib/auth";
+import { handleUnauthorizedAuth, readRequestAuthContext, runtimeAuthConfig } from "@/lib/auth";
 
 /**
  * Resolve API base URL from environment or default configuration.
@@ -134,6 +134,26 @@ export const apiClient = axios.create({
 
 export function getApiBaseUrl(): string {
   return apiClient.defaults.baseURL || resolveApiBaseUrl();
+}
+
+export function buildApiAssetUrl(path: string): string {
+  const trimmed = String(path || '').trim()
+  if (!trimmed) return getApiBaseUrl()
+  const absolute =
+    trimmed.startsWith('http://') || trimmed.startsWith('https://')
+      ? trimmed
+      : trimmed.startsWith('//')
+        ? (typeof window !== 'undefined' ? `${window.location.protocol}${trimmed}` : `http:${trimmed}`)
+        : `${getApiBaseUrl().replace(/\/$/, '')}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`
+  if (typeof window === 'undefined') return absolute
+  const { token, mode } = readRequestAuthContext()
+  if (!token || mode !== 'browser') return absolute
+  const auth = runtimeAuthConfig()
+  const target = new URL(absolute, window.location.origin)
+  if (!target.searchParams.has(auth.tokenQueryParam)) {
+    target.searchParams.set(auth.tokenQueryParam, token)
+  }
+  return target.toString()
 }
 
 // Request interceptor - add auth token

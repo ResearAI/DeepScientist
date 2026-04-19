@@ -1,0 +1,193 @@
+schema_version: 1
+id: aisb.t3.005_tsae
+name: 'Temporal Sparse Autoencoders: Leveraging the Sequential Nature of Language
+  for Interpretability'
+version: 0.1.0
+one_line: Train temporal sparse autoencoders (T-SAEs) with a contrastive temporal-consistency
+  loss on LLM activations, then evaluate feature quality via SAEBench-style automated
+  interpretability scoring.
+task_description: 'This benchmark requires training Temporal Sparse Autoencoders (T-SAEs)
+  that partition latent features into high-level (semantic, temporally consistent)
+  and low-level (syntactic, token-local) components using a contrastive loss over
+  adjacent-token activations from language models (Pythia-160m or Gemma-2-2b). The
+  T-SAE architecture extends Matryoshka BatchTopK SAEs with a temporal contrastive
+  term encouraging high-level features to remain stable across adjacent tokens in
+  a sequence. The primary execution route is: (1) train a T-SAE on model activations
+  extracted from the Pile dataset using dictionary_learning/dictionary_learning/train_temporal.py,
+  (2) evaluate reconstruction quality, sparsity, and temporal smoothness using dictionary_learning/dictionary_learning/eval_temporal.py,
+  and (3) compute automated interpretability scores by processing SAEBench-generated
+  explanation JSON files via src/process_sae_bench_autointerp.py. Downstream experiments
+  include probing for semantic/ contextual/syntactic content, t-SNE visualization,
+  and an HH-RLHF alignment case study. Pretrained Gemma-2-2b T-SAE checkpoints with
+  16384 features and pre-labeled explanations are available on HuggingFace, enabling
+  evaluation without retraining. The autointerp evaluation requires SAEBench (external)
+  to generate feature explanations using a judge LLM (Llama-3.3-70b-Instruct in the
+  paper). Training data streams from the Pile via HuggingFace datasets; no manual
+  dataset download is needed for the core route.
+
+  '
+capability_tags:
+- research_code_optimization
+- mechanistic_interpretability
+- sparse_autoencoders
+- large_language_models
+- evaluation
+- contrastive_learning
+- dictionary_learning
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 1d+
+difficulty: hard
+data_access: public
+primary_outputs:
+- autointerp_score
+- sae_checkpoint
+- interpretability_report
+- probing_accuracy
+- temporal_smoothness_metrics
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run a small T-SAE training pass on Pythia-160m with reduced steps
+    and a short eval to verify the pipeline end-to-end. Uses NeelNanda/pile-10k for
+    fast iteration.
+
+    '
+- id: autointerp_eval
+  label: Autointerp Eval
+  description: 'Train temporal sparse autoencoders on full Pile data, generate feature
+    explanations via SAEBench with a judge LLM, and compute autointerp scores. This
+    is the paper-faithful route requiring external SAEBench and a 70B judge model.
+
+    '
+- id: pretrained_eval
+  label: Pretrained Eval
+  description: 'Download the pretrained Gemma-2-2b T-SAE and bundled explanations
+    from HuggingFace, then run eval_temporal.py and process_sae_bench_autointerp.py
+    without retraining.
+
+    '
+dataset_download:
+  primary_method: streaming
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/monology/pile-uncopyrighted
+    access: public
+    note: Primary training/eval data; streamed via HuggingFace datasets. No manual
+      download required.
+  - kind: huggingface
+    url: https://huggingface.co/datasets/NeelNanda/pile-10k
+    access: public
+    note: Small subset used for quick evaluation passes.
+  - kind: huggingface
+    url: https://huggingface.co/alex-oesterling/temporal-saes
+    access: public
+    note: Pretrained Gemma-2-2b T-SAE checkpoint (16384 features) with labeled explanations.json.
+  notes:
+  - Training data is streamed; disk usage is dominated by model weights and SAE checkpoints.
+  - Gemma-2-2b weights require HuggingFace access agreement.
+credential_requirements:
+  mode: optional
+  items:
+  - HuggingFace token (required for gated models like Gemma-2-2b; optional for Pythia-160m)
+  - SAEBench access (external tool for generating feature explanations; not bundled)
+  notes:
+  - Rename example.env to .env and add HF_TOKEN if using Gemma-2-2b or customizing
+    HuggingFace paths.
+  - Autointerp evaluation requires running SAEBench externally with a judge LLM (paper
+    uses Llama-3.3-70b-Instruct).
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 48
+environment:
+  python: '3.11'
+  cuda: '12.8'
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - poetry
+  - nnsight
+  - datasets
+  - dictionary_learning (bundled fork)
+  notes:
+  - Poetry-managed environment; run 'poetry install' to set up. Torch wheels are pulled
+    from the cu128 index.
+  - The dictionary_learning directory is a bundled fork of github.com/saprmarks/dictionary_learning.
+  - See pyproject.toml and poetry.lock for the full pinned dependency set.
+risk_flags:
+- external_eval_dependency
+- large_model_weights
+- judge_model_required
+- some_experiments_under_construction
+risk_notes:
+- SAEBench is not bundled; autointerp evaluation requires cloning and running it separately
+  with a large judge LLM (70B parameter Llama-3.3 in the paper).
+- Gemma-2-2b weights (~5 GB) must be downloaded and may require HuggingFace access
+  agreement.
+- The full autointerp route requires hosting or API access to a 70B judge model, which
+  significantly increases cost.
+- README marks "Sequence Interpretability (Figures 1 and 4)" and "Steering" experiments
+  as under construction.
+- No benchmark execution was performed during the packaging pass; metrics are code-backed
+  but unverified at runtime.
+recommended_when: 'Use this benchmark when you want a mechanistic-interpretability
+  task that combines SAE training with temporal-contrastive learning and automated
+  interpretability evaluation. Good fit for research on disentangling semantic vs.
+  syntactic features in LLM representations, or for optimizing SAE training pipelines
+  under structured priors.
+
+  '
+not_recommended_when: 'Do not use this if you need a lightweight CPU-only benchmark,
+  cannot host LLM checkpoints (Pythia-160m minimum, Gemma-2-2b recommended) locally,
+  or lack GPU access. Avoid if you cannot run or access a large judge model for the
+  autointerp evaluation route.
+
+  '
+paper:
+  title: 'Temporal Sparse Autoencoders: Leveraging the Sequential Nature of Language
+    for Interpretability'
+  authors:
+  - Usha Bhalla
+  - Alex Oesterling
+  - Claudio Mayrink Verdun
+  - Himabindu Lakkaraju
+  - Flavio P. Calmon
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2511.05541
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.005_tsae.zip
+  archive_type: zip
+  local_dir_name: paper-5-TSAE
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.005_tsae.zip
+  sha256: f89d8100092417777d135fded098e3fb26a5f38ccdb300658138273924bf070e
+  size_bytes: 322370
+commercial:
+  annual_fee: null
+display:
+  palette_seed: amber-ink-latent
+  art_style: editorial-technical
+  accent_priority: high
+image_path: ../image/005_aisb.t3.005_tsae.jpg

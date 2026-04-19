@@ -1,9 +1,29 @@
+import adminCopilotEn from './admin-copilot.en.md?raw'
+import adminCopilotZh from './admin-copilot.zh.md?raw'
+import adminQuestsEn from './admin-quests.en.md?raw'
+import adminQuestsZh from './admin-quests.zh.md?raw'
+import adminSummaryEn from './admin-summary.en.md?raw'
+import adminSummaryZh from './admin-summary.zh.md?raw'
+import benchstoreCopilotEn from './benchstore-copilot.en.md?raw'
+import benchstoreCopilotZh from './benchstore-copilot.zh.md?raw'
+import benchstoreDetailEn from './benchstore-detail.en.md?raw'
+import benchstoreDetailZh from './benchstore-detail.zh.md?raw'
+import benchstoreOpenDetailEn from './benchstore-open-detail.en.md?raw'
+import benchstoreOpenDetailZh from './benchstore-open-detail.zh.md?raw'
+import benchstoreOverviewEn from './benchstore-overview.en.md?raw'
+import benchstoreOverviewZh from './benchstore-overview.zh.md?raw'
+import benchstoreStartEn from './benchstore-start.en.md?raw'
+import benchstoreStartZh from './benchstore-start.zh.md?raw'
 import dialogConnectorsEn from './dialog-connectors.en.md?raw'
 import dialogConnectorsZh from './dialog-connectors.zh.md?raw'
 import dialogContractEn from './dialog-contract.en.md?raw'
 import dialogContractZh from './dialog-contract.zh.md?raw'
 import dialogCreateEn from './dialog-create.en.md?raw'
 import dialogCreateZh from './dialog-create.zh.md?raw'
+import dialogDeepxivEn from './dialog-deepxiv.en.md?raw'
+import dialogDeepxivZh from './dialog-deepxiv.zh.md?raw'
+import dialogDeepxivSetupEn from './dialog-deepxiv-setup.en.md?raw'
+import dialogDeepxivSetupZh from './dialog-deepxiv-setup.zh.md?raw'
 import dialogGoalEn from './dialog-goal.en.md?raw'
 import dialogGoalZh from './dialog-goal.zh.md?raw'
 import dialogOverviewEn from './dialog-overview.en.md?raw'
@@ -12,12 +32,18 @@ import dialogPreviewEn from './dialog-preview.en.md?raw'
 import dialogPreviewZh from './dialog-preview.zh.md?raw'
 import dialogReferencesEn from './dialog-references.en.md?raw'
 import dialogReferencesZh from './dialog-references.zh.md?raw'
+import dialogSetupAgentEn from './dialog-setup-agent.en.md?raw'
+import dialogSetupAgentZh from './dialog-setup-agent.zh.md?raw'
 import dialogTitleEn from './dialog-title.en.md?raw'
 import dialogTitleZh from './dialog-title.zh.md?raw'
 import landingIntroEn from './landing-intro.en.md?raw'
 import landingIntroZh from './landing-intro.zh.md?raw'
+import landingOpenBenchstoreEn from './landing-open-benchstore.en.md?raw'
+import landingOpenBenchstoreZh from './landing-open-benchstore.zh.md?raw'
 import landingOpenDialogEn from './landing-open-dialog.en.md?raw'
 import landingOpenDialogZh from './landing-open-dialog.zh.md?raw'
+import landingSurfacesEn from './landing-surfaces.en.md?raw'
+import landingSurfacesZh from './landing-surfaces.zh.md?raw'
 import launchModeAutonomousEn from './launch-mode-autonomous.en.md?raw'
 import launchModeAutonomousZh from './launch-mode-autonomous.zh.md?raw'
 import launchModeCopilotEn from './launch-mode-copilot.en.md?raw'
@@ -60,10 +86,22 @@ import workspaceNextActionEn from './workspace-next-action.en.md?raw'
 import workspaceNextActionZh from './workspace-next-action.zh.md?raw'
 import workspaceNavbarEn from './workspace-navbar.en.md?raw'
 import workspaceNavbarZh from './workspace-navbar.zh.md?raw'
+import workspaceOpenAdminEn from './workspace-open-admin.en.md?raw'
+import workspaceOpenAdminZh from './workspace-open-admin.zh.md?raw'
 
 export const onboardingStepBodies = {
+  'admin-copilot': { en: adminCopilotEn, zh: adminCopilotZh },
+  'admin-quests': { en: adminQuestsEn, zh: adminQuestsZh },
+  'admin-summary': { en: adminSummaryEn, zh: adminSummaryZh },
+  'benchstore-copilot': { en: benchstoreCopilotEn, zh: benchstoreCopilotZh },
+  'benchstore-detail': { en: benchstoreDetailEn, zh: benchstoreDetailZh },
+  'benchstore-open-detail': { en: benchstoreOpenDetailEn, zh: benchstoreOpenDetailZh },
+  'benchstore-overview': { en: benchstoreOverviewEn, zh: benchstoreOverviewZh },
+  'benchstore-start': { en: benchstoreStartEn, zh: benchstoreStartZh },
   'landing-intro': { en: landingIntroEn, zh: landingIntroZh },
+  'landing-open-benchstore': { en: landingOpenBenchstoreEn, zh: landingOpenBenchstoreZh },
   'landing-open-dialog': { en: landingOpenDialogEn, zh: landingOpenDialogZh },
+  'landing-surfaces': { en: landingSurfacesEn, zh: landingSurfacesZh },
   'launch-mode-overview': { en: launchModeOverviewEn, zh: launchModeOverviewZh },
   'launch-mode-copilot': { en: launchModeCopilotEn, zh: launchModeCopilotZh },
   'launch-mode-autonomous': { en: launchModeAutonomousEn, zh: launchModeAutonomousZh },
@@ -72,8 +110,11 @@ export const onboardingStepBodies = {
   'dialog-goal': { en: dialogGoalEn, zh: dialogGoalZh },
   'dialog-references': { en: dialogReferencesEn, zh: dialogReferencesZh },
   'dialog-connectors': { en: dialogConnectorsEn, zh: dialogConnectorsZh },
+  'dialog-deepxiv': { en: dialogDeepxivEn, zh: dialogDeepxivZh },
+  'dialog-deepxiv-setup': { en: dialogDeepxivSetupEn, zh: dialogDeepxivSetupZh },
   'dialog-contract': { en: dialogContractEn, zh: dialogContractZh },
   'dialog-preview': { en: dialogPreviewEn, zh: dialogPreviewZh },
+  'dialog-setup-agent': { en: dialogSetupAgentEn, zh: dialogSetupAgentZh },
   'dialog-create': { en: dialogCreateEn, zh: dialogCreateZh },
   'workspace-navbar': { en: workspaceNavbarEn, zh: workspaceNavbarZh },
   'workspace-explorer': { en: workspaceExplorerEn, zh: workspaceExplorerZh },
@@ -93,4 +134,5 @@ export const onboardingStepBodies = {
   'workspace-copilot': { en: workspaceCopilotEn, zh: workspaceCopilotZh },
   'workspace-copilot-modes': { en: workspaceCopilotModesEn, zh: workspaceCopilotModesZh },
   'workspace-next-action': { en: workspaceNextActionEn, zh: workspaceNextActionZh },
+  'workspace-open-admin': { en: workspaceOpenAdminEn, zh: workspaceOpenAdminZh },
 } as const

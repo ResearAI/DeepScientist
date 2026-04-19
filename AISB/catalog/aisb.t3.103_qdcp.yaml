@@ -1,0 +1,150 @@
+id: aisb.t3.103_qdcp
+name: Distributed Conformal Prediction via Message Passing
+version: 0.1.0
+one_line: Distributed conformal prediction with message passing on arbitrary graph
+  topologies, providing communication-aware coverage guarantees for decentralized
+  uncertainty quantification.
+task_description: 'This packaged benchmark covers quantile-based distributed conformal
+  prediction (Q-DCP) and histogram-based distributed conformal prediction (H-DCP)
+  from ICML 2025. Each device in a decentralized network holds limited local calibration
+  data and can only communicate with neighboring nodes via message passing. Q-DCP
+  employs distributed quantile regression enhanced with ADMM-based smoothing and regularization
+  to accelerate convergence, while H-DCP uses consensus-based histogram estimation
+  to achieve hyperparameter-free coverage. The benchmark evaluates trade-offs between
+  coverage guarantees, prediction set sizes, communication overhead, and hyperparameter
+  sensitivity across different network topologies including star, ring, and path graphs.
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: partial
+support_level: advanced
+time_band: 2-6h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- mean_set_size
+- mean_coverage
+- topology_comparison_plots
+- experiment_score_tensors
+launch_profiles:
+- id: build_scores
+  label: Build Scores
+  description: 'Run central or federated training to generate experiment score folders
+    under `experiments/`. Uses `src/run_TCT.py` or bundled shell scripts (e.g., `scripts/cifar100.sh`).
+    Score folders must match naming conventions like `{dataset}_{topology}_{model}`
+    (e.g., `cifar100_central_small_resnet14`).
+
+    '
+- id: qdcp_eval
+  label: Q-DCP Eval
+  description: 'Run the staged Q-DCP or H-DCP analysis on prepared score folders using
+    `run_qdcp_mod.py` or the notebooks. Reports coverage and set-size curves across
+    alpha levels and topology comparisons. Execute from `/repo` with pre-staged `experiments/`
+    tree.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - torchvision (CIFAR-10, CIFAR-100, FashionMNIST, MNIST, SVHN)
+  - MedMNIST (PathMNIST, BloodMNIST, TissueMNIST, DermMNIST)
+  - Fitzpatrick-SM (requires separate staging)
+  notes:
+  - Public datasets are fetched automatically by `src/run_TCT.py` or notebook loaders.
+  - Fitzpatrick and similar experiments expect separately staged local files or CSV
+    paths.
+  - The Q-DCP staged route consumes pre-computed score folders rather than raw data
+    directly.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No explicit dataset or API credential variables detected in the snapshot.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.11'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - numpy
+  - torch
+  - matplotlib
+  - pandas
+  - tdigest
+  - ddsketch
+  - scipy
+  - notebook
+  notes:
+  - CPU-only execution is sufficient for the full benchmark route.
+  - Bundled requirements file is a conda export targeting a Windows py311 environment.
+  - Core calibration logic is in `src/DCP_pinball_smooth.py` and `src/class_CP_QQ.py`.
+  - See bundled README/requirements for the full dependency set.
+risk_flags:
+- route_caveat
+- hardcoded_path_dependency
+risk_notes:
+- The snapshot contains hard-coded `/repo` paths; execution requires mounting to this
+  path.
+- The staged Q-DCP runner expects a prepared `experiments/` tree with score folders.
+- Score folders must follow naming conventions or helpers.load_scores will fail.
+- Some routes depend on separately staged local files (e.g., Fitzpatrick experiments).
+- No benchmark execution was performed in this packaging pass; static audit only.
+recommended_when: 'Use this benchmark for communication-aware uncertainty quantification
+  over decentralized devices on arbitrary graph topologies, or when evaluating trade-offs
+  between coverage guarantees, set sizes, and communication overhead in distributed
+  settings.
+
+  '
+not_recommended_when: 'Do not use if you need a centralized prediction benchmark with
+  no network topology, or if you require execution without pre-staging an experiments
+  directory.
+
+  '
+paper:
+  title: Distributed Conformal Prediction via Message Passing
+  venue: ICML 2025
+  year: 2025
+  url: https://arxiv.org/abs/2501.14544
+  github: https://github.com/HaifengWen/Distributed-Conformal-Prediction
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.103_qdcp.zip
+  archive_type: zip
+  local_dir_name: paper-103-QDCP
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.103_qdcp.zip
+  sha256: f4c79a3d5e5a28a6b2d53f67023f6a15efd49b4ab2204e0f90812cc9f9f43e1c
+  size_bytes: 881452
+display:
+  palette_seed: teal-ivory-message
+  art_style: network-calibration
+  accent_priority: medium
+image_path: ../image/103_aisb.t3.103_qdcp.jpg
+capability_tags:
+- conformal_prediction
+- distributed_learning
+- uncertainty_quantification
+- message_passing
+- research_code_optimization
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3

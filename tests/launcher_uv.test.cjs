@@ -443,6 +443,13 @@ test('browser auth helpers generate 16-character tokens and append them to URLs'
   );
 });
 
+test('parseLauncherArgs accepts --runner for selecting a non-Codex backend', () => {
+  const parsed = __internal.parseLauncherArgs(['--runner', 'claude', '--port', '20999']);
+
+  assert.equal(parsed.error, null);
+  assert.equal(parsed.runner, 'claude');
+});
+
 test('parseLauncherArgs accepts --codex-profile for provider-backed Codex setups', () => {
   const parsed = __internal.parseLauncherArgs([
     '--port',

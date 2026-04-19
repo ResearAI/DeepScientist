@@ -520,8 +520,6 @@ export const PRELOAD_PLUGIN_IDS: string[] = [
   "@ds/plugin-code-editor",
   "@ds/plugin-code-viewer",
   "@ds/plugin-cli",
-  "@ds/plugin-git-diff-viewer",
-  "@ds/plugin-notebook",
   "@ds/plugin-text-viewer",
   "@ds/plugin-markdown-viewer",
 ];

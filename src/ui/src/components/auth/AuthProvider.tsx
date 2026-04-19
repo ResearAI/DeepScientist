@@ -8,6 +8,7 @@ import HeroScene from '@/components/landing/HeroScene'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BRAND_LOGO_SMALL_SRC } from '@/lib/constants/assets'
+import { useMobileViewport } from '@/lib/hooks/useMobileViewport'
 import {
   clearBrowserAuthTokenFromLocation,
   fetchBrowserAuthToken,
@@ -116,27 +117,7 @@ function AuthLockScreen(props: {
   const hero = React.useMemo(() => getHeroBundle(props.locale), [props.locale])
   const prefersReducedMotion = useReducedMotion()
   const reducedMotion = prefersReducedMotion ?? false
-  const [isCompact, setIsCompact] = React.useState(() => {
-    if (typeof window === 'undefined') {
-      return false
-    }
-    return window.innerWidth < 1024
-  })
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-    const media = window.matchMedia('(max-width: 1023px)')
-    const sync = () => setIsCompact(media.matches)
-    sync()
-    media.addEventListener('change', sync)
-    window.addEventListener('resize', sync)
-    return () => {
-      media.removeEventListener('change', sync)
-      window.removeEventListener('resize', sync)
-    }
-  }, [])
+  const isCompact = useMobileViewport()
 
   const handleSubmit = React.useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {

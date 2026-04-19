@@ -1,0 +1,172 @@
+id: aisb.t3.037_dementiamask
+name: DementiaMask
+version: 0.1.0
+one_line: Debiasing benchmark for speech-based dementia detection using weight masking
+  to isolate gender-related confounding in transformer models.
+task_description: 'This packaged benchmark covers gender-confound mitigation in speech-based
+  dementia detection using two weight masking methods: Extended Confounding Filter
+  (ECF) and Dual Filter (DF). The workflow trains a BERT-based classifier on speech-derived
+  transcripts, then applies gradient-based weight tracking to identify and ablate
+  parameters encoding confounding information. Primary evaluation measures AUPRC and
+  delta-FPR (false positive rate gap between demographic groups) to assess both diagnostic
+  performance and fairness under distribution shift. The benchmark generates train/eval/test
+  splits with controlled confounder distributions via cf_train_test_split, supporting
+  configurable confounder ratios and test set imbalances.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: restricted
+primary_outputs:
+- diagnostic_scores
+- debiasing_report
+- delta_fpr
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run a single DualFilter evaluation path with preconfigured hyperparameters
+    (alpha_train=0.2, mask_ratio=0.10, 5 repetitions).
+- id: full_train_eval
+  label: Full Train + Eval
+  description: Run the complete masking-based debiasing workflow with configurable
+    confounder ratios via run_df.sh, including downstream fairness evaluation.
+- id: cf_evaluation
+  label: Confounding Filter Eval
+  description: Run the original Confounding Filter baseline via run_cf.sh for comparison.
+- id: ecf_evaluation
+  label: Extended Confounding Filter Eval
+  description: Run ECF with sequential layer unfreezing via run_ecf.sh.
+dataset_download:
+  primary_method: mixed
+  sources:
+  - deepscientist_url
+  notes:
+  - Archive contains pitts speech dataset with controlled confounder splits
+  - Data split parameters: train_pos_z0, train_pos_z1, alpha_test control confounder
+      distributions
+credential_requirements:
+  mode: external_access
+  items:
+  - deepscientist_download_token
+  notes:
+  - Requires ACL 2025 artifact access
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 30
+    gpu_count: 1
+    gpu_vram_gb: 8
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - transformers
+  - torch
+  - numpy
+  - pandas
+  notes:
+  - Model weights (bert-base-uncased) must be available locally or downloaded
+  - See bundled requirements.txt for full dependency set
+risk_flags:
+- distribution_shift
+- demographic_disparity
+risk_notes:
+- Fairness-accuracy trade-off observed: debiasing may slightly reduce dementia detection
+    AUPRC
+- Distribution shift between train and test confounder distributions can affect delta_FPR
+- Gender confounder mitigation effectiveness varies with mask_ratio hyperparameter
+recommended_when: 'Use this benchmark when evaluating bias mitigation techniques in
+  clinical NLP, studying gender confounding in dementia detection, or comparing weight
+  masking approaches (ECF vs DF vs naive baselines) on speech-derived medical text
+  classification.
+
+  '
+not_recommended_when: 'Do not use when access to speech or clinical datasets is unavailable,
+  or when pure diagnostic accuracy without fairness considerations is the sole objective.
+
+  '
+paper:
+  title: Mitigating Confounding in Speech-Based Dementia Detection through Weight
+    Masking
+  authors: Sheng, Ding, Hur, Li, Cohen, Pakhomov
+  venue: ACL 2025 Main
+  year: 2025
+  url: https://arxiv.org/abs/2506.05610
+  pages: 8
+  abstract: 'Deep transformer models detect linguistic anomalies in patient transcripts
+    for early Alzheimer''s disease screening. This work addresses gender confounding
+    via Extended Confounding Filter (ECF) and Dual Filter (DF), which isolate and
+    ablate gender-associated weights. Results show transformer models tend to overfit
+    training distributions; disrupting gender-related weights yields a deconfounded
+    classifier with trade-off of slightly reduced dementia detection performance.
+
+    '
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.037_dementiamask.zip
+  archive_type: zip
+  local_dir_name: paper-37-DementiaMask
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.037_dementiamask.zip
+  sha256: d759476e5d109aae5e6177cd9e294126e5d9fd1e1e21af1b40d16f855455ba5c
+  size_bytes: 98039
+display:
+  palette_seed: wine-silver-clinic
+  art_style: clinical-notebook
+  accent_priority: medium
+image_path: ../image/037_aisb.t3.037_dementiamask.jpg
+metric_evidence:
+- metric: auprc
+  origin: run_experiment.py
+  status: code_backed
+  protocol: 'Average Precision Score (APS) computed per group (full, confounder_0,
+    confounder_1) after DualFilter training and ablation. Reported per-group and aggregated.
+
+    '
+- metric: delta_fpr
+  origin: run_experiment.py
+  status: code_backed
+  protocol: 'Delta FPR = FPR_confounder_1 - FPR_confounder_0, where FPR = 1 - recall_neg.
+    Measures fairness gap between demographic groups after debiasing.
+
+    '
+execution_anchors:
+  primary: run_experiment.py
+  shell_scripts:
+  - run_df.sh
+  - run_cf.sh
+  - run_ecf.sh
+  model_modules:
+  - src/model/weights_filter.py
+  preprocessing: src/preprocessing/data_generator.py
+hardware_notes: 'Single GPU execution sufficient. bert-base-uncased requires ~1.1GB
+  GPU memory for inference. Training with 5 repetitions and 30 epochs per rep on full
+  dataset may require 8+ GB VRAM with gradient accumulation. CPU-only execution not
+  recommended for training.
+
+  '
+dataset_notes: 'pitts speech dataset contains first-person narrative transcripts from
+  dementia patients and healthy controls. cf_train_test_split generates controlled
+  confounder distributions with configurable P(Y=1|Z) for train and test sets. Key
+  parameters: train_pos_z0 (baseline dementia rate for Z=0), train_pos_z1 (baseline
+  dementia rate for Z=1), alpha_test (test set imbalance ratio). Test set fixed at
+  150 samples, validation at 120 samples.
+
+  '

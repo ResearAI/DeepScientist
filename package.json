@@ -5,6 +5,7 @@
   "license": "Apache-2.0",
   "files": [
     "AGENTS.md",
+    "AISB/",
     "README.md",
     "docs/",
     "install.sh",
@@ -35,6 +36,7 @@
     "research": "bin/ds.js"
   },
   "dependencies": {
+    "@anthropic-ai/claude-code": "^2.1.109",
     "@openai/codex": "^0.114.0",
     "ink": "npm:@jrichman/ink@6.4.6",
     "ink-gradient": "^3.0.0",

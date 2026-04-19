@@ -1,11 +1,15 @@
-Canvas makes the research map visible.
+Canvas: Your research map
 
-This is where the project stops feeling like a chat log and starts feeling like a structured research system. The important thing to notice is not only the successful branch, but the whole branching structure around it.
+Think of this as your research tech tree.
 
-- one baseline
-- multiple ideas
-- failed trials
-- successful main branch
-- later analysis and writing
+You'll see:
+- Starting point: The initial baseline
+- Branches: Different ideas you tried
+- Failed paths: Attempts that didn't work (still valuable)
+- Main trunk: The successful route
+- Outcomes: Papers, analysis, figures
 
-The graph should tell you **how the project grew**, not just where it ended.
+Why look at the map?
+It shows you how the project grew, not just where it ended.
+
+Tip: Every node is an exploration—even failed paths teach you something.

@@ -1,7 +1,25 @@
-This is the launch surface for a new research run.
+Welcome to your research launchpad
 
-When people first enter DeepScientist, this page is where a vague intention gets turned into a concrete project workspace. The goal here is not to chat in the abstract, but to state a task that the system can actually organize, execute, and verify.
+This is where every project begins. Think of it as your home base.
 
-- Start here when you want to create a fresh research workspace.
-- Bring a **clear, verifiable task** rather than an open-ended prompt.
-- A good request usually names the target problem, the expected evidence, and what a useful outcome should look like.
+**First time here? Follow these three steps:**
+
+1. Look at the main buttons on this page
+2. Skip the advanced settings for now
+3. Follow the tutorial—you'll be up and running in 5 minutes
+
+**What does this page do?**
+
+It turns a vague idea in your head into a real research project you can execute and verify.
+
+**When writing your research goal, state three things clearly:**
+
+- What problem do I want to investigate
+- What result counts as success
+- What conditions must be verified
+
+**Good example:**
+
+`Reproduce method X on dataset Y, compare against baseline Z, and confirm it trains on a single 24GB GPU.`
+
+Tip: Take your time. The tutorial will guide you through each feature step by step.

@@ -1,0 +1,193 @@
+id: aisb.t3.067_kanad
+name: 'KAN-AD: Time Series Anomaly Detection with Kolmogorov-Arnold Networks'
+version: 0.1.0
+one_line: Lightweight KAN-based time-series anomaly detection using Fourier basis
+  functions with 15% F1 improvement and 50% faster inference than vanilla KAN.
+task_description: 'This packaged benchmark covers time-series anomaly detection (TSAD)
+  using Kolmogorov-Arnold Networks (KAN) with redesigned univariate functions. The
+  core innovation replaces B-spline basis functions (used in vanilla KAN) with truncated
+  Fourier expansions, addressing KAN''s susceptibility to local disturbances in time
+  series data. The approach reformulates TSAD as approximation of time series with
+  smooth univariate functions, leveraging the insight that normal sequences exhibit
+  greater local smoothness than anomalies. The method incorporates differencing to
+  isolate trend effects and an index-based univariate function to capture fine-scale
+  periodic patterns. The local snapshot currently preserves metadata and audit material
+  rather than runnable code; executable source files require upstream restoration
+  before benchmark execution.
+
+  '
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 2-6h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- f1
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: Review the preserved benchmark metadata, paper materials, and TSAD
+    task framing.
+- id: restore_first
+  label: Restore First
+  description: Restore the missing source tree from the public GitHub repository (github.com/CSTCloudOps/KAN-AD)
+    before treating this as a runnable benchmark.
+dataset_download:
+  primary_method: mixed
+  sources:
+  - type: github
+    url: https://github.com/CSTCloudOps/KAN-AD
+    description: Public code repository for KAN-AD implementation
+  - type: benchmark
+    description: Four publicly available TSAD benchmark datasets referenced in the
+      paper
+  notes:
+  - The current local package does not preserve an executable benchmark route; dataset
+    setup is part of upstream restoration
+  - Four popular TSAD benchmarks are used in the paper evaluation
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes: CPU-only execution is plausible for the minimum analysis route
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 8
+    notes: GPU recommended for full evaluation with restored source
+environment:
+  python: null
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages: []
+  notes:
+  - The current local snapshot does not preserve executable setup files or runnable
+    source code
+  - Environment hints here are provisional pending upstream restoration from the public
+    repository
+  - CPU-only execution is plausible for the minimum analysis route
+  - The bundled local folder does not include a README or requirements file
+  - Restore environment details from github.com/CSTCloudOps/KAN-AD
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- blocked_no_code
+risk_notes:
+- The current snapshot is blocked because no executable code files are preserved
+- No benchmark execution was performed in this packaging pass
+- Treat as provisional until source restoration or richer local snapshot is recovered
+recommended_when: 'Use this entry when conducting paper-backed planning, upstream
+  restoration, or analysis of the KAN-based anomaly detection methodology. Suitable
+  for reviewing the TSAD task framing, examining the paper methodology (Fourier basis
+  functions replacing B-splines), or planning restoration from the public GitHub repository.
+
+  '
+not_recommended_when: 'Do not treat this local package as a ready-to-run anomaly benchmark.
+  No executable code is preserved in the staged snapshot. Do not attempt benchmark
+  execution without first restoring the source tree from the public repository.
+
+  '
+paper:
+  title: 'KAN-AD: Time Series Anomaly Detection with Kolmogorov-Arnold Networks'
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/zhou25u.html
+  github_url: https://github.com/CSTCloudOps/KAN-AD
+  authors:
+  - Quan Zhou
+  - Changhua Pei
+  - Fei Sun
+  - Jing Han
+  - Zhengwei Gao
+  - Haiming Zhang
+  - Gaogang Xie
+  - Dan Pei
+  - Jianhui Li
+  affiliations:
+  - Computer Network Information Center, Chinese Academy of Sciences
+  - University of Chinese Academy of Sciences
+  - Hangzhou Institute for Advanced Study
+  - Institute of Computing Technology, Chinese Academy of Sciences
+  - ZTE
+  - Department of Computer Science, Tsinghua University
+  - School of Frontier Sciences, Nanjing University
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.067_kanad.zip
+  archive_type: zip
+  local_dir_name: paper-67-KAN-AD
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.067_kanad.zip
+  sha256: 39c46b0ec921cd9342fdeda7a58471f5b5bff4e1f0747f9629424822710e8a96
+  size_bytes: 27708
+display:
+  palette_seed: peach-slate-anomaly
+  art_style: lightweight-analytics
+  accent_priority: medium
+image_path: ../image/067_aisb.t3.067_kanad.jpg
+capability_tags:
+- research_code_optimization
+- anomaly_detection
+- time_series
+- kolmogorov_arnold_networks
+- scientific_ml
+- univariate_tsad
+- fourier_basis
+- lightweight_models
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null
+metric_evidence:
+  primary_metric: f1
+  f1_status: blocked-no-code
+  f1_claim: 'Paper reports 15% average F1 improvement over state-of-the-art baselines
+    on four TSAD benchmarks
+
+    '
+  performance_notes:
+  - Peak improvement exceeds 27% over baselines
+  - 50% faster inference compared to original KAN
+  - Fewer than 1,000 trainable parameters
+  - Note: These claims require verification through restored execution
+technical_summary:
+  problem_domain: Univariate time series anomaly detection (UTS-TSAD)
+  input_format: Univariate time series x = [x_0, x_1, ..., x_t] with anomaly labels
+  core_methodology:
+  - Kolmogorov-Arnold Network backbone with redesigned univariate functions
+  - B-splines replaced with truncated Fourier expansions
+  - Index-based univariate function for fine-scale periodicity
+  - Differencing incorporated to isolate trend effects
+  key_insight: Normal sequences exhibit greater local smoothness than anomalies; reformulating
+    TSAD as smooth function approximation mitigates overfitting to local disturbances
+  three_stage_pipeline:
+  - mapping: Decompose input time window into multiple univariate functions
+  - reducing: Combine functions through learned coefficients to reconstruct normal
+      patterns
+  - projection: Leverage for anomaly scoring
+  evaluation_datasets:
+  - Four publicly available TSAD benchmark datasets (specific names not preserved
+    in snapshot)
+  baselines_compared:
+  - TimesNet
+  - Vanilla KAN
+  - Other forecasting-based TSAD methods
+  - VAE-based approaches (FCVAE)

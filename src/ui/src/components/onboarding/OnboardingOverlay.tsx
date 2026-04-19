@@ -8,20 +8,28 @@ import remarkGfm from 'remark-gfm'
 
 import { Button } from '@/components/ui/button'
 import { onboardingStepBodies } from '@/demo/onboarding/steps'
+import {
+  ONBOARDING_MOBILE_VIEWPORT_MAX_WIDTH,
+  useMobileViewport,
+} from '@/lib/hooks/useMobileViewport'
+import { useAdminOpsStore } from '@/lib/stores/admin-ops'
 import { cn } from '@/lib/utils'
 import { useOnboardingStore, type OnboardingLanguage } from '@/lib/stores/onboarding'
 
 type OnboardingStep = {
   id: string
-  route: 'landing' | 'project'
+  route: 'landing' | 'project' | 'settings'
   title: Record<OnboardingLanguage, string>
   body: Record<OnboardingLanguage, string>
+  hint?: Record<OnboardingLanguage, string>
   targetId?: string
   actionTargetId?: string
+  navigateTo?: string
   placement?: 'auto' | 'top' | 'bottom' | 'left' | 'right' | 'center'
-  advanceMode?: 'manual' | 'wait_for_element' | 'wait_for_route'
+  advanceMode?: 'manual' | 'wait_for_element' | 'wait_for_element_missing' | 'wait_for_route'
   waitForElementId?: string
   waitForRoute?: RegExp
+  routePattern?: RegExp
   autoSkipIfTargetMissing?: boolean
 }
 
@@ -37,9 +45,9 @@ type OverlayCopy = {
   next: string
   finish: string
   skip: string
-  continueWithoutAction: string
   waitForAction: string
   waitingTarget: string
+  readingHint: string
 }
 
 const COPY: Record<OnboardingLanguage, OverlayCopy> = {
@@ -56,9 +64,9 @@ const COPY: Record<OnboardingLanguage, OverlayCopy> = {
     next: 'Next',
     finish: 'Finish',
     skip: 'Skip tutorial',
-    continueWithoutAction: 'Continue anyway',
-    waitForAction: 'Use the highlighted area to continue.',
-    waitingTarget: 'Waiting for this area to appear…',
+    waitForAction: 'You can click the highlighted area yourself, or press Next and I will continue for you.',
+    waitingTarget: 'Waiting for the next area to appear. If the page is still moving, give it a second.',
+    readingHint: 'Take your time. This step will not move on until you press Next.',
   },
   zh: {
     chooserTitle: '选择首次教程语言',
@@ -73,9 +81,9 @@ const COPY: Record<OnboardingLanguage, OverlayCopy> = {
     next: '下一步',
     finish: '完成',
     skip: '跳过教程',
-    continueWithoutAction: '先继续',
-    waitForAction: '请使用高亮区域完成这一步。',
-    waitingTarget: '正在等待对应区域出现…',
+    waitForAction: '你可以自己点击高亮区域，也可以直接按“下一步”，我会替你继续。',
+    waitingTarget: '正在等待下一块区域出现。如果页面还在变化，稍等一秒即可。',
+    readingHint: '这一页不会自动跳走，你可以先把当前区域看清楚，再按“下一步”。',
   },
 }
 
@@ -113,6 +121,96 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
       zh: '这里是研究启动页',
     },
     body: onboardingStepBodies['landing-intro'],
+  },
+  {
+    id: 'landing-surfaces',
+    route: 'landing',
+    targetId: 'landing-entry-actions',
+    title: {
+      en: 'These are the three main entry paths',
+      zh: '这里是三个主要入口',
+    },
+    body: onboardingStepBodies['landing-surfaces'],
+  },
+  {
+    id: 'landing-open-benchstore',
+    route: 'landing',
+    targetId: 'landing-benchstore',
+    title: {
+      en: 'Open BenchStore first',
+      zh: '先打开 BenchStore',
+    },
+    body: onboardingStepBodies['landing-open-benchstore'],
+    actionTargetId: 'landing-benchstore',
+    advanceMode: 'wait_for_element',
+    waitForElementId: 'benchstore-dialog',
+  },
+  {
+    id: 'benchstore-overview',
+    route: 'landing',
+    targetId: 'benchstore-overview-surface',
+    title: {
+      en: 'BenchStore starts as a storefront view',
+      zh: 'BenchStore 先以 storefront 方式出现',
+    },
+    body: onboardingStepBodies['benchstore-overview'],
+    placement: 'top',
+    autoSkipIfTargetMissing: true,
+  },
+  {
+    id: 'benchstore-copilot',
+    route: 'landing',
+    targetId: 'benchstore-assistant-surface',
+    title: {
+      en: 'BenchStore Copilot can recommend and prepare launch details',
+      zh: 'BenchStore Copilot 会帮你推荐并补齐启动信息',
+    },
+    body: onboardingStepBodies['benchstore-copilot'],
+    placement: 'left',
+  },
+  {
+    id: 'benchstore-open-detail',
+    route: 'landing',
+    targetId: 'benchstore-featured-card',
+    title: {
+      en: 'Open one benchmark detail page',
+      zh: '打开一个 benchmark 详情页',
+    },
+    body: onboardingStepBodies['benchstore-open-detail'],
+    actionTargetId: 'benchstore-featured-card',
+    advanceMode: 'wait_for_element',
+    waitForElementId: 'benchstore-detail-surface',
+    autoSkipIfTargetMissing: true,
+  },
+  {
+    id: 'benchstore-detail',
+    route: 'landing',
+    targetId: 'benchstore-detail-surface',
+    title: {
+      en: 'This detail page is where the choice becomes real',
+      zh: '真正做选择时看的是这个详情页',
+    },
+    body: onboardingStepBodies['benchstore-detail'],
+    placement: 'top',
+    autoSkipIfTargetMissing: true,
+  },
+  {
+    id: 'benchstore-start',
+    route: 'landing',
+    targetId: 'benchstore-detail-action-strip',
+    title: {
+      en: 'This strip is the handoff into launch',
+      zh: '这个动作区就是进入启动流程的交接点',
+    },
+    body: onboardingStepBodies['benchstore-start'],
+    hint: {
+      en: 'Read this handoff point first. Then press Next and I will close BenchStore before continuing.',
+      zh: '先看清这个交接点，再按“下一步”，我会先替你退出 BenchStore，然后继续。',
+    },
+    actionTargetId: 'benchstore-close',
+    advanceMode: 'wait_for_element_missing',
+    waitForElementId: 'benchstore-dialog',
+    placement: 'top',
   },
   {
     id: 'landing-open-dialog',
@@ -204,9 +302,55 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     body: onboardingStepBodies['dialog-references'],
   },
   {
+    id: 'dialog-connectors',
+    route: 'landing',
+    targetId: 'start-research-connector',
+    title: {
+      en: 'Choose where delivery and updates should go',
+      zh: '选择启动后消息要投递到哪里',
+    },
+    body: onboardingStepBodies['dialog-connectors'],
+  },
+  {
+    id: 'dialog-deepxiv',
+    route: 'landing',
+    targetId: 'start-research-deepxiv',
+    title: {
+      en: 'DeepXiv changes the literature route',
+      zh: 'DeepXiv 会改变文献路线',
+    },
+    body: onboardingStepBodies['dialog-deepxiv'],
+  },
+  {
+    id: 'dialog-contract',
+    route: 'landing',
+    targetId: 'start-research-contract',
+    title: {
+      en: 'The launch contract changes how the run begins',
+      zh: '这组启动合同会改变项目最初的推进方式',
+    },
+    body: onboardingStepBodies['dialog-contract'],
+    placement: 'left',
+  },
+  {
+    id: 'dialog-setup-agent',
+    route: 'landing',
+    targetId: 'start-research-assistant-surface',
+    title: {
+      en: 'SetupAgent can help complete the launch form',
+      zh: 'SetupAgent 可以协助补齐启动表单',
+    },
+    body: onboardingStepBodies['dialog-setup-agent'],
+    actionTargetId: 'start-research-toggle-preview',
+    advanceMode: 'wait_for_element',
+    waitForElementId: 'start-research-preview-surface',
+    placement: 'left',
+    autoSkipIfTargetMissing: true,
+  },
+  {
     id: 'dialog-preview',
     route: 'landing',
-    targetId: 'start-research-preview',
+    targetId: 'start-research-preview-surface',
     title: {
       en: 'Review the kickoff prompt before you create',
       zh: '创建前看一眼 kickoff Prompt',
@@ -446,6 +590,60 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     },
     body: onboardingStepBodies['workspace-next-action'],
   },
+  {
+    id: 'workspace-open-admin',
+    route: 'project',
+    targetId: 'workspace-navbar',
+    title: {
+      en: 'The tutorial ends with the operator surface',
+      zh: '教程最后会收尾到运维控制面',
+    },
+    body: onboardingStepBodies['workspace-open-admin'],
+    navigateTo: '/settings/summary',
+    advanceMode: 'wait_for_route',
+    waitForRoute: /^\/settings\/summary$/,
+  },
+  {
+    id: 'admin-summary',
+    route: 'settings',
+    routePattern: /^\/settings\/summary$/,
+    targetId: 'settings-admin-summary-surface',
+    title: {
+      en: 'Admin Summary is the system overview',
+      zh: 'Admin Summary 是系统总览页',
+    },
+    body: onboardingStepBodies['admin-summary'],
+    navigateTo: '/settings/quests',
+    advanceMode: 'wait_for_route',
+    waitForRoute: /^\/settings\/quests(?:\/[^/]+)?$/,
+    placement: 'top',
+    autoSkipIfTargetMissing: true,
+  },
+  {
+    id: 'admin-quests',
+    route: 'settings',
+    routePattern: /^\/settings\/quests(?:\/[^/]+)?$/,
+    targetId: 'settings-admin-quests-surface',
+    title: {
+      en: 'Quest Supervision is the operator table',
+      zh: 'Quest Supervision 是运维总表',
+    },
+    body: onboardingStepBodies['admin-quests'],
+    placement: 'top',
+    autoSkipIfTargetMissing: true,
+  },
+  {
+    id: 'admin-copilot',
+    route: 'settings',
+    routePattern: /^\/settings\/quests(?:\/[^/]+)?$/,
+    targetId: 'settings-admin-copilot-recipes',
+    title: {
+      en: 'Admin Copilot can inspect and prepare ISSUE / PR handoffs',
+      zh: 'Admin Copilot 可以自检并走 ISSUE / PR 路线',
+    },
+    body: onboardingStepBodies['admin-copilot'],
+    placement: 'left',
+  },
 ]
 
 function queryTarget(id?: string | null) {
@@ -457,6 +655,12 @@ function stepNeedsCopilotPanel(step: OnboardingStep | null) {
   if (!step) return false
   const ids = [step.targetId, step.actionTargetId, step.waitForElementId].filter(Boolean)
   return ids.some((id) => id === 'workspace-copilot-panel' || id === 'quest-copilot-mode-tabs')
+}
+
+function stepNeedsAdminCopilot(step: OnboardingStep | null) {
+  if (!step) return false
+  const ids = [step.targetId, step.actionTargetId, step.waitForElementId].filter(Boolean)
+  return ids.some((id) => id === 'settings-admin-copilot-rail' || id === 'settings-admin-copilot-recipes')
 }
 
 function isVerticalScrollable(element: HTMLElement) {
@@ -563,8 +767,17 @@ function triggerTargetAction(id?: string | null) {
 }
 
 function routeMatches(step: OnboardingStep, pathname: string) {
-  if (step.route === 'landing') return pathname === '/'
-  return /^\/(projects\/[^/]+|tutorial\/demo\/[^/]+)$/.test(pathname)
+  const baseMatch =
+    step.route === 'landing'
+      ? pathname === '/'
+      : step.route === 'project'
+        ? /^\/(projects\/[^/]+|tutorial\/demo\/[^/]+)$/.test(pathname)
+        : /^\/settings(?:\/.*)?$/.test(pathname)
+  if (!baseMatch) return false
+  if (step.routePattern) {
+    return step.routePattern.test(pathname)
+  }
+  return true
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -726,11 +939,11 @@ export function OnboardingOverlay() {
 
   const [targetRect, setTargetRect] = React.useState<DOMRect | null>(null)
   const [targetFound, setTargetFound] = React.useState(false)
-  const [cardSize, setCardSize] = React.useState({ width: 360, height: 260 })
-  const [isMobileViewport, setIsMobileViewport] = React.useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.matchMedia('(max-width: 767px)').matches
+  const [cardSize, setCardSize] = React.useState({ width: 466, height: 260 })
+  const isMobileViewport = useMobileViewport({
+    maxWidth: ONBOARDING_MOBILE_VIEWPORT_MAX_WIDTH,
   })
+  const startAdminOpsSession = useAdminOpsStore((state) => state.startFreshSession)
   const cardRef = React.useRef<HTMLDivElement | null>(null)
   const step = status === 'running' ? ONBOARDING_STEPS[stepIndex] ?? null : null
   const activeLanguage = language === 'zh' || language === 'en' ? language : 'en'
@@ -763,6 +976,10 @@ export function OnboardingOverlay() {
 
   const advanceWithAction = React.useCallback(() => {
     if (status !== 'running' || !step) return
+    if (step.navigateTo) {
+      navigate(step.navigateTo)
+      return
+    }
     if (step.actionTargetId || (step.advanceMode === 'wait_for_element' && step.targetId)) {
       const acted = triggerTargetAction(step.actionTargetId || step.targetId)
       if (!acted) {
@@ -771,20 +988,11 @@ export function OnboardingOverlay() {
       return
     }
     advance()
-  }, [advance, status, step])
+  }, [advance, navigate, status, step])
 
   React.useEffect(() => {
     hydrate()
   }, [hydrate])
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return
-    const media = window.matchMedia('(max-width: 767px)')
-    const update = () => setIsMobileViewport(media.matches)
-    update()
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
 
   React.useEffect(() => {
     if (isMobileViewport && status !== 'idle') {
@@ -881,6 +1089,14 @@ export function OnboardingOverlay() {
 
   React.useEffect(() => {
     if (status !== 'running' || !step) return
+    if (step.advanceMode !== 'wait_for_element_missing' || !step.waitForElementId) return
+    if (queryTarget(step.waitForElementId)) return
+    const timer = window.setTimeout(() => advance(), 120)
+    return () => window.clearTimeout(timer)
+  }, [advance, status, step, targetRect])
+
+  React.useEffect(() => {
+    if (status !== 'running' || !step) return
     if (!step.autoSkipIfTargetMissing) return
     if (!routeMatches(step, location.pathname)) return
     if (targetFound) return
@@ -920,6 +1136,31 @@ export function OnboardingOverlay() {
     }
   }, [location.pathname, status, step, targetFound])
 
+  React.useEffect(() => {
+    if (status !== 'running' || !step) return
+    if (!routeMatches(step, location.pathname)) return
+    if (!stepNeedsAdminCopilot(step)) return
+
+    let cancelled = false
+
+    const ensureAdminCopilot = () => {
+      if (cancelled) return
+      const relevantTargetId =
+        step.targetId === 'settings-admin-copilot-recipes'
+          ? 'settings-admin-copilot-recipes'
+          : 'settings-admin-copilot-rail'
+      if (queryTarget(relevantTargetId)) return
+      startAdminOpsSession(location.pathname || '/settings')
+    }
+
+    ensureAdminCopilot()
+    const intervalId = window.setInterval(ensureAdminCopilot, 700)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [location.pathname, startAdminOpsSession, status, step, targetFound])
+
   if (!hydrated) {
     return null
   }
@@ -947,7 +1188,10 @@ export function OnboardingOverlay() {
     return null
   }
 
-  const isActionStep = step.advanceMode === 'wait_for_element' || step.advanceMode === 'wait_for_route'
+  const isActionStep =
+    step.advanceMode === 'wait_for_element' ||
+    step.advanceMode === 'wait_for_element_missing' ||
+    step.advanceMode === 'wait_for_route'
   const highlightPadding = 8
   const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1280
   const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 720
@@ -991,10 +1235,16 @@ export function OnboardingOverlay() {
       ? activeLanguage === 'zh'
         ? '启动页'
         : 'Launch Surface'
-      : activeLanguage === 'zh'
-        ? '项目工作区'
-        : 'Project Workspace'
+      : step.route === 'project'
+        ? activeLanguage === 'zh'
+          ? '项目工作区'
+          : 'Project Workspace'
+        : activeLanguage === 'zh'
+          ? '设置与管理'
+          : 'Settings & Admin'
   const focusLabel = activeLanguage === 'zh' ? '请看这里' : 'Look here'
+  const infoMessage = step.hint?.[activeLanguage]
+    ?? (isActionStep ? (targetFound ? copy.waitForAction : copy.waitingTarget) : copy.readingHint)
 
   return (
     <div className={cn('pointer-events-none fixed inset-0', ONBOARDING_LAYER_CLASS)}>
@@ -1002,11 +1252,11 @@ export function OnboardingOverlay() {
       {overlayRect ? (
         <>
           <div
-            className="pointer-events-auto fixed left-0 top-0 bg-[rgba(9,11,15,0.7)] backdrop-blur-[2px]"
+            className="fixed left-0 top-0 bg-[rgba(9,11,15,0.7)] backdrop-blur-[2px] pointer-events-auto"
             style={{ width: '100vw', height: overlayRect.top }}
           />
           <div
-            className="pointer-events-auto fixed left-0 bg-[rgba(9,11,15,0.7)] backdrop-blur-[2px]"
+            className="fixed left-0 bg-[rgba(9,11,15,0.7)] backdrop-blur-[2px] pointer-events-auto"
             style={{
               top: overlayRect.top,
               width: overlayRect.left,
@@ -1014,7 +1264,7 @@ export function OnboardingOverlay() {
             }}
           />
           <div
-            className="pointer-events-auto fixed bg-[rgba(9,11,15,0.7)] backdrop-blur-[2px]"
+            className="fixed bg-[rgba(9,11,15,0.7)] backdrop-blur-[2px] pointer-events-auto"
             style={{
               top: overlayRect.top,
               left: overlayRect.right,
@@ -1023,7 +1273,7 @@ export function OnboardingOverlay() {
             }}
           />
           <div
-            className="pointer-events-auto fixed left-0 bg-[rgba(9,11,15,0.7)] backdrop-blur-[2px]"
+            className="fixed left-0 bg-[rgba(9,11,15,0.7)] backdrop-blur-[2px] pointer-events-auto"
             style={{
               top: overlayRect.bottom,
               width: '100vw',
@@ -1076,12 +1326,12 @@ export function OnboardingOverlay() {
           ) : null}
         </>
       ) : (
-        <div className="pointer-events-auto absolute inset-0 bg-[rgba(9,11,15,0.72)] backdrop-blur-[3px]" />
+        <div className="absolute inset-0 bg-[rgba(9,11,15,0.72)] backdrop-blur-[3px] pointer-events-auto" />
       )}
 
       <div
         ref={cardRef}
-        className="pointer-events-auto fixed w-[min(388px,calc(100vw-32px))] overflow-hidden rounded-[30px] border border-[rgba(255,255,255,0.28)] bg-[linear-gradient(180deg,rgba(255,252,248,0.98),rgba(246,239,231,0.95))] p-5 shadow-[0_32px_110px_-44px_rgba(15,23,42,0.62)] backdrop-blur-xl"
+        className="pointer-events-auto fixed w-[min(466px,calc(100vw-32px))] overflow-hidden rounded-[30px] border border-[rgba(255,255,255,0.28)] bg-[linear-gradient(180deg,rgba(255,252,248,0.98),rgba(246,239,231,0.95))] p-5 shadow-[0_32px_110px_-44px_rgba(15,23,42,0.62)] backdrop-blur-xl"
         style={{
           top: cardPosition.top,
           left: cardPosition.left,
@@ -1138,7 +1388,12 @@ export function OnboardingOverlay() {
             </div>
             {isActionStep ? (
               <div className="mt-4 rounded-[20px] border border-[rgba(126,77,42,0.12)] bg-[linear-gradient(180deg,rgba(251,248,244,0.92),rgba(241,234,225,0.82))] px-3.5 py-3 text-[12px] leading-6 text-[rgba(86,82,77,0.84)] shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
-                {targetFound ? copy.waitForAction : copy.waitingTarget}
+                {infoMessage}
+              </div>
+            ) : null}
+            {!isActionStep ? (
+              <div className="mt-4 rounded-[20px] border border-[rgba(126,77,42,0.12)] bg-[linear-gradient(180deg,rgba(251,248,244,0.92),rgba(241,234,225,0.82))] px-3.5 py-3 text-[12px] leading-6 text-[rgba(86,82,77,0.84)] shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
+                {infoMessage}
               </div>
             ) : null}
           </div>

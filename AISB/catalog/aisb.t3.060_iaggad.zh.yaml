@@ -1,0 +1,100 @@
+id: aisb.t3.060_iaggad
+name: 'IA-GGAD: Zero-shot Generalist Graph Anomaly Detection via Invariant and Affinity
+  Learning'
+version: 0.1.0
+one_line: |-
+  使用不变特征学习和结构不敏感亲和模块进行零样本通用图异常检测，以处理跨域图偏移。
+task_description: |-
+  此打包基准实现 IA-GGAD，这是一个零样本通用图异常检测框架，能够在无需任务特定重训练或微调的情况下检测跨多样化图域的异常节点。该方法解决两个核心域偏移挑战：通过异常驱动的图不变学习模块学习域不变节点表示来应对特征空间偏移（FSS），以及通过结构不敏感亲和学习模块捕获跨域结构对应关系来应对图结构偏移（GSS）。训练使用来自社交、引用和电子商务领域的源图；评估在保留的目标图上测量异常检测性能。基准入口点为 run_IA_GGAD.py，执行源数据集上的 60 轮训练和目标数据集上的评估，报告 AUROC 作为主要指标。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- auroc
+- anomaly_scores
+- graph_eval_report
+launch_profiles:
+- id: full_benchmark
+  label: Full Benchmark
+  label_zh: 完整基准测试
+  description: |-
+    执行完整的 IA-GGAD 基准测试流程：在源数据集（pubmed、Flickr、questions、YelpChi）上训练，并在目标数据集（cora、citeseer、ACM、BlogCatalog、Facebook、weibo、Reddit、Amazon）上评估。默认配置使用 GCN 主干网络，训练 60 轮。
+dataset_download:
+  primary_method: direct_archive
+  sources:
+  - url: https://deepscientist.cc/AISB/060_iaggad
+    type: primary
+  notes:
+  - 压缩包包含完整的源代码、配置文件和参数集。
+  - 图数据集由 params/ 目录中的配置 JSON 文件引用。
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: 3.8.14
+  cuda: '11.7'
+  pytorch: 1.13.1
+  flash_attn: null
+  key_packages:
+  - dgl==0.9.1
+  - torch==1.13.1
+  - numpy
+  - scikit-learn
+  notes:
+  - 需要 CUDA 11.7 版本的 DGL（dgl-0.9.1+cu117）。
+  - 有关完整依赖项集合，请参阅捆绑的 README/requirements.txt。
+  - 由于 DGL 图操作需要 GPU 进行训练和评估。
+risk_flags:
+- requires_gpu
+- long_runtime
+risk_notes:
+  - 在最低配置上使用单 GPU 训练 60 轮可能需要数小时。
+  - 不支持纯 CPU 执行；DGL 操作需要 CUDA。
+  - 未执行静态代码审计；需要运行时验证。
+recommended_when: |-
+  当需要评估或优化必须在无需目标域微调的情况下跨域泛化的图异常检测方法时使用此基准。非常适合评估异构图结构上 GAD 模型的零样本迁移能力。
+not_recommended_when: |-
+  如果需要纯 CPU 基线、非图异常检测任务或仅单域评估，请勿使用。在没有 GPU 硬件可用时也不适用。
+paper:
+  title: 'IA-GGAD: Zero-shot Generalist Graph Anomaly Detection via Invariant and
+    Affinity Learning'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=Cggdvyt8ik
+  github: https://github.com/kg-cc/IA-GGAD/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.060_iaggad.zip
+  archive_type: zip
+  local_dir_name: paper-60-IAGGAD
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.060_iaggad.zip
+  sha256: 4a3697f8b28d81d5b8bb432759c92b99abc3ca5e02233241c1efcddf7a8137c4
+  size_bytes: 191680
+display:
+  palette_seed: emerald-slate-graph
+  art_style: anomaly-atlas
+  accent_priority: high
+image_path: ../image/060_aisb.t3.060_iaggad.jpg

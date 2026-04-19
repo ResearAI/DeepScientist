@@ -1,0 +1,144 @@
+id: aisb.t3.033_gcse
+name: GCSE
+version: 0.1.0
+one_line: Unsupervised sentence embedding optimization using knowledge graph-guided
+  augmentation and Gaussian-decayed contrastive learning for noise-aware training.
+task_description: 'This packaged benchmark covers unsupervised sentence embedding
+  training via the Gaussian-decayed gradient-assisted Contrastive Sentence Embedding
+  (GCSE) model. The method addresses two primary challenges in unsupervised sentence
+  representation: low data diversity and high data noise. The pipeline first extracts
+  fine-grained knowledge (entities, quantities) from source data to construct a knowledge
+  graph, then uses an LLM to synthesize diverse positive samples. An evaluation model
+  annotates and filters false positives, while a Gaussian-decayed function reduces
+  the gradient impact of false negatives during training, gradually restoring weights
+  as training progresses. This preserves sample diversity while preventing noisy samples
+  from distorting the semantic space. The benchmark evaluates on multiple STS tasks
+  via SentEval.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- avg_sts
+- embedding_checkpoint
+- contrastive_eval_report
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run the packaged sentence-embedding evaluation route using SentEval
+    on STS benchmarks (STS12-STS16, STS-Benchmark, SICK-Relatedness).
+- id: full_train_eval
+  label: Full Train + Eval
+  description: Execute the full GCSE training pipeline with knowledge graph construction,
+    LLM-based data synthesis, denoising, and downstream evaluation.
+dataset_download:
+  primary_method: url
+  sources:
+  - url: https://deepscientist.cc/AISB/033_gcse
+    archive_type: zip
+  notes:
+  - Dataset includes source domain data and pre-processed knowledge graphs for augmentation.
+  - LLM-based data synthesis may require additional model weights depending on configuration.
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.12'
+  cuda: '12.0'
+  pytorch: '2.0'
+  flash_attn: null
+  key_packages:
+  - transformers==4.44.1
+  - senteval
+  - prettytable
+  notes:
+  - The README explicitly recommends a separate vLLM environment for LLM-based data
+    synthesis tasks.
+  - Default training uses bert-base-uncased as base model; other encoder variants
+    (BERT-large, RoBERTa-base, RoBERTa-large) are supported per paper experiments.
+  - See bundled requirements.txt and pipeline dependencies for full environment setup.
+risk_flags:
+- requires_llm_synthesis
+- single_gpu_training
+risk_notes:
+- LLM-based data synthesis (pipelines/5-8) requires inference access to a language
+  model; vLLM is recommended for efficiency.
+- Training time scales with dataset size and synthesis volume; the 6-24h estimate
+  assumes moderate-scale domain data.
+- No benchmark execution was performed in this packaging pass; runtime validation
+  is recommended before trusting reported metric values.
+recommended_when: 'Use this benchmark for moderate-scale NLP training tasks focused
+  on semantic textual similarity and sentence embedding robustness. Suitable when
+  exploring knowledge-driven data augmentation or noise-aware contrastive learning
+  for improving unsupervised sentence representations.
+
+  '
+not_recommended_when: 'Do not use this if you require a fully CPU-only workflow, a
+  benchmark centered on full autoregressive generation, or if no GPU resources are
+  available. Not suitable for tasks requiring multi-GPU distributed training at scale.
+
+  '
+paper:
+  title: Enhancing Unsupervised Sentence Embeddings via Knowledge-Driven Data Augmentation
+    and Gaussian-Decayed Contrastive Learning
+  venue: ACL 2025
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.244/
+  authors:
+  - Peichao Lai (Peking University)
+  - Zhengfeng Zhang (Fuzhou University)
+  - Wentao Zhang (Peking University)
+  - Fangcheng Fu (Peking University)
+  - Bin Cui (Peking University)
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.033_gcse.zip
+  archive_type: zip
+  local_dir_name: paper-33-GCSE
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.033_gcse.zip
+  sha256: 1d0220f894ed883ae572eb0da0ce1a358966a280ddfafadeb19a9db1f01f7866
+  size_bytes: 912820
+display:
+  palette_seed: mint-slate-semantic
+  art_style: embedding-atlas
+  accent_priority: medium
+image_path: ../image/033_aisb.t3.033_gcse.jpg
+capability_tags:
+- research_code_optimization
+- sentence_embeddings
+- representation_learning
+- data_augmentation
+- nlp
+- contrastive_learning
+- knowledge_graphs
+- noise_aware_training
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null

@@ -24,7 +24,7 @@ import type { ConnectorSnapshot } from '@/types'
 const copy = {
   en: {
     title: 'Copilot Setup',
-    body: 'Create first. Start later.',
+    body: 'Fits any research task that only needs lightweight assistance.',
     essentialsTitle: 'Essentials',
     essentialsHint: 'A title and one connector are enough.',
     advancedTitle: 'Advanced options',
@@ -51,7 +51,7 @@ const copy = {
   },
   zh: {
     title: 'Copilot 配置',
-    body: '先创建，稍后再开始。',
+    body: '适合任何需要简单辅助的科研任务',
     essentialsTitle: '必要信息',
     essentialsHint: '标题和一个 connector 就够了。',
     advancedTitle: '高级设置',
@@ -250,7 +250,7 @@ export function CreateCopilotProjectDialog(props: {
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder={t.titlePlaceholder}
-                className="h-12 rounded-[18px] border-black/10 bg-white/80 text-base text-[#2D2A26] placeholder:text-[#8A8278]"
+                className="h-12 rounded-[18px] border-black/10 bg-white/80 text-base text-black placeholder:text-[rgba(107,103,97,0.72)] caret-black dark:text-black dark:placeholder:text-[rgba(107,103,97,0.72)]"
               />
             </div>
 

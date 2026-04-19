@@ -1,0 +1,123 @@
+schema_version: 1
+id: aisb.t3.080_latentscorereweight
+name: Latent Score-Based Reweighting for Robust Classification on Imbalanced Tabular Data
+version: 0.1.0
+one_line: 在分布偏移下用于稳健表格分类的基于分数的密度重加权方法，无需群组标签。
+task_description: 该基准面向稳健表格分类：利用 score-based（扩散）模型的潜在分数信号识别并上调联合分布 P(X, Y) 中代表性不足区域。不同于 JTT 等只在决策边界 P(Y|X) 附近上调误分类样本的方法，本方法通过与邻近样本的分数向量相似性估计局部密度，并重加权低密度区域，从而得到更全局平衡的训练分布，且不需要群组标签先验。评测目标为分布偏移下的 worst-group accuracy 与 mean accuracy。当前本地快照不含可执行训练/评估代码，两项主指标均为 blocked-no-code，执行前必须先恢复源码。
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+capability_tags:
+- robust_classification
+- tabular_ml
+- score_based_models
+- distribution_shift
+- data_reweighting
+- imbalanced_data
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+primary_outputs:
+- worst_group_accuracy
+- mean_accuracy
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: 'Review preserved benchmark metadata, metric contracts, and paper artefacts. No executable code is present in the current snapshot; this profile supports planning and paper-backed analysis only.
+
+    '
+- id: restore_first
+  label: Restore First
+  description: 'Restore the missing latent-score reweighting implementation from the upstream repository (https://github.com/YunzeTong/latent-score-based-reweighting) before treating this entry as runnable. Both metrics remain blocked until restoration.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources: []
+  notes:
+  - 'The current local snapshot does not preserve an executable benchmark route. Dataset setup should be treated as part of upstream restoration rather than a bundled run path. Refer to the paper and upstream GitHub repository for dataset identities and loading instructions.
+
+    '
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: null
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages: []
+  notes:
+  - 'The current local snapshot does not preserve executable setup files or runnable source code. Environment requirements should be treated as provisional until upstream restoration from https://github.com/YunzeTong/latent-score-based-reweighting is complete.
+
+    '
+  - 'Expected dependencies include a score-based or diffusion model library, standard tabular ML packages (e.g. scikit-learn, XGBoost), and a PyTorch backend for the generative density estimation stage. Confirm exact versions from the upstream repository''s requirements file after restoration.
+
+    '
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- metrics_blocked_no_code
+risk_notes:
+- 'Both primary metrics (worst_group_accuracy, mean_accuracy) are marked blocked-no-code in the metric contract. No executable code anchor was detected in the staged snapshot. Do not report metric values until trusted execution outputs exist from a restored environment.
+
+  '
+- 'The top-level README is absent from the current snapshot. Do not rely on README-only interpretation; prefer the paper (latex.md) and metric contract (json/metric_contract.json) as authoritative references.
+
+  '
+recommended_when: 当你需要基于论文进行方案规划、方法分析，或为 latent score-based reweighting 做上游恢复范围界定时可使用本条目。也适合在设计/综述阶段比较密度重加权与边界重加权（如 JTT）。
+not_recommended_when: 不要将当前本地包作为可直接运行的稳健性基准。当前分阶段快照缺少可执行生成式重加权流程，且两项指标均被阻塞。任何结果都应来自完整恢复并验证后的执行环境。
+paper:
+  title: Latent Score-Based Reweighting for Robust Classification on Imbalanced Tabular Data
+  authors:
+  - Yunze Tong
+  - Fengda Zhang
+  - Zihao Tang
+  - Kaifeng Gao
+  - Kai Huang
+  - Pengfei Lyu
+  - Jun Xiao
+  - Kun Kuang
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/tong25c.html
+  code_url: https://github.com/YunzeTong/latent-score-based-reweighting
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.080_latentscorereweight.zip
+  archive_type: zip
+  local_dir_name: paper-80-LatentScoreReweight
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.080_latentscorereweight.zip
+  sha256: 9c70bcc4a57a17ffc712a81763731ba5c5f46c987ca83e9b5cd0d730a18e0d03
+  size_bytes: 36629
+commercial:
+  annual_fee: null
+display:
+  palette_seed: copper-teal-reweight
+  art_style: robust-tabular
+  accent_priority: high
+image_path: ../image/080_aisb.t3.080_latentscorereweight.jpg

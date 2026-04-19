@@ -8,6 +8,7 @@ import {
   ExternalLink,
   FilePlus,
   FolderPlus,
+  FolderOpen,
   Pencil,
   Copy,
   Scissors,
@@ -19,6 +20,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { PngIcon } from "@/components/ui/png-icon";
+import { copyToClipboard } from "@/lib/clipboard";
+import { useToast } from "@/components/ui/toast";
+import { useI18n } from "@/lib/i18n/useI18n";
+import { toProjectRelativeDisplayPath } from "@/lib/utils/project-relative-path";
 
 function withPngFallback(
   name: string,
@@ -44,6 +49,7 @@ const BracesIcon = withPngFallback("Braces", Braces);
 const PlayIcon = withPngFallback("Play", Play);
 const DownloadIcon = withPngFallback("Download", Download);
 const RefreshCwIcon = withPngFallback("RefreshCw", RefreshCw);
+const FolderOpenIcon = withPngFallback("FolderOpen", FolderOpen);
 
 /**
  * FileTreeContextMenu props
@@ -75,6 +81,12 @@ export interface FileTreeContextMenuProps {
 
   /** Callback when delete should be confirmed externally */
   onRequestDelete?: (node: FileNode) => void;
+
+  /** Callback when the node should be revealed in the full explorer */
+  onRevealInExplorer?: (node: FileNode) => void;
+
+  /** Callback when the node's containing folder should be opened */
+  onOpenContainingFolder?: (node: FileNode) => void;
 
   /** When true, show only non-mutating actions (open/download). */
   readOnly?: boolean;
@@ -139,9 +151,13 @@ export function FileTreeContextMenu({
   onNewLatexProject,
   onCompileLatexSource,
   onRequestDelete,
+  onRevealInExplorer,
+  onOpenContainingFolder,
   readOnly = false,
 }: FileTreeContextMenuProps) {
   const menuRef = React.useRef<HTMLDivElement>(null);
+  const { addToast } = useToast();
+  const { t } = useI18n("workspace");
   const {
     createFolder,
     startRenaming,
@@ -157,6 +173,8 @@ export function FileTreeContextMenu({
   const isTexFile =
     node.data.type === "file" && node.data.name.toLowerCase().endsWith(".tex");
   const readOnlyMode = Boolean(readOnly);
+  const hasContainingFolder = Boolean(node.data.parentId);
+  const hasProjectPath = Boolean(node.data.path || node.data.name);
 
   // Close on click outside
   React.useEffect(() => {
@@ -307,6 +325,30 @@ export function FileTreeContextMenu({
     onClose();
   };
 
+  const handleRevealInExplorer = () => {
+    onRevealInExplorer?.(node.data);
+    onClose();
+  };
+
+  const handleOpenContainingFolder = () => {
+    onOpenContainingFolder?.(node.data);
+    onClose();
+  };
+
+  const handleCopyPath = async () => {
+    const projectPath = toProjectRelativeDisplayPath(node.data.path || node.data.name);
+    const copied = await copyToClipboard(projectPath);
+    addToast({
+      type: copied ? "success" : "error",
+      title: copied
+        ? t("explorer_path_copied", undefined, "Path copied")
+        : t("explorer_path_copy_failed", undefined, "Failed to copy path"),
+      description: projectPath,
+      duration: copied ? 1800 : 2400,
+    });
+    onClose();
+  };
+
   return (
     <div
       ref={menuRef}
@@ -321,7 +363,7 @@ export function FileTreeContextMenu({
         <>
           <MenuItem
             icon={ExternalLinkIcon}
-            label="Open"
+            label={t("explorer_open_file", undefined, "Open")}
             onClick={handleOpen}
           />
           <Separator />
@@ -332,7 +374,7 @@ export function FileTreeContextMenu({
         <>
           <MenuItem
             icon={PlayIcon}
-            label="Compile LaTeX"
+            label={t("explorer_compile_latex", undefined, "Compile LaTeX")}
             onClick={handleCompileLatexSource}
           />
           <Separator />
@@ -344,28 +386,49 @@ export function FileTreeContextMenu({
         <>
           <MenuItem
             icon={FilePlus}
-            label="New File"
+            label={t("explorer_new_file")}
             onClick={handleNewFile}
           />
           <MenuItem
             icon={BracesIcon}
-            label="New LaTeX project"
+            label={t("explorer_new_latex_project", undefined, "New LaTeX project")}
             onClick={handleNewLatexProject}
           />
           <MenuItem
             icon={FolderPlus}
-            label="New Folder"
+            label={t("explorer_new_folder")}
             onClick={handleNewFolder}
           />
           <Separator />
         </>
       )}
 
+      <MenuItem
+        icon={FolderOpenIcon}
+        label={t("explorer_reveal_in_files", undefined, "Reveal in Explorer")}
+        onClick={handleRevealInExplorer}
+        disabled={!onRevealInExplorer}
+      />
+      <MenuItem
+        icon={FolderOpenIcon}
+        label={t("explorer_open_containing_folder", undefined, "Open containing folder")}
+        onClick={handleOpenContainingFolder}
+        disabled={!onOpenContainingFolder || !hasContainingFolder}
+      />
+      <MenuItem
+        icon={CopyIcon}
+        label={t("explorer_copy_path", undefined, "Copy Path")}
+        onClick={handleCopyPath}
+        disabled={!hasProjectPath}
+      />
+
+      <Separator />
+
       {!readOnlyMode && (
         <>
           <MenuItem
             icon={Pencil}
-            label="Rename"
+            label={t("explorer_rename", undefined, "Rename")}
             shortcut="F2"
             onClick={handleRename}
           />
@@ -374,20 +437,20 @@ export function FileTreeContextMenu({
 
           <MenuItem
             icon={CopyIcon}
-            label="Copy"
+            label={t("explorer_copy", undefined, "Copy")}
             shortcut="Ctrl+C"
             onClick={handleCopy}
           />
           <MenuItem
             icon={ScissorsIcon}
-            label="Cut"
+            label={t("explorer_cut", undefined, "Cut")}
             shortcut="Ctrl+X"
             onClick={handleCut}
           />
           {isFolder && (
             <MenuItem
               icon={ClipboardIcon}
-              label="Paste"
+              label={t("explorer_paste", undefined, "Paste")}
               shortcut="Ctrl+V"
               onClick={handlePaste}
               disabled={!clipboard}
@@ -402,7 +465,7 @@ export function FileTreeContextMenu({
       {!isFolder && (
         <MenuItem
           icon={DownloadIcon}
-          label="Download"
+          label={t("explorer_download", undefined, "Download")}
           onClick={handleDownload}
         />
       )}
@@ -411,7 +474,7 @@ export function FileTreeContextMenu({
       {isFolder && (
         <MenuItem
           icon={RefreshCwIcon}
-          label="Refresh"
+          label={t("explorer_refresh")}
           onClick={handleRefresh}
         />
       )}
@@ -421,7 +484,7 @@ export function FileTreeContextMenu({
           <Separator />
           <MenuItem
             icon={Trash2}
-            label="Delete"
+            label={t("explorer_delete", undefined, "Delete")}
             shortcut="Del"
             onClick={handleDelete}
             destructive

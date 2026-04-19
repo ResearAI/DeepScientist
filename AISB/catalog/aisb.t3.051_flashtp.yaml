@@ -1,0 +1,169 @@
+schema_version: 1
+id: aisb.t3.051_flashtp
+name: 'FlashTP: Fused, Sparsity-Aware Tensor Product for Machine Learning Interatomic
+  Potentials'
+version: 0.1.0
+one_line: 'Benchmark and optimize fused, sparsity-aware CUDA tensor-product kernels
+  that accelerate equivariant machine-learning interatomic potentials (MLIPs), measuring
+  forward, backward, and double-backward kernel latency in milliseconds.
+
+  '
+task_description: 'This benchmark evaluates CUDA kernel performance for the Tensor-Product
+  layer used in equivariant machine-learning interatomic potentials (MLIPs). The Tensor-Product
+  layer is the dominant computational bottleneck in equivariant MLIP models such as
+  SevenNet, accounting for up to 89% of inference time and 75% of training time. FlashTP
+  addresses this by fusing all kernels within the Tensor-Product layer and its subsequent
+  reduce layer into a single kernel, exploiting the high sparsity (71–86%) of the
+  Clebsch-Gordan coefficient matrix, and introducing path-aggregated execution to
+  increase input reuse.
+
+  The evaluation route is self-contained: run `example/benchmark_timing.py` with IR
+  configs from `ir_config/` (NequIP, MACE, SevenNet configurations are bundled). The
+  script times forward, backward, and double-backward passes using CUDA events (50
+  warmup iterations, 200 timed iterations) and reports per-iteration latency in milliseconds.
+  A simpler smoke test is available via `example/test.sh`. No external datasets, credentials,
+  or evaluation servers are required. Custom CUDA extensions must be compiled from
+  source (`pip install . --no-build-isolation`), which takes up to 10 minutes. By
+  default, kernels are compiled for NVIDIA A100 (sm_80) and H100 (sm_90); set `CUDA_ARCH_LIST`
+  to target other architectures.
+
+  The optimization task is to improve kernel throughput (lower forward_ms, backward_ms,
+  double_backward_ms) without violating numerical correctness against the reference
+  e3nn TensorProduct implementation.
+
+  '
+capability_tags:
+- research_code_optimization
+- cuda_kernels
+- scientific_ml
+- interatomic_potentials
+- systems_efficiency
+- gpu_kernel_fusion
+- sparse_computation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 2-6h
+difficulty: hard
+data_access: public
+primary_outputs:
+- forward_ms
+- backward_ms
+- double_backward_ms
+- kernel_benchmark
+launch_profiles:
+- id: microbenchmark
+  label: Microbenchmark
+  description: 'Run example/benchmark_timing.py on a single IR config to measure forward,
+    backward, and double-backward kernel latency. Fastest route; completes in minutes
+    per config.
+
+    '
+- id: full_eval
+  label: Full Eval
+  description: 'Run benchmarks across all bundled IR configs (NequIP, MACE, SevenNet)
+    with multiple edge counts and data types to produce a comprehensive kernel performance
+    profile.
+
+    '
+- id: smoke_test
+  label: Smoke Test
+  description: 'Run example/test.sh to verify that the CUDA extension compiles and
+    the FlashTP kernel produces correct output on one NequIP config (4_32_3_p_sc,
+    32768 edges, fp32).
+
+    '
+dataset_download:
+  primary_method: none
+  sources: []
+  notes:
+  - No external dataset download is required. All IR configs for microbenchmarking
+    are bundled in ir_config/.
+  - Edge graphs are synthetically generated at runtime by flashTP_e3nn.utils.fixed_generate_edgepair.
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 120
+    gpu_count: 1
+    gpu_vram_gb: 80
+environment:
+  python: '3.10'
+  cuda: '12'
+  pytorch: 2.4.1
+  key_packages:
+  - e3nn==0.6.6
+  - torch_scatter
+  notes:
+  - The README explicitly requires CUDA Toolkit 12 or higher.
+  - Python 3.11 is mentioned as non-strict; 3.10+ should work.
+  - Compiling custom CUDA kernels takes up to 10 minutes during pip install.
+  - Default CUDA_ARCH_LIST targets sm_80 (A100) and sm_90 (H100). Set CUDA_ARCH_LIST
+    to match your GPU.
+  - torch_scatter is required for accurate e3nn reference benchmarks.
+  - See requirements.txt and pyproject.toml for the full dependency set.
+risk_flags:
+- custom_cuda_compilation
+- gpu_architecture_dependency
+risk_notes:
+- CUDA extensions must compile from source; compilation failure on unsupported architectures
+  is a common failure mode.
+- Default build targets A100/H100 only. Other GPUs require setting CUDA_ARCH_LIST
+  to the correct compute capability.
+- No benchmark execution was performed in the packaging pass; metric values should
+  be verified at runtime.
+- The e3nn reference implementation is used for numerical correctness checks; mismatched
+  e3nn versions may cause subtle differences.
+recommended_when: 'Use this benchmark when you want a self-contained CUDA-kernel optimization
+  task focused on equivariant tensor-product operations in atomistic ML workloads.
+  Ideal for evaluating kernel fusion, sparsity exploitation, and GPU memory optimization
+  strategies on a well-defined microbenchmark with forward/backward/double-backward
+  phases.
+
+  '
+not_recommended_when: 'Do not use this if you cannot compile custom CUDA extensions,
+  lack an NVIDIA GPU with compute capability 8.0+, or need a high-level application
+  benchmark with end-to-end MD simulation evaluation. Not suitable for CPU-only environments.
+
+  '
+paper:
+  title: 'FlashTP: Fused, Sparsity-Aware Tensor Product for Machine Learning Interatomic
+    Potentials'
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/lee25l.html
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.051_flashtp.zip
+  archive_type: zip
+  local_dir_name: paper-51-FlashTP
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.051_flashtp.zip
+  sha256: c347ddfa54284f9900fb0629240f73461930b7d0eaa83a68b1bfce61cf6d5fb6
+  size_bytes: 148422
+commercial:
+  annual_fee: null
+display:
+  palette_seed: graphite-amber-tensor
+  art_style: hpc-kernel
+  accent_priority: high
+image_path: ../image/051_aisb.t3.051_flashtp.jpg

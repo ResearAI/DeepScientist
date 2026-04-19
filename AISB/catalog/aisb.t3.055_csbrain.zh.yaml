@@ -1,0 +1,184 @@
+id: aisb.t3.055_csbrain
+name: 'CSBrain: 跨尺度时空脑基础模型用于脑电解码'
+version: 0.1.0
+one_line: 跨尺度脑电基础模型，采用CST分词和SSA注意力机制，支持跨16个数据集的通用脑解码。
+task_description: |-
+  CSBrain是一个用于脑电解码的跨尺度时空脑基础模型，在NeurIPS 2025发表。该模型针对现有脑电基础模型采用尺度无关密集建模的局限性，引入了两个关键组件：(i) 跨尺度时空分词（CST），它将局部时间窗口和解剖学脑区域内的多尺度脑电特征聚合为紧凑的尺度感知分词表示；(ii) 结构化稀疏注意力（SSA），它在最小化噪声脑电信号常见虚假相关性的同时，捕获时间窗口和脑区域之间的长距离依赖关系。CST和SSA交替堆叠，以逐步整合跨尺度时空依赖关系。该基准支持从原始脑电信号进行预训练，以及跨16个数据集的下游微调，涵盖11种代表性脑电任务，包括情绪识别、运动 imagery、癫痫检测和睡眠分期。环境设置委托给CBraMod框架；预训练权重可通过Google Drive获取。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 1d+
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- balanced_accuracy
+- cohens_kappa
+- weighted_f1
+- eeg_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: |-
+    使用提供的微调权重在单个下游数据集上运行评估。加载预训练的CSBrain检查点，并在16个支持的数据集之一（如BCIC-IV-2a、CHB-MIT、TUAB、SEED-V）上进行评估。收集指标的最快路径。
+- id: pretrain_and_finetune
+  label: 预训练 + 微调
+  description: |-
+    完整流程：从头开始使用掩码自编码在大规模脑电数据上进行CSBrain预训练，然后在下游数据集上进行微调。支持16个数据集，包括BCIC-IV-2a、Siena、HMC、TUSL和所有CBraMod基准。默认训练使用40个epoch、批次大小128、学习率5e-4。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: CBraMod基准套件
+    type: benchmark_package
+    notes: 支持16个下游数据集，包括BCIC-IV-2a、BCIC-IV-2b、CHB-MIT、TUAB、TUEV、SEED-V、SEED-VIG、ISRUC-Sleep、PhysioNet、FACED、Mumtaz2016、SHU、Siena、HMC、TUSL和Stress。
+  - name: 预训练数据集
+    type: external
+    notes: 按照CBraMod预处理流程进行预训练数据准备。
+  - name: Google Drive预训练权重
+    type: external
+    url: https://drive.google.com/drive/folders/1-GsVVewRM0B93H08yts5m53yU2whxYvj
+    notes: CSBrain.pth包含预训练基础模型权重；pth_downtasks/包含所有16个下游数据集的微调权重。推荐用于无需重训练的评估场景。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 下载权重可能需要Google Drive身份验证。
+  - 需要访问CBraMod框架以完成完整数据集流程。
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 仅评估时单个GPU即可；预训练需要更多资源。
+  recommended:
+    cpu_cores: 64
+    ram_gb: 256
+    disk_gb: 500
+    gpu_count: 4
+    gpu_vram_gb: 80
+    notes: 推荐使用多GPU设置进行预训练（支持pretrain_main.py中的parallel=True）。单个数据集微调可在单块A100 80GB上运行；完整多数据集评估受益于4×80GB配置。
+environment:
+  python: 3.8+
+  cuda: 11.7+
+  pytorch: 2.0+
+  flash_attn: null
+  key_packages:
+  - torch
+  - numpy
+  - scikit-learn
+  - CBraMod
+  notes:
+  - 环境设置完全委托给CBraMod框架，遵循捆绑的README说明。
+  - 首先安装CBraMod依赖项，然后安装CSBrain特定需求（如果有）。
+  - preprocessing/文件夹中提供了Siena、HMC和TUSL数据集的预处理脚本。
+  - 无独立requirements.txt；依赖解析通过CBraMod处理。
+risk_flags:
+- large_pretraining_cost
+- multi_dataset_evaluation_overhead
+- google_drive_access
+risk_notes:
+- 从头开始预训练CSBrain计算成本高昂；对于大多数评估场景，推荐下载预训练权重。
+- 在所有16个数据集上运行完整微调需要大量磁盘空间和时间（推荐硬件上预计2-4天）。
+- Google Drive权重可能需要手动身份验证或VPN访问（取决于地理位置）。
+- CBraMod依赖可能与同一环境中的其他基准产生版本冲突。
+recommended_when: 当您需要一个具有广泛脑电迁移学习评估的脑信号基础模型基准时使用此基准。非常适合研究跨尺度表示、结构化稀疏注意力或跨异构脑电数据集的泛化能力。适用于医疗AI研究、脑机接口开发和科学机器学习探索。
+not_recommended_when: 如果您需要轻量级基准、GPU资源有限（<24GB显存）或无法托管多个脑电数据集和检查点（推荐500GB+），请勿使用此基准。不适合缺乏CBraMod框架支持或Google Drive访问受限的环境。
+paper:
+  title: 'CSBrain: A Cross-scale Spatiotemporal Brain Foundation Model for EEG Decoding'
+  venue: NeurIPS 2025 Spotlight
+  year: 2025
+  authors:
+  - Yuchen Zhou
+  - Jiamin Wu
+  - Zichen Ren
+  - Zhouheng Yao
+  - Weiheng Lu
+  - Kunyu Peng
+  - Qihao Zheng
+  - Chunfeng Song
+  - Wanli Ouyang
+  - Chao Gou
+  url: https://arxiv.org/abs/2506.23075
+  github: https://github.com/yuchen2199/CSBrain
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.055_csbrain.zip
+  archive_type: zip
+  local_dir_name: paper-55-CSBrain
+  notes:
+  - 包含sh/文件夹，包含所有16个数据集的微调脚本。
+  - 预训练权重（CSBrain.pth）和下游权重（pth_downtasks/）需从Google Drive单独下载。
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.055_csbrain.zip
+  sha256: 3d02943b88e62e967308b3cc9bae379cab2431139fcfef0f591fbc95fb206d4c
+  size_bytes: 123771
+display:
+  palette_seed: violet-cyan-neuro
+  art_style: brain-atlas
+  accent_priority: high
+image_path: ../image/055_aisb.t3.055_csbrain.jpg
+track_fit:
+- paper_track
+- benchmark_track
+capability_tags:
+- research_code_optimization
+- eeg_decoding
+- brain_foundation_models
+- scientific_ml
+- healthcare_ai
+aisb_direction: T3
+code_anchors:
+  evaluation:
+  - path: evaluate_bci2a_v2.py
+    description: BCIC-IV-2a数据集的主要评估脚本
+    metrics:
+    - balanced_accuracy
+    - cohens_kappa
+    - weighted_f1
+  training:
+  - path: pretrain_main.py
+    description: 基础模型预训练入口点
+    defaults:
+      epochs: 40
+      batch_size: 128
+      lr: 5e-4
+      weight_decay: 5e-2
+  - path: finetune_main.py
+    description: 下游微调入口点
+  - path: sh/finetune_CSBrain_BCI2a.sh
+    description: 微调示例shell脚本
+  models:
+  - path: models/CSBrain.py
+    description: 核心CSBrain模型架构
+  - path: models/CSBrain_transformer.py
+    description: 带有CST和SSA模块的Transformer层
+  - path: models/model_for_bciciv2a.py
+    description: 带有脑区域编码的BCIC-IV-2a专用模型包装器
+datasets_supported:
+- BCIC-IV-2a
+- BCIC-IV-2b
+- CHB-MIT
+- TUAB
+- TUEV
+- SEED-V
+- SEED-VIG
+- ISRUC-Sleep
+- PhysioNet
+- FACED
+- Mumtaz2016
+- SHU
+- Siena
+- HMC
+- TUSL
+- Stress
+key_innovations:
+- 跨尺度时空分词（CST）：在时间窗口和脑区域内聚合多尺度特征
+- 结构化稀疏注意力（SSA）：捕获长距离依赖关系，同时消除虚假相关性
+- 用于通用脑电表示的掩码自编码预训练
+- 脑区域编码（额叶、顶叶、颞叶、枕叶、中央）以实现空间感知

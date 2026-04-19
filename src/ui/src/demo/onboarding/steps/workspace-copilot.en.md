@@ -1,7 +1,15 @@
-Copilot stays attached while the workspace evolves.
+Copilot: Your AI research partner
 
-This is the surface you keep open when you want to stay close to the project while it runs. It is where execution becomes visible, where interventions happen, and where the thread stays alive when you come back later.
+Copilot is like an NPC assistant in a game—always there to help.
 
-- Watch execution here.
-- Intervene here.
-- Resume the thread here.
+What can it do?
+- Answer questions: Ask whenever you're stuck
+- Monitor progress: See what the AI is doing
+- Adjust direction: Correct course when needed
+
+When to use it?
+- Want to know "where are we now?"
+- Need to adjust the research direction
+- Hit a problem and need help
+
+Tip: Think of it as your research partner—ask away.

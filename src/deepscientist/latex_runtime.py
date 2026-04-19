@@ -12,7 +12,7 @@ from typing import Any
 from urllib.parse import quote, unquote
 
 from .runtime_tools import RuntimeToolService
-from .shared import ensure_dir, generate_id, resolve_within, utc_now, write_json
+from .shared import ensure_dir, generate_id, resolve_within, utc_now, utf8_text_subprocess_kwargs, write_json
 
 _QUEST_DIR_PREFIX = "quest-dir::"
 _QUEST_FILE_PREFIX = "quest-file::"
@@ -471,8 +471,8 @@ class QuestLatexService:
                 args,
                 cwd=str(cwd),
                 capture_output=True,
-                text=True,
                 check=False,
+                **utf8_text_subprocess_kwargs(),
             )
             header = f"$ {' '.join(args)}\n"
             body = (result.stdout or "") + (result.stderr or "")

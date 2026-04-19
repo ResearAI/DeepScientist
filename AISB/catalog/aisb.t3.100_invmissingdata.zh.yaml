@@ -1,0 +1,150 @@
+id: aisb.t3.100_invmissingdata
+name: 核心点插补 (KPI)
+version: 0.1.0
+one_line: 双层内核自适应迭代插补利用预言机功能监督进行异构丢失数据恢复。
+task_description: 该基准测试实现了 KPI（核点插补），这是一种用于迭代缺失数据插补的双层优化框架。内循环通过再生内核希尔伯特空间（RKHS）中的功能优化来适应每个特征的插补模型，解决异构数据生成过程中的模型错误指定问题。外循环利用预言机（完全观察）功能作为特权监督信号。支持仅 CPU 执行最小路由； GPU 加速可用于整个工作流程。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- mae
+- wass
+- rmse
+- imputation_report
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 使用默认超参数在准备好的数据集上运行打包的 KPI 基准脚本。适用于从预处理的 UCI 数据中快速提取指标，无需经过全面培训。
+- id: full_train_eval
+  label: 完整训练+评估
+  description: 执行完整的 KPI 管道：内核点插补优化、具有 Oracle 功能监督的双层训练以及跨所有支持的数据集的完整基准测试套件。包括 Wasserstein 距离评估。
+dataset_download:
+  primary_method: manual
+  sources:
+  - name: UCI Machine Learning Repository
+    url: https://archive.ics.uci.edu
+    notes: 'Pre-processed tabular datasets (e.g., blood_transfusion, concrete_compression) should be placed in the ./dataset folder. Specific dataset references are documented in benchmark_kpi.py argument defaults and aisb_catalog.yaml.
+
+      '
+  - name: Benchmark archive
+    url: https://deepscientist.cc/AISB/100_invmissingdata
+    archive_type: zip
+    local_dir_name: paper-100-InvMissingData
+  notes:
+  - 需要 UCI 源数据和打包的基准档案。
+  - 捆绑的自述文件中详细介绍了数据集准备步骤。
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 30
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes: 最低配置完全支持仅 CPU 执行。
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 8
+    notes: GPU推荐使用full_train_eval来加速内核计算和双层优化。
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.7.1
+  flash_attn: null
+  key_packages:
+  - ot (Optimal Transport)
+  - numpy
+  - pandas
+  - scipy
+  - torch
+  notes:
+  - 对于最短路径来说，仅 CPU 执行是合理的。
+  - 请参阅捆绑的 requirements.txt 以获取完整的依赖项集。
+  - 提供了可选的 Docker 容器，其具有名为“kpi”的基于 conda 的环境。
+risk_flags: []
+risk_notes:
+- 静态代码审核确认所有阶段指标都存在可执行锚点。
+- 在此打包过程中未执行任何运行时执行；指标值需要通过执行进行验证。
+recommended_when: 当您需要一个缺失数据基准测试时，请使用此基准测试，该基准测试专注于灵活的非参数插补行为以及内核适应几何和预言功能监督。适用于具有异构缺失模式的表格数据。
+not_recommended_when: 如果您需要大量的多模式基准测试或基于深度学习的插补而没有明确的内核方法基础，请不要使用此选项。
+paper:
+  title: Inverse Methods for Missing Data Imputation
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/kim25ag.html
+  code_url: null
+  baseline_id: aisb.t3.100_invmissingdata
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.100_invmissingdata.zip
+  archive_type: zip
+  local_dir_name: paper-100-InvMissingData
+  notes:
+  - Archive contains benchmark_kpi.py, model/KPI.py, scripts/, and requirements.txt.
+  - UCI datasets must be obtained separately from archive.ics.uci.edu.
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.100_invmissingdata.zip
+  sha256: 0b54fbad4ac73321054a33a6dc80e069c22a81cf54788c237d938a8f1caf70ef
+  size_bytes: 1388561
+display:
+  palette_seed: bone-blue-impute
+  art_style: imputation-lab
+  accent_priority: medium
+  tags:
+  - research_code_optimization
+  - missing_data
+  - imputation
+  - kernel_methods
+  - tabular_ml
+image_path: ../image/100_aisb.t3.100_invmissingdata.jpg
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+capability_tags:
+- research_code_optimization
+- missing_data
+- imputation
+- kernel_methods
+- tabular_ml
+executable_anchors:
+  benchmark_script: benchmark_kpi.py
+  core_model: model/KPI.py
+  scripts_dir: scripts/
+  evaluation_protocol:
+  - scripts/qb.sh (quick_eval)
+  - scripts/is.sh (full_train_eval)
+metric_evidence:
+  mae:
+    origin_path: model/remasker/model_mae.py
+    source_ref: code-backed
+    status: executable_anchor_found
+  wass:
+    origin_path: benchmark_kpi.py
+    source_ref: code-backed
+    status: executable_anchor_found
+  rmse:
+    origin_path: benchmark_kpi.py
+    source_ref: code-backed
+    status: executable_anchor_found
+  mse:
+    origin_path: benchmark_kpi.py
+    source_ref: code-backed
+    status: executable_anchor_found
+caveat_snapshot: 'Static code audit confirmed executable anchors for every staged metric. Runtime execution has not been performed; metric values require verification before trust.
+
+  '

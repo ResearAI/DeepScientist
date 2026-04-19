@@ -1,0 +1,176 @@
+id: aisb.t3.044_rgvi
+name: Reference-Guided Video Inpainting (RGVI)
+version: 0.1.0
+one_line: 结合单次像素传播与Stable Diffusion参考生成的光流引导视频修复，在HQVI基准上评估。
+task_description: |
+  RGVI是一个视频修复框架，通过四阶段流程将内容传播与生成解耦：(1) 使用RAFT计算光流进行单次拉取实现内部像素传播，(2) 使用Stable Diffusion修复模型结合文本引导生成高质量参考图像，(3) 参考图像跨帧传播，(4) 对剩余缺失区域逐帧补全。该框架引入的单次像素拉取结合了流追踪和网格变形，在保持亚像素精度的同时避免了循环变形方法固有的重采样伪影。随附的HQVI基准通过Alpha抠图合成生成逼真的视频来评估VI方法，为目标移除任务提供真值。支持240p、480p和2K分辨率的推理。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 1-3d
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- psnr
+- ssim
+- lpips
+- vfid
+- video_inpainting_results
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 在单个视频序列上运行RGVI推理和评估。验证流程功能和指标计算。
+- id: full_eval
+  label: 完整评估
+  description: 在HQVI及补充基准（DAVIS、DAVI、YTVI）上运行完整评估流程。生成与STTN、FGVC、FuseFormer、E2FGVI、ProPainter等基线方法的综合对比表。
+- id: hqvi_only
+  label: HQVI基准
+  description: 仅执行标准HQVI评估流程，包括目标移除场景的正负标注掩码。
+dataset_download:
+  primary_method: external_links
+  sources:
+  - name: HQVI Benchmark
+    url: https://drive.google.com/file/d/1eiscxJO2o8qVlHX52sul2Pz8elOwSWUP/view?usp=drive_link
+    size_gb: null
+    required: true
+  - name: DAVIS
+    url: https://drive.google.com/file/d/1fBdMdhyStDGurVqgIp8_1SMVb0uIRqIH/view?usp=drive_link
+    required: true
+  - name: DAVI
+    url: https://drive.google.com/file/d/1i-hNki4Jrmiqg6226AIgN1v5PIL1Epm6/view?usp=drive_link
+    required: false
+  - name: YTVI
+    url: https://drive.google.com/file/d/1MpJCdakKkMZIHg3cqQ2epVxRo0YKCrGY/view?usp=drive_link
+    required: false
+  - name: YouTube-VOS (for PFCNet training only)
+    url: https://competitions.codalab.org/competitions/19544
+    required: false
+  - name: FCNet Weights
+    url: https://drive.google.com/file/d/1KNetMWeYVlgrhgguw45uRfoJDmljw5hT/view?usp=drive_link
+    required: true
+  - name: I3D Weights
+    url: https://drive.google.com/file/d/1NhI0rDu7BeqNm0oyxS0jHxjQqhfelx8I/view?usp=drive_link
+    required: true
+  - name: Stable Diffusion Inpainting Weights
+    url: https://huggingface.co/runwayml/stable-diffusion-inpainting
+    required: true
+  - name: RAFT Optical Flow (pretrained)
+    url: bundled_with_torchvision
+    required: true
+  - name: PFCNet Weights (optional)
+    url: https://drive.google.com/file/d/1wknOIQmOnzPtLpN1Ydfb698tUZVOYuKF/view?usp=drive_link
+    required: false
+  notes:
+  - Stable Diffusion修复权重必须放置在/sd2_inpaint或配置于rgvi.py中
+  - FCNet和I3D权重必须放置在weights/目录下
+  - STTN、FGVC、FuseFormer、E2FGVI、ProPainter等基线方法的预计算结果可下载
+credential_requirements:
+  mode: external_access
+  items:
+  - Google Drive access for dataset downloads
+  - Hugging Face access for Stable Diffusion weights
+  notes:
+  - 部分链接可能需要机构Google账号才能访问
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 单GPU需能以float16运行Stable Diffusion
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 400
+    gpu_count: 2
+    gpu_vram_gb: 48
+    notes: 建议双GPU以加速2K分辨率推理；Stable Diffusion在主GPU上以float16运行
+environment:
+  python: '3.8'
+  cuda: '11.7'
+  pytorch: 1.11.0
+  flash_attn: null
+  key_packages:
+  - torch>=1.11.0
+  - torchvision>=0.16.0
+  - transformers==4.30.2
+  - diffusers==0.21.0
+  - lpips
+  - scikit-image>=0.19.0
+  - opencv-python
+  - pillow
+  - numpy
+  notes:
+  - 需要PyTorch配合torchvision以支持RAFT光流模型（tv.models.optical_flow.raft_large）
+  - Stable Diffusion修复通过StableDiffusionInpaintPipeline加载
+  - 完整依赖列表见绑定的requirements.txt
+risk_flags:
+- large_model_download
+- non_commercial_only
+- external_data_dependency
+risk_notes:
+- Stable Diffusion权重文件较大；确保有足够的磁盘空间和下载时间
+- CC BY-NC许可限制RGVI组件的商业使用
+- FCNet和I3D来自ProPainter，采用NTU S-Lab许可1.0版本
+- Google Drive链接可能过期或需要认证
+recommended_when: |
+  在评估视频修复方法处理逼真目标移除和内容生成任务时使用此基准。尤其适用于结合光流传播与生成式补全的方法。适用于视频编辑中的时序一致性、基于光流引导的方法以及基于扩散的视频合成研究。HQVI基准为客观评估目标移除质量提供真值数据。
+not_recommended_when: |
+  如果目标应用严格限于图像级修复，请勿使用此基准，因为框架需要多帧视频处理和光流计算。若存储限制无法托管大型视频数据集（HQVI、DAVIS、DAVI、YTVI合计），请避免使用。不适用于实时应用；推理时间随视频长度和分辨率增长。由于核心组件和Stable Diffusion许可条款的CC BY-NC许可限制，请勿用于商业产品。
+paper:
+  title: Elevating Flow-Guided Video Inpainting with Reference Generation
+  venue: AAAI 2025
+  year: 2025
+  url: https://arxiv.org/abs/2412.08975
+  arxiv_id: '2412.08975'
+  authors:
+  - Suhwan Cho (Yonsei University)
+  - Seoung Wug Oh (Adobe Research)
+  - Sangyoun Lee (Yonsei University)
+  - Joon-Young Lee (Adobe Research)
+  license: CC BY-NC 4.0
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.044_rgvi.zip
+  archive_type: zip
+  local_dir_name: paper-44-RGVI
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.044_rgvi.zip
+  sha256: 419a85def288a9e4928a0de7c5fd4593207ee4b467964394feb4422d5d3828d2
+  size_bytes: 40445
+display:
+  palette_seed: forest-indigo-frame
+  art_style: cinematic-repair
+  accent_priority: high
+  tags:
+  - video-inpainting
+  - flow-guidance
+  - diffusion-models
+  - optical-flow
+  - temporal-consistency
+image_path: ../image/044_aisb.t3.044_rgvi.jpg
+operational_notes: |
+  执行流程：
+  1. 将预训练权重放入weights/目录（FCNet.pth、i3d_rgb_imagenet.pth）
+  2. 在rgvi.py中配置Stable Diffusion修复路径（默认：/sd2_inpaint）
+  3. 推理：python run.py --root <数据集路径> --res <240p|480p|2K> --seq <序列名>
+  4. 评估：python post.py --root <数据集路径> --res <分辨率>
+
+  分辨率支持：240p（快速评估）、480p（平衡）、2K（高质量）
+  预计算基线可用于对比，无需完整重跑
+  LPIPS和I3D模型在启动时加载；首次推理可能较慢
+verification_checklist: |
+  执行前请验证：
+  - [ ] 测试数据集选择（HQVI、DAVIS、DAVI、YTVI）
+  - [ ] GPU可用性和CUDA配置
+  - [ ] 输入分辨率选择（240p/480p/2K）
+  - [ ] 生成模式的文本提示词（可选）
+  - [ ] 预训练模型路径（SDI、FCNet、I3D）
+  - [ ] post.py的数据集根目录指定
+  - [ ] 输出有足够的磁盘空间

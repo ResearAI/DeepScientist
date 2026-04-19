@@ -1,0 +1,138 @@
+id: aisb.t3.092_kmeanslocalopt
+name: Modified K-means Algorithm with Local Optimality Guarantees
+version: 0.1.0
+one_line: Optimize k-means with guaranteed local optimality while preserving classic
+  algorithmic simplicity and same computational complexity.
+task_description: 'This packaged benchmark covers modified K-means algorithms (LO-K-means)
+  that guarantee convergence to locally optimal solutions, addressing a fundamental
+  misconception in the field. The original K-means algorithm (Lloyd''s algorithm)
+  does not always converge to a locally optimal solution despite widespread belief
+  since the 1980s. The benchmark implements two variants: C-LO_K_means (continuous
+  local optimality) and D-LO_K_means (discrete local optimality), along with Min_D_LO_K_means
+  which balances improved accuracy with computational efficiency. All variants maintain
+  the same per-iteration time complexity as the original K-means algorithm. The implementation
+  supports weighted K-means clustering using general Bregman divergences, extending
+  beyond squared Euclidean distance.
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- mean_clustering_loss
+- minimum_clustering_loss
+- average_computation_time_s
+- average_number_of_iterations
+launch_profiles:
+- id: python_eval
+  label: Python Eval
+  description: Run the packaged Python implementation comparing Standard K-means,
+    C-LO_K_means, D-LO_K_means, and Min_D_LO_K_means variants. Evaluates clustering
+    loss and iteration count using Iris dataset. Primary code anchor is py/run.py
+    with algorithm implementation in py/LO_K_means.py.
+- id: cpp_eval
+  label: C++ Eval
+  description: Use the primary C++ implementation for comprehensive local-optimality
+    experiment family. Includes test_multiple_runs.cpp, test_real_world.cpp, and test_news20.cpp
+    variants. Header implementation in cpp/LO_K_means.hpp with settings in cpp/Setting.hpp.
+dataset_download:
+  primary_method: bundled
+  sources:
+  - name: Iris dataset
+    url: embedded
+    path: data/Iris.txt
+    format: custom
+    description: Tab-separated text format with N, D header followed by data points
+  notes:
+  - Iris.txt bundled with N rows and D-dimensional points
+  - C++ implementation includes additional real-world and synthetic test scenarios
+  - Dataset loading handled by make_unique() function for weighted point processing
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.9'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - numpy
+  notes:
+  - CPU-only benchmark; no GPU acceleration required or beneficial
+  - Pure numerical computation; torch/flash-attention not applicable
+  - Python route requires numpy for matrix operations and random generation
+  - C++ route compiles with standard g++/clang++ toolchain
+  - See bundled README/requirements.txt for full dependency set
+risk_flags:
+- no_runtime_trust
+- static_audit_only
+risk_notes:
+- Static code audit confirms executable anchors for all staged metrics
+- No benchmark execution performed during this packaging pass
+- Metric values marked as provisional until runtime verification completes
+- Primary metric mean_clustering_loss code-backed via py/LO_K_means.py
+recommended_when: 'Use this benchmark when you need a classic clustering task with
+  strong algorithmic clarity, modest hardware requirements, and CPU-only execution.
+  Appropriate for evaluating local optimality guarantees, comparing K-means variants,
+  or studying convergence behavior on low-dimensional tabular data. Excellent for
+  algorithm-focused research with minimal infrastructure overhead.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you require GPU acceleration,
+  deep learning workflows, high-dimensional embedding clustering, or large-scale distributed
+  training. Not suitable for benchmarks requiring neural network backbones or vision-language
+  components.
+
+  '
+paper:
+  title: Modified K-means Algorithm with Local Optimality Guarantees
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/li25bt.html
+  github_url: https://github.com/lmingyi/LO-K-means
+  authors:
+  - Li, Mingyi (University of Tokyo)
+  - Metel, Michael R. (Huawei Noah's Ark Lab)
+  - Takeda, Akiko (University of Tokyo / RIKEN AIP)
+display:
+  palette_seed: sand-slate-centroid
+  art_style: algorithmic-minimal
+  accent_priority: medium
+  tags:
+  - clustering
+  - optimization
+  - local-optimality
+  - bregman-divergence
+  - cpu-only
+  - icml2025
+image_path: ../image/092_aisb.t3.092_kmeanslocalopt.jpg
+download:
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.092_kmeanslocalopt.zip
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.092_kmeanslocalopt.zip
+  archive_type: zip
+  sha256: 86ab62322776504678fb2616e825a32d89f9598e1f0a5900bfeb1231ba8a4ed6
+  size_bytes: 133834

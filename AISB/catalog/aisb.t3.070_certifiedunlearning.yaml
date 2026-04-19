@@ -1,0 +1,224 @@
+schema_version: 1
+id: aisb.t3.070_certifiedunlearning
+name: Certified Unlearning for Neural Networks
+version: 0.1.0
+one_line: Certified machine unlearning via privacy amplification by noisy fine-tuning,
+  with provable (ε,δ)-guarantees and no loss-function assumptions.
+task_description: 'This packaged benchmark implements and evaluates certified machine
+  unlearning for neural networks (ICML 2025). The core task is to remove the influence
+  of a specified forget set from a trained model while preserving utility on the retain
+  set, subject to formal (ε,δ)-unlearning guarantees. The method—Privacy Amplification
+  by Iteration (PABI)—treats each noisy fine-tuning step on the retain data as a stochastic
+  post-processing operation, progressively amplifying privacy without accessing the
+  forget data. It imposes no smoothness or convexity assumptions on the loss function,
+  making it applicable to arbitrary deep networks. Four methods are benchmarked: PABI
+  (gradient clipping), DP-SGD with group privacy, Contractive Coefficients (model
+  clipping), and DP-Baseline (output perturbation), alongside full Retrain. Experiments
+  cover CIFAR-10, CIFAR-100, and MNIST across four figure-level ablations: privacy
+  budget curves, convergence curves, DP-SGD comparisons, and ε-sweep analysis. The
+  primary efficiency metric is epochs_to_50pct_val_acc measured during the unlearning
+  phase. The framework uses JAX/Flax for all training and unlearning logic; feature
+  extraction uses a ResNet-18 backbone. Multi-GPU execution is supported via run_exp.py.
+  No benchmark execution was performed during this packaging pass—runtime validation
+  is required before trusting metric values.
+
+  '
+capability_tags:
+- machine_unlearning
+- certified_privacy
+- differential_privacy
+- privacy_amplification
+- neural_networks
+- research_code_optimization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- epochs_to_50pct_val_acc
+- epochs_to_45pct_val_acc
+- epochs_to_40pct_val_acc
+- epochs_to_35pct_val_acc
+- epochs_to_30pct_val_acc
+- unlearning_checkpoint
+- certification_report
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run one packaged certified unlearning evaluation route using a single
+    pre-configured experiment YAML (e.g., from dp_sgd_runs/). Produces a single certification
+    report and efficiency metrics. Fastest path to verifying the environment and metric
+    surface.
+
+    '
+- id: full_unlearning
+  label: Full Unlearning
+  description: 'Run the complete privacy-aware unlearning training and certification
+    workflow across all four experiment suites (budget_curve_runs, convergence_curve_runs,
+    dp_sgd_runs, eps_sweep_runs). Reproduces all paper figures. Requires multi-GPU
+    execution via run_exp.py.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: CIFAR-10
+    notes: Auto-downloaded by JAX/datasets pipeline at runtime.
+  - name: CIFAR-100
+    notes: Auto-downloaded by JAX/datasets pipeline at runtime.
+  - name: MNIST
+    notes: Auto-downloaded by JAX/datasets pipeline at runtime.
+  - name: ResNet-18 feature cache
+    notes: 'Generated locally by running feature_extractor.py before experiments that
+      use cifar10_feature or cifar100_feature dataset configs.
+
+      '
+  notes:
+  - All datasets are standard public benchmarks; no manual download required unless
+    offline execution is needed.
+  - feature_extractor.py must be run once before transfer-learning experiment configs
+    are used.
+credential_requirements:
+  mode: optional
+  items:
+  - name: Weights & Biases (wandb)
+    notes: 'experiment.py calls wandb.init() at startup. Set WANDB_API_KEY or run
+      `wandb login` before execution. Offline mode can be enabled by setting WANDB_MODE=offline.
+
+      '
+  notes:
+  - No paid data credentials required. wandb is the only external service.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+    notes: Sufficient for single-experiment quick_eval runs on MNIST or CIFAR-10.
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 2
+    gpu_vram_gb: 24
+    notes: 'Two GPUs allow run_exp.py to parallelize across experiment suites. Required
+      for full reproduction of all four figure-level ablations within the 6–24 h time
+      band.
+
+      '
+environment:
+  python: '3.8'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  framework: jax
+  key_packages:
+  - jax==0.5.2
+  - jaxlib==0.5.1
+  - jax-cuda12-pjrt==0.5.1
+  - jax-cuda12-plugin==0.5.1
+  - flax==0.10.4
+  - optax
+  - dp-accounting==0.4.4
+  - transformers==4.49.0
+  - datasets==2.21.0
+  - ml_collections==1.0.0
+  - wandb
+  - chex==0.1.89
+  - torch
+  - matplotlib==3.10.1
+  - jaxpruner @ git+https://github.com/google-research/jaxpruner@e7af4e4e4748782d6bc433249e359f74ffb845ba
+  notes:
+  - This benchmark uses JAX/Flax as its primary framework, not PyTorch. PyTorch is
+    present in requirements.txt only for DataLoader utilities.
+  - CUDA version is determined by jax-cuda12-* wheel; install JAX CUDA packages before
+    other dependencies.
+  - See requirements.txt for the full pinned dependency set.
+  - Python 3.8 is required; the JAX version used (0.5.2) does not support 3.12+.
+risk_flags:
+- jax_cuda_wheel_version_sensitivity
+- wandb_required_at_runtime
+- feature_extractor_prereq
+- no_runtime_execution_in_packaging_pass
+risk_notes:
+- 'JAX CUDA wheels are highly version-sensitive. Install jax-cuda12-pjrt and jax-cuda12-plugin
+  before jaxlib to avoid ABI mismatches.
+
+  '
+- 'experiment.py calls wandb.init() unconditionally; set WANDB_MODE=offline to prevent
+  a hard failure when no API key is present.
+
+  '
+- 'Experiments using cifar10_feature or cifar100_feature dataset configs will fail
+  if feature_extractor.py has not been run first.
+
+  '
+- 'No benchmark execution was performed during this packaging pass. All metric values
+  in metric_contract.json are provisional until runtime validation confirms them.
+  Do not trust metric surface from README alone.
+
+  '
+recommended_when: 'Use this benchmark when evaluating certified machine unlearning
+  methods on image-classification tasks (CIFAR-10, CIFAR-100, MNIST) with formal (ε,δ)
+  privacy guarantees. Ideal for comparing unlearning efficiency (epochs to reach a
+  validation accuracy threshold) across PABI, DP-SGD, contractive coefficient, and
+  output-perturbation baselines. Best suited for researchers who need assumption-free
+  certified unlearning applicable to non-convex deep networks.
+
+  '
+not_recommended_when: 'Do not use if you only need standard image-classification training
+  without privacy or unlearning constraints. Not suitable if your pipeline requires
+  PyTorch-native training loops—the core implementation is JAX/Flax only. Avoid if
+  GPU VRAM is below 12 GB or if a JAX CUDA environment cannot be established. Not
+  appropriate for large-scale language-model unlearning or concept unlearning tasks,
+  which require a different method family.
+
+  '
+paper:
+  title: Certified Unlearning for Neural Networks
+  authors:
+  - Anastasia Koloskova
+  - Youssef Allouah
+  - Animesh Jha
+  - Rachid Guerraoui
+  - Sanmi Koyejo
+  affiliations:
+  - Stanford University
+  - EPFL
+  venue: ICML 2025
+  year: 2025
+  url: https://arxiv.org/abs/2506.06985
+  bibtex_key: koloskova2025certified
+  notes: 'Equal contribution from Koloskova and Allouah. Proceedings of the 42nd International
+    Conference on Machine Learning, Vancouver, Canada. PMLR 267.
+
+    '
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.070_certifiedunlearning.zip
+  archive_type: zip
+  local_dir_name: paper-70-CertifiedUnlearning
+  upstream_repo: https://github.com/stair-lab/certified-unlearning-neural-networks-icml-2025
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.070_certifiedunlearning.zip
+  sha256: 124e11876363b6ccc532c5d235697f96975e0e2883506083a5f9391b63cf1ab7
+  size_bytes: 13612960
+commercial:
+  annual_fee: null
+display:
+  palette_seed: silver-plum-unlearn
+  art_style: privacy-lab
+  accent_priority: high
+image_path: ../image/070_aisb.t3.070_certifiedunlearning.jpg

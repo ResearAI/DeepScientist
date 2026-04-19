@@ -1,0 +1,110 @@
+id: aisb.t3.092_kmeanslocalopt
+name: 具有局部最优保证的改进 K 均值算法
+version: 0.1.0
+one_line: 在保证局部最优性的情况下优化 k 均值，同时保留经典算法的简单性和相同的计算复杂性。
+task_description: 该打包基准测试涵盖了修改后的 K 均值算法 (LO-K-means)，可保证收敛到局部最优解决方案，解决了该领域的基本误解。尽管自 20 世纪 80 年代以来人们普遍相信，最初的 K 均值算法（劳埃德算法）并不总是收敛到局部最优解。该基准测试实现了两种变体：C-LO_K_means（连续局部最优）和 D-LO_K_means（离散局部最优），以及平衡提高精度和计算效率的 Min_D_LO_K_means。所有变体都保持与原始 K 均值算法相同的每次迭代时间复杂度。该实现支持使用一般 Bregman 散度的加权 K 均值聚类，超出平方欧几里得距离。
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- mean_clustering_loss
+- minimum_clustering_loss
+- average_computation_time_s
+- average_number_of_iterations
+launch_profiles:
+- id: python_eval
+  label: Python 评估
+  description: 运行打包的 Python 实现，比较标准 K-means、C-LO_K_means、D-LO_K_means 和 Min_D_LO_K_means 变体。使用 Iris 数据集评估聚类损失和迭代计数。主要代码锚点是 py/run.py，算法实现在 py/LO_K_means.py 中。
+- id: cpp_eval
+  label: C++ 评估
+  description: 使用主要的 C++ 实现来实现全面的局部最优实验系列。包括 test_multiple_runs.cpp、test_real_world.cpp 和 test_news20.cpp 变体。 cpp/LO_K_means.hpp 中的标头实现，以及 cpp/Setting.hpp 中的设置。
+dataset_download:
+  primary_method: bundled
+  sources:
+  - name: Iris dataset
+    url: embedded
+    path: data/Iris.txt
+    format: custom
+    description: Tab-separated text format with N, D header followed by data points
+  notes:
+  - Iris.txt 与 N 行和 D 维点捆绑在一起
+  - C++ 实现包括额外的真实世界和综合测试场景
+  - 由 make_unique() 函数处理数据集加载以进行加权点处理
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.9'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - numpy
+  notes:
+  - 仅 CPU 基准测试；不需要 GPU 加速，也没有好处
+  - 纯数值计算；手电筒/闪光灯注意不适用
+  - Python路线需要numpy进行矩阵运算和随机生成
+  - C++ 路线使用标准 g++/clang++ 工具链进行编译
+  - 有关完整的依赖项集，请参阅捆绑的 README/requirements.txt
+risk_flags:
+- no_runtime_trust
+- static_audit_only
+risk_notes:
+- 静态代码审核确认所有阶段指标的可执行锚点
+- 在此打包过程中未执行基准测试
+- 指标值标记为临时值，直到运行时验证完成
+- 主要指标 mean_clustering_loss 通过 py/LO_K_means.py 代码支持
+recommended_when: 当您需要具有强大算法清晰度、适度硬件要求和仅 CPU 执行的经典集群任务时，请使用此基准测试。适用于评估局部最优性保证、比较 K 均值变体或研究低维表格数据的收敛行为。非常适合以算法为中心的研究，并且基础设施开销最小。
+not_recommended_when: 如果您需要 GPU 加速、深度学习工作流程、高维嵌入聚类或大规模分布式训练，请勿使用此基准测试。不适合需要神经网络主干或视觉语言组件的基准测试。
+paper:
+  title: Modified K-means Algorithm with Local Optimality Guarantees
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/li25bt.html
+  github_url: https://github.com/lmingyi/LO-K-means
+  authors:
+  - Li, Mingyi (University of Tokyo)
+  - Metel, Michael R. (Huawei Noah's Ark Lab)
+  - Takeda, Akiko (University of Tokyo / RIKEN AIP)
+display:
+  palette_seed: sand-slate-centroid
+  art_style: algorithmic-minimal
+  accent_priority: medium
+  tags:
+  - clustering
+  - optimization
+  - local-optimality
+  - bregman-divergence
+  - cpu-only
+  - icml2025
+image_path: ../image/092_aisb.t3.092_kmeanslocalopt.jpg
+download:
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.092_kmeanslocalopt.zip
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.092_kmeanslocalopt.zip
+  archive_type: zip
+  sha256: 86ab62322776504678fb2616e825a32d89f9598e1f0a5900bfeb1231ba8a4ed6
+  size_bytes: 133834

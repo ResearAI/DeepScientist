@@ -1,0 +1,178 @@
+schema_version: 1
+id: aisb.t3.054_timebase
+name: 'TimeBase: The Power of Minimalism in Efficient Long-term Time Series Forecasting'
+version: 0.1.0
+one_line: 'Train and evaluate TimeBase, an ultra-lightweight (~0.39k parameter) long-term
+  time series forecaster using basis extraction and segment-level prediction, across
+  17+ public benchmarks measuring MSE and MAE.
+
+  '
+task_description: 'This benchmark packages TimeBase, an extremely lightweight long-term
+  time series forecasting (LTSF) model that exploits the approximate low-rank structure
+  of periodic time series. The model segments the input into non-overlapping windows
+  of length P, extracts R orthogonal basis components via a single linear layer, and
+  forecasts future segments via a second linear layer — totaling ~390 parameters.
+  The agent must: (1) download 17 normal-scale benchmark datasets (ETTh1/h2, ETTm1/m2,
+  Weather, Electricity, Traffic, Solar-Energy, Wind, Exchange-Rate, METR-LA, ZafNoo,
+  CzeLan, AQShunyi, AQWan, PM2.5, Temp) from Google Drive and place them in ./dataset/;
+  (2) run per-dataset training scripts via `sh ./scripts/$DATA_NAME.sh`, which invoke
+  `run_longExp.py` → `exp/exp_main.py`; (3) collect avg_mse and avg_mae across horizons
+  (96, 192, 336, 720). Hyperparameter search covers λ_orth ∈ [0.00–0.20] and learning
+  rate ∈ [0.01–0.5]. An optional plug-and-play route applies TimeBase as a complexity
+  reducer for PatchTST via `plug-and-play_for_patchtst/run_all.sh`. Metrics are computed
+  by `utils/metrics.py` using numpy-based MSE/MAE. All evaluation is self-contained;
+  no external evaluation server is required. Optionally, 4 large-scale datasets (CA
+  4.52B, GLA 2.02B, GBA 1.24B, SD 0.38B records) can be obtained from the LargeST
+  repository for extended evaluation.
+
+  '
+capability_tags:
+- research_code_optimization
+- time_series_forecasting
+- efficient_models
+- forecasting
+- scientific_ml
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: medium
+time_band: 6-24h
+difficulty: medium
+data_access: public
+primary_outputs:
+- avg_mse
+- avg_mae
+- forecast_report
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run TimeBase training and evaluation on a single normal-scale dataset
+    (e.g., ETTh1) with default hyperparameters. Completes in under 1 hour on a single
+    GPU.
+
+    '
+- id: full_benchmark
+  label: Full 17-Dataset Benchmark
+  description: 'Run all 17 normal-scale dataset scripts sequentially, collecting avg_mse
+    and avg_mae across four forecast horizons (96, 192, 336, 720). Expect 6–24 hours
+    on a single GPU.
+
+    '
+- id: patchtst_plugin
+  label: PatchTST Plug-and-Play
+  description: 'Run the plug-and-play complexity reducer for PatchTST via plug-and-play_for_patchtst/run_all.sh.
+    Demonstrates 77–93% MAC reduction.
+
+    '
+- id: large_scale
+  label: Large-Scale Datasets
+  description: 'Extend evaluation to the 4 billion-record LargeST datasets (CA, GLA,
+    GBA, SD). Requires separate data download from the LargeST GitHub repository and
+    substantially more disk and compute time.
+
+    '
+dataset_download:
+  primary_method: manual
+  sources:
+  - kind: google_drive
+    url: https://drive.google.com/file/d/1ypgCc6iQ2Z8IB_9CY3If_KMRNQKBsI3J/view?usp=sharing
+    access: public
+    note: '17 normal-scale benchmark datasets (ETTh1/h2, ETTm1/m2, Weather, Electricity,
+      Traffic, Solar-Energy, Wind, Exchange-Rate, METR-LA, ZafNoo, CzeLan, AQShunyi,
+      AQWan, PM2.5, Temp). Unzip to ./dataset/.
+
+      '
+  - kind: github
+    url: https://github.com/liuxu77/LargeST
+    access: public
+    note: '4 large-scale datasets (CA, GLA, GBA, SD) with billions of records. Follow
+      LargeST preprocessing instructions. Only needed for the large_scale launch profile.
+
+      '
+  notes:
+  - Normal-scale datasets are modest in size (a few hundred MB total after extraction).
+  - Large-scale datasets require hundreds of GB of disk and are optional.
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 1000
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: 3.8+
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - numpy
+  - torch
+  - matplotlib
+  notes:
+  - The model is extremely lightweight (~390 parameters); GPU memory is not the bottleneck.
+  - Recommended disk is 1 TB to accommodate the optional large-scale LargeST datasets.
+  - See the bundled requirements file for the full dependency set.
+  - Python, CUDA, and PyTorch versions are not pinned in the repository; any recent
+    PyTorch with CUDA support should work.
+risk_flags:
+- manual_dataset_download
+- large_dataset_route
+risk_notes:
+- Datasets must be manually downloaded from Google Drive and extracted to ./dataset/
+  before training scripts will run.
+- The 4 large-scale LargeST datasets involve billions of records and require separate
+  preprocessing; attempting them without sufficient disk and RAM will fail.
+- No pinned dependency versions; environment may require manual resolution for older
+  or newer Python/PyTorch combinations.
+recommended_when: 'Use this benchmark when you want an efficiency-focused long-term
+  time series forecasting task on well-established public datasets, or when studying
+  extreme model compression (sub-1k parameters) for LTSF. Good for agents that need
+  a lightweight, self-contained training+evaluation loop with clear numeric metrics
+  (MSE, MAE).
+
+  '
+not_recommended_when: 'Do not use this if you need a multimodal benchmark, a foundation-model-scale
+  task, or a benchmark dominated by large pretrained models. Not suitable if you cannot
+  download data from Google Drive. The large-scale profile is impractical without
+  hundreds of GB of disk.
+
+  '
+paper:
+  title: 'TimeBase: The Power of Minimalism in Efficient Long-term Time Series Forecasting'
+  venue: ICML 2025 Spotlight
+  year: 2025
+  url: https://proceedings.mlr.press/v267/huang25az.html
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.054_timebase.zip
+  archive_type: zip
+  local_dir_name: paper-54-TimeBase
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.054_timebase.zip
+  sha256: 0871383ee8a2d7dc7f00797e86c0392047d967f3824bf6e76052081150baadce
+  size_bytes: 346725
+commercial:
+  annual_fee: null
+display:
+  palette_seed: ivory-blue-minimal
+  art_style: minimal-forecast
+  accent_priority: medium
+image_path: ../image/054_aisb.t3.054_timebase.jpg

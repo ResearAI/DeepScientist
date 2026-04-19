@@ -13,6 +13,11 @@ The right mental model is:
 
 If Codex itself is not working yet, fixing DeepScientist first is the wrong order.
 
+For the other built-in runners, see also:
+
+- [24 Claude Code Setup](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [25 OpenCode Setup](./25_OPENCODE_PROVIDER_SETUP.md)
+
 ## What files matter
 
 Codex CLI reads its local state from `~/.codex/`.
@@ -249,6 +254,79 @@ If this fails, stop there and fix Codex first.
 
 ## Step 5: map that setup into DeepScientist
 
+## Where to put the provider key
+
+There are three different places people often confuse.
+
+### 1. Shell environment
+
+This is enough when you are only validating Codex directly in the current terminal.
+
+Example:
+
+```bash
+export MINIMAX_API_KEY="..."
+codex --profile m25
+codex exec --profile m25 "Reply with exactly OK."
+```
+
+### 2. `~/.codex/config.toml`
+
+This file usually tells Codex **which environment variable name** or **which bearer token field** it should use.
+It does **not** guarantee that DeepScientist will magically receive that key in every runtime context.
+
+Examples:
+
+```toml
+env_key = "MINIMAX_API_KEY"
+```
+
+or:
+
+```toml
+experimental_bearer_token = "YOUR_TOKEN_HERE"
+```
+
+Use `env_key` when the provider key comes from the shell or another process-level environment source.
+Use `experimental_bearer_token` only when your Codex-side provider setup truly expects a fixed bearer token directly inside `config.toml`.
+
+### 3. `~/DeepScientist/config/runners.yaml`
+
+This is the most important place when `codex` works in your shell, but `ds doctor`, `ds`, or `ds docker` still fails with a missing provider environment variable.
+
+In that case, put the required key under `runners.codex.env`.
+
+Example:
+
+```yaml
+codex:
+  enabled: true
+  binary: codex
+  config_dir: ~/.codex
+  profile: m25
+  model: inherit
+  model_reasoning_effort: high
+  env:
+    MINIMAX_API_KEY: "YOUR_REAL_KEY"
+```
+
+This is the most reliable DeepScientist-side fix when the provider works in plain `codex --profile ...` but fails inside DeepScientist runner execution.
+
+### Which one should you choose?
+
+- If you are only testing Codex manually in one shell: shell `export` is enough.
+- If you want Codex to know which variable name to read: set `env_key` in `~/.codex/config.toml`.
+- If DeepScientist or `ds docker` still reports a missing provider env var: also set the key in `~/DeepScientist/config/runners.yaml` under `runners.codex.env`.
+
+### Docker and daemon note
+
+This is where most confusion comes from.
+
+A shell-level `export MINIMAX_API_KEY=...` only affects the current shell and the processes spawned from it.
+If DeepScientist is launched by another daemon, service, container, or supervisor process, that runtime may not inherit the same shell environment.
+
+So for Docker or long-running daemon setups, `runners.yaml -> runners.codex.env` is usually the safer place.
+
 There are three supported DeepScientist usage patterns.
 
 ### 1. Default OpenAI login path
@@ -356,6 +434,14 @@ If you specifically want `MiniMax-M2.7`, the recommended route is:
 - then point Codex at that local endpoint through a custom provider block in `~/.codex/config.toml`
 
 ### Recommended official Coding Plan path
+
+Use the official MiniMax Coding Plan endpoint.
+
+For key placement on the MiniMax path:
+
+- `~/.codex/config.toml` should usually contain `env_key = "MINIMAX_API_KEY"`
+- for plain terminal validation, export `MINIMAX_API_KEY` in that same shell
+- if `codex --profile m25` works but `ds doctor` or `ds docker` still says a provider env var is missing, also place the real key in `~/DeepScientist/config/runners.yaml` under `runners.codex.env.MINIMAX_API_KEY`
 
 Use the official MiniMax Coding Plan endpoint:
 

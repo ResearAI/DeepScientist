@@ -28,9 +28,29 @@ def test_system_prompt_defines_metric_contract_rules_and_optional_metric_md() ->
     assert "Every canonical baseline metric entry should explain where it came from" in text
     assert "Every main experiment submission must cover all required baseline metric ids" in text
     assert "`Result/metric.md` may be used as temporary scratch memory" in text
+    assert "A core metric contract is enough to confirm a comparison-ready baseline" in text
     assert "When using `artifact.confirm_baseline(...)`, keep two levels explicit" in text
     assert "If you compute an aggregate metric such as a mean, keep the aggregate as one metric" in text
     assert "Do not manually turn the actual message into a preview" in text
+
+
+def test_system_prompt_budgets_smoke_checks_and_records_reusable_test_lessons() -> None:
+    text = _system_prompt_text()
+
+    assert "Treat smoke/pilot work as a stage-local budget of `0-2` runs" in text
+    assert "A second smoke/pilot is justified only after a real change" in text
+    assert "Search memory before reopening a previously tested command path" in text
+    assert "If a smoke test, pilot, or cheap validation resolved a reusable fact" in text
+
+
+def test_system_prompt_requires_checkpoint_style_memory_for_resume() -> None:
+    text = _system_prompt_text()
+
+    assert "Maintain at least one compact checkpoint-style quest memory card" in text
+    assert "current route, strongest retained result or blocker, what not to reopen by default, next resume step, and which files should be read first" in text
+    assert "current node history explicit" in text
+    assert "which earlier node(s) or route(s) it superseded or was derived from" in text
+    assert "update the checkpoint-style memory instead of leaving the old card to compete with fresher durable state" in text
 
 
 def test_idea_skill_requires_survey_delta_and_memory_reuse_contract() -> None:
@@ -46,8 +66,9 @@ def test_idea_skill_requires_survey_delta_and_memory_reuse_contract() -> None:
     assert "utility_score" in text
     assert "quality_score" in text
     assert "exploration_score" in text
-    assert "at least `5` and usually `5-10`" in text
-    assert "Do not write, promote, or submit a final idea" in text
+    assert "usually covers at least `5` and often `5-10`" in text
+    assert "paper-ready idea packages" in text
+    assert "smaller targeted survey can be enough" in text
     assert "standard citation format" in text
     assert "The selected idea draft must cite the survey papers" in text
     assert "references/idea-generation-playbook.md" in text
@@ -60,6 +81,8 @@ def test_idea_skill_requires_survey_delta_and_memory_reuse_contract() -> None:
     assert "`fast-check`" in text
     assert "`slow-check`" in text
     assert "validation is cheaper than overthinking" in text
+    assert "If DeepXiv is declared available by the system prompt" in text
+    assert "If DeepXiv is declared unavailable, do not try to force it; stay on the legacy route." in text
 
 
 def test_system_prompt_stays_compact_and_delegates_stage_sop() -> None:
@@ -84,12 +107,18 @@ def test_system_prompt_restores_operational_mcp_and_mode_contracts() -> None:
     text = _system_prompt_text()
 
     assert "artifact.get_global_status(detail='brief'|'full')" in text
+    assert "artifact.get_research_map_status(detail='summary'|'full')" in text
     assert "artifact.resolve_runtime_refs(...)" in text
     assert "artifact.get_method_scoreboard(...)" in text
+    assert "recommended activation ref" in text
     assert "kind='answer'" in text
     assert "The default long-run monitoring cadence is about `60s -> 120s -> 300s -> 600s -> 1800s -> 1800s ...`" in text
+    assert "`paper-plot`" in text
     assert "#### `review`" in text
     assert "#### `rebuttal`" in text
+    assert "baseline_source_mode" in text
+    assert "execution_start_mode" in text
+    assert "baseline_acceptance_target" in text
     assert "algorithm-first optimization mode" not in text  # guard against stale naming drift
     assert "`algorithm_first` mode is the non-paper optimization mode" in text
 
@@ -131,6 +160,7 @@ def test_system_prompt_restores_interaction_and_stage_protocols() -> None:
     assert "#### `scout`" in text
     assert "#### `intake-audit`" in text
     assert "#### `decision`" in text
+    assert "read `paper-plot` when measured numbers, arrays, or CSV-like results should become a paper-quality bar, line, scatter, or radar chart" in text
     assert "#### `figure-polish`" in text
 
 
@@ -185,30 +215,39 @@ def test_system_prompt_keeps_compact_reference_wording_templates() -> None:
     assert "这里有个分叉需要你确认" in text
 
 
-def test_baseline_skill_requires_plan_checklist_and_source_reading() -> None:
+def test_baseline_skill_prioritizes_hard_gates_over_fixed_paths() -> None:
     text = _skill_text("baseline")
 
-    assert "## Quick workflow" in text
-    assert "## Fast-path first" in text
-    assert "## Required plan and checklist" in text
-    assert "source paper and source repo first" in text
-    assert "`PLAN.md` and `CHECKLIST.md`" in text
-    assert "a concise `CHECKLIST.md` is usually enough" in text
-    assert "references/baseline-plan-template.md" in text
-    assert "references/baseline-checklist-template.md" in text
+    assert "## Authority and freedom" in text
+    assert "The agent owns the execution path" in text
+    assert "Do not treat templates, filenames, `uv`, smoke tests, detached runs, or the phase order as required paths" in text
+    assert "## Hard acceptance gates" in text
+    assert "Baseline success means later stages can compare against one accepted comparator without guessing" in text
+    assert "the accepted comparison contract is written to `<baseline_root>/json/metric_contract.json`" in text
+    assert "## Acceptance targets" in text
+    assert "comparison_ready" in text
     assert "## Comparator-first rule" in text
     assert "comparator-first, not reproduction-first" in text
     assert "what is the lightest trustworthy comparator?" in text
-    assert "concise `1-2` sentence summary" in text
-    assert "Do not replace a working comparison-ready comparator with a heavier route" in text
-    assert "For `comparison_ready`, `verify-local-existing`, attach, or import should usually beat full reproduction" in text
+    assert "## Route success criteria" in text
+    assert "If a lighter route already satisfies the current acceptance target, stop there" in text
+    assert "baseline should usually stop immediately and hand off to the next scientific step" in text
+    assert "core metric contract" in text
+    assert "Durable records are required in substance, not in fixed filenames" in text
+    assert "`PLAN.md`, `CHECKLIST.md`, `setup.md`, `execution.md`, `verification.md`, `analysis_plan.md`, and `REPRO_CHECKLIST.md` are allowed compatibility surfaces, not mandatory success paths" in text
+    assert "references/baseline-plan-template.md" in text
+    assert "references/baseline-checklist-template.md" in text
     assert "A bounded smoke test is usually helpful only when" in text
-    assert "Unless the user explicitly specifies otherwise, treat the original paper's evaluation protocol as the canonical starting point." in text
-    assert "multiple metrics, datasets, subtasks, or splits" in text
+    assert "Keep one dominant baseline route active at a time" in text
+    assert "canonical starting point" in text
+    assert "mark only the currently required canonical metrics as required" in text
     assert "flat top-level dictionary keyed by the paper-facing metric ids" in text
     assert "reuse that richer contract instead of hand-writing a thinner one" in text
     assert "`Result/metric.md` is optional temporary scratch memory only" in text
-    assert "same failure class" in text
+    assert "## Negative cases and stop rules" in text
+    assert "same failure class reappears" in text
+    assert "## Baseline id and variant rules" in text
+    assert "references/artifact-payload-examples.md" in text
 
 
 def test_experiment_skill_requires_incremental_seven_field_recording() -> None:
@@ -246,7 +285,7 @@ def test_experiment_skill_requires_incremental_seven_field_recording() -> None:
     assert "equivalence-preserving efficiency upgrades" in text
     assert "For `comparison_ready`, `verify-local-existing`, attach, or import should usually beat full reproduction" in text
     assert "baseline comparability, treat it as a real experiment change" in text
-    assert "one clean implementation pass, one bounded smoke or pilot run, and then one normal main run" in text
+    assert "one clean implementation pass and one real run" in text
     assert "implement according to the current `PLAN.md`" in text
     assert "extra metrics are allowed, but missing required metrics are not" in text
     assert "record it as supplementary output rather than replacing the canonical comparator" in text
@@ -334,26 +373,34 @@ def test_algorithm_first_companion_skills_handoff_into_optimize() -> None:
     assert "return to `optimize` or `decision` for frontier review" in experiment_text
 
 
-def test_analysis_campaign_skill_requires_outline_bound_campaign_fields() -> None:
+def test_analysis_campaign_skill_prioritizes_evidence_boundary_over_fixed_paths() -> None:
     text = _skill_text("analysis-campaign")
 
-    assert "## Quick workflow" in text
-    assert "## Required plan and checklist" in text
-    assert "`PLAN.md` and `CHECKLIST.md`" in text
+    assert "## Authority and freedom" in text
+    assert "The agent owns the analysis path" in text
+    assert "Do not treat `PLAN.md`, `CHECKLIST.md`, `artifact.create_analysis_campaign(...)`, one-slice campaigns, returned worktrees, `evaluation_summary`, smoke tests, detached runs, or paper-matrix updates as universal required paths" in text
+    assert "## Hard success gates" in text
+    assert "An analysis campaign succeeds when it changes or confirms the evidence boundary of a parent claim" in text
+    assert "every launched slice has a durable outcome" in text
+    assert "## Slice evidence contract" in text
+    assert "question, intervention or inspection target, fixed conditions, metric or observable, evidence path, claim update, comparability verdict, and next action" in text
+    assert "## Comparability contract" in text
+    assert "do not present the run as a direct apples-to-apples comparison" in text
+    assert "## Durable route records" in text
+    assert "`PLAN.md`, `CHECKLIST.md`, `paper/paper_experiment_matrix.md`, and local matrix/checklist files are allowed control surfaces, not mandatory success paths" in text
     assert "references/campaign-plan-template.md" in text
     assert "references/campaign-checklist-template.md" in text
     assert "slice feasibility, ordering, comparators, or campaign interpretation changes materially" in text
-    assert "concise `1-2` sentence summary" in text
-    assert "do not launch it until a selected outline exists" in text
+    assert "paper-ready slices must map cleanly back to a selected outline" in text
     assert "selected_outline_ref" in text
     assert "research_questions" in text
     assert "experimental_designs" in text
     assert "todo_items" in text
     assert "stable support" in text
     assert "contradiction" in text
-    assert "`slice_class`, such as `auxiliary`, `claim-carrying`, or `supporting`" in text
-    assert "move it from `minimum` to `solid`" in text
-    assert "required_baselines" in text
+    assert "claim-carrying" in text
+    assert "supporting" in text
+    assert "auxiliary" in text
     assert "comparison_baselines" in text
     assert "evaluation_summary" in text
     assert "takeaway" in text
@@ -366,6 +413,8 @@ def test_analysis_campaign_skill_requires_outline_bound_campaign_fields() -> Non
     assert "paper_role" in text
     assert "highlight-validation" in text or "highlight validation" in text
     assert "efficiency or cost" in text
+    assert "## Negative cases and stop rules" in text
+    assert "a new main experiment is disguised as an analysis slice" in text
     assert "references/writing-facing-slice-examples.md" in text
 
 
@@ -390,7 +439,8 @@ def test_write_skill_prefers_flexible_outline_flow_and_bundle_submission() -> No
     assert "verification checkpoints" in text
     assert "paper/paper_experiment_matrix.md" in text
     assert "paper/paper_experiment_matrix.json" in text
-    assert "completed relevant analysis results under `experiments/analysis-results/`" in text
+    assert "when relevant analysis results are meant to support the active paper line" in text
+    assert "current mapped paper evidence set" in text
     assert "do not allow completed analysis results to remain paper-invisible" in text
     assert "paper/evidence_ledger.json" in text or "paper/evidence_ledger.md" in text
     assert "references/outline-evidence-contract-example.md" in text
@@ -554,6 +604,41 @@ def test_review_skill_requires_independent_audit_outputs_and_followup_routing() 
     assert "copy-ready replacement sentence" in text or "copy-ready replacement" in text
 
 
+def test_decision_and_finalize_skills_require_checkpoint_style_memory_when_resume_state_changes() -> None:
+    decision_text = _skill_text("decision")
+    finalize_text = _skill_text("finalize")
+
+    assert "write one compact checkpoint-style quest memory card" in decision_text
+    assert "current active node" in decision_text
+    assert "node history" in decision_text
+    assert "what not to reopen by default" in decision_text
+    assert "first files to read" in decision_text
+    assert "type:checkpoint-memory" in decision_text
+    assert "references/checkpoint-memory-template.md" in decision_text
+
+    assert "write or refresh one compact checkpoint-style quest memory card" in finalize_text
+    assert "mirrors the live resume packet" in finalize_text
+    assert "current active node" in finalize_text
+    assert "node history" in finalize_text
+    assert "type:checkpoint-memory" in finalize_text
+    assert "references/checkpoint-memory-template.md" in finalize_text
+    assert "if the quest is stopping at continue-later / pause-ready rather than true completion" in finalize_text
+
+
+def test_finalize_resume_and_checkpoint_templates_require_current_node_history() -> None:
+    repo = repo_root()
+    resume_template = (repo / "src" / "skills" / "finalize" / "references" / "resume-packet-template.md").read_text(encoding="utf-8")
+    checkpoint_template = (repo / "src" / "skills" / "finalize" / "references" / "checkpoint-memory-template.md").read_text(encoding="utf-8")
+    decision_checkpoint_template = (repo / "src" / "skills" / "decision" / "references" / "checkpoint-memory-template.md").read_text(encoding="utf-8")
+
+    assert "### 1A. Current node history" in resume_template
+    for text in (checkpoint_template, decision_checkpoint_template):
+        assert "## Recommended structure" in text
+        assert "### 2. Current active node" in text
+        assert "### 3. Node history" in text
+        assert "superseded node(s)" in text or "superseded completion" in text
+
+
 def test_stage_skill_progress_contracts_match_tool_call_keepalive_policy() -> None:
     aligned_skills = (
         "intake-audit",
@@ -584,7 +669,7 @@ def test_experiment_and_analysis_skills_require_smoke_then_detach_tail_monitorin
         assert "smoke test" in text
         assert "bash_exec(mode='detach', ...)" in text
         assert "2000 lines or fewer" in text
-        assert "first 500 lines plus the last 1500 lines" in text
+        assert ("first 500 lines plus the last 1500 lines" in text) or ("first 500 lines plus last 1500 lines" in text)
         assert "bash_exec(mode='read', id=..., start=..., tail=...)" in text
         assert "tail_limit=..., order='desc'" in text
         assert "after_seq=last_seen_seq" in text
@@ -595,6 +680,13 @@ def test_experiment_and_analysis_skills_require_smoke_then_detach_tail_monitorin
         assert "bash_exec(command='sleep N', mode='await', timeout_seconds=N+buffer, ...)" in text
         assert "do not set `timeout_seconds` exactly equal to `N`" in text
         assert "prefer `bash_exec(mode='await', id=..., timeout_seconds=...)` instead of starting a new sleep command" in text
+
+    assert "verify-local-existing" in baseline_text
+    assert "same failure class appears again" in baseline_text
+    assert "acceptance target" in baseline_text
+    assert "`0-2` budget" in experiment_text
+    assert "`0-2`" in analysis_text
+    assert "`0-2` default budget" in baseline_text
 
     assert "smoke test" in baseline_text
     assert "bash_exec(mode='detach', ...)" in baseline_text
@@ -609,13 +701,14 @@ def test_baseline_skill_prefers_fast_path_over_upfront_ceremony() -> None:
     assert "Default to a fast path when it can establish trust with less work" in text
     assert "do not restart broad baseline discovery by default" in text
     assert "do not front-load a full codebase audit" in text
-    assert "one bounded smoke test" in text
-    assert "do not rerun the same unchanged smoke command" in text
-    assert "same failure class appears again" in text
-    assert "If a lighter route already satisfies the current acceptance target, stop there." in text
+    assert "A bounded smoke test is usually helpful only when" in text
+    assert "Treat smoke/pilot work as a `0-2` default budget" in text
+    assert "not to repeat an unchanged check without new evidence" in text
+    assert "do not require a fresh memory pass for every fast-path validation" in text
+    assert "The comparison-ready minimum still requires `<baseline_root>/json/metric_contract.json`" in text
     assert "references/comparability-contract.md" in text
     assert len(text.splitlines()) < 700
-    assert len(text) < 30000
+    assert len(text) < 32500
 
 
 def test_baseline_artifact_payload_reference_exists_and_stays_compact() -> None:

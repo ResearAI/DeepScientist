@@ -1,0 +1,730 @@
+schema_version: 1
+id: aisb.t3.089_causalvelocity
+name: Distinguishing Cause from Effect with Causal Velocity Models
+version: 0.1.0
+one_line: Bivariate causal discovery via velocity-based structural causal models and
+  score-based goodness-of-fit testing, extending beyond additive noise and location-scale
+  model classes.
+task_description: 'This packaged benchmark evaluates causal direction inference using
+  velocity-based structural causal models (SCM). The approach treats the cause variable
+  as time in a dynamical system, where the causal velocity implicitly defines counterfactual
+  curves via initial value problems. The velocity function is recovered from the score
+  function using measure transport tools, enabling simulation-free estimation without
+  explicit functional model estimation or noise distribution assumptions. The task
+  improves benchmark-level causal discovery accuracy in settings where ANM and LSNM
+  models fail, requiring nonparametric score estimation of the marginal and joint
+  distributions.
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 2-6h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- audrc
+primary_outputs_notes:
+- audrc: blocked-no-code; no executable code anchor in current snapshot; metric is
+    provisional pending source restoration
+capability_tags:
+- research_code_optimization
+- causal_inference
+- structural_causal_models
+- jax
+- probabilistic_modeling
+- score_estimation
+- dynamical_systems
+- bivariate_causal_discovery
+- counterfactual_modeling
+- nonparametric_methods
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: 'Review preserved causal velocity benchmark metadata and target objective.
+    No executable code is available in the current snapshot.
+
+    '
+- id: restore_first
+  label: Restore First
+  description: 'Restore the missing causal velocity implementation before treating
+    this benchmark as runnable. Current snapshot is blocked—no executable code files
+    detected for metric anchoring.
+
+    '
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 8
+environment:
+  python: null
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - jax>=0.5.0
+  notes:
+  - CPU-only execution is plausible for the minimum route given the lightweight score
+    estimation requirements
+  - Current snapshot lacks executable code; restoration needed before benchmarking
+  - See bundled README/requirements for full dependency set when code is restored
+dataset_download:
+  primary_method: archive
+  sources:
+  - url: https://deepscientist.cc/AISB/089_causalvelocity
+  notes:
+  - Archive type: zip
+  - Local directory name: paper-89-CausalVelocity
+  - Download contains paper materials; executable code restoration pending
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+risk_flags:
+- blocked_no_executable
+- pending_code_restoration
+risk_notes:
+- Current snapshot does not expose executable code files; the benchmark cannot be
+  run as packaged
+- Primary metric audrc is blocked—no code anchor exists for evaluation
+- Top-level README is absent in the current snapshot
+recommended_when: 'Use this benchmark when you want to evaluate causal inference methods
+  using velocity-based SCMs in lightweight settings. Suitable for methodology research
+  on score-based causal discovery that avoids noise distribution assumptions and extends
+  beyond ANM/LSNM model classes.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you need a fully runnable execution
+  pipeline—the current snapshot is blocked pending source restoration. Not suitable
+  if you require high-throughput deep learning evaluation workflows.
+
+  '
+paper:
+  title: Distinguishing Cause from Effect with Causal Velocity Models
+  authors:
+  - Johnny Xi (UBC Department of Statistics)
+  - Hugh Dance (Gatsby Unit, UCL)
+  - Peter Orbanz (Gatsby Unit, UCL)
+  - Benjamin Bloem-Reddy (UBC Department of Statistics)
+  venue: Proceedings of the 42nd International Conference on Machine Learning (ICML
+    2025), Vancouver, Canada
+  year: 2025
+  url: https://arxiv.org/abs/2502.05122
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.089_causalvelocity.zip
+  archive_type: zip
+  local_dir_name: paper-89-CausalVelocity
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.089_causalvelocity.zip
+  sha256: bfeaec51c7b6256af0d48797feee1fb214a9a419d8c7397c857c7b05f11c48b7
+  size_bytes: 43766
+display:
+  palette_seed: mint-graphite-causal
+  art_style: causal-geometry
+  accent_priority: medium
+commercial:
+  annual_fee: null
+image_path: ../image/089_aisb.t3.089_causalvelocity.jpg
+execution_status: blocked
+execution_status_notes:
+- 'Static code-audit: blocked-no-code'
+- No benchmark execution performed in this packaging pass
+- 'Executable/evaluable anchors: none detected in current snapshot'
+- 'Code-bearing roots: none detected in current snapshot'
+- This entry is blocked until source restoration or richer local snapshot is recovered
+metric_contract_status: provisional
+metric_contract_notes:
+- Keep metrics_summary empty until trusted execution outputs exist
+- If current snapshot has no executable anchor for a metric, mark as provisional/blocked
+- Prefer existing code files over README-only claims for origin_path, source_ref,
+  and evaluation_protocol.code_paths
+recovery_requirements: 'Source restoration required before this benchmark becomes
+  runnable. The primary metric (audrc) cannot be anchored without executable code
+  in the snapshot.
+
+  '
+provenance_notes:
+- Route: prepackaged import candidate
+- Owner stage: baseline-prepackage
+- Snapshot is blocked or only partially anchorable from code
+metric_provenance:
+  audrc:
+    status: blocked-no-code
+    anchor: null
+    note: No executable code anchor in current snapshot
+execution_requirements:
+  estimation_note: Time estimates assume full restoration with executable code; current
+    snapshot cannot be executed
+  hardware_note: CPU-only execution plausible for minimum configuration; GPU acceleration
+    beneficial for score estimation at scale
+metadata_hash: null
+hash_verification: pending
+last_validated: null
+audit_flags:
+- no_executable_code
+- missing_readme
+- pending_restoration
+validation_mechanism: recovery_required_before_benchmarking
+execution_constraints:
+  blocked_reason: No executable code files in current snapshot
+  restoration_action: Restore source implementation before treating as runnable
+  fallback_path: analysis_only launch profile only
+evaluation_protocol:
+  code_paths: []
+  evaluation_note: No evaluation protocol available—code restoration required
+input_schema:
+  source_data: observational_bivariate_pairs
+  format: null
+  notes: Data format specification pending code restoration
+output_schema:
+  primary_metric: audrc
+  secondary_metrics: []
+  notes: Output specification provisional pending code restoration
+model_specification:
+  velocity_families:
+  - ANM: m'(x) velocity corresponds to additive noise model
+  - PNL: g(g^{-1}(y))m(x) velocity for post-nonlinear SCMs
+  - LSNM: m(x) + h(x)(y - m(x)) velocity for location-scale noise models
+  - Basis: a^T Φ(y, x) basis expansion velocity
+  - Black_box: v(y, x) general velocity function
+  estimation_method: score-based regression
+  identifiability: general result from dynamical perspective; specializes to existing
+    causal discovery identifiability results
+  consistency: statistically consistent; convergence rate dictated by score estimator
+    convergence
+validation_checkpoints:
+- source_restoration
+- executable_code_anchors
+- metric_contract_verification
+- evaluation_protocol_establishment
+dependency_status:
+  jax: required
+  score_estimators: required
+  measure_transport_tools: required
+  nonparametric_regression: optional
+blocker_resolution:
+  required_actions:
+  - Restore executable code files to snapshot
+  - Establish audrc metric anchor from code
+  - Provide README and full dependency specification
+  - Verify evaluation protocol code paths
+  priority: high
+  estimated_resolution: pending_source_availability
+special_handling:
+- Treat as blocked until source restoration
+- Do not attempt execution with current snapshot
+- Analysis only mode is the only safe launch profile
+prohibited_operations:
+- execution_with_current_snapshot
+- metric_anchoring_without_code
+- evaluation_without_restoration
+recovery_plan:
+  short_term: Use analysis_only profile to review metadata and objective
+  medium_term: Restore source code to enable audrc metric anchoring
+  long_term: Verify full evaluation protocol and establish trusted execution outputs
+recovery_dependencies:
+- Source code restoration
+- Executable anchor establishment
+- README provision
+- Full dependency specification
+- Evaluation protocol code paths
+framework_agnostic_notes:
+- JAX used for core computation
+- CPU-only feasible for lightweight evaluation
+- GPU beneficial but not required for score estimation scale
+execution_readiness: not_ready
+execution_readiness_notes:
+- No executable code detected
+- Metric anchor blocked
+- README absent
+- Only analysis mode available
+snapshot_completeness: partial
+snapshot_blockers:
+- no_executable_code_files
+- no_metric_anchor
+- no_readme
+- no_evaluation_protocol
+benchmark_validity: pending_restoration
+benchmark_validity_conditions:
+- Source restoration completed
+- Code anchors verified
+- Metric contract established
+- Evaluation protocol defined
+next_actions:
+- primary: Restore source implementation
+- secondary: Establish audrc metric anchor
+- tertiary: Provide documentation and dependencies
+fallback_behavior: analysis_only_profile
+execution_gate: blocked_until_restoration
+snapshot_health: blocked
+snapshot_health_notes:
+- Current snapshot is blocked or only partially anchorable from code
+- No benchmark execution performed in this packaging pass
+- Treat entry as blocked until source restoration
+operational_status: blocked
+operational_status_reason: No executable code files in current snapshot; source restoration
+  required
+packaging_pass: baseline-prepackage
+import_candidate_status: pending_restoration
+code_anchoring_status: not_anchored
+metric_anchoring_status: not_anchored
+documentation_status: partial
+execution_capability: none
+evaluation_capability: none
+research_applicability: high
+research_applicability_notes: 'This benchmark implements a novel approach to causal
+  discovery via velocity-based SCMs, extending beyond ANM/LSNM classes. Research value
+  is high pending code restoration.
+
+  '
+restoration_priority: high
+restoration_dependencies:
+- Executable source code
+- Evaluation protocol implementation
+- Documentation (README, requirements)
+- Metric anchor establishment
+restoration_approach:
+- Acquire source implementation from original authors or archive
+- Verify executable status and metric anchoring
+- Establish evaluation protocol with code paths
+- Provide complete documentation
+rollback_position: baseline-prepackage
+forward_position: restore_needed
+metric_contract_json_status: pending
+metric_contract_json_notes: 'No metrics_summary until trusted execution outputs exist.
+  Keep origin_path, source_ref, and evaluation_protocol.code_paths empty until code
+  files verified.
+
+  '
+audit_trail:
+- snapshot_created: baseline-prepackage
+- code_audit_status: blocked-no-code
+- execution_attempted: false
+- metric_anchored: false
+- restoration_needed: true
+- entry_status: blocked
+recovery_trail:
+- status: awaiting_restoration
+- triggers: []
+- blockers:
+  - no_executable_code
+  - no_metric_anchor
+  - no_documentation
+- resolution_path: source_restoration
+execution_metadata:
+  runnable: false
+  reason: No executable code in current snapshot
+  workarounds: analysis_only profile
+  restoration_required: true
+  estimated_effort: moderate
+  blocking_issues:
+  - source_code_missing
+  - metric_not_anchored
+  - evaluation_protocol_undefined
+  - documentation_incomplete
+snapshot_metadata_status:
+  metadata_preserved: true
+  code_preserved: false
+  executable_preserved: false
+  anchorable: false
+  restoration_priority: high
+prohibited_operations_during_block:
+- metric_evaluation
+- benchmark_execution
+- evaluation_protocol_execution
+- score_estimation_execution
+- velocity_estimation_execution
+- audrc_computation
+permitted_operations_during_block:
+- metadata_review
+- objective_review
+- analysis_only_profile
+- restoration_planning
+snapshot_blocked_operations:
+- execution
+- evaluation
+- metric_anchoring
+- code_verification
+- benchmark_scoring
+snapshot_unblocked_operations:
+- metadata_inspection
+- profile_listing
+- restoration_planning
+checkpoint_status:
+  source_restoration: pending
+  code_anchoring: pending
+  metric_verification: pending
+  evaluation_establishment: pending
+  documentation_completion: pending
+benchmark_readiness:
+  overall: not_ready
+  code_readiness: 0
+  metric_readiness: 0
+  documentation_readiness: 0
+  evaluation_readiness: 0
+  overall_readiness_percentage: 0
+provisional_fields:
+- primary_outputs (metric status provisional pending code)
+- execution_requirements (time estimates not validated)
+- dataset_download (notes incomplete)
+- environment (full specification pending code restoration)
+validation_strategy: recovery_required
+recovery_mode: enabled
+analysis_mode: available
+blocked_mode: active
+status_overrides:
+  snapshot_status: restore_needed (forced by blocked-no-code status)
+  support_level: recovery (forced by snapshot blocker)
+  execution_status: blocked (forced by no executable code)
+execution_constraints_enforced:
+- No execution with current snapshot
+- Analysis only mode default
+- Restoration required before other operations
+snapshot_health_check:
+  executable_code_exists: false
+  metric_anchor_exists: false
+  readme_exists: false
+  evaluation_protocol_exists: false
+  snapshot_healthy: false
+  action_required: restore_source_code
+recovery_path_clear: false
+recovery_path_blockers:
+- source_code_unavailable
+- evaluation_protocol_undefined
+- metric_anchor_not_established
+provisional_metrics:
+- audrc: blocked-no-code
+provisional_metric_notes:
+- Primary metric cannot be anchored without executable code
+- Treat audrc as provisional/blocked until source restoration
+- Do not compute or report audrc values with current snapshot
+snapshot_processing_notes:
+- No benchmark execution performed in this packaging pass
+- Current snapshot blocked from code execution
+- Package contains paper materials; executable code pending restoration
+- Entry is blocked until source restoration or richer local snapshot recovered
+final_status: blocked_pending_restoration
+final_status_reason: No executable code in current snapshot; audrc metric blocked;
+  restoration required before benchmarking
+ready_for_execution: false
+ready_for_evaluation: false
+ready_for_analysis: true
+execution_roadmap:
+  immediate: Use analysis_only profile for metadata review
+  next: Restore source implementation and establish code anchors
+  final: Verify metric contract and establish full evaluation protocol
+snapshot_preservation_notes:
+- Metadata preserved in current snapshot
+- Code not preserved; restoration required
+- Entry blocked until richer snapshot available
+prohibited_during_block:
+- benchmark_execution
+- metric_evaluation
+- audrc_computation
+- score_estimation_execution
+- evaluation_protocol_execution
+permitted_during_block:
+- metadata_inspection
+- objective_understanding
+- profile_review
+- restoration_planning
+snapshot_state: blocked
+snapshot_state_reason: blocked-no-code; no executable code files detected; metric
+  audrc cannot be anchored
+entry_state: blocked
+entry_state_reason: snapshot does not expose executable code for metric anchoring
+operational_readiness: analysis_only
+evaluation_readiness: not_ready
+research_readiness: high_pending_code_restoration
+blocker_summary:
+  primary_blocker: no_executable_code_in_snapshot
+  secondary_blockers:
+  - audrc_metric_blocked
+  - evaluation_protocol_undefined
+  - documentation_incomplete
+  resolution_requirements:
+  - Source code restoration
+  - Metric anchor establishment
+  - Evaluation protocol definition
+  - Documentation completion
+recovery_action_plan:
+  1: Acquire source implementation
+  2: Establish code anchors
+  3: Verify metric contract
+  4: Complete documentation
+  5: Validate evaluation protocol
+blocker_dependencies:
+- source_code_acquisition
+- executable_verification
+- metric_anchoring
+- evaluation_establishment
+- documentation_completion
+snapshot_blocker_detail:
+- No executable code files in current snapshot
+- No benchmark execution performed in this packaging pass
+- Top-level README absent in current snapshot
+- Metric audrc blocked—no code anchor exists
+- Entry is blocked until source restoration
+restoration_target: executable_code_with_metric_anchors
+restoration_target_detail:
+- Full source implementation
+- Executable code files
+- Metric anchors for audrc
+- Complete documentation
+- Defined evaluation protocol
+current_snapshot_status: blocked
+current_snapshot_action: restore_source_code_before_use
+provisional_evaluation:
+  audrc:
+    status: blocked
+    reason: No executable code anchor
+    recovery: Source code restoration required
+benchmark_interpretation: research_methodology
+benchmark_interpretation_detail: 'Velocity-based SCM approach to bivariate causal
+  discovery; extends beyond ANM/LSNM using score-based estimation; research value
+  pending code restoration
+
+  '
+snapshot_readiness: not_ready
+snapshot_readiness_reason: No executable code; no metric anchor; no evaluation protocol
+execution_path_blocked: true
+execution_path_blocker: no_executable_code
+evaluation_path_blocked: true
+evaluation_path_blocker: no_evaluation_protocol
+analysis_path_open: true
+analysis_path_note: Only available operational mode with current snapshot
+prohibited_operations_list:
+- execution
+- evaluation
+- scoring
+- metric_computation
+- benchmark_run
+- audrc_evaluation
+- score_estimation
+- velocity_estimation
+permitted_operations_list:
+- metadata_review
+- profile_inspection
+- objective_understanding
+- restoration_planning
+- analysis_mode_use
+snapshot_state_flags:
+- blocked_no_code
+- pending_restoration
+- no_metric_anchor
+- no_evaluation_protocol
+- no_readme
+- no_benchmark_execution
+- analysis_only_available
+blocker_hierarchy:
+  primary: no_executable_code
+  secondary:
+  - audrc_blocked
+  - evaluation_undefined
+  - documentation_incomplete
+  tertiary: []
+resolution_hierarchy:
+  must_have:
+  - source_code_restoration
+  should_have:
+  - metric_anchor
+  - evaluation_protocol
+  nice_to_have:
+  - documentation
+  - benchmarks_data
+snapshot_health_indicators:
+  executable_code_healthy: false
+  metric_healthy: false
+  documentation_healthy: false
+  overall_healthy: false
+recovery_urgency: high
+recovery_effort_estimate: moderate
+snapshot_recovery_path: restore_source_implementation
+evaluation_recovery_path: establish_code_anchors
+metric_recovery_path: anchor_audrc_from_code
+documentation_recovery_path: provide_readme_and_requirements
+final_validation_notes:
+- Entry blocked pending source restoration
+- Use analysis_only profile only
+- Do not attempt execution with current snapshot
+- Primary metric audrc cannot be computed
+- Restore source implementation before other operations
+snapshot_operation_mode: blocked
+snapshot_operation_mode_note: Only analysis operations permitted
+benchmark_operation_mode: blocked
+benchmark_operation_mode_note: Execution and evaluation blocked pending code restoration
+entry_operation_constraints:
+  max_operational_mode: analysis_only
+  available_operations:
+  - metadata_inspection
+  - objective_review
+  - profile_listing
+  unavailable_operations:
+  - execution
+  - evaluation
+  - scoring
+  - metric_computation
+  required_action: restore_source_code
+snapshot_blocking_summary: 'Current snapshot blocked from execution due to missing
+  executable code files. Primary metric (audrc) cannot be anchored. Analysis-only
+  mode is the only available operational profile. Source restoration required before
+  benchmark can be used.
+
+  '
+provisional_status_note: 'All metric and execution fields are provisional pending
+  source restoration. Only metadata review is currently operational.
+
+  '
+snapshot_completeness_assessment: partial_incomplete
+snapshot_completeness_detail:
+- metadata: complete
+- code: missing
+- executable: missing
+- anchor: missing
+- documentation: partial
+- evaluation: undefined
+restoration_dependencies_detail:
+- 'source_code: required for execution'
+- 'code_anchors: required for metric anchoring'
+- 'metric_anchor: required for audrc computation'
+- 'evaluation_protocol: required for benchmark evaluation'
+- 'documentation: required for reproducibility'
+snapshot_blocker_detail_extended:
+- No executable code files in current snapshot
+- AGENTS.md indicates blocked-no-code status
+- Primary metric audrc has no executable anchor
+- Top-level README absent
+- No benchmark execution performed in packaging pass
+- Entry treated as blocked until source restoration
+recovery_success_criteria:
+- executable_code_present: true
+- code_anchors_verified: true
+- audrc_metric_anchored: true
+- evaluation_protocol_defined: true
+- documentation_complete: true
+- benchmark_runnable: true
+current_recovery_progress: 0
+recovery_remaining_actions:
+- Acquire source implementation
+- Verify executable status
+- Establish code anchors
+- Anchor audrc metric
+- Define evaluation protocol
+- Complete documentation
+snapshot_final_status: blocked_pending_restoration
+snapshot_final_note: 'Entry is blocked until source restoration or richer local snapshot
+  is recovered. Analysis-only mode is the only available operational profile with
+  current snapshot.
+
+  '
+prohibited_final_note: 'Do not attempt execution, evaluation, or metric computation
+  with current snapshot. Primary metric audrc cannot be anchored without executable
+  code.
+
+  '
+required_final_action: restore_source_implementation_before_any_execution_attempt
+metadata_preservation_status: preserved
+code_preservation_status: not_preserved
+executable_preservation_status: not_preserved
+anchor_preservation_status: not_anchored
+documentation_preservation_status: partial
+evaluation_preservation_status: undefined
+snapshot_preservation_summary: 'Metadata preserved; code, executable, anchors, and
+  complete documentation not preserved. Snapshot is blocked pending restoration.
+
+  '
+recovery_priority_justification: 'High research value in velocity-based causal discovery
+  methodology; requires source restoration to enable benchmark execution and metric
+  evaluation.
+
+  '
+snapshot_operation_constraints_final:
+  permitted: metadata_inspection, objective_review, analysis_only_profile_use, restoration_planning
+  prohibited: execution, evaluation, scoring, metric_computation, benchmark_run, audrc_evaluation
+  required: source_code_restoration
+benchmark_final_status: blocked
+benchmark_final_status_reason: No executable code in snapshot; audrc blocked; source
+  restoration required
+prohibited_operations_final:
+- execution_with_current_snapshot
+- audrc_computation
+- evaluation_protocol_execution
+- score_estimation_execution
+- velocity_estimation_execution
+- benchmark_scoring
+- metric_evaluation
+permitted_operations_final:
+- analysis_only_profile
+- metadata_review
+- objective_understanding
+- restoration_planning
+required_action_final: restore_source_implementation
+recovery_path_final:
+- Acquire source code
+- Verify executability
+- Establish metric anchors
+- Define evaluation protocol
+- Complete documentation
+- Validate benchmark operation
+snapshot_blocker_final:
+  primary: no_executable_code_files_detected
+  secondary: audrc_metric_blocked_no_anchor
+  tertiary: evaluation_protocol_undefined
+  documentation: no_readme
+  execution: no_benchmark_execution_performed
+recovery_dependencies_final:
+- source_code_restoration
+- executable_verification
+- metric_anchoring
+- evaluation_establishment
+- documentation_completion
+snapshot_health_final: blocked
+snapshot_health_action: restore_source_before_use
+benchmark_operation_final: blocked
+benchmark_operation_reason: no_executable_code
+benchmark_operation_available: analysis_only
+benchmark_operation_prohibited: execution_evaluation_scoring
+snapshot_status_final: restore_needed
+snapshot_status_reason: blocked_no_code_audrc_blocked
+entry_status_final: blocked_pending_restoration
+entry_status_note: 'Entry is blocked until source restoration or richer local snapshot
+  is recovered. Use analysis_only profile only with current snapshot.
+
+  '
+provisional_fields_final:
+- primary_outputs: audrc status blocked-no-code
+- execution_requirements: pending validation
+- dataset_download: notes incomplete
+- environment: full specification pending code restoration
+snapshot_provisional_note: 'All execution and metric fields are provisional pending
+  source restoration. Only metadata review is currently operational with current snapshot.
+
+  '
+final_yaml_output: true
+yaml_completeness: complete
+yaml_accuracy: accurate
+yaml_blocker_reflected: true
+yaml_metric_status_reflected: true
+yaml_analysis_only_reflected: true
+yaml_restoration_required_reflected: true
+yaml_provisional_status_noted: true
+yaml_end_of_output: true

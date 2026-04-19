@@ -1,0 +1,142 @@
+schema_version: 1
+id: aisb.t3.029_cdqgeoembed
+name: 基于几何嵌入的条件二分量化
+version: 0.1.0
+one_line: '训练并评估反向感知复值嵌入（DoGE），该嵌入在辩论、可废止NLI和因果推理场景中量化上下文条件文本对之间的条件二分，通过DCF和Oppo-Angle指标进行测量。'
+task_description: '本基准测试涵盖ACL 2025提出的条件二分量化（ConDQ）任务。目标是学习能够捕获两个在相同上下文条件下文本输出是否真正对立的嵌入（例如辩论中的正反论点、可废止NLI中的强化与削弱论据、因果推理中的支持与反驳）。论文的DoGE框架使用复值嵌入和二分目标来几何定位正面、负面和中性论据。评估使用两个指标：二分一致性频率（DCF），用于检查论据类型之间的关系排序；以及Oppo-Angle，用于测量对立论据之间的角度分离。当前的本地快照不包含可执行训练或评估代码，仅包含元数据、论文、目录文件和一个检查点目录存根。上游仓库（https://github.com/cui-shaobo/conditional-dichotomy-quantification）和发布的PyPI包`opposite-score`提供了可运行代码。恢复可执行路径需要克隆上游仓库并安装opposite-score包，然后加载三个预训练HuggingFace模型之一进行推理，或在三个场景数据集上重新训练（辩论约95K、可废止NLI约441K、因果推理约48K四元组）。'
+capability_tags:
+- research_code_optimization
+- text_embeddings
+- contrastive_nlp
+- evaluation
+- classification
+- complex_valued_representations
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- avg_dcf
+- debate_dcf
+- nli_dcf
+- causal_dcf
+- debate_oppo_angle
+- nli_oppo_angle
+- causal_oppo_angle
+launch_profiles:
+- id: analysis_only
+  label: 仅分析
+  description: '查看保存的元数据、论文、指标合约和目录文件。不运行可执行代码；适用于理解任务定义和评估协议。'
+- id: restore_first
+  label: 优先恢复
+  description: '克隆上游GitHub仓库，从PyPI安装opposite-score，下载预训练HuggingFace检查点，并在运行基准测试前重建完整的训练和评估流程。'
+- id: inference_only
+  label: 仅推理（恢复后）
+  description: '恢复代码后，从HuggingFace加载预训练opposite-score模型，在三个场景的测试集上计算DCF和Oppo-Angle，无需重新训练。'
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/shaobocui/opposite-score-debate-bert
+    access: public
+    note: 辩论场景的预训练opposite-score模型（BERT骨干）。
+  - kind: huggingface
+    url: https://huggingface.co/shaobocui/opposite-score-defeasibleNLI-bert
+    access: public
+    note: 可废止NLI场景的预训练opposite-score模型（BERT骨干）。
+  - kind: huggingface
+    url: https://huggingface.co/shaobocui/opposite-score-causal-reasoning-bert
+    access: public
+    note: 因果推理场景的预训练opposite-score模型（BERT骨干）。
+  - kind: github
+    url: https://github.com/cui-shaobo/conditional-dichotomy-quantification
+    access: public
+    note: 上游源代码仓库，包含训练/评估代码和数据集构建脚本。
+  - kind: pypi
+    url: https://pypi.org/project/opposite-score/
+    access: public
+    note: 发布的Python包（opposite-score==0.0.1），提供DichotomyE模型和评分API。
+  notes:
+  - '三个场景数据集（辩论的PERSPECTRUM、可废止NLI的δ-NLI、因果推理的δ-CAUSAL）共计约583K个四元组。数据集磁盘占用很小（仅文本）；预训练模型检查点为BERT规模（每个约400MB）。'
+  - '数据集中的中性论据使用GPT-4o生成，并经由两名标注者人工验证；如果从头复现生成流程需要spaCy和GPT-4o API访问权限。'
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - '使用预训练模型或已发布数据集无需凭据。从头复现中性论据生成需要OpenAI API访问权限以使用GPT-4o。'
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 1
+    gpu_vram_gb: 8
+  recommended:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - opposite-score==0.0.1
+  - transformers
+  - spacy
+  notes:
+  - '当前本地快照不包含可执行设置文件或可运行源代码。环境规格来源于README和PyPI包元数据。'
+  - 'opposite-score包会在首次使用时自动下载预训练模型；使用示例中的.cuda()调用需要支持CUDA的GPU。'
+  - '完整复现训练需要上游仓库requirements文件中的额外依赖。'
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- upstream_dependency
+risk_notes:
+- '本地快照不包含可执行的Python文件，仅包含元数据、AGENTS、目录YAML、指标合约JSON、检查点目录存根和angles_data.csv文件。'
+- '所有训练和评估代码必须从上游GitHub仓库恢复，或从论文和opposite-score PyPI包重新构建。'
+- '打包过程中未执行基准测试；指标合约中的所有指标值为临时/阻塞状态。'
+- '复现中性论据生成需要GPT-4o API访问权限及相关费用。'
+recommended_when: '当您希望研究或复现ConDQ任务——即量化给定共享上下文时两个文本输出的对立程度——或计划为DoGE几何嵌入框架进行上游代码恢复时使用此条目。也适用于使用DCF和Oppo-Angle指标在三个ConDQ场景数据集上评估现有句子嵌入方法。'
+not_recommended_when: '不要将本地快照视为可立即运行的基准测试。可执行训练和评估代码缺失。如果您需要无需上游恢复即可立即运行文本嵌入基准测试，请选择其他条目。如果缺乏GPU访问权限也不适用，因为opposite-score模型需要CUDA才能正常使用。'
+paper:
+  title: Conditional Dichotomy Quantification via Geometric Embedding
+  authors:
+  - Shaobo Cui
+  - Wenqing Liu
+  - Yiyang Feng
+  - Jiawei Zhou
+  - Boi Faltings
+  venue: ACL 2025 (Oral)
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.383/
+  doi: 10.18653/v1/2025.acl-long.383
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.029_cdqgeoembed.zip
+  archive_type: zip
+  local_dir_name: paper-29-CDQGeoEmbed
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.029_cdqgeoembed.zip
+  sha256: 298b5f93116ff0797ce46bde8d3a2f35857b7b31a7e1b701cc8126148ff6d6b1
+  size_bytes: 236643
+commercial:
+  annual_fee: null
+display:
+  palette_seed: cedar-blue-opposition
+  art_style: semantic-cartography
+  accent_priority: high
+image_path: ../image/029_aisb.t3.029_cdqgeoembed.jpg

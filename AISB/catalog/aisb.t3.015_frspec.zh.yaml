@@ -1,0 +1,163 @@
+schema_version: 1
+id: aisb.t3.015_frspec
+name: 'FR-Spec: Accelerating Large-Vocabulary Language Models via Frequency-Ranked
+  Speculative Sampling'
+version: 0.1.0
+one_line: 通过构建自定义C/CUDA内核并测量Spec-Bench、HumanEval和GSM8K上相较于EAGLE-2基线的tokens/s加速比，来对大词表LLM的频率排序投机解码进行基准测试。
+task_description: '本基准测试评估FR-Spec，这是一种频率排序投机采样框架，通过将draft模型的LM Head限制在高频token子集（例如词汇表前25%），减少约75%的LM Head计算量，同时在验证过程中保持输出分布等价性，从而加速大词表LLM推理。该任务要求：（1）使用nvcc编译面向正确GPU计算能力目标的自定义C/CUDA扩展（llamacu），（2）下载目标LLM权重（如Llama-3-8B-Instruct、Qwen2-7B-Instruct）及相应的EAGLE-2 draft模型权重，（3）通过fr/fr.py从SlimPajama-627B获取或生成token频率统计数据，（4）使用捆绑的shell脚本在三个基准测试套件（spec_bench、human_eval、gsm8k）上运行基线（自回归）、EAGLE-2和FR-Spec推理，（5）测量tokens-per-second吞吐量和可选地在human_eval和gsm8k上检查正确性。主要指标是七个Spec-Bench子任务（MT、对话、RAG、数学、QA、摘要、代码）以及HumanEval和GSM8K速度的吞吐量（tokens/s）。代码包含支持树注意力位掩码和预分配内存管理的改进版FlashAttention。无需外部评估服务；所有评分均在本地完成。
+
+  '
+capability_tags:
+- research_code_optimization
+- large_language_models
+- speculative_decoding
+- cuda_kernels
+- inference_acceleration
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- mt_bench_tokens_per_second
+- translation_tokens_per_second
+- summarization_tokens_per_second
+- qa_tokens_per_second
+- math_reasoning_tokens_per_second
+- rag_tokens_per_second
+- task_throughput_report
+- speed_benchmark
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '运行单个打包的速度基准测试（例如使用Llama-3-8B-Instruct的spec_bench），以验证FR-Spec相较于EAGLE-2基线的吞吐量提升。需要已下载模型权重并编译好CUDA扩展。
+
+    '
+- id: full_speed_suite
+  label: 完整速度套件
+  description: '为基线、EAGLE-2和FR-Spec配置运行所有三个基准测试套件（spec_bench、human_eval、gsm8k）。包括速度测量和可选的human_eval与gsm8k正确性检查。覆盖所有七个Spec-Bench子任务。
+
+    '
+- id: freq_stats_generation
+  label: 频率统计生成
+  description: '使用fr/fr.py从SlimPajama-627B生成自定义token频率统计数据，然后再运行评估。当预计算统计数据不可用或针对不同模型时，此选项非常有用。
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/thunlp/LLaMA3-Instruct-8B-FR-Spec
+    access: public
+    note: Llama-3-8B-Instruct的预计算token频率统计数据。
+  - kind: huggingface
+    url: https://huggingface.co/thunlp/LLaMA3.2-Instruct-1B-FR-Spec
+    access: public
+    note: Llama-3.2-1B-Instruct的预计算token频率统计数据。
+  - kind: huggingface
+    url: https://huggingface.co/thunlp/Qwen2-7B-Instruct-FR-Spec
+    access: public
+    note: Qwen2-7B-Instruct的预计算token频率统计数据。
+  - kind: huggingface
+    url: https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct
+    access: gated
+    note: 目标LLM权重。需要接受HuggingFace上的Meta许可协议。
+  - kind: huggingface
+    url: https://huggingface.co/cerebras/SlimPajama-627B
+    access: public
+    note: fr/fr.py用于生成token频率统计的流式语料库。如果使用预计算统计数据，则不需要。
+  notes:
+  - EAGLE-2 draft模型权重也必须下载；请参阅EAGLE仓库获取URL。
+  - 目标LLM权重根据模型不同为15-30 GB；请预留50-100 GB总空间用于模型 + draft权重 + 统计数据。
+  - Spec-Bench评估数据集由评估脚本捆绑或获取。
+credential_requirements:
+  mode: optional
+  items:
+  - HuggingFace token（仅在访问门控模型权重如Llama-3时需要）
+  notes:
+  - 如果仅使用Qwen2或已下载的权重，则不需要凭据。
+  - setup.py install_requires中列出的OpenAI/Anthropic API密钥（fschat、openai、anthropic）用于MT-Bench评判，在仅吞吐量运行中可能不会被调用。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 48
+  notes:
+  - CUDA编译（nvcc）每个并行作业需要约8-9 GB RAM；setup.py会根据可用内存自动限制MAX_JOBS。
+  - 24 GB显存足以支持FP16精度下的Llama-3-8B；建议使用48 GB以获得充足余量和更大的批处理实验空间。
+  - 编译本身可能需要10-30分钟，具体取决于核心数量。
+environment:
+  python: '3.11'
+  cuda: 11.8+
+  pytorch: 2.0+
+  key_packages:
+  - transformers==4.46.2
+  - accelerate==0.26.0
+  - datasets
+  - fschat
+  - human_eval
+  - pybind11
+  - psutil
+  - ninja
+  notes:
+  - 构建CUDA扩展需要nvcc和正确的GPU计算能力设置在setup.py中（默认arch="80"适用于A100；其他GPU请更改此值）。
+  - 该包捆绑了支持树注意力位掩码的改进版FlashAttention v2.4.2 csrc；无需外部flash-attn安装。
+  - 编译链接cublas。
+  - 请参阅setup.py install_requires获取完整的依赖集。
+risk_flags:
+- custom_cuda_build
+- large_model_download
+- gated_model_access
+- compilation_complexity
+risk_notes:
+- CUDA编译需要匹配的nvcc版本和setup.py中正确的计算能力设置；配置错误会导致静默的错误结果或构建失败。
+- 门控的Llama-3权重需要接受HuggingFace许可协议；这可能阻止完全自动化运行。
+- EAGLE-2 draft模型权重是本快照中未完全记录的单独下载；恢复可能需要查阅EAGLE仓库。
+- MT-Bench质量评判（而非吞吐量测量）可能需要OpenAI API密钥，但仅吞吐量评估不需要。
+- setup.py中的默认arch="80"面向A100；其他GPU用户必须手动编辑此值。
+recommended_when: '当您需要一个专注于自定义C/CUDA内核开发、投机解码加速和大词表模型（128k+ tokens）推理吞吐量测量的LLM系统优化任务时，请使用此基准测试。非常适合评估GPU内核优化技能并理解词汇表大小、LM Head计算与投机采样接受率之间的相互作用。
+
+  '
+not_recommended_when: '如果您没有配备≥24 GB显存的现代NVIDIA GPU、无法编译自定义CUDA扩展，或需要一个专注于模型训练而非推理优化的任务，请勿使用此基准测试。如果需要一个没有原生代码编译的纯Python基准测试，也不适用。
+
+  '
+paper:
+  title: 'FR-Spec: Accelerating Large-Vocabulary Language Models via Frequency-Ranked
+    Speculative Sampling'
+  venue: ACL 2025 Main
+  year: 2025
+  url: https://arxiv.org/abs/2502.14856
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.015_frspec.zip
+  archive_type: zip
+  local_dir_name: paper-15-FRSpec
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.015_frspec.zip
+  sha256: bf4aaa74d5faae067f125c2df48fa0eb7d8e120988bec5fbd748666fc6e1a9e9
+  size_bytes: 974875
+commercial:
+  annual_fee: null
+display:
+  palette_seed: neon-slate-kernel
+  art_style: systems-benchmark
+  accent_priority: high
+image_path: ../image/015_aisb.t3.015_frspec.jpg

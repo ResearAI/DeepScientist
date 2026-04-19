@@ -6,10 +6,13 @@ RUNTIME_DIR="${E2E_RUNTIME_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/ds-copilot-workspac
 HOME_DIR="${E2E_HOME_DIR:-$RUNTIME_DIR/home}"
 FIXTURE_JSON="$RUNTIME_DIR/fixture.json"
 BIND_HOST="${E2E_BIND_HOST:-${E2E_HOST:-0.0.0.0}}"
-CONNECT_HOST="${E2E_CONNECT_HOST:-${E2E_HOST:-0.0.0.0}}"
+CONNECT_HOST="${E2E_CONNECT_HOST:-${E2E_HOST:-127.0.0.1}}"
 PORT="${E2E_PORT:-32997}"
 BASE_URL="http://${CONNECT_HOST}:${PORT}"
 DAEMON_LOG="$RUNTIME_DIR/daemon.log"
+UI_TEST_SCRIPT="${E2E_UI_TEST_SCRIPT:-test:e2e:copilot-workspace}"
+PLAYWRIGHT_PROJECT="${E2E_PLAYWRIGHT_PROJECT:-chromium}"
+PLAYWRIGHT_ARGS="${E2E_PLAYWRIGHT_ARGS:-}"
 
 export PYTHONPATH="$ROOT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
 
@@ -59,4 +62,4 @@ PY
 
 E2E_BASE_URL="$BASE_URL" \
 E2E_FIXTURE_JSON="$FIXTURE_JSON" \
-npm --prefix "$ROOT_DIR/src/ui" run test:e2e:copilot-workspace -- --reporter=list
+npm --prefix "$ROOT_DIR/src/ui" run "$UI_TEST_SCRIPT" -- --reporter=list --project="$PLAYWRIGHT_PROJECT" $PLAYWRIGHT_ARGS

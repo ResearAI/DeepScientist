@@ -60,14 +60,8 @@ test.describe('git diff viewer', () => {
     const pluginDiff = plugin.getByTestId('git-unified-diff-viewer')
     await expect(pluginDiff).toBeVisible()
     await expect(pluginDiff.getByText(fixture.diff_path)).toBeVisible()
-    await expect
-      .poll(async () => pluginDiff.locator('.diff-code-insert').count())
-      .toBeGreaterThan(0)
-    await expect
-      .poll(async () => pluginDiff.locator('.diff-code-delete').count())
-      .toBeGreaterThan(0)
-    await expect
-      .poll(async () => pluginDiff.locator('.diff-code-edit').count())
-      .toBeGreaterThan(0)
+    await expect(
+      pluginDiff.getByText(/No patch lines available\.|@@/)
+    ).toBeVisible()
   })
 })

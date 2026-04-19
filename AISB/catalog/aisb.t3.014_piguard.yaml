@@ -1,0 +1,207 @@
+schema_version: 1
+id: aisb.t3.014_piguard
+name: 'PIGuard: Prompt Injection Guardrail via Mitigating Overdefense for Free'
+version: 0.1.0
+one_line: 'Train or fine-tune a DeBERTa-based prompt-injection guard model (PIGuard)
+  and evaluate it on four benchmarks (NotInject, PINT, BIPIA, WildGuard-Benign) measuring
+  malicious detection, benign accuracy, and over-defense accuracy across trigger-word
+  difficulty levels.
+
+  '
+task_description: 'This benchmark packages the full PIGuard pipeline: a lightweight
+  DeBERTa-based binary classifier that detects prompt-injection attacks while minimizing
+  over-defense (false positives on benign inputs containing trigger words like "ignore").
+  The optimization task is to improve injection recall without increasing false positives.
+  Training data from 20 open-source datasets plus LLM-augmented samples is bundled
+  in the snapshot. Evaluation runs across four test sets: NotInject (339 benign samples
+  with 1/2/3 trigger words, split into three difficulty subsets of 113 each), BIPIA
+  (malicious), WildGuard-Benign, and PINT. The PINT benchmark requires a separate
+  access request. Three evaluation scripts are provided: eval.py (loads local checkpoint
+  via PIGuard.py), eval_piguard.py (loads HuggingFace-format weights from /tmp/PIGuard_weights),
+  and run_official_eval.py (same but with a custom benign-score threshold of 0.10).
+  Primary metrics are over-defense accuracy on NotInject (overall and per-trigger-count),
+  malicious accuracy on PINT/BIPIA, and benign accuracy on PINT/WildGuard-Benign.
+  The model weights can be loaded from HuggingFace (leolee99/PIGuard) or from a Google
+  Drive checkpoint.
+
+  '
+capability_tags:
+- research_code_optimization
+- llm_security
+- classification
+- prompt_injection
+- robustness
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: medium
+time_band: 6-24h
+difficulty: medium
+data_access: restricted
+primary_outputs:
+- over_defense_accuracy
+- one_trigger_accuracy
+- two_trigger_accuracy
+- three_trigger_accuracy
+- malicious_accuracy
+- benign_accuracy
+- trigger_accuracy_breakdown
+- evaluation_report
+launch_profiles:
+- id: quick_check
+  label: Quick Check (HuggingFace weights)
+  description: 'Run eval_hf.py or eval_piguard.py to evaluate the pretrained PIGuard
+    model from HuggingFace on all bundled test sets (NotInject, BIPIA, WildGuard-Benign).
+    No training needed. PINT evaluation is skipped unless you have obtained access
+    separately.
+
+    '
+- id: full_eval
+  label: Full Eval (all four benchmarks)
+  description: 'Run eval.py --resume <checkpoint> or run_official_eval.py across NotInject,
+    BIPIA, WildGuard-Benign, and PINT. Requires PINT access request and YAML-to-JSON
+    conversion via util.py.
+
+    '
+- id: train_and_eval
+  label: Train + Evaluate
+  description: 'Run train.py to retrain PIGuard with the MOF strategy on the bundled
+    20-source training set, then evaluate the resulting checkpoint on all four benchmarks.
+    Expect 6-24h on a single GPU depending on VRAM and batch size.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/leolee99/NotInject
+    access: public
+    note: 'NotInject over-defense evaluation dataset (339 samples, three subsets of
+      113 each). Also bundled in the snapshot under datasets/.
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/leolee99/PIGuard
+    access: public
+    note: Pretrained PIGuard model weights (DeBERTa-based).
+  - kind: google_drive
+    url: https://drive.google.com/file/d/1JpiVb_wtnbBLNEjIx1KS7PHuvmARQKTu/view?usp=sharing
+    access: public
+    note: Alternative checkpoint download.
+  - kind: external
+    url: https://share-eu1.hsforms.com/1TwiBEvLXRrCjJSdnbnHpLwfdfs3
+    access: request_required
+    note: 'PINT benchmark from Lakera AI. Not public; requires filling out an access
+      request form. Must convert from YAML to JSON via util.py after download.
+
+      '
+  - kind: bundled
+    url: null
+    access: public
+    note: 'Training data (20 open-source datasets + LLM augmentations), validation
+      set (144 samples), and test sets (NotInject, BIPIA, WildGuard-Benign) are all
+      bundled under PIGuard/datasets/.
+
+      '
+  notes:
+  - Total bundled data is modest (tens of MB). No large-scale download required for
+    most profiles.
+  - PINT is the only external dataset that requires a separate access request.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - PINT benchmark access requires a form submission to Lakera AI, but no API key.
+  - HuggingFace model download is public; no token needed.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 120
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.4.0
+  flash_attn: 2.6.1
+  key_packages:
+  - flash-attn==2.6.1
+  - vllm==0.5.4
+  - transformers==4.44.0
+  - ptflops
+  notes:
+  - See the bundled requirements.txt for the full dependency set.
+  - The model is DeBERTa-based (not an LLM); vllm is used only in certain evaluation
+    modes.
+  - flash-attn requires compatible CUDA and GPU architecture.
+risk_flags:
+- restricted_dataset_component
+- external_model_weights
+risk_notes:
+- 'The PINT benchmark is not public and not bundled. Full four-benchmark evaluation
+  requires requesting access from Lakera AI via a web form. Without PINT, three of
+  four test sets are still available.
+
+  '
+- 'Model weights must be downloaded from HuggingFace or Google Drive at runtime unless
+  pre-staged at /tmp/PIGuard_weights.
+
+  '
+- 'eval_piguard.py and run_official_eval.py hardcode MODEL_PATH to /tmp/PIGuard_weights
+  and DATASET_ROOT to /repo/datasets. These paths may need adjustment.
+
+  '
+- 'run_official_eval.py uses a custom BENIGN_THRESHOLD of 0.10 (lowered from 0.50),
+  which changes the classification boundary compared to the default argmax approach
+  in eval.py.
+
+  '
+recommended_when: 'Use this benchmark when you want a security-oriented text classification
+  task with dual pressure: improving prompt-injection detection recall while controlling
+  over-defense (false positives on benign inputs containing attack-like trigger words).
+  Good fit for studying shortcut learning, DeBERTa fine-tuning strategies, and threshold
+  calibration on lightweight guard models.
+
+  '
+not_recommended_when: 'Do not use this if you cannot provide a GPU (the model requires
+  CUDA for practical training and batched inference), if you need the full PINT evaluation
+  but cannot obtain access, or if you are looking for a generative LLM benchmark rather
+  than a binary classification task.
+
+  '
+paper:
+  title: 'PIGuard: Prompt Injection Guardrail via Mitigating Overdefense for Free'
+  venue: ACL 2025
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.1468/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.014_piguard.zip
+  archive_type: zip
+  local_dir_name: paper-14-PIGuard
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.014_piguard.zip
+  sha256: 9a7996fc3b40709caa357b763d7a51e1f1f2ab449480e403ec34a7c248eb4c81
+  size_bytes: 1621668
+commercial:
+  annual_fee: null
+display:
+  palette_seed: rust-sand-guard
+  art_style: safety-dashboard
+  accent_priority: high
+image_path: ../image/014_aisb.t3.014_piguard.jpg

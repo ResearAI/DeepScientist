@@ -1,0 +1,119 @@
+schema_version: 1
+id: aisb.t3.009_scoremissing
+name: 缺失数据的分数匹配
+version: 0.1.0
+one_line: '从部分观测的表格数据中学习完整分数函数，采用重要性加权和变分边际分数匹配方法，在模拟的GGM/ICA/正态估计任务以及真实的S&P 100和酵母图形模型恢复任务上进行评估。'
+task_description: '该基准测试打包了ICML 2025 Spotlight论文"Score Matching with Missing Data"的完整实验流程。核心任务是在训练样本存在缺失坐标且缺失机制为完全随机缺失（MCAR）的条件下，估计多元分布的分数（对数密度梯度）。提供了两种互补方法：（1）边际重要性加权（IW）分数匹配，在低维和小样本场景表现优异；（2）边际变分分数匹配，在高维问题（如高斯图形模型GGM估计）上更强。
+
+实验套件包含五个子任务，从HPC/目录下的Python脚本运行：GGM结构恢复（模拟）、ICA参数估计、截断/非截断正态参数估计、S&P 100 GGM估计和酵母GGM估计。每个脚本接受重复次数和参数网格索引作为命令行参数。指标（AUC、准确率、TPR、FPR）通过MSM/utils/data.py辅助函数在脚本内计算，并在plotcode/目录下的Jupyter笔记本中聚合。真实数据（酵母张量、S&P 100 CSV）打包在real_world_experiments/RealData/中。无需外部评估服务或API凭据；该基准测试完全自包含。'
+capability_tags:
+- research_code_optimization
+- missing_data
+- probabilistic_modeling
+- score_matching
+- tabular_ml
+- graphical_model_estimation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- auc
+- accuracy
+- tpr
+- fpr
+- structure_recovery_report
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '运行单个酵母或GGM实验脚本，nrep=1和一个参数网格索引，以验证环境并生成少量AUC/准确率值。预期CPU运行时间约10-30分钟。'
+- id: full_experiments
+  label: 完整实验
+  description: '使用HPC/bashscripts/目录下的bash脚本，对所有HPC实验脚本（GGM、ICA、NormalEstimation、snp100、yeast）进行完整参数网格扫描。每个脚本每个配置运行10000个训练轮次。预期在16核CPU或配备单GPU的更快硬件上需要6-24小时。'
+- id: plot_reproduction
+  label: 图表复现
+  description: '在完成完整实验后，运行plotcode/目录下的Jupyter笔记本，从保存的结果中重新生成所有论文图表和指标摘要。'
+dataset_download:
+  primary_method: bundled
+  sources:
+  - kind: archive
+    url: https://deepscientist.cc/AISB/009_scoremissing
+    access: public
+    note: '完整快照，包含真实世界数据张量（酵母、S&P 100）位于real_world_experiments/RealData/。模拟数据由实验脚本动态生成。压缩包为zip格式。'
+  notes:
+  - 所有数据集均为内置或程序生成，无需额外下载。
+  - 解压后磁盘占用很小（包括结果文件在内远低于10 GB）。
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: 1.12.1
+  flash_attn: null
+  key_packages:
+  - jax==0.3.25
+  - jaxlib==0.3.25
+  - tensorflow==2.11.0
+  - scikit-learn
+  - tqdm
+  notes:
+  - 最小配置下支持纯CPU执行；GPU可加速PyTorch训练循环。
+  - MSM包基于PyTorch；JAX/TensorFlow依赖支持特定的实验变体。
+  - 快照中捆绑了conda环境配置文件environment.yml。
+  - 详见捆绑的README和requirements文件以了解完整依赖集。
+risk_flags:
+- mixed_framework_dependencies
+- long_sweep_walltime
+risk_notes:
+- '项目混合了PyTorch、JAX和TensorFlow依赖。在单一环境中解决兼容版本可能需要仔细固定版本或使用独立的conda环境。'
+- '完整实验扫描（所有五个子任务×所有参数网格索引×多次重复）可能需要数小时。在推荐硬件上至少预留6小时运行时间。'
+- '打包过程中未执行基准测试；指标有代码支持但尚未运行时验证。'
+recommended_when: '当你需要一个自包含的概率缺失数据任务，结合理论分数匹配方法与合成和真实世界图形模型评估时使用。非常适合能够处理多脚本实验流程、处理CLI参数化扫描以及解读结构恢复指标（AUC、TPR、FPR）的智能体。'
+not_recommended_when: '避免用于以下场景：需要轻量级单脚本基准测试、以大型预训练基础模型为中心的任务、或GPU密集型深度学习基准测试。如果无法安装混合PyTorch/JAX/TensorFlow环境，也不适用。'
+paper:
+  title: Score Matching with Missing Data
+  venue: ICML 2025 Spotlight
+  year: 2025
+  url: https://arxiv.org/abs/2506.00557
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.009_scoremissing.zip
+  archive_type: zip
+  local_dir_name: paper-9-ScoreMissing
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.009_scoremissing.zip
+  sha256: bed639544fdb6e317d4a5b2c2663c8765aa508e39566551817d1586541cccb27
+  size_bytes: 27750054
+commercial:
+  annual_fee: null
+display:
+  palette_seed: moss-indigo-density
+  art_style: statistical-notebook
+  accent_priority: medium
+image_path: ../image/009_aisb.t3.009_scoremissing.jpg

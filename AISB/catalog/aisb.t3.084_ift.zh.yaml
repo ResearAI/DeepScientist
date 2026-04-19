@@ -1,0 +1,111 @@
+id: aisb.t3.084_ift
+name: Towards Accurate Time Series Forecasting via Implicit Decoding
+version: 0.1.0
+one_line: 基于论文的时间序列解码器优化路线，采用隐式频域预测模块；当前需先恢复上游源码。
+task_description: 该条目覆盖 NeurIPS 2025 的 Implicit Forecaster（IF）方法。它将现有时间序列 Transformer 编码器的输出 MLP 解码层替换为新的频域解码模块。不同于逐点独立预测，IF 通过预测由频率、振幅、相位参数化的组成波形来全局形成预测，更好处理长短期动态与多周期性模式。该方法与架构无关，可提升 Informer、Autoformer、PatchTST、iTransformer 等主流 TSF 模型。当前快照仅保留元数据与指标契约，不含代码、启动脚本和 README；适合基于论文的规划与恢复，不适合直接本地执行。
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- mse
+- mae
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: 'Review the preserved metric contracts, catalog metadata, and paper-backed design rationale. No executable code is present in the current snapshot. Suitable for route planning.
+
+    '
+- id: restore_and_validate
+  label: Restore and Validate
+  description: 'Restore upstream GitHub source tree before treating this as a runnable benchmark. Requires fetching the external repository and rehydrating code, scripts, and documentation into the current package snapshot.
+
+    '
+dataset_download:
+  primary_method: manual_or_not_explicit
+  sources:
+  - type: upstream_github
+    url: https://github.com/rakuyorain/Implicit-Forecaster
+    note: Linked in the paper abstract; not preserved in current snapshot
+  notes:
+  - The current local package contains no dataset scripts, README, or setup instructions.
+  - Dataset setup is an upstream restoration step, not a bundled one-click download.
+  - The paper reports experiments on 14 real-world time-series datasets commonly used in TSF research.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No explicit dataset or API credential variables were detected in the bundled snapshot.
+  - Any credential needs must be determined during upstream source restoration.
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: '2.0'
+  flash_attn: null
+  key_packages: []
+  notes:
+  - Paper reports experiments on a single NVIDIA RTX 4090 GPU.
+  - Implementation built on PyTorch 2.0 per the paper.
+  - Current local snapshot preserves no dependency files or environment specifications.
+  - Environment details sourced from paper rather than executable artifacts.
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- blocked_no_code
+risk_notes:
+- Current snapshot contains no executable code files; metric surface is blocked.
+- Code, launcher scripts, and README are absent; upstream rehydration required.
+- Top-level README absent in the current snapshot.
+- No benchmark execution was performed in this packaging pass.
+- Treat as a paper-backed planning entry pending source restoration.
+recommended_when: 当你规划时间序列预测中解码侧优化研究、分析频域隐式解码设计，或执行上游源码恢复时可使用本条目。适用于路线规划与基准再水化。
+not_recommended_when: 不要将其作为可直接运行的本地基准。当前快照对所有分阶段指标都缺少可执行锚点，必须先恢复上游 GitHub 源码后再运行。
+paper:
+  title: Towards Accurate Time Series Forecasting via Implicit Decoding
+  authors:
+  - Xinyu Li (University of Melbourne)
+  - Yuchen Luo (University of Melbourne)
+  - Hao Wang (Zhejiang University)
+  - Haoxuan Li (Peking University, MBZUAI)
+  - Liuhua Peng (University of Melbourne)
+  - Feng Liu (University of Melbourne)
+  - Yandong Guo (AI2 Robotics)
+  - Kun Zhang (Carnegie Mellon University, MBZUAI)
+  - Mingming Gong (University of Melbourne, MBZUAI)
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=gqoeQPhQcE
+  github: https://github.com/rakuyorain/Implicit-Forecaster
+display:
+  palette_seed: amber-sky-implicit
+  art_style: decoding-wave
+  accent_priority: high
+image_path: ../../../AISB/image/084_aisb.t3.084_ift.jpg
+download:
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.084_ift.zip
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.084_ift.zip
+  archive_type: zip
+  sha256: d71123fe55a046305a8aca0aec7ee5a5205ef1742c296c01e77b62f5d7542b7c
+  size_bytes: 41911

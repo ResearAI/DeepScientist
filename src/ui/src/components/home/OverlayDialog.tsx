@@ -12,6 +12,7 @@ export function OverlayDialog({
   children,
   className,
   dataOnboardingId,
+  closeButtonDataOnboardingId,
 }: {
   open: boolean
   title: string
@@ -20,6 +21,7 @@ export function OverlayDialog({
   children: ReactNode
   className?: string
   dataOnboardingId?: string
+  closeButtonDataOnboardingId?: string
 }) {
   if (!open) {
     return null
@@ -45,7 +47,13 @@ export function OverlayDialog({
             <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
             {description ? <p className="text-sm leading-6 text-muted-foreground">{description}</p> : null}
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close dialog">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            aria-label="Close dialog"
+            data-onboarding-id={closeButtonDataOnboardingId}
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>

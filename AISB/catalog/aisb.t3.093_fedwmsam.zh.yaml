@@ -1,0 +1,106 @@
+id: aisb.t3.093_fedwmsam
+name: 美联储WMSAM
+version: 0.1.0
+one_line: 使用加权动量和锐度感知最小化在非独立同分布数据下进行联合优化，以实现稳定的训练和改进的泛化。
+task_description: 该打包基准测试实现了 FedWMSAM（具有锐度感知最小化的联合加权动量），这是一种基于 FL 模拟器框架构建的联合优化算法。该方法通过结合两种互补机制来解决联邦学习固有的非独立同分布（non-IID）（非独立同分布）数据挑战：加权动量以稳定长尾数据分布下的训练，动量驱动的锐度感知最小化（SAM）以改进异构数据上的模型泛化。该基准测试支持 CIFAR-10 和 CIFAR-100，具有可配置的数据分割规则（Dirichlet 和 Pathological 非 IID 分区）和模型架构（ResNet-18、LeNet）。训练以联合轮次进行，其中中央服务器协调客户端本地训练并聚合模型更新。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- top1_test_accuracy
+- federated_checkpoint
+- training_logs
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 使用默认 IID 分割对 CIFAR-10 数据运行一种打包的联合优化路线，以进行快速验证。
+- id: full_federated_run
+  label: 完全联合运行
+  description: 跨所有支持的分割规则（IID、Dirichlet 0.1、Pathological 2）和数据集（CIFAR-10、CIFAR-100）执行完整的 FedWMSAM 训练工作流程。
+dataset_download:
+  primary_method: bundled
+  sources: []
+  notes:
+  - CIFAR-10 和 CIFAR-100 通过 PyTorch torchvision 数据集自动下载。
+  - 非 IID 数据分区是在运行时使用指定的分割规则生成的。
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+    gpu_arch: NVIDIA GPU with CUDA support recommended
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+    gpu_arch: NVIDIA A100 or equivalent for mixed-precision training
+environment:
+  python: '3.8'
+  cuda: '11.1'
+  pytorch: 1.9.0
+  flash_attn: null
+  key_packages:
+  - torchsampler==0.1.0
+  - scipy
+  notes:
+  - Create environment with: conda create -n fedwmsam python=3.8 && conda 激活 fedwmsam
+  - 通过捆绑的 install.sh 脚本安装依赖项
+  - 有关完整的依赖项集，请参阅捆绑的 README/requirements.txt
+risk_flags:
+- non_iid_convergence_risk
+- client_dropout_simulation
+risk_notes:
+- 与 IID 设置相比，非 IID 数据分布可能会导致收敛速度变慢
+- 具有多个分割规则和数据集的完全联合运行增加了总执行时间
+recommended_when: 在评估异构（非 IID）数据分布下的联邦优化方法、研究加权动量和锐度感知最小化对泛化的影响或与图像分类任务上的基线联邦优化器（FedAvg、FedProx、FedSAM）进行比较时，请使用此基准。
+not_recommended_when: 请勿将此基准用于集中式训练评估、自然语言处理任务或无法满足单 GPU 内存限制时（建议 ResNet-18 训练至少使用 12GB VRAM）。
+paper:
+  title: 'FedWMSAM: Fast and Flat Federated Learning via Weighted Momentum and Sharpness-Aware Minimization'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=75JiIa0fU1
+  citation: null
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.093_fedwmsam.zip
+  archive_type: zip
+  local_dir_name: paper-93-FedWMSAM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.093_fedwmsam.zip
+  sha256: 82f848ec812f83c028ed40090155cda3ea04ca716f1e804c11c8d1272169fbf8
+  size_bytes: 91274
+display:
+  palette_seed: terracotta-blue-federated
+  art_style: optimization-dashboard
+  accent_priority: high
+image_path: ../image/093_aisb.t3.093_fedwmsam.jpg
+capability_tags:
+- research_code_optimization
+- federated_learning
+- sharpness_aware_minimization
+- image_classification
+- optimization
+- non_iid_learning
+- weighted_momentum
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null

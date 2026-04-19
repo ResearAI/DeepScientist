@@ -1,0 +1,139 @@
+schema_version: 1
+id: aisb.t3.005_tsae
+name: 时间稀疏自编码器：利用语言的序列特性实现可解释性
+version: 0.1.0
+one_line: 在LLM激活上训练带有对比时间一致性损失的时间稀疏自编码器(T-SAE)，然后通过SAEBench风格的自动化可解释性评分来评估特征质量。
+task_description: 本基准测试需要训练时间稀疏自编码器(T-SAE)，使用语言模型(Pythia-160m或Gemma-2-2b)相邻token激活上的对比损失，将潜在特征划分为高层级（语义、时间一致）和低层级（句法、token局部）组件。T-SAE架构通过时间对比项扩展了Matryoshka BatchTopK SAE，鼓励高层级特征在序列中的相邻token上保持稳定。主要执行流程为：(1)使用dictionary_learning/dictionary_learning/train_temporal.py从Pile数据集提取的模型激活上训练T-SAE，(2)使用dictionary_learning/dictionary_learning/eval_temporal.py评估重构质量、稀疏性和时间平滑性，(3)通过src/process_sae_bench_autointerp.py处理SAEBench生成的解释JSON文件来计算自动化可解释性评分。下游实验包括语义/上下文/句法内容的探测、t-SNE可视化和HH-RLHF对齐案例研究。预训练的Gemma-2-2b T-SAE检查点（16384特征）和带标签的解释可在HuggingFace上获取，无需重新训练即可评估。自动解释评估需要SAEBench（外部工具）使用评判LLM（论文中使用Llama-3.3-70B-Instruct）生成特征解释。训练数据通过HuggingFace datasets从Pile流式传输；核心流程无需手动下载数据集。
+capability_tags:
+- research_code_optimization
+- mechanistic_interpretability
+- sparse_autoencoders
+- large_language_models
+- evaluation
+- contrastive_learning
+- dictionary_learning
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 1d+
+difficulty: hard
+data_access: public
+primary_outputs:
+- autointerp_score
+- sae_checkpoint
+- interpretability_report
+- probing_accuracy
+- temporal_smoothness_metrics
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: 在Pythia-160m上运行小规模T-SAE训练，使用减少的步数和简短评估来验证端到端流程。使用NeelNanda/pile-10k进行快速迭代。
+- id: autointerp_eval
+  label: 自动解释评估
+  description: 在完整Pile数据上训练时间稀疏自编码器，通过SAEBench和评判LLM生成特征解释，并计算自动解释分数。这是论文原始流程，需要外部SAEBench和70B评判模型。
+- id: pretrained_eval
+  label: 预训练评估
+  description: 从HuggingFace下载预训练的Gemma-2-2b T-SAE和捆绑的解释，然后运行eval_temporal.py和process_sae_bench_autointerp.py，无需重新训练。
+dataset_download:
+  primary_method: streaming
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/monology/pile-uncopyrighted
+    access: public
+    note: 主要训练/评估数据；通过HuggingFace datasets流式传输。无需手动下载。
+  - kind: huggingface
+    url: https://huggingface.co/datasets/NeelNanda/pile-10k
+    access: public
+    note: 用于快速评估的小规模子集。
+  - kind: huggingface
+    url: https://huggingface.co/alex-oesterling/temporal-saes
+    access: public
+    note: 预训练的Gemma-2-2b T-SAE检查点（16384特征）附带标签化的explanations.json。
+  notes:
+  - 训练数据以流式方式传输；磁盘使用主要由模型权重和SAE检查点占用。
+  - Gemma-2-2b权重需要HuggingFace访问协议。
+credential_requirements:
+  mode: optional
+  items:
+  - HuggingFace令牌（用于Gemma-2-2b等门控模型必需；Pythia-160m可选）
+  - SAEBench访问权限（用于生成特征解释的外部工具；未捆绑）
+  notes:
+  - 如使用Gemma-2-2b或自定义HuggingFace路径，请将example.env重命名为.env并添加HF_TOKEN。
+  - 自动解释评估需要外部运行SAEBench并使用评判LLM（论文使用Llama-3.3-70B-Instruct）。
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 48
+environment:
+  python: '3.11'
+  cuda: '12.8'
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - poetry
+  - nnsight
+  - datasets
+  - dictionary_learning (bundled fork)
+  notes:
+  - Poetry管理的环境；运行'poetry install'进行设置。Torch轮子从cu128索引拉取。
+  - dictionary_learning目录是github.com/saprmarks/dictionary_learning的捆绑fork。
+  - 完整的固定依赖集请参见pyproject.toml和poetry.lock。
+risk_flags:
+- external_eval_dependency
+- large_model_weights
+- judge_model_required
+- some_experiments_under_construction
+risk_notes:
+- SAEBench未捆绑；自动解释评估需要单独克隆和运行它，并使用大型评判LLM（论文中使用70B参数Llama-3.3）。
+- Gemma-2-2b权重（约5 GB）必须下载，可能需要HuggingFace访问协议。
+- 完整的自动解释路线需要托管或API访问70B评判模型，这会显著增加成本。
+- README将"序列可解释性（图1和4）"和"转向"实验标记为建设中。
+- 打包过程中未执行基准测试；指标有代码支持但运行时未验证。
+recommended_when: 当您需要一个结合SAE训练与时间对比学习和自动化可解释性评估的机械可解释性任务时使用此基准测试。非常适合研究LLM表征中语义与句法特征的解纠缠，或在结构化先验下优化SAE训练流程。
+not_recommended_when: 如果您需要轻量级仅CPU基准测试、无法在本地托管LLM检查点（Pythia-160m最小，Gemma-2-2b推荐）或缺乏GPU访问，请勿使用。如果无法运行或访问大型评判模型进行自动解释评估路线，也应避免。
+paper:
+  title: 'Temporal Sparse Autoencoders: Leveraging the Sequential Nature of Language
+    for Interpretability'
+  authors:
+  - Usha Bhalla
+  - Alex Oesterling
+  - Claudio Mayrink Verdun
+  - Himabindu Lakkaraju
+  - Flavio P. Calmon
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2511.05541
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.005_tsae.zip
+  archive_type: zip
+  local_dir_name: paper-5-TSAE
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.005_tsae.zip
+  sha256: f89d8100092417777d135fded098e3fb26a5f38ccdb300658138273924bf070e
+  size_bytes: 322370
+commercial:
+  annual_fee: null
+display:
+  palette_seed: amber-ink-latent
+  art_style: editorial-technical
+  accent_priority: high
+image_path: ../image/005_aisb.t3.005_tsae.jpg

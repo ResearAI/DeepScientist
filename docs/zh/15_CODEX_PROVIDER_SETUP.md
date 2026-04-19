@@ -13,6 +13,11 @@ DeepScientist 不会为 MiniMax、GLM、火山方舟、阿里百炼等 provider 
 
 如果 Codex 本身还没工作，先修 DeepScientist 是错误顺序。
 
+如果你要配置另外两条内建 runner，请同时参考：
+
+- [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
+
 ## 哪些文件最重要
 
 Codex CLI 默认读取 `~/.codex/` 下面的本地状态。

@@ -1,0 +1,129 @@
+id: aisb.t3.057_mdreid
+name: MDReID
+version: 0.1.0
+one_line: Two-stage multi-modal object re-identification with modality-decoupled feature
+  learning for any-to-any query-gallery modality combinations.
+task_description: 'This packaged benchmark covers multi-modal object re-identification
+  with modality-decoupled feature handling and retrieval-time reranking. MDReID introduces
+  Modality Decoupling Learning (MDL) and Modality-aware Metric Learning (MML) to disentangle
+  modality-shared and modality-specific features, enabling effective retrieval under
+  both modality-matched and modality-mismatched query-gallery scenarios. Supports
+  three multi-spectral datasets: RGBNT201, RGBNT100, and MSVR310.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- map
+- rank1
+- reid_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run one packaged multi-modal re-identification test route on a single
+    dataset using pre-trained checkpoints.
+- id: full_train_eval
+  label: Full Train + Eval
+  description: Train the MDReID model from scratch and evaluate across all packaged
+    person/object re-identification datasets.
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: RGBNT201
+    url: https://drive.google.com/drive/folders/1EscBadX-wMAT56_It5lXY-S3-b5nK1wH
+    type: google_drive
+  - name: RGBNT100
+    url: https://pan.baidu.com/s/1xqqhN4Lctm3RcUdskG0Ug
+    type: baidu_pan
+    access_code: rjin
+  - name: MSVR310
+    url: https://drive.google.com/file/d/1IxI-fGiluPO_Ies6YjDHeTEuVYhFdYwD/view
+    type: google_drive
+  - name: CLIP ViT-B-16 Pretrained
+    url: https://pan.baidu.com/s/1YPhaL0YgpI-TQ_pSzXHRKw
+    type: baidu_pan
+    access_code: 52fu
+  notes:
+  - Download all person datasets before training; modify dataset paths in config files
+    for RGBNT100 and MSVR310
+  - Pretrained CLIP ViT-B-16 required for backbone initialization
+  - Pre-trained model checkpoints available for RGBNT201, RGBNT100, and MSVR310
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 300
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.8'
+  cuda: '11.3'
+  pytorch: 1.12.0
+  flash_attn: null
+  key_packages:
+  - torch-geometric==2.1.0
+  notes:
+  - CUDA 11.3 recommended; compatible with CUDA 11.x variants
+  - Install dependencies via requirements.txt
+  - Device ID configurable in config/defaults.py
+  - cudnn.benchmark enabled by default for training speed
+risk_flags:
+- large_dataset_storage
+- multi_source_download
+- baidu_pan_access_required
+risk_notes:
+- RGBNT100 and MSVR310 require Baidu Pan access with provided codes
+- Large multi-modal image datasets require significant disk space for training
+- No benchmark execution was performed during this packaging pass; runtime validation
+  recommended
+recommended_when: 'Use this benchmark when you need a multimodal retrieval task with
+  real person and object re-identification datasets under varying modality conditions.
+  Ideal for research on cross-modal retrieval, modality generalization, and vision-language
+  feature decoupling in surveillance or heterogeneous sensor scenarios.
+
+  '
+not_recommended_when: 'Do not use this if you cannot host large multi-modal image
+  datasets locally, if you need a text-centric or language-heavy benchmark, or if
+  you lack access to Baidu Pan for dataset downloads. Not recommended for single-GPU
+  memory below 16GB when training.
+
+  '
+paper:
+  title: 'MDReID: Modality-Decoupled Learning for Any-to-Any Multi-Modal Object Re-Identification'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=7jg26Fd1ra
+  code_url: https://github.com/stone96123/MDReID
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.057_mdreid.zip
+  archive_type: zip
+  local_dir_name: paper-57-MDReID
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.057_mdreid.zip
+  sha256: 443ff33a90ece8148f74b30103881c6835a07e69205d2d151c54fbc15215b9e8
+  size_bytes: 1554938
+display:
+  palette_seed: crimson-cobalt-reid
+  art_style: retrieval-vision
+  accent_priority: high
+image_path: ../image/057_aisb.t3.057_mdreid.jpg

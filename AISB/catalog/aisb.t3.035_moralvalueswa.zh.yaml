@@ -1,0 +1,165 @@
+schema_version: 1
+id: aisb.t3.035_moralvalueswa
+name: 通过词汇联想比较西方英语社会与LLM的道德价值观
+version: 0.1.0
+one_line: 基于图的道德价值观传播基准，通过Spearman相关分析在五个道德维度上比较人类与LLM词汇联想网络与道德基础理论。
+task_description: '本基准通过构建词汇联想图并使用随机游走算法将道德基础理论（MFT）种子词的道德分数传播到图中，来评估人类与LLM之间的道德价值观一致性。主要任务是优化传播参数和图构建，以最大化预测道德分数与扩展道德基础词典（eMFD）在五个维度上的Spearman相关性：关怀、圣洁、公平、权威和忠诚。基准提供了预计算的LLaMA 3.1词汇联想数据（llama_2.1_association.json、llama_2.1_moral.json），因此可以跳过昂贵的LLM生成步骤（100个提示词×12k线索在GPU上运行）。评估路由（eval.py）加载预计算的道德分数，计算与eMFD的相关性，并报告每个维度的结果。运行前必须获取两个外部数据文件：SWOW-EN.R100.csv（人类词汇联想数据，需在smallworldofwords.org注册）和emfd_scoring.csv（缺失时自动从GitHub下载）。experiments.py脚本提供额外分析，包括alpha调优、MAG比较和论文中的跨图实验。
+
+  '
+capability_tags:
+- research_code_optimization
+- moral_reasoning
+- graph_analysis
+- llm_evaluation
+- nlp
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: low
+time_band: 2-6h
+difficulty: medium
+data_access: public
+primary_outputs:
+- correlation_care
+- correlation_sanctity
+- correlation_fairness
+- correlation_authority
+- correlation_loyalty
+- moral_value_graphs
+- analysis_report
+launch_profiles:
+- id: graph_eval
+  label: 图评估（快速）
+  description: '运行eval.py，使用预计算的道德分数复现表1中的GMN-L相关性结果。只需emfd_scoring.csv（自动下载）。仅需CPU，几分钟内完成。
+
+    '
+- id: full_experiments
+  label: 完整实验
+  description: '运行experiments.py复现论文中的alpha调优、MAG比较、变alpha扫描和跨图分析。需SWOW-EN.R100.csv用于人类联想图构建。CPU可执行，但getMoralValue传播受益于GPU。
+
+    '
+- id: llm_generation
+  label: LLM联想生成
+  description: '重新运行produce.py从头生成LLaMA词汇联想。需HuggingFace令牌访问meta-llama/Meta-Llama-3.1-8B-Instruct，需≥24GB显存的GPU，以及大量计算时间（100次迭代×12k线索）。评估不需要此步骤，预计算输出已捆绑。
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: bundled
+    url: null
+    access: public
+    note: '预计算的LLaMA词汇联想数据（llama_2.1.json、llama_2.1_association.json、llama_2.1_moral.json）、MFD2词典、线索词和mag_words.json已包含在快照的data/目录下。
+
+      '
+  - kind: external_download
+    url: https://raw.githubusercontent.com/medianeuroscience/emfd/master/dictionaries/emfd_scoring.csv
+    access: public
+    note: 'eMFD评分CSV。eval.py缺失时自动下载。约200KB。
+
+      '
+  - kind: external_registration
+    url: https://smallworldofwords.org/en/project/research
+    access: public
+    note: 'SWOW-EN.R100.csv（人类词汇联想数据）。需在smallworldofwords.org免费注册。仅在full_experiments和人类图构建时需要。
+
+      '
+  - kind: external_download
+    url: https://provalisresearch.com/products/content-analysis-software/wordstat-dictionary/moral-foundations-dictionary/
+    access: public
+    note: 'MFD 2.0词典（mfd2.txt）。已捆绑在data/中，列为原始参考来源。
+
+      '
+  notes:
+  - 包含所有外部文件的总磁盘占用远低于1GB。
+  - graph_eval启动配置只需捆绑文件加上emfd_scoring.csv。
+credential_requirements:
+  mode: optional
+  items:
+  - HuggingFace令牌（仅在重新运行produce.py生成LLM联想时需要）
+  notes:
+  - produce.py需要具有meta-llama/Meta-Llama-3.1-8B-Instruct访问权限的HF_TOKEN
+  - 评估和实验路由不需要任何凭据
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: null
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - numpy
+  - pandas
+  - scipy
+  - gensim
+  - matplotlib
+  - tqdm
+  - torch
+  - transformers
+  - huggingface_hub
+  notes:
+  - 仅CPU执行足以运行eval.py和experiments.py的大部分内容。
+  - GPU和transformers/torch仅在produce.py（LLM联想生成）时需要。
+  - getMoralValue.py导入torch.cuda，但传播算法本身是基于数组的。
+  - 参见捆绑的requirements.txt获取完整依赖集。
+risk_flags:
+- external_data_registration
+- optional_credential
+risk_notes:
+- SWOW-EN.R100.csv需要在smallworldofwords.org免费注册；没有它将无法重建人类联想图，部分experiments.py函数会失败。
+- emfd_scoring.csv从GitHub自动获取，但首次运行需要网络访问。
+- 通过produce.py重新生成LLM联想计算成本高昂（GPU小时级），且需要HuggingFace模型访问权限；这是可选的，因为预计算输出已捆绑。
+- 打包过程中未执行基准测试运行；指标值来自论文表1。
+recommended_when: '当您需要一个轻量级的基于图的NLP评估任务来研究道德推理、且可以重用捆绑的词汇联想数据而无需重新训练或提示语言模型时，可以使用此基准。适合测试图传播算法的优化、探索道德基础分析，或比较人类与LLM的概念组织方式。
+
+  '
+not_recommended_when: '如果需要大规模端到端LLM微调基准、需要视觉或多模态能力，或无法获取SWOW数据集注册且需要包含人类联想图构建的完整实验管道时，请勿使用。
+
+  '
+paper:
+  title: Comparing Moral Values in Western English-speaking societies and LLMs with
+    Word Associations
+  authors:
+  - Chaoyi Xiang
+  - Chunhua Liu
+  - Simon De Deyne
+  - Lea Frermann
+  venue: ACL 2025 Main
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.177/
+  doi: 10.18653/v1/2025.acl-long.177
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.035_moralvalueswa.zip
+  archive_type: zip
+  local_dir_name: paper-35-MoralValuesWA
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.035_moralvalueswa.zip
+  sha256: 49fa6c7fa381c4e8059933d6e2aabda5b93a2d0d1eff27940bfd404a356a4b72
+  size_bytes: 48717
+commercial:
+  annual_fee: null
+display:
+  palette_seed: sepia-emerald-values
+  art_style: social-science
+  accent_priority: medium
+image_path: ../image/035_aisb.t3.035_moralvalueswa.jpg

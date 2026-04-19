@@ -1,0 +1,156 @@
+schema_version: 1
+id: aisb.t3.047_timepfn
+name: TimePFN
+version: 0.1.0
+one_line: PFN-style multivariate time-series forecasting benchmark with synthetic
+  pretraining and schedule-sensitive fine-tuning.
+task_description: 'This packaged benchmark covers the full TimePFN workflow: synthetic
+  multivariate time-series data generation via Gaussian process kernel composition
+  and the linear coregionalization method (LMC-Synth), transformer pretraining on
+  those synthetic datasets, and fine-tuning plus evaluation on standard downstream
+  forecasting benchmarks (e.g. ETT, Weather, Exchange). The task is to transfer PFN-style
+  in-context Bayesian generalisation into practical zero-shot and few-shot forecasting
+  quality on public benchmark datasets. Primary metrics are MSE and MAE, both code-backed
+  through run.py and utils/metrics.py. No trusted execution output exists yet; runtime
+  execution is required before metric values can be considered verified.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- mse
+- mae
+- pfn_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run one downstream TimePFN forecasting evaluation route using the
+    provided model checkpoint and test scripts under pfn_scripts/test/. No pretraining
+    required.
+
+    '
+- id: pretrain_and_eval
+  label: Pretrain + Eval
+  description: 'Run the full packaged workflow: generate synthetic MTS data via LMC-Synth,
+    pretrain the TimePFN transformer on synthetic data, fine-tune on a downstream
+    benchmark dataset, then evaluate MSE and MAE.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - label: Downstream benchmark datasets (ETT, Weather, Exchange, etc.)
+    url: https://drive.google.com/file/d/1l51QsKvQPcqILT3DwfjCgx8Dsg2rpjot/view?usp=sharing
+    format: zip
+    local_path: ./datasets
+    notes: Provided via iTransformer's datasets.zip Google Drive link. Download and
+      unzip into ./datasets before running evaluation scripts.
+  - label: Synthetic pretraining data
+    url: null
+    format: generated
+    local_path: ./synthetic_data_generation
+    notes: Generated locally via LMC-Synth.py and kernel-synth.py. Read bash script
+      comments and directives before running.
+  - label: Pretrained model checkpoint
+    url: https://deepscientist.cc/AISB/047_timepfn
+    format: zip
+    local_path: paper-47-TimePFN
+    notes: Official AISB archive download. Contains checkpoint, training, fine-tuning,
+      and testing scripts under pfn_scripts/.
+  notes:
+  - Downstream benchmark datasets must be placed under ./datasets before any evaluation
+    script is invoked.
+  - Synthetic data generation is optional if using the provided pretrained checkpoint
+    for quick_eval.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - Google Drive download for datasets.zip does not require authentication but may
+    require manual download if automated fetch is rate-limited.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: 2.2.1
+  flash_attn: null
+  key_packages:
+  - transformers==4.41.1
+  - pynvml
+  - numpy
+  notes:
+  - Full dependency list is in requirements.txt. Use a conda virtual environment as
+    recommended by the README.
+  - run.py uses pynvml for GPU memory polling; pynvml must be installed and NVML must
+    be accessible.
+  - CUDA version not pinned in source; verify compatibility with PyTorch 2.2.1 and
+    your driver.
+risk_flags:
+- dataset_manual_download
+- no_trusted_execution_output
+risk_notes:
+- Downstream benchmark datasets require a manual Google Drive download step; automated
+  pipelines may need a workaround.
+- No benchmark execution was performed during the packaging pass. Metric values in
+  metric_contract.json are provisional until runtime execution confirms them.
+- Synthetic data generation volume (millions of samples) can be time- and disk-intensive;
+  read bash script directives carefully before launching.
+recommended_when: 'Use this benchmark when evaluating foundation-model-style multivariate
+  time-series forecasting with synthetic pretraining, or when studying zero-shot and
+  few-shot generalisation on standard public forecasting benchmarks (ETT, Weather,
+  Exchange). Also appropriate when comparing against PFN-based or Chronos-style forecasting
+  baselines.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you need a simple or trivial forecasting
+  baseline, if GPU training is unavailable, if automated dataset download is a hard
+  requirement, or if you need verified execution outputs before trusting metric values
+  (runtime execution must be completed first).
+
+  '
+paper:
+  title: 'TimePFN: Effective Multivariate Time Series Forecasting with Synthetic Data'
+  venue: AAAI 2025
+  year: 2025
+  url: https://arxiv.org/abs/2502.16294
+  authors:
+  - Ege Onur Taga
+  - M. Emrullah Ildiz
+  - Samet Oymak
+  affiliation: University of Michigan, Ann Arbor
+  citation_key: taga2025timepfn
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.047_timepfn.zip
+  archive_type: zip
+  local_dir_name: paper-47-TimePFN
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.047_timepfn.zip
+  sha256: b295b1371d836aeeec199601aa42427fcd6cbbf1f73349b5ebdbfd3a5977ab18
+  size_bytes: 73341
+display:
+  palette_seed: jade-navy-pfn
+  art_style: foundation-signal
+  accent_priority: high
+image_path: ../image/047_aisb.t3.047_timepfn.jpg

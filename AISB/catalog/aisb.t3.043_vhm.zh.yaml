@@ -1,0 +1,193 @@
+id: aisb.t3.043_vhm
+name: VHM
+version: 0.1.0
+one_line: 两阶段遥感视觉语言模型训练（VersaD预训练 + 指令SFT），使用外部RSEvalKit对基于Vicuna-7B和CLIP-ViT-L-336px构建的7B模型进行评估。
+task_description: '该基准测试涵盖复现完整的VHM（通用且诚实的视觉语言模型）遥感图像分析流程。模型架构结合了Vicuna-7B、CLIP-ViT-L/14-336px视觉编码器和2层MLP投影器。训练分两个阶段进行：（1）在VersaD数据集上进行预训练（140万对遥感图像-文本对，由Gemini-Vision生成丰富caption），其中对视觉编码器第8层及之后层、投影器和完整LLM进行一个epoch的微调，使用DeepSpeed ZeRO-3在多个节点上运行；（2）在VHM_SFT指令数据集上进行监督微调（SFT）（涵盖VersaD-Instruct、HnstD诚实数据和VariousRS-Instruct任务，包括VQA、视觉定位、场景分类、目标计数、建筑矢量化及多标签分类），仅更新投影器和LLM。下游评估需要在独立的conda环境中克隆并安装外部RSEvalKit仓库，同时下载VHM_Eval数据集（约7.35 GB）。打包的快照包含训练代码、DeepSpeed配置和SLURM启动脚本。评估代码、数据集和模型权重未包含在打包内。打包过程中未执行基准测试；主要指标aid_accuracy因待RSEvalKit设置而处于阻塞状态。
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 2-4d
+cost_band: very_high
+difficulty: hard
+data_access: public
+primary_outputs:
+- aid_accuracy
+- vhm_sft_checkpoint
+- rseval_report
+launch_profiles:
+- id: train_only
+  label: 仅训练
+  description: '顺序执行预训练（slurm_pretrain.sh）和SFT（slurm_finetune.sh）阶段。预训练需要VersaD（约140 GB解压后）、LLaVA-1.5 MLP投影器权重、Vicuna-7B和CLIP-ViT-L-336px。SFT需要VHM_SFT（约124 GB解压后）。生成预训练和SFT检查点。跳过评估。最低可在2×48GB GPU上运行（通过梯度累积）；论文报告的时间基于16× A100-80GB预训练（约10小时）和8× A100-80GB SFT（约4小时）。
+
+    '
+- id: paper_faithful
+  label: 论文忠实复现
+  description: '运行完整流程：预训练、SFT，然后进行RSEvalKit评估。需要将RSEvalKit克隆到独立的conda环境中（rseval）并下载VHM_Eval（约7.35 GB）。生成论文中的所有下游指标：AID场景分类准确率、RSVQA、DIOR-RSVG视觉定位、诚实QA、建筑矢量化及多标签分类。训练最低需要2×48GB GPU；论文报告的时间基于16× A100-80GB预训练和8× A100-80GB SFT。诚实QA评估调用ChatGPT-3.5 API。
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/FitzPC/VHM_VersaD
+    access: public
+    note: 'VersaD预训练语料库：140万对遥感图像-文本对，包含Gemini-Vision生成的丰富caption，涵盖图像属性、目标特征和场景上下文。解压后约140 GB。来源包括Million-AID（92万）、CrowdAI/SpaceNet（27.6万）、fMoW（8.1万）、CVUSA（4.4万）、CVACT（4.4万）和LoveDA（2.4万）。分辨率范围0.08–153米/像素。
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/datasets/FitzPC/VHM_dataset_sft
+    access: public
+    note: 'VHM_SFT监督微调指令数据集。涵盖VersaD-Instruct、HnstD事实性和欺骗性问答对以及VariousRS-Instruct任务。解压后约124 GB。
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/FitzPC/vhm_7B
+    access: public
+    note: '发布的VHM-7B SFT模型权重。可跳过两个训练阶段，直接进行RSEvalKit评估。
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/FitzPC/vhm_7b_pretrain_mlp_llm/tree/main
+    access: public
+    note: 'VHM预训练阶段的LLM和MLP投影器权重。用于从预训练检查点恢复或初始化，而非从头训练。
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/FitzPC/vhm_7b_pretrain_vit
+    access: public
+    note: '预训练阶段后的CLIP ViT视觉编码器权重。预训练期间从第8层开始微调。
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/liuhaotian/llava-v1.5-mlp2x-336px-pretrain-vicuna-7b-v1.5/tree/main
+    access: public
+    note: 'LLaVA-1.5预训练MLP投影器（mm_projector.bin）。预训练阶段必需初始化。
+
+      '
+  - kind: github_repo
+    url: https://github.com/fitzpchao/RSEvalKit
+    access: public
+    note: '遥感视觉语言模型外部评估工具包。必须克隆并在专用conda环境中安装（conda create -n rseval）。所有下游评估指标均在此实现。VHM_Eval数据集下载说明在RSEvalKit docs/Data.md中。
+
+      '
+  notes:
+  - '论文忠实复现需要VersaD（约140 GB）、VHM_SFT（约124 GB）、VHM_Eval（约7.35 GB）、基础模型权重（Vicuna-7B、CLIP-ViT-L-336px）和LLaVA MLP投影器。训练检查点和缓存前的综合下载和解压占用空间超过400 GB。
+
+    '
+  - 'VHM_Eval数据托管在外部；请按照RSEvalKit docs/Data.md中的说明进行下载。
+
+    '
+  - '所有数据和模型权重仅限研究使用（CC BY-NC 4.0）。禁止商业使用。模型权重还须遵守LLaMA、Vicuna和Gemini许可条款。
+
+    '
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - '下载任何打包的数据集或模型权重无需API密钥或受限访问凭证。
+
+    '
+  - '论文中的诚实QA评估调用ChatGPT-3.5 API；完全复现需要OpenAI API密钥，但该调用发生在RSEvalKit中，而非训练快照中。
+
+    '
+resources:
+  minimum:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 400
+    gpu_count: 2
+    gpu_vram_gb: 48
+    gpu_arch: Ampere or newer
+  recommended:
+    cpu_cores: 64
+    ram_gb: 256
+    disk_gb: 1200
+    gpu_count: 16
+    gpu_vram_gb: 80
+    gpu_arch: A100
+    multi_node: true
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.0.1
+  flash_attn: 2.3.1.post1
+  key_packages:
+  - flash-attn==2.3.1.post1
+  - deepspeed==0.9.5
+  - transformers==4.31.0
+  - xformers
+  notes:
+  - 'requirements.txt固定torch 2.0.1+cu118、flash-attn 2.3.1.post1和deepspeed 0.9.5。使用以下命令创建环境：conda create -n vhm && conda activate vhm && pip install -r requirements.txt。
+
+    '
+  - '训练使用DeepSpeed ZeRO-3（scripts/zero3.json），配合bf16混合精度和梯度检查点。通过torchrun和SLURM进行多节点启动（scripts/rs/slurm_pretrain.sh）。
+
+    '
+  - '三个训练入口点：vhm/train/train.py（基础）、vhm/train/train_mem.py（FlashAttention，默认）、vhm/train/train_xformers.py（xformers注意力，可选）。
+
+    '
+  - '评估需要独立的conda环境（rseval）和RSEvalKit requirements.txt。一个环境不足以支持论文忠实复现路线。
+
+    '
+  - '预训练对视觉编码器第8层及之后层、MLP投影器和完整LLM进行一个epoch的微调。SFT仅微调投影器和LLM。
+
+    '
+risk_flags:
+- route_caveat
+- external_eval_dependency
+- large_dataset_route
+- noncommercial_license
+- api_dependency
+risk_notes:
+- '论文忠实复现路线跨越三个独立步骤：预训练（slurm_pretrain.sh）、SFT（slurm_finetune.sh）和独立conda环境中的RSEvalKit评估——不是一个自包含的本地命令。
+
+  '
+- '论文报告的训练时间为16× A100-80GB预训练（约10小时）和8× A100-80GB SFT（约4小时）。在更少或更小的GPU上运行较慢，需要预留数天时间。可通过调整梯度累积步数来权衡时钟时间和减少的GPU数量。
+
+  '
+- '数据集准备量大：VersaD约140 GB、VHM_SFT约124 GB、VHM_Eval约7.35 GB，加上基础模型权重和生成的检查点。总磁盘占用可能超过1 TB。
+
+  '
+- '主要评估指标（AID场景分类准确率）依赖于外部RSEvalKit，而非打包的评估器。当前快照中不存在可执行的评估锚点。指标契约将aid_accuracy标记为阻塞状态。
+
+  '
+- '论文中的诚实QA评估调用ChatGPT-3.5 API，引入外部API依赖性和潜在成本（如需完全复现）。
+
+  '
+- '所有数据均为CC BY-NC 4.0（仅限非商业使用）。模型使用还受LLaMA、Vicuna和Gemini许可条款限制。仅限研究使用。
+
+  '
+recommended_when: '当您希望研究基于大规模丰富caption数据集的遥感视觉语言模型预训练、使用事实/欺骗性问答对研究视觉语言模型中的诚实性、或复现完整的两阶段训练和评估流程时使用此基准。适用于拥有多节点GPU基础设施（≥2块GPU，每块≥48GB VRAM；推荐8–16× A100-80GB）、超过400 GB可用磁盘空间且愿意设置外部RSEvalKit评估环境的团队。
+
+  '
+not_recommended_when: '不要将其用于单GPU冒烟测试、无训练的快速仅评估运行，或需要快照中完全自包含评估器的场景。不适用于无法容忍多日训练时间、需要商业使用许可、缺乏多节点GPU基础设施、或需要无外部依赖的可执行指标锚点的场景。
+
+  '
+paper:
+  title: 'VHM: Versatile and Honest Vision Language Model for Remote Sensing Image
+    Analysis'
+  venue: AAAI 2025
+  year: 2025
+  url: https://arxiv.org/abs/2403.20213
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.043_vhm.zip
+  archive_type: zip
+  local_dir_name: paper-43-VHM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.043_vhm.zip
+  sha256: 73136beddf7624545dad64ba3818d9c7f5b78915ee52dfa157396f960ddd630f
+  size_bytes: 1902143
+commercial:
+  annual_fee: null
+display:
+  palette_seed: cobalt-emerald-orbit
+  art_style: satellite-atlas
+  accent_priority: high
+image_path: ../../../AISB/image/043_aisb.t3.043_vhm.jpg

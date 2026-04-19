@@ -1049,6 +1049,7 @@ export function MobileQuestWorkspaceShell({
               <div className="h-full min-h-0 overflow-hidden [&_.feed-scrollbar]:px-4 [&_.feed-scrollbar]:pt-4 [&_textarea]:border-0 [&_textarea]:bg-white/[0.82] [&_textarea]:shadow-[0_14px_30px_-26px_rgba(28,22,15,0.18),inset_0_0_0_1px_rgba(0,0,0,0.04)] dark:[&_textarea]:bg-white/[0.05]">
                 {chatMode === 'chat' ? (
                   <QuestConnectorChatView
+                    questId={projectId}
                     feed={workspace.feed}
                     loading={workspace.loading}
                     restoring={workspace.restoring}
@@ -1063,6 +1064,8 @@ export function MobileQuestWorkspaceShell({
                     loadingOlderHistory={workspace.loadingOlderHistory}
                     onLoadOlderHistory={workspace.loadOlderHistory}
                     onSubmit={workspace.submit}
+                    onReadNow={workspace.readNow}
+                    onWithdraw={workspace.withdraw}
                     onStopRun={workspace.stopRun}
                   />
                 ) : (
@@ -1083,6 +1086,8 @@ export function MobileQuestWorkspaceShell({
                     loadingOlderHistory={workspace.loadingOlderHistory}
                     onLoadOlderHistory={workspace.loadOlderHistory}
                     onSubmit={workspace.submit}
+                    onReadNow={workspace.readNow}
+                    onWithdraw={workspace.withdraw}
                     onStopRun={workspace.stopRun}
                   />
                 )}

@@ -1,0 +1,129 @@
+id: aisb.t3.074_lsvi
+name: Least Squares Variational Inference
+version: 0.1.0
+one_line: 通过对温度化对数目标评估做最小二乘更新实现无梯度变分推断，支持高斯 BBVI 与指数族后验，无需梯度估计器。
+task_description: 该基准封装了 LSVI（最小二乘变分推断），一种在指数族中进行变分推断的无梯度蒙特卡洛方法。LSVI 不做梯度优化，而是在变分近似分布下对温度化对数目标进行连续 OLS 回归。每次迭代通过 OLS 求解不动点方程，得到偏差校正的随机自然梯度下降步。该方法适用于无法获得 log pi 梯度的场景（如离散分布或无似然推断），可避免不稳定梯度估计器。基准包含无需 Fisher 信息矩阵求逆的高斯变分族实现：均值场 O(d)，全协方差 O(d^3)。主要评测任务为 Pima Indians 糖尿病逻辑回归，使用 kl_objective 衡量与真实后验的 KL 散度。
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 2-6h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- kl_objective
+- variational_inference_report
+launch_profiles:
+- id: gaussian_logreg
+  label: 高斯逻辑回归
+  description: 在 Pima Indians 糖尿病二分类任务上运行封装的最小二乘变分推断实验。使用 8 个随机种子，阶段一 8000 步、阶段二 1500 步优化，输出 KL 散度与变分参数轨迹。
+dataset_download:
+  primary_method: bundled
+  sources:
+  - type: package
+    path: LSVI/
+    description: Benchmark code and experiments are bundled in the archive
+  notes:
+  - Pima Indians dataset is included in the package under experiments/logisticRegression/
+  - No external data fetching required
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - All data and code are self-contained in the package
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes:
+    - CPU-only execution fully supported via JAX CPU backend
+    - 8-core CPU recommended for parallel seed execution
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes:
+    - Additional cores reduce wall-clock time for multi-seed experiments
+    - GPU is optional; JAX supports GPU acceleration if available
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - jax>=0.4.0
+  - jaxlib
+  - numpy>=1.21
+  - scipy
+  notes:
+  - JAX is the primary computation library; no PyTorch dependency
+  - GPU support is optional via CUDA-enabled jaxlib
+  - CPU-only execution is the primary tested configuration
+  - See bundled requirements.txt or setup.py for full dependency list
+risk_flags: []
+risk_notes:
+- No external API calls; fully offline benchmark
+- CPU-bound execution eliminates GPU availability risk
+- Long runtime (up to 6h) but low computational cost
+recommended_when: 当你需要评估在无梯度条件下工作的概率推断方法时使用本基准，包括离散变量模型、无似然推断与不可微后验。其 CPU 友好配置也适合资源受限环境中的变分推断研究。
+not_recommended_when: 不适用于评估大规模深度学习、GPU 加速神经网络训练，或需要目标密度自动微分的任务。它也不覆盖重参数化技巧或 score-function 估计等梯度型 VI 方案。
+paper:
+  title: Least squares variational inference
+  venue: NeurIPS
+  year: 2025
+  url: https://arxiv.org/abs/2502.18475
+  authors:
+  - Yvann Le Fay
+  - Nicolas Chopin
+  - Simon Barthelme
+  affiliation:
+  - ENSAE, CREST, IP Paris
+  - GIPSA-Lab, CNRS
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.074_lsvi.zip
+  archive_type: zip
+  local_dir_name: paper-74-LSVI
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.074_lsvi.zip
+  sha256: 2f33740ed8cefdcd2bfd419c0ad454037de523a1b5a515e8da465918cc54af7a
+  size_bytes: 71181
+display:
+  palette_seed: cream-slate-gaussian
+  art_style: probabilistic-notebook
+  accent_priority: medium
+image_path: ../image/074_aisb.t3.074_lsvi.jpg
+capability_tags:
+- variational_inference
+- bayesian_inference
+- gradient_free_optimization
+- probabilistic_modeling
+- research_code_optimization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+code_anchors:
+  primary_executable:
+    path: LSVI/experiments/logisticRegression/pima_logistic_regression/gaussian.py
+    description: Gaussian variational inference experiment for Pima logistic regression with BBVI baseline
+  variational_modules:
+    path: LSVI/variational/
+    description: Core variational inference implementations including LSVI, Laplace approximation, and exponential family distributions
+metric_contract:
+  primary_metric: kl_objective
+  backing: LSVI/experiments/logisticRegression/pima_logistic_regression/gaussian.py
+  provenance: code-backed
+caveats:
+- No benchmark execution was performed during this packaging pass
+- Runtime metric values require validation before publication
+- Top-level README is absent in the current snapshot

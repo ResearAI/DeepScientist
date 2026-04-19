@@ -79,9 +79,9 @@ test.describe('lab canvas workflow', () => {
     await expect(detailsNav).toBeVisible({ timeout: 30_000 })
     await detailsNav.click()
 
-    await expect(page.getByText('Idea Lines', { exact: true })).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByText('Paper Contract Health', { exact: true })).toBeVisible()
-    await expect(page.getByText('Paper Contract', { exact: true })).toBeVisible()
-    await expect(page.getByText('Paper Lines', { exact: true })).toBeVisible()
+    await expect(page.getByText('Idea Lines', { exact: true }).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText('Paper Contract Health', { exact: true }).filter({ visible: true }).first()).toBeVisible()
+    await expect(page.getByText('Paper Contract', { exact: true }).filter({ visible: true }).first()).toBeVisible()
+    await expect(page.getByText('Paper Lines', { exact: true }).filter({ visible: true }).first()).toBeVisible()
   })
 })

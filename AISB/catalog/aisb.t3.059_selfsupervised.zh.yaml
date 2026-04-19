@@ -1,0 +1,125 @@
+id: aisb.t3.059_selfsupervised
+name: SCAM 时序自监督重标注
+version: 0.1.0
+one_line: 通过带自适应掩码的重建网络生成自监督伪标签，用于时序预测骨干网络。
+task_description: |-
+  本基准测试实现了 SCAM（自适应掩码自纠正，Self-Correction with Adaptive Mask），这是一种用于时序预测的自监督重标注框架。该方法在原始标签上训练重建网络 g(·; φ)，并通过在优化过程中逼近网络中间参数来生成伪标签。自适应掩码使用尖锐度指标 λ_max 识别过拟合的原始分量，并选择性将其替换为基于重建的伪标签。谱范数正则化（SNR）进一步抑制过拟合。该基准测试支持多种预测骨干网络（MLP、CycleNet、iTransformer、PatchTST），并在 11 个真实数据集上进行评估。用户可通过任务配置指定骨干网络（如 task=scam_mlp、task=scam_patchtst），在基于 Hydra 的训练管道中运行。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- avg_mse
+- avg_mae
+- selfsupervised_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: |-
+    使用打包配置运行单一自监督预测评估流程。通过预定义超参数执行 src/eval.py，对单个骨干模型进行评估。
+- id: full_train_eval
+  label: 完整训练 + 评估
+  description: |-
+    运行完整的 SCAM 自监督标注和预测工作流程。通过指定的任务配置（scam_mlp、scam_cyclenet、scam_itransformer 或 scam_patchtst）执行 src/train.py。训练重建网络，应用自适应掩码，并在所有数据集上使用 SNR 进行评估。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - type: bundled
+    description: configs/data/ 目录中引用的数据集，通过脚本下载
+  - type: url
+    description: 外部时序数据集（ETT、天气、电力、交通）
+  notes:
+  - 执行前，用户必须在 .env 文件中指定数据路径（DATA_DIR 变量）
+  - 详见 configs/data/ 中的数据集特定配置
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+    notes: 训练重建网络和预测器模型需要 GPU
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 24GB 显存可容纳更大批量大小，适用于 PatchTST/iTransformer 实验
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: 2.6.0
+  flash_attn: null
+  key_packages:
+  - name: lightning
+    version: '>=2.0'
+    purpose: 训练编排与分布式训练支持
+  - name: hydra-core
+    version: '>=1.3'
+    purpose: 配置管理与实验路由
+  - name: omegaconf
+    version: '>=2.3'
+    purpose: YAML 配置解析与覆盖
+  - name: rootutils
+    version: '>=1.0'
+    purpose: 项目根目录检测与 PYTHONPATH 配置
+  notes:
+  - 使用 environment.yml 创建 conda 环境：conda create --name <env> --file environment.yml
+  - Python 入口点使用 lightning-hydra-template 结构
+  - 执行前必须在 .env 文件中设置 PROJECT_ROOT 和 DATA_DIR
+risk_flags:
+- requires_gpu
+- long_runtime
+risk_notes:
+- 训练重建网络相比标准预测基线会产生额外开销
+- 在所有骨干网络（MLP、CycleNet、iTransformer、PatchTST）上进行完整评估需要数小时
+- 11 个真实数据集需要单独下载；磁盘空间需求随数据集数量增长
+recommended_when: |-
+  当评估自监督重标注策略、研究伪标签质量对预测的影响，或将 SCAM 与标准监督基线进行基准对比时使用本基准测试。特别适用于时序领域中标签噪声、过拟合缓解和集成式自训练的研究。
+not_recommended_when: |-
+  如需完全确定性的单一模型基准测试（不含随机成分），请勿使用。当 GPU 资源不可用或需要不带自监督成分的基线对比时，不建议使用。如需可复现的单次运行结果而无需多阶段 SCAM 流程，请避免使用。
+paper:
+  title: 'Not All Data are Good Labels: On the Self-supervised Labeling for Time Series
+    Forecasting'
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2502.14704
+  code_url: https://github.com/SuDIS-ZJU/SCAM
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.059_selfsupervised.zip
+  archive_type: zip
+  local_dir_name: paper-59-SelfSupervised
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.059_selfsupervised.zip
+  sha256: 4394ab146b3401b4b5dd318050d6b6feadca18a441a905e1ea4cbb49194d3de5
+  size_bytes: 167064
+display:
+  palette_seed: linen-blue-label
+  art_style: 标签预测
+  accent_priority: medium
+image_path: ../image/059_aisb.t3.059_selfsupervised.jpg
+capability_tags:
+- research_code_optimization
+- time_series_forecasting
+- self_supervised_learning
+- forecasting
+- ensemble_methods
+- reconstruction_based_pseudolabels
+- adaptive_masking
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

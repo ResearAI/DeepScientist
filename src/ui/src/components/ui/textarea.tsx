@@ -7,15 +7,16 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
   label?: string;
   error?: string;
   hint?: string;
+  containerClassName?: string;
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, label, error, hint, id, ...props }, ref) => {
+  ({ className, label, error, hint, id, containerClassName, ...props }, ref) => {
     const generatedId = useId();
     const textareaId = id || generatedId;
 
     return (
-      <div className="w-full">
+      <div className={cn('w-full', containerClassName)}>
         {label && (
           <label
             htmlFor={textareaId}

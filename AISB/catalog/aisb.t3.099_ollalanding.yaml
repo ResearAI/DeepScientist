@@ -1,0 +1,248 @@
+id: aisb.t3.099_ollalanding
+name: OLLA Constrained Sampling
+version: 0.1.0
+one_line: Constrained non-log-concave sampling with projection-free OLLA/OLLA-H samplers
+  and diverse benchmark suite.
+task_description: 'This packaged benchmark implements OLLA (Overdamped Langevin with
+  LAnding), a suite of projection-free stochastic dynamics for sampling from constrained
+  statistical distributions. The framework handles both nonlinear equality and inequality
+  constraints without relying on projections or slack variables. OLLA enforces constraints
+  by projecting the overdamped Langevin drift and diffusion onto the tangent space
+  of the feasible set and uses a restitution ("landing") mechanism to guarantee convergence
+  to the constraint manifold. The benchmark includes five sampler implementations
+  (OLLA, OLLA-H, CLangevin, CHMC, CGHMC) and seven constraint problems spanning 2D
+  toy geometries, high-dimensional synthetic stress tests, polymer chain simulations,
+  and a fairness-aware Bayesian neural network. OLLA-H uses Hutchinson trace estimation
+  for scalable high-dimensional performance. The benchmark evaluates sampling quality
+  via test negative log-likelihood (test_nll), effective sample size (ESS), CPU time,
+  and constraint violation metrics.
+
+  '
+capability_tags:
+- research_code_optimization
+- sampling
+- constrained_optimization
+- probabilistic_modeling
+- monte_carlo
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- test_nll
+- cpu_time
+- ess
+- constraint_violations
+- sampling_report
+- csv_summaries
+- pdf_plots
+snapshot_status: runnable
+support_level: advanced
+recommended_when: 'Use this benchmark when you need to evaluate constrained sampling
+  algorithms on challenging nonconvex constraint sets, compare OLLA/OLLA-H against
+  classical constrained samplers (Langevin, HMC, GHMC), or stress-test sampler scalability
+  across low-dimensional (2D) to high-dimensional (100+ dim) problems.
+
+  '
+not_recommended_when: 'Do not use this benchmark for simple supervised-learning tasks,
+  unconstrained sampling problems, or when only basic log-concave convex-constrained
+  sampling is required.
+
+  '
+dataset_download:
+  primary_method: automatic
+  sources:
+  - url: https://deepscientist.cc/AISB/099_ollalanding
+    type: archive
+  - name: OpenML
+    type: runtime
+    description: German Credit dataset (german_credit experiment) downloaded automatically
+      on first use
+  notes:
+  - Ensure outbound network access is available when running the german_credit constraint
+    experiment
+  - Archive contains full source code, environment.yml, and experiment runner
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No authentication required for dataset downloads
+  - OpenML access requires standard internet connectivity
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes: CPU-only execution fully supported for all minimum-route experiments
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 120
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: GPU recommended only for parallel multichain sampling; CPU preferred for
+      standard experiments
+environment:
+  python: '3.11'
+  cuda: null
+  pytorch: 2.3.0
+  flash_attn: null
+  key_packages:
+  - numpy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  - arviz
+  - tqdm
+  - torch
+  notes:
+  - Environment managed via conda/environment.yml
+  - Package installed in editable mode (pip install -e .)
+  - CPU-only execution is preferred across all experiments unless running parallel
+    sampling for multichain
+  - GPU support available via PyTorch CUDA builds (e.g., cu130); not required for
+    primary experiments
+risk_flags:
+- network_on_first_run
+- long_runtime
+risk_notes:
+- German Credit experiment downloads from OpenML on first execution
+- Full sampler suite may require up to 24 hours depending on dimensionality and sampler
+  count
+launch_profiles:
+- id: quick_analysis
+  label: Quick Analysis
+  description: 'Run constrained-sampling analysis on a small experiment subset. Executes
+    experiments/run_analysis.py with a default constraint and sampler selection on
+    CPU. Suitable for validation runs and method familiarization. Typical runtime:
+    1-4 hours.
+
+    '
+  command_template: python experiments/run_analysis.py --experiments circle --samplers
+    OLLA-H --device cpu
+- id: full_sampler_suite
+  label: Full Sampler Suite
+  description: 'Execute the complete OLLA benchmark workflow across all constraint
+    problems and all five samplers (OLLA, OLLA-H, CLangevin, CHMC, CGHMC). Includes
+    2D experiments with PDF visualization, high-dimensional stress tests, polymer
+    chain sampling, and German Credit Bayesian neural network. Produces CSV summaries,
+    ESS metrics, constraint violation diagnostics, and test_nll comparisons. Typical
+    runtime: 6-24 hours.
+
+    '
+  command_template: python experiments/run_analysis.py --experiments circle two_lobe
+    quadratic_poly mix_gaussian highdim_stress highdim_polymer german_credit --samplers
+    OLLA OLLA-H CLangevin CHMC CGHMC --device cpu
+paper:
+  title: Fast Non-Log-Concave Sampling under Nonconvex Equality and Inequality Constraints
+    with Landing
+  venue: NeurIPS
+  year: 2025
+  url: https://arxiv.org/abs/2510.22044
+  authors:
+  - Jeon, Kijung
+  - Muehlebach, Michael
+  - Tao, Molei
+  institution:
+  - Georgia Institute of Technology
+  - MPI-IS
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.099_ollalanding.zip
+  archive_type: zip
+  local_dir_name: paper-99-OLLALanding
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.099_ollalanding.zip
+  sha256: 65bf98fd2de3dabac25cdb41e57ac2f63756a3336378835d48cb5462ec3e9d4a
+  size_bytes: 845998
+display:
+  palette_seed: charcoal-mint-landing
+  art_style: constrained-geometry
+  accent_priority: high
+  tags:
+  - sampling
+  - constrained-optimization
+  - langevin-dynamics
+  - bayesian-inference
+image_path: ../image/099_aisb.t3.099_ollalanding.jpg
+citation: "@inproceedings{jeon2025olla,\n  title     = {Fast Non-Log-Concave Sampling\
+  \ under Nonconvex Equality and Inequality Constraints with Landing},\n  author \
+  \   = {Jeon, Kijung and Muehlebach, Michael and Tao, Molei},\n  booktitle = {Advances\
+  \ in Neural Information Processing Systems},\n  year      = {2025},\n}\n"
+metric_evidence:
+  test_nll:
+    origin: experiments/run_analysis.py
+    status: code_backed
+  cpu_time:
+    origin: experiments/run_analysis.py
+    status: code_backed
+  ess:
+    origin: src/constraints/highdim_stress.py
+    status: code_backed
+constraint_library:
+- id: circle
+  description: 2D Gaussian restricted to unit circle (x1^2 + x2^2 = 1). Analytic manifold
+    initialization.
+- id: quadratic_poly
+  description: Polynomial equality (x1^4 x2^2 + x1^2 + x2 = 1) with inequality (x1^3
+    - x2^3 <= 1). Rejection-based init.
+- id: mix_gaussian
+  description: Nine-component isotropic Gaussian mixture constrained to seven-lobed
+    star contour with polynomial inequality.
+- id: two_lobe
+  description: Double-moon density via inequality constraint. Highlights curved boundaries
+    without equalities.
+- id: highdim_stress
+  description: Random high-dimensional linear and spherical equalities with spherical
+    obstacle inequalities. Scalability test.
+- id: highdim_polymer
+  description: Configurable 3D polymer chain with bond-length, bond-angle constraints,
+    steric inequalities, torsion/WCA potentials.
+- id: german_credit
+  description: Fairness-aware 2-layer Bayesian neural network with TPR/FPR parity
+    equality and feature monotonicity inequalities.
+sampler_implementations:
+- id: OLLA
+  class: OLLA
+  path: src/samplers/olla.py
+  description: Original OLLA with analytic trace correction. Low-to-moderate dimensions.
+- id: OLLA-H
+  class: OLLA_H
+  path: src/samplers/olla_h.py
+  description: Hutchinson-trace variant. Preferred for high-dimensional problems or
+    many constraints. Set Hutchinson probes N=0 for maximum speed.
+- id: CLangevin
+  class: CLangevin
+  path: src/samplers/clangevin.py
+  description: Constrained Langevin with slack-variable augmentation and SHAKE-style
+    projections for inequality handling.
+- id: CHMC
+  class: CHMC
+  path: src/samplers/chmc.py
+  description: Constrained Hamiltonian Monte Carlo using RATTLE integrator on augmented
+    state with slack variables.
+- id: CGHMC
+  class: CGHMC
+  path: src/samplers/cghmc.py
+  description: Constrained generalized HMC with Metropolis-Hastings correction. Inequality
+    constraints via rejection during MH step.
+execution_notes: 'All samplers inherit from BaseSampler (src/samplers/__init__.py)
+  which standardizes RNG handling, step-size configuration, and return conventions
+  (trajectory, h_vals, g_vals). The experiment runner (run_analysis.py) generates
+  CSV summaries, optional PDF plots for 2D experiments, and prints diagnostics including
+  ESS, constraint violations, and task-specific metrics. Each constraint module exposes
+  EXPERIMENT_SETTINGS (steps, particle counts) and SAMPLER_SETTINGS (per-sampler hyperparameters)
+  consumed by the runner.
+
+  '

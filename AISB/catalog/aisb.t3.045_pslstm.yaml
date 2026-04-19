@@ -1,0 +1,203 @@
+id: aisb.t3.045_pslstm
+name: P-sLSTM Long-Term Time Series Forecasting
+version: 0.1.0
+one_line: Optimize a patched sLSTM with channel independence for competitive long-horizon
+  time series forecasting on public benchmarks.
+task_description: 'P-sLSTM adapts the exponential-gating sLSTM architecture from NLP
+  to multivariate time series forecasting by incorporating two modifications: (1)
+  patching—segmenting the input into local temporal patches to overcome sLSTM''s short-memory
+  limitation—and (2) channel independence—processing each variate independently with
+  a shared backbone to prevent overfitting. This benchmark evaluates forecasting accuracy
+  (MSE, MAE) across standard public datasets including ETTh1/ETTm1, Weather, Electricity,
+  and others from the Time-Series-Library. The experimental workflow uses shell scripts
+  per dataset and a centralized run_longExp.py entry point.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- mse
+- mae
+- forecast_checkpoint
+- rse
+- corr
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run P-sLSTM forecasting on a single prepared public dataset (e.g.,
+    Weather) using the provided shell script in scripts/EXP-LongForecasting/P_sLSTM/.
+- id: full_benchmark
+  label: Full Benchmark
+  description: Run the full packaged long-horizon forecasting workflow across all
+    supported datasets, logging MSE/MAE for each.
+dataset_download:
+  primary_method: external
+  sources:
+  - label: Time-Series-Library
+    url: https://github.com/thuml/Time-Series-Library
+    license: null
+  - label: iTransformer
+    url: https://github.com/thuml/iTransformer
+    license: null
+  notes:
+  - Datasets (ETTh1.csv, ETTm1.csv, weather.csv, electricity.csv, etc.) must be placed
+    in the ./dataset/ directory.
+  - Expected structure: P-sLSTM/dataset/*.csv with matching root_path and data_path
+      arguments.
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '12.1'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - name: torch
+    version: '>=2.1.0'
+  - name: ninja
+    version: null
+  - name: matplotlib
+    version: null
+  notes:
+  - Validated alternative: Python 3.12 with PyTorch 2.3.0 on CUDA 12.1.
+  - Full dependency set is listed in requirements.txt.
+  - ninja package is required separately (pip install ninja).
+risk_flags:
+- data_alignment
+- memory_bounded
+risk_notes:
+- Ensure dataset alignment with forecasting horizon arguments (--label_len, --pred_len)
+  to avoid silent mismatches.
+- GPU memory scales with sequence length and number of channels; 24GB VRAM recommended
+  for full benchmark runs.
+recommended_when: 'Use this benchmark to evaluate efficient recurrent-sequence forecasting
+  that avoids transformer scaling costs while achieving competitive accuracy on long-horizon
+  multivariate TSF tasks.
+
+  '
+not_recommended_when: 'Do not use this if you need multimodal inputs (e.g., vision-language),
+  very large language model pretraining, or non-forecasting sequence tasks.
+
+  '
+paper:
+  title: Unlocking the Power of LSTM for Long Term Time Series Forecasting
+  venue: AAAI
+  year: 2025
+  url: https://ojs.aaai.org/index.php/AAAI/article/view/33303
+  authors:
+  - Kong, Yaxuan
+  - Wang, Zepu
+  - Nie, Yuqi
+  - Zhou, Tian
+  - Zohren, Stefan
+  - Liang, Yuxuan
+  - Sun, Peng
+  - Wen, Qingsong
+  bibtex: "@inproceedings{kong2025unlocking,\n  title={Unlocking the power of lstm\
+    \ for long term time series forecasting},\n  author={Kong, Yaxuan and Wang, Zepu\
+    \ and Nie, Yuqi and Zhou, Tian and Zohren, Stefan and Liang, Yuxuan and Sun, Peng\
+    \ and Wen, Qingsong},\n  booktitle={Proceedings of the AAAI Conference on Artificial\
+    \ Intelligence},\n  volume={39},\n  number={11},\n  pages={11968--11976},\n  year={2025}\n\
+    }\n"
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.045_pslstm.zip
+  archive_type: zip
+  local_dir_name: paper-45-PsLSTM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.045_pslstm.zip
+  sha256: 27a81f0bd5307f83bd05c52a8332d2d71c1ff6de8eb7c3e04826a0337c201fe5
+  size_bytes: 1001820
+display:
+  palette_seed: olive-sky-lstm
+  art_style: recurrent-signal
+  accent_priority: medium
+image_path: ../image/045_aisb.t3.045_pslstm.jpg
+capability_tags:
+- research_code_optimization
+- time_series_forecasting
+- recurrent_models
+- forecasting
+- scientific_ml
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+executable_anchors:
+- path: run_longExp.py
+  role: main entry point
+  description: Parses CLI arguments for model, dataset, and training configuration;
+    orchestrates Exp_Main.
+- path: exp/exp_main.py
+  role: experiment driver
+  description: Exp_Main class builds models (P_sLSTM, LSTM, sLSTM, Informer, Autoformer,
+    DLinear, Transformer), loads data, trains, and evaluates.
+- path: utils/metrics.py
+  role: metric computation
+  description: Implements MAE, MSE, RMSE, MAPE, MSPE, RSE, CORR metrics; metric()
+    returns (mae, mse, rmse, mape, mspe, rse, corr).
+code_roots:
+- data_provider/
+- exp/
+- layers/
+- models/
+- scripts/
+- utils/
+metric_contract:
+  mse:
+    origin_path: utils/metrics.py
+    function: MSE
+    source_ref: code-backed
+    status: executable
+  mae:
+    origin_path: utils/metrics.py
+    function: MAE
+    source_ref: code-backed
+    status: executable
+  rse:
+    origin_path: utils/metrics.py
+    function: RSE
+    source_ref: code-backed
+    status: executable
+  corr:
+    origin_path: utils/metrics.py
+    function: CORR
+    source_ref: code-backed
+    status: executable
+recovery_notes: 'Static code audit found executable anchors for all staged metrics.
+  Runtime execution has not been performed; metric values are not yet trusted. Recover
+  existing code files over README-only claims when choosing origin_path, source_ref,
+  and evaluation_protocol.code_paths.
+
+  '
+caveat_snapshot: 'Packaged snapshot is runnable via provided shell scripts. Full benchmark
+  execution across all datasets is required before metric values can be trusted for
+  comparative reporting.
+
+  '
+commercial:
+  annual_fee: null

@@ -1,0 +1,224 @@
+id: aisb.t3.044_rgvi
+name: Reference-Guided Video Inpainting (RGVI)
+version: 0.1.0
+one_line: Flow-guided video inpainting combining one-shot pixel propagation with Stable
+  Diffusion reference generation, evaluated on the HQVI benchmark.
+task_description: 'RGVI is a video inpainting framework that decouples content propagation
+  from generation using a four-stage pipeline: (1) internal pixel propagation via
+  one-shot pulling with optical flows computed by RAFT, (2) high-quality reference
+  generation using Stable Diffusion Inpainting with text guidance, (3) reference propagation
+  across frames, and (4) per-frame completion for remaining missing regions. The framework
+  introduces one-shot pixel pulling that combines flow tracing and grid warping to
+  maintain sub-pixel accuracy while avoiding re-sampling artifacts inherent in recurrent
+  warping approaches. The accompanying HQVI benchmark evaluates VI methods on realistically
+  composed videos generated via alpha matte composition, providing ground truth for
+  object removal tasks. Supports inference at 240p, 480p, and 2K resolutions.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 1-3d
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- psnr
+- ssim
+- lpips
+- vfid
+- video_inpainting_results
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run RGVI inference and evaluation on a single video sequence. Validates
+    pipeline functionality and metric computation.
+- id: full_eval
+  label: Full Eval
+  description: Run the complete evaluation workflow across HQVI and supplementary
+    benchmarks (DAVIS, DAVI, YTVI). Produces comprehensive comparison tables against
+    baseline methods including STTN, FGVC, FuseFormer, E2FGVI, and ProPainter.
+- id: hqvi_only
+  label: HQVI Benchmark
+  description: Execute the standard HQVI evaluation route only, including both positive
+    and negative annotation masks for object removal scenarios.
+dataset_download:
+  primary_method: external_links
+  sources:
+  - name: HQVI Benchmark
+    url: https://drive.google.com/file/d/1eiscxJO2o8qVlHX52sul2Pz8elOwSWUP/view?usp=drive_link
+    size_gb: null
+    required: true
+  - name: DAVIS
+    url: https://drive.google.com/file/d/1fBdMdhyStDGurVqgIp8_1SMVb0uIRqIH/view?usp=drive_link
+    required: true
+  - name: DAVI
+    url: https://drive.google.com/file/d/1i-hNki4Jrmiqg6226AIgN1v5PIL1Epm6/view?usp=drive_link
+    required: false
+  - name: YTVI
+    url: https://drive.google.com/file/d/1MpJCdakKkMZIHg3cqQ2epVxRo0YKCrGY/view?usp=drive_link
+    required: false
+  - name: YouTube-VOS (for PFCNet training only)
+    url: https://competitions.codalab.org/competitions/19544
+    required: false
+  - name: FCNet Weights
+    url: https://drive.google.com/file/d/1KNetMWeYVlgrhgguw45uRfoJDmljw5hT/view?usp=drive_link
+    required: true
+  - name: I3D Weights
+    url: https://drive.google.com/file/d/1NhI0rDu7BeqNm0oyxS0jHxjQqhfelx8I/view?usp=drive_link
+    required: true
+  - name: Stable Diffusion Inpainting Weights
+    url: https://huggingface.co/runwayml/stable-diffusion-inpainting
+    required: true
+  - name: RAFT Optical Flow (pretrained)
+    url: bundled_with_torchvision
+    required: true
+  - name: PFCNet Weights (optional)
+    url: https://drive.google.com/file/d/1wknOIQmOnzPtLpN1Ydfb698tUZVOYuKF/view?usp=drive_link
+    required: false
+  notes:
+  - Stable Diffusion Inpainting weights must be placed at /sd2_inpaint or configured
+    in rgvi.py
+  - FCNet and I3D weights must be placed in the weights/ directory
+  - Pre-computed results for baseline methods (STTN, FGVC, FuseFormer, E2FGVI, ProPainter)
+    available for download
+credential_requirements:
+  mode: external_access
+  items:
+  - Google Drive access for dataset downloads
+  - Hugging Face access for Stable Diffusion weights
+  notes:
+  - Some links may require institutional Google account for access
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: Single GPU capable of running Stable Diffusion in float16
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 400
+    gpu_count: 2
+    gpu_vram_gb: 48
+    notes: Dual GPU recommended for faster inference at 2K resolution; Stable Diffusion
+      runs on primary GPU with float16
+environment:
+  python: '3.8'
+  cuda: '11.7'
+  pytorch: 1.11.0
+  flash_attn: null
+  key_packages:
+  - torch>=1.11.0
+  - torchvision>=0.16.0
+  - transformers==4.30.2
+  - diffusers==0.21.0
+  - lpips
+  - scikit-image>=0.19.0
+  - opencv-python
+  - pillow
+  - numpy
+  notes:
+  - PyTorch with torchvision required for RAFT optical flow model (tv.models.optical_flow.raft_large)
+  - Stable Diffusion Inpainting loaded via StableDiffusionInpaintPipeline
+  - See bundled requirements.txt for complete dependency list
+risk_flags:
+- large_model_download
+- non_commercial_only
+- external_data_dependency
+risk_notes:
+- Stable Diffusion weights are large; ensure sufficient disk space and download time
+- CC BY-NC License restricts commercial use of RGVI components
+- FCNet and I3D from ProPainter are under NTU S-Lab License 1.0
+- Google Drive links may expire or require authentication
+recommended_when: 'Use this benchmark when evaluating video inpainting methods on
+  realistic object removal and content generation tasks. Particularly suited for methods
+  leveraging flow-based propagation with generative completion. Appropriate for research
+  on temporal consistency in video editing, optical flow-guided methods, and diffusion-based
+  video synthesis. HQVI benchmark provides ground truth for quantitative evaluation
+  of object removal quality.
+
+  '
+not_recommended_when: 'Do not use this benchmark if the target application is strictly
+  image-level inpainting, as the framework requires multi-frame video processing and
+  optical flow computation. Avoid if storage constraints prevent hosting large video
+  datasets (HQVI, DAVIS, DAVI, YTVI combined). Not appropriate for real-time applications;
+  inference time scales with video length and resolution. Do not use for commercial
+  products due to CC BY-NC licensing restrictions on core components and Stable Diffusion
+  licensing terms.
+
+  '
+paper:
+  title: Elevating Flow-Guided Video Inpainting with Reference Generation
+  venue: AAAI 2025
+  year: 2025
+  url: https://arxiv.org/abs/2412.08975
+  arxiv_id: '2412.08975'
+  authors:
+  - Suhwan Cho (Yonsei University)
+  - Seoung Wug Oh (Adobe Research)
+  - Sangyoun Lee (Yonsei University)
+  - Joon-Young Lee (Adobe Research)
+  license: CC BY-NC 4.0
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.044_rgvi.zip
+  archive_type: zip
+  local_dir_name: paper-44-RGVI
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.044_rgvi.zip
+  sha256: 419a85def288a9e4928a0de7c5fd4593207ee4b467964394feb4422d5d3828d2
+  size_bytes: 40445
+display:
+  palette_seed: forest-indigo-frame
+  art_style: cinematic-repair
+  accent_priority: high
+  tags:
+  - video-inpainting
+  - flow-guidance
+  - diffusion-models
+  - optical-flow
+  - temporal-consistency
+image_path: ../image/044_aisb.t3.044_rgvi.jpg
+operational_notes: 'Execution workflow:
+
+  1. Place pretrained weights in weights/ directory (FCNet.pth, i3d_rgb_imagenet.pth)
+
+  2. Configure Stable Diffusion Inpainting path in rgvi.py (default: /sd2_inpaint)
+
+  3. For inference: python run.py --root <dataset_path> --res <240p|480p|2K> --seq
+  <sequence_name>
+
+  4. For evaluation: python post.py --root <dataset_path> --res <resolution>
+
+
+  Resolution support: 240p (fast evaluation), 480p (balanced), 2K (high-quality)
+
+  Pre-computed baselines available for comparison without full re-runs
+
+  LPIPS and I3D models loaded at startup; first inference may be slow
+
+  '
+verification_checklist: 'Before execution, verify:
+
+  - [ ] Testing dataset selection (HQVI, DAVIS, DAVI, YTVI)
+
+  - [ ] GPU availability and CUDA configuration
+
+  - [ ] Input resolution selection (240p/480p/2K)
+
+  - [ ] Text prompt for generation mode (optional)
+
+  - [ ] Pre-trained model paths (SDI, FCNet, I3D)
+
+  - [ ] Dataset root directory specification for post.py
+
+  - [ ] Sufficient disk space for outputs
+
+  '

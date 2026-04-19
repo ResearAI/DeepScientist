@@ -231,6 +231,57 @@ def test_confirm_baseline_metric_directions_override_and_main_run_prefers_confir
     assert payload["progress_eval"]["beats_baseline"] is True
 
 
+def test_apply_start_setup_form_patch_persists_and_merges_suggested_form(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create(
+        "start setup patch persistence quest",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "freeform",
+            "start_setup_session": {
+                "source": "benchstore",
+                "locale": "zh",
+                "suggested_form": {
+                    "title": "Original setup title",
+                    "runtime_constraints": "- Keep local only",
+                },
+            },
+        },
+    )
+    quest_root = Path(quest["quest_root"])
+    artifact = ArtifactService(temp_home)
+
+    result = artifact.apply_start_setup_form_patch(
+        quest_root,
+        form_patch={
+            "goal": "Run the benchmark faithfully.",
+            "runtime_constraints": "- Use only GPU 0 after confirmation",
+        },
+        message="Prepared a merged setup draft.",
+    )
+
+    assert result["ok"] is True
+    assert result["form_patch"]["goal"] == "Run the benchmark faithfully."
+    assert result["suggested_form"]["title"] == "Original setup title"
+    assert result["suggested_form"]["goal"] == "Run the benchmark faithfully."
+    assert result["suggested_form"]["runtime_constraints"] == "- Use only GPU 0 after confirmation"
+
+    persisted = quest_service.read_quest_yaml(quest_root)
+    startup_contract = persisted.get("startup_contract") if isinstance(persisted.get("startup_contract"), dict) else {}
+    start_setup_session = (
+        startup_contract.get("start_setup_session")
+        if isinstance(startup_contract, dict) and isinstance(startup_contract.get("start_setup_session"), dict)
+        else {}
+    )
+    suggested_form = start_setup_session.get("suggested_form") if isinstance(start_setup_session, dict) else {}
+    assert suggested_form["title"] == "Original setup title"
+    assert suggested_form["goal"] == "Run the benchmark faithfully."
+    assert suggested_form["runtime_constraints"] == "- Use only GPU 0 after confirmation"
+
+
 def test_confirm_baseline_strict_flattens_canonical_metric_summary(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
@@ -550,6 +601,8 @@ def test_artifact_mailbox_preserves_user_message_attachments(temp_home: Path) ->
     assert latest["conversation_id"] == "qq:direct:openid-123"
     assert latest["attachments"][0]["name"] == "report.pdf"
     assert latest["attachments"][0]["extracted_text_path"] == "attachments/report.txt"
+    assert "用户刚刚发送了附件" in result["agent_instruction"]
+    assert "attachments/report.txt" in result["agent_instruction"]
 
 
 def test_artifact_managed_git_flow_updates_research_state_and_mirrors_analysis(temp_home: Path) -> None:
@@ -1374,7 +1427,7 @@ def test_artifact_stage_milestones_emit_semantic_connector_messages(temp_home: P
 
     qq_records = read_jsonl(temp_home / "logs" / "connectors" / "qq" / "outbox.jsonl")
     texts = [str(item.get("text") or "") for item in qq_records]
-    idea_text = next(text for text in texts if text.startswith(f"Idea `{idea['idea_id']}`"))
+    idea_text = next(text for text in texts if "Semantic route" in text)
     main_text = next(text for text in texts if text.startswith("Main experiment `semantic-main-001`"))
     outline_text = next(text for text in texts if text.startswith("Paper outline `"))
     analysis_text = next(
@@ -1383,11 +1436,10 @@ def test_artifact_stage_milestones_emit_semantic_connector_messages(temp_home: P
         if text.startswith(f"Analysis campaign `{campaign['campaign_id']}` is complete.")
     )
     bundle_text = next(text for text in texts if text.startswith("Paper bundle `Semantic Paper`"))
-
-    assert "Problem:\nThe baseline saturates too early during the full evaluation sweep and leaves the hard examples unresolved." in idea_text
-    assert "This second paragraph must remain visible in the connector milestone" in idea_text
-    assert "Hypothesis:\nA compact adapter should preserve the gain while keeping the intervention auditable." in idea_text
-    assert "Mechanism:\nInsert a compact residual adapter in the main path and keep the rest of the protocol fixed." in idea_text
+    assert "Semantic route" in idea_text
+    assert "Insert a compact residual adapter in the main path and keep the rest of the protocol fixed." in idea_text
+    assert "The message should show the exact mechanism without collapsing it into an ellipsis." in idea_text
+    assert ("下一步：Experiment" in idea_text) or ("Next step: Experiment" in idea_text)
     assert "…" not in idea_text
 
     assert "Outcome:\n- Metric: acc=0.87" in main_text
@@ -4514,6 +4566,8 @@ def test_user_message_queue_is_delivered_only_when_artifact_interact_polls(temp_
 
     queue_before = json.loads((quest_root / ".ds" / "user_message_queue.json").read_text(encoding="utf-8"))
     assert [item["message_id"] for item in queue_before["pending"]] == [first["id"], second["id"]]
+    assert queue_before["message_states"][first["id"]]["read_state"] == "unread"
+    assert queue_before["message_states"][second["id"]]["read_state"] == "unread"
     runtime_before = json.loads((quest_root / ".ds" / "runtime_state.json").read_text(encoding="utf-8"))
     assert runtime_before["pending_user_message_count"] == 2
 
@@ -4537,6 +4591,10 @@ def test_user_message_queue_is_delivered_only_when_artifact_interact_polls(temp_
     queue_after = json.loads((quest_root / ".ds" / "user_message_queue.json").read_text(encoding="utf-8"))
     assert queue_after["pending"] == []
     assert [item["message_id"] for item in queue_after["completed"][-2:]] == [first["id"], second["id"]]
+    assert queue_after["message_states"][first["id"]]["read_state"] == "read"
+    assert queue_after["message_states"][first["id"]]["read_reason"] == "artifact_mailbox"
+    assert queue_after["message_states"][second["id"]]["read_state"] == "read"
+    assert queue_after["message_states"][second["id"]]["read_reason"] == "artifact_mailbox"
 
     runtime_after = json.loads((quest_root / ".ds" / "runtime_state.json").read_text(encoding="utf-8"))
     assert runtime_after["pending_user_message_count"] == 0

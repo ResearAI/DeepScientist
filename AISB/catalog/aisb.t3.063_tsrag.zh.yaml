@@ -1,0 +1,138 @@
+id: aisb.t3.063_tsrag
+name: 'TS-RAG: 基于检索增强生成的时间序列基础模型是更强的零样本预测器'
+version: 0.1.0
+one_line: 结合时间序列基础模型与知识库的检索增强零样本预测框架，采用自适应检索混合器实现跨领域泛化预测。
+task_description: '该基准测试实现了TS-RAG，一种用于时间序列预测的检索增强生成框架，旨在增强时间序列基础模型（TSFMs）的泛化能力和可解释性。该框架由三个关键组件构成：（1）预训练的时间序列基础模型（TSFM）作为主干预测器；（2）检索器，用于查询专用知识库以查找语义相关的时间序列片段及其未来趋势；（3）可学习的自适应检索混合器（ARM）模块，用于动态融合检索到的模式与TSFM的内部表示。给定输入序列，检索器找到top-k个相似上下文，通过ARM模块进行嵌入和组合，模块自适应分配重要性分数。统一表示被传递到基础模型的输出层，以产生增强的预测结果，无需任务特定的微调。支持chronos-bolt作为主要主干模型。
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 1d+
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- mae
+- mse
+- retrieval_database
+- forecast_report
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 在已准备的检索数据库上，使用单一主干模型配置运行一个打包的TS-RAG零样本脚本。
+- id: full_rag_eval
+  label: 完整RAG评估
+  description: 运行完整的检索增强零样本预测工作流，包括检索数据库构建、ARM混合和多数据集评估。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - url: https://drive.google.com/drive/folders/12wesXfVwFhdrUY5Kv8yuAWWqN9M77irw
+    type: google_drive
+    description: 预处理后的数据集和预训练模型
+  - url: https://huggingface.co/nkh/TS-RAG-Data
+    type: huggingface
+    description: HuggingFace Hub上的备用镜像
+  notes:
+  - 运行评估脚本前需下载所有数据集和模型检查点
+  - 预期目录结构包括datasets/、retrieval_database/和TS-RAG/checkpoints/
+  - 数据集包括ETT-small、weather、electricity、traffic、exchange_rate和illness
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 48
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - chronos-forecasting>=1.5.1
+  - faiss-gpu>=1.7.2
+  - transformers
+  - scikit-learn
+  - pandas
+  - numpy
+  - tqdm
+  notes:
+  - 该工作流依赖于外部检索数据库和预训练的TSFM检查点
+  - 完整的依赖项列表请参阅捆绑的requirements.txt
+  - FAISS-GPU是检索数据库高效相似度搜索所必需的
+  - Chronos管道是默认主干模型所必需的
+risk_flags:
+- external_dependencies
+- large_model_checkpoints
+- retrieval_database_required
+- no_execution_verification
+risk_notes:
+- 预训练的基础模型检查点必须单独下载（chronos-bolt、MOMENT）
+- 检索数据库必须在运行评估前预先构建或生成
+- 打包过程中未执行基准测试；指标值为临时值
+- 外部Google Drive链接可能需要手动下载和组织
+recommended_when: '在以下情况下使用此基准测试：评估检索增强时间序列预测方法、测试基础模型在多样化领域的零样本泛化能力，或基准测试检索上下文模式对预测精度的贡献（无需微调）。
+
+  '
+not_recommended_when: '在以下情况下不要使用此基准测试：无法托管大型检索数据库（FAISS索引）和预训练基础模型检查点；用例仅需要简单的统计基线；或需要在不下载外部资产的情况下获得即时可重复性。
+
+  '
+paper:
+  title: 'TS-RAG: Retrieval-Augmented Generation based Time Series Foundation Models
+    are Stronger Zero-Shot Forecaster'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://arxiv.org/abs/2503.07649
+  authors:
+  - Kanghui Ning
+  - Zijie Pan
+  - Yu Liu
+  - Yushan Jiang
+  - James Y. Zhang
+  - Kashif Rasul
+  - Anderson Schneider
+  - Lintao Ma
+  - Yuriy Nevmyvaka
+  - Dongjin Song
+  affiliation: University of Connecticut (UConn DSIS), Morgan Stanley, Ant Group,
+    TWG Global
+display:
+  palette_seed: steel-jade-retrieval
+  art_style: retrieval-signal
+  accent_priority: high
+image_path: ../image/063_aisb.t3.063_tsrag.jpg
+capability_tags:
+- research_code_optimization
+- time_series_forecasting
+- retrieval_augmented_generation
+- foundation_models
+- zero_shot_learning
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+commercial:
+  annual_fee: null
+download:
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.063_tsrag.zip
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.063_tsrag.zip
+  archive_type: zip
+  sha256: 0a4979e3c9db6019ae60f697cd400cdfe7b21f1bb8bc1685d8b1279912aced59
+  size_bytes: 1358610

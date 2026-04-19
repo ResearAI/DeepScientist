@@ -1,0 +1,178 @@
+id: aisb.t3.083_starformer
+name: STaRFormer
+version: 0.1.0
+one_line: Transformer framework with dynamic attention-based regional masking and
+  semi-supervised contrastive learning for non-stationary, irregularly-sampled sequential
+  data.
+task_description: 'STaRFormer is a transformer-based framework designed for robust
+  sequential representation learning under real-world conditions where standard assumptions
+  of stationarity and regular sampling do not hold. The architecture employs an encoder-only
+  transformer backbone combined with Dynamic Attention-Based Regional Masking (DAReM),
+  which manipulates task-specific regions within input sequences to introduce synthetic
+  variations in statistical properties and simulate varying sampling frequencies.
+  The training process incorporates a novel semi-supervised contrastive learning approach
+  that maximizes agreement between batch-wise positive pairs (masked and unmasked
+  embeddings of the same input) and class-wise positive pairs (masked and unmasked
+  embeddings of the same class), producing two correlated latent representations that
+  enhance downstream task performance. Evaluation spans classification on spatiotemporal
+  and non-stationary benchmarks (DKT and Microsoft datasets), irregularly-sampled
+  benchmarks (3 public datasets), and regular time series (UEA, 30 datasets), plus
+  anomaly detection (2 datasets) and regression (19 datasets) against 6 and 15 baseline
+  models respectively.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: restricted
+primary_outputs:
+- pam_accuracy
+- latent_representations
+- dare_m_masks
+- ablation_reports
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: Review preserved sequential representation benchmark metadata, paper
+    content, and metric definitions.
+- id: restore_first
+  label: Restore First
+  description: Restore the missing STaRFormer implementation (transformer backbone,
+    DAReM module, semi-supervised CL loss) before attempting benchmark execution.
+- id: full_benchmark
+  label: Full Benchmark
+  description: Execute complete evaluation pipeline including classification, anomaly
+    detection, and regression benchmarks with ablation studies.
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: DKT (Digital Key Trajectory)
+    type: custom_restricted
+    description: BMW proprietary trajectory dataset from Digital Key use case
+  - name: Microsoft spatiotemporal
+    type: public
+    description: Public real-world dataset from Microsoft for non-stationary sequential
+      data
+  - name: Irregularly-sampled benchmark
+    type: public
+    description: Collection of 3 public datasets with irregular sampling patterns
+  - name: UEA time series
+    type: public
+    description: University of East Anglia benchmark with 30 public datasets for regular
+      time series classification
+  - name: Anomaly detection benchmark
+    type: public
+    description: Public benchmark with 2 datasets for anomaly detection evaluation
+  - name: Regression benchmark
+    type: public
+    description: Public benchmark with 19 datasets for regression evaluation
+  notes:
+  - The current local package does not preserve an executable benchmark route; treat
+    dataset setup as part of upstream restoration rather than a bundled run path.
+  - DKT dataset is proprietary BMW data requiring appropriate access credentials.
+  - Public datasets should be downloaded from respective original sources during restoration
+    phase.
+credential_requirements:
+  mode: restricted
+  items:
+  - BMW internal data access for DKT dataset
+  notes:
+  - DKT (Digital Key Trajectory) data is proprietary to BMW Group and requires internal
+    access authorization.
+  - Public benchmark datasets are freely accessible but must be sourced during restoration.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: 3.10.14
+  cuda: '11.8'
+  pytorch: 2.4.0
+  flash_attn: null
+  key_packages:
+  - transformers==4.50.3
+  notes:
+  - The current local package does not preserve executable setup files or runnable
+    source code; environment hints here should be treated as provisional until upstream
+    restoration.
+  - DAReM module requires attention weight extraction per transformer layer for regional
+    mask computation.
+  - Semi-supervised CL loss includes hyperparameter lambda_CL for balancing contrastive
+    and task losses.
+  - See the bundled README/requirements for the full dependency set.
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- blocked_no_code
+risk_notes:
+- Current snapshot preserves paper and metadata only; no executable model code is
+  available.
+- Blocked-no-code status: no benchmark execution was performed in the packaging pass.
+- Restoration of transformer backbone, DAReM implementation, and CL training loop
+  required before execution.
+- DKT dataset access requires BMW Group authorization.
+recommended_when: Use this entry when you want paper-backed planning, upstream code
+  restoration for the STaRFormer sequential representation route, or analysis of the
+  DAReM methodology for non-stationary sequential data.
+not_recommended_when: Do not treat this local package as a ready-to-run benchmark;
+  the packaged snapshot does not preserve the executable model code. Do not expect
+  functional evaluation outputs without completing upstream restoration of the STaRFormer
+  implementation.
+paper:
+  title: 'STaRFormer: Semi-Supervised Task-Informed Representation Learning via Dynamic
+    Attention-Based Regional Masking for Sequential Data'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://neurips.cc/virtual/2025/poster/116860
+  authors:
+  - Maximilian Forstenhäusler (BMW Group, University of Glasgow)
+  - Daniel Külzer (BMW Group)
+  - Christos Anagnostopoulos (University of Glasgow)
+  - Shameem Puthiya Parambath (University of Glasgow)
+  - Natascha Weber (BMW Group)
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.083_starformer.zip
+  archive_type: zip
+  local_dir_name: paper-83-STaRFormer
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.083_starformer.zip
+  sha256: 062e8be9653c9079088c40fde448d1ee016e45b85e622708798feff990ccff68
+  size_bytes: 8551
+display:
+  palette_seed: mint-violet-mask
+  art_style: sequential-masking
+  accent_priority: high
+image_path: ../image/083_aisb.t3.083_starformer.jpg
+capability_tags:
+- research_code_optimization
+- sequential_data
+- semi_supervised_learning
+- transformers
+- representation_learning
+- time_series
+- contrastive_learning
+- attention_mechanisms
+- non_stationary_analysis
+- anomaly_detection
+- regression
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

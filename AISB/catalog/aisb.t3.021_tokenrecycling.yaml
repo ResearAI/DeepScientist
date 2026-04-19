@@ -1,0 +1,160 @@
+schema_version: 1
+id: aisb.t3.021_tokenrecycling
+name: 'Turning Trash into Treasure: Accelerating Inference of Large Language Models
+  with Token Recycling'
+version: 0.1.0
+one_line: Evaluate Token Recycling, a training-free speculative decoding method that
+  reuses candidate tokens via a <2 MB adjacency matrix to achieve ~2× LLM inference
+  speedup on SpecBench and MBPP.
+task_description: 'This packaged benchmark evaluates Token Recycling (TR), a plug-and-play,
+  training-free speculative decoding method for accelerating LLM inference. TR stores
+  top-k candidate tokens from each decoding step in a vocabulary-sized adjacency matrix
+  (<2 MB), then constructs draft trees via BFS-like retrieval and verifies them with
+  tree attention. The evaluation route runs eval.sh, which iterates over Vicuna 7B/13B/33B
+  (for SpecBench) and Code Llama 7B/13B/34B (for MBPP), measuring Mean Accepted Tokens
+  (MAT), tokens/second, and speedup ratio relative to HuggingFace autoregressive decoding.
+  Models must be pre-downloaded to ../models/ relative to the project root. The codebase
+  is built on the SpecBench evaluation harness and uses greedy decoding (temperature=0,
+  batch size=1). Paper reports ~2× speedup on 7B models, 30%+ over prior train-free
+  methods, and 25% over Medusa (which requires training). All original experiments
+  used a single A100-80GB GPU with PyTorch 2.3 and CUDA 12.2.
+
+  '
+capability_tags:
+- research_code_optimization
+- large_language_models
+- speculative_decoding
+- inference_acceleration
+- systems_efficiency
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- mean_accepted_tokens
+- spec_bench_speedup
+- throughput_report
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run eval.sh with a single model (e.g., vicuna-7b-v1.3) on spec_bench
+    only. Requires model weights in ../models/. Expect 1-3 hours on an A100-80GB.
+
+    '
+- id: specbench_eval
+  label: Full SpecBench + MBPP Eval
+  description: 'Run the complete eval.sh loop over all three Vicuna sizes on SpecBench
+    and all three Code Llama sizes on MBPP. Expect 6-24 hours on a single A100-80GB
+    depending on model sizes evaluated.
+
+    '
+dataset_download:
+  primary_method: bundled_plus_models
+  sources:
+  - kind: bundled
+    url: null
+    access: public
+    note: SpecBench question files and MBPP data are bundled in the data/ directory.
+  - kind: huggingface
+    url: https://huggingface.co/lmsys/vicuna-7b-v1.3
+    access: public
+    note: Vicuna 7B/13B/33B weights must be downloaded separately to ../models/.
+  - kind: huggingface
+    url: https://huggingface.co/codellama/CodeLlama-7b-hf
+    access: public
+    note: Code Llama 7B/13B/34B weights must be downloaded separately to ../models/.
+  notes:
+  - Model weights total 60-130 GB depending on which sizes are used.
+  - eval.sh expects models at ../models/vicuna-7b-v1.3, ../models/vicuna-13b-v1.3,
+    etc.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - HuggingFace login may be needed for some gated model variants, but Vicuna and
+    Code Llama weights are publicly available.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 80
+environment:
+  python: '3.10'
+  cuda: '12.2'
+  pytorch: '2.3'
+  key_packages:
+  - transformers==4.37.1
+  - fschat
+  - shortuuid
+  notes:
+  - Paper experiments used PyTorch 2.3, CUDA 12.2, single A100-80GB, 128 CPUs.
+  - The bundled requirements.txt inherits from SpecBench; install via pip install
+    -r requirements.txt.
+  - The existing YAML listed pytorch 2.1.1 but the paper and code reference PyTorch
+    2.3.
+risk_flags:
+- model_download_required
+- gpu_intensive
+- currently_vicuna_only
+risk_notes:
+- Models (Vicuna, Code Llama) must be downloaded externally before evaluation; ~60-130
+  GB total.
+- The minimum 24 GB VRAM can only run the 7B model in float16; 33B/34B models require
+  ≥48 GB VRAM.
+- The codebase is currently adapted to LLaMA/Vicuna architectures only (modeling_llama_kv.py);
+  adapting to newer models is listed as a TODO.
+- No benchmark execution was performed during the packaging pass; metric values are
+  not yet validated.
+recommended_when: 'Use this benchmark when you want an inference-acceleration evaluation
+  task for 7B+ LLMs that requires no draft model training, no large retrieval datastore,
+  and minimal additional memory (<2 MB). Ideal for comparing train-free speculative
+  decoding methods under controlled greedy-decoding, batch-size-one conditions.
+
+  '
+not_recommended_when: 'Do not use this if you lack a GPU with ≥24 GB VRAM for serving
+  open-weight LLMs, if you need a training-centric benchmark, or if you need to evaluate
+  models outside the LLaMA/Vicuna family (the code currently only supports LLaMA-based
+  architectures).
+
+  '
+paper:
+  title: 'Turning Trash into Treasure: Accelerating Inference of Large Language Models
+    with Token Recycling'
+  venue: ACL 2025 Oral
+  year: 2025
+  url: https://arxiv.org/abs/2408.08696
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.021_tokenrecycling.zip
+  archive_type: zip
+  local_dir_name: paper-21-TokenRecycling
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.021_tokenrecycling.zip
+  sha256: d38519836e52e4c5c5e1fccd9a4befa5b9a3f20a5c8fa787941a3b2773bd1ebd
+  size_bytes: 55377
+commercial:
+  annual_fee: null
+display:
+  palette_seed: lime-slate-recycle
+  art_style: systems-diagram
+  accent_priority: high
+image_path: ../image/021_aisb.t3.021_tokenrecycling.jpg

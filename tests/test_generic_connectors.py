@@ -694,3 +694,169 @@ def test_generic_connector_resume_command_resumes_bound_quest_without_forwarding
     assert history[-1]["content"] != "/resume"
     assert "/resume" not in [str(item.get("content") or "") for item in history if item.get("role") == "user"]
     assert "Quest: " in str(resume_reply["reply"]["payload"]["text"] or "")
+
+
+def test_generic_connector_ack_reports_started_state(temp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    _enable_system_connectors(temp_home, "whatsapp")
+    quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create("started ack quest")
+    quest_id = quest["quest_id"]
+    app = DaemonApp(temp_home)
+    conversation_id = "whatsapp:direct:+15550006666"
+    channel = app._channel_with_bindings("whatsapp")
+    channel.bind_conversation(conversation_id, quest_id)
+    app.sessions.bind(quest_id, conversation_id)
+    app.quest_service.bind_source(quest_id, conversation_id)
+    monkeypatch.setattr(
+        app,
+        "submit_user_message",
+        lambda *args, **kwargs: {
+            "scheduled": True,
+            "started": True,
+            "queued": False,
+            "reason": "user_message",
+            "auto_resumed": False,
+        },
+    )
+    monkeypatch.setattr(
+        app.config_manager,
+        "runner_bootstrap_state",
+        lambda runner_name: {"runner": runner_name, "ready": True, "last_result": {"summary": "Codex startup probe completed."}},
+    )
+
+    response = app.handle_connector_inbound(
+        "whatsapp",
+        {
+            "chat_type": "direct",
+            "sender_id": "+15550006666",
+            "sender_name": "Researcher",
+            "text": "Please continue.",
+        },
+    )
+
+    assert response["accepted"] is True
+    assert "已经成功收到消息" in str(response["reply"]["payload"]["text"] or "")
+
+
+def test_generic_connector_ack_reports_stalled_startup(temp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    _enable_system_connectors(temp_home, "whatsapp")
+    quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create("stalled ack quest")
+    quest_id = quest["quest_id"]
+    app = DaemonApp(temp_home)
+    conversation_id = "whatsapp:direct:+15550007777"
+    channel = app._channel_with_bindings("whatsapp")
+    channel.bind_conversation(conversation_id, quest_id)
+    app.sessions.bind(quest_id, conversation_id)
+    app.quest_service.bind_source(quest_id, conversation_id)
+    monkeypatch.setattr(
+        app,
+        "submit_user_message",
+        lambda *args, **kwargs: {
+            "scheduled": True,
+            "started": False,
+            "queued": True,
+            "reason": "stalled_turn_recovery_pending",
+            "auto_resumed": False,
+        },
+    )
+    monkeypatch.setattr(
+        app.config_manager,
+        "runner_bootstrap_state",
+        lambda runner_name: {"runner": runner_name, "ready": True, "last_result": {"summary": "Codex startup probe completed."}},
+    )
+
+    response = app.handle_connector_inbound(
+        "whatsapp",
+        {
+            "chat_type": "direct",
+            "sender_id": "+15550007777",
+            "sender_name": "Researcher",
+            "text": "Please continue.",
+        },
+    )
+
+    assert response["accepted"] is True
+    assert "正在启动 DeepScientist" in str(response["reply"]["payload"]["text"] or "")
+
+
+def test_generic_connector_ack_reports_runner_offline(temp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    _enable_system_connectors(temp_home, "whatsapp")
+    quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create("offline ack quest")
+    quest_id = quest["quest_id"]
+    app = DaemonApp(temp_home)
+    conversation_id = "whatsapp:direct:+15550008888"
+    channel = app._channel_with_bindings("whatsapp")
+    channel.bind_conversation(conversation_id, quest_id)
+    app.sessions.bind(quest_id, conversation_id)
+    app.quest_service.bind_source(quest_id, conversation_id)
+    monkeypatch.setattr(
+        app,
+        "submit_user_message",
+        lambda *args, **kwargs: {
+            "scheduled": True,
+            "started": False,
+            "queued": False,
+            "reason": "user_message",
+            "auto_resumed": False,
+        },
+    )
+    monkeypatch.setattr(app, "_runner_name_for", lambda snapshot: "claude")
+    monkeypatch.setattr(
+        app.config_manager,
+        "runner_bootstrap_state",
+        lambda runner_name: {
+            "runner": runner_name,
+            "ready": False,
+            "last_result": {"summary": "Claude Code startup probe failed."},
+        },
+    )
+
+    response = app.handle_connector_inbound(
+        "whatsapp",
+        {
+            "chat_type": "direct",
+            "sender_id": "+15550008888",
+            "sender_name": "Researcher",
+            "text": "Please continue.",
+        },
+    )
+
+    text_payload = str(response["reply"]["payload"]["text"] or "")
+    assert response["accepted"] is True
+    assert "DeepScientist 仍然不在线哟" in text_payload
+    assert "Claude Code" in text_payload
+
+
+def test_runner_turn_error_notifies_bound_connector_about_unexpected_stop(temp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create("runner stop notice quest")
+    quest_id = quest["quest_id"]
+    app = DaemonApp(temp_home)
+    captured: list[dict] = []
+
+    monkeypatch.setattr(
+        app,
+        "_relay_quest_message_to_bound_connectors",
+        lambda quest_id, message, **kwargs: captured.append({"quest_id": quest_id, "message": message, **kwargs}),
+    )
+
+    app._record_turn_error(
+        quest_id=quest_id,
+        runner_name="codex",
+        run_id="run-stop-connector-1",
+        skill_id="experiment",
+        model="gpt-5",
+        summary="Codex process exited unexpectedly.",
+        guidance=["Check the bound Codex runner connection."],
+    )
+
+    assert captured
+    message = str(captured[-1]["message"] or "")
+    assert "DeepScientist 意外停止运行" in message or "unexpectedly" in message.lower()
+    assert "Codex" in message

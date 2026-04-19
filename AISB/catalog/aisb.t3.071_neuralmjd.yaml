@@ -1,0 +1,142 @@
+id: aisb.t3.071_neuralmjd
+name: Neural Non-Stationary Merton Jump Diffusion
+version: 0.1.0
+one_line: Neural network parameterization of non-stationary Merton jump diffusion
+  for time series prediction with explicit stochastic dynamics and abrupt jump modeling.
+task_description: 'This packaged benchmark covers jump-diffusion time-series prediction
+  using a neural parameterization of the non-stationary Merton jump diffusion (MJD)
+  model. The approach combines a time-inhomogeneous Itô diffusion to capture continuous
+  non-stationary stochastic dynamics with a time-inhomogeneous compound Poisson process
+  to model abrupt jumps. Parameters of the corresponding stochastic differential equations
+  (SDEs) are predicted by a neural network conditioned on historical data and contextual
+  information. The task evaluates forecasting fidelity on non-stationary data containing
+  discontinuous changes, using MAE for deterministic accuracy and NLL for probabilistic
+  calibration.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- mae
+- nll
+- jump_diffusion_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run a single packaged jump-diffusion forecasting evaluation route on
+    pre-trained checkpoint with SP500 data.
+  estimated_time: 1-2h
+- id: full_train_eval
+  label: Full Train + Eval
+  description: Run the complete Monte Carlo jump-diffusion training workflow including
+    model initialization, training loop with periodic evaluation, checkpointing, and
+    final test set evaluation.
+  estimated_time: 6-18h
+dataset_download:
+  primary_method: curl
+  sources:
+  - name: SP500 Historical Stock Data
+    url: https://www.kaggle.com/api/v1/datasets/download/camnugent/sandp500
+    type: kaggle
+    format: zip
+    local_path: ./data/sandp500
+  notes:
+  - SP500 dataset requires Kaggle API credentials for download
+  - Demo notebook supports synthetic data generation without external downloads
+  - Configuration files located in config/sp500/mjd/
+credential_requirements:
+  mode: kaggle_api
+  items:
+  - name: Kaggle API Token
+    description: Required for SP500 dataset download from Kaggle
+    optional: true
+  notes:
+  - Kaggle credentials only needed for real-world SP500 data; synthetic data available
+    via demo notebook without credentials
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+    network: false
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    network: true
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.2
+  flash_attn: null
+  key_packages:
+  - torch>=2.0.0
+  - pytorch-geometric
+  - pyyaml
+  - numpy
+  - scipy
+  notes:
+  - Environment provisioned via setup/conda.yaml or setup/requirements.txt
+  - PyG (pytorch-geometric) required for data loaders
+  - Full dependency set in bundled requirements; see README for conda setup instructions
+risk_flags:
+- long_training_time
+- stochastic_variance
+risk_notes:
+- Monte Carlo sampling introduces stochastic variance; multiple seeds recommended
+  for robust evaluation
+- Training on SP500 with default hyperparameters may take 6-12 hours on single GPU
+- Metric values are provisional pending first trusted execution; stochastic nature
+  means results may vary across runs
+recommended_when: 'Use this benchmark when you need probabilistic time-series forecasting
+  that explicitly models abrupt discontinuous jumps and non-stationary dynamics. Ideal
+  for financial time series with sudden price movements, supply chain data with promotional
+  spikes, or any domain requiring interpretable stochastic process modeling alongside
+  neural network flexibility.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you only need simple deterministic
+  point forecasting without uncertainty quantification. Not recommended when jump
+  events are annotated and event-based temporal point process models would be more
+  appropriate. Avoid when GPU memory < 16GB and training throughput is a primary constraint.
+
+  '
+paper:
+  title: Neural Non-Stationary Merton Jump Diffusion for Time Series Prediction
+  authors:
+  - Yuanpei Gao (University of British Columbia, Vector Institute)
+  - Qi Yan (University of British Columbia, Vector Institute)
+  - Yan Leng (University of Texas at Austin)
+  - Renjie Liao (University of British Columbia, Vector Institute, Canada CIFAR AI
+    Chair)
+  venue: arXiv preprint arXiv:2506.04542
+  year: 2025
+  url: https://arxiv.org/abs/2506.04542
+  github: https://github.com/DSL-Lab/neural-MJD
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.071_neuralmjd.zip
+  archive_type: zip
+  local_dir_name: paper-71-NeuralMJD
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.071_neuralmjd.zip
+  sha256: 0ea7d70c8c22946e148ccfdf01295d7608888a1423b5ae6391ad927a6224f2e0
+  size_bytes: 101203
+display:
+  palette_seed: indigo-copper-jump
+  art_style: stochastic-signal
+  accent_priority: high
+image_path: ../image/071_aisb.t3.071_neuralmjd.jpg

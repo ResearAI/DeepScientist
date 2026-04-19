@@ -1,0 +1,212 @@
+id: aisb.t3.097_wassersteintl
+name: Wasserstein Transfer Learning
+version: 0.1.0
+one_line: Optimize Wasserstein-based transfer estimators for distributional learning
+  across source and target populations using Fréchet regression in the Wasserstein
+  space.
+task_description: 'This packaged benchmark covers Wasserstein Transfer Learning (WaTL),
+  a novel transfer learning framework for regression models whose outputs are probability
+  distributions residing in the Wasserstein space. The method leverages knowledge
+  from multiple source domains to improve predictions in a target domain by intrinsically
+  incorporating the Wasserstein metric. The three-stage algorithm consists of: (1)
+  a weighted auxiliary estimator using global Fréchet regression for known informative
+  source subsets, (2) bias correction via gradient descent with cross-validated regularization,
+  and (3) projection to Wasserstein space enforcing monotonicity via OSQP solver.
+  Evaluation targets RMSPR (Root Mean Squared Prediction Risk) on mortality and physical
+  activity datasets, with per-test-point timing as a secondary metric.
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 2-6h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- rmspr
+- time_ms_per_test_point
+- transfer_learning_report
+launch_profiles:
+- id: simulation
+  label: Simulation Route
+  description: 'Run the packaged simulation experiment (Section 5 of paper) to validate
+    WaTL asymptotic properties. Uses global Fréchet regression with synthetic distributional
+    data.
+
+    '
+  command: Rscript Simulation/Simulation.R <M> <n_t> <seed> <setting> <tau>
+  arguments:
+  - name: M
+    description: Grid size for quantile functions
+    example: '100'
+  - name: n_t
+    description: Target sample size
+    example: 200-800
+  - name: seed
+    description: Random seed for reproducibility
+    example: '42'
+  - name: setting
+    description: Data generation setting (1 or 2)
+    example: '1'
+  - name: tau
+    description: Source sample multiplier
+    example: 100 or 200
+- id: real_data
+  label: Real Data Route
+  description: 'Execute the real-world application with mortality or physical activity
+    data. Uses local Fréchet regression with OSQP monotonicity projection. Target
+    domain analysis with multiple source populations.
+
+    '
+  command: Rscript RealData/RealData.R <seed> <race> <M> <rate> <gender>
+  arguments:
+  - name: seed
+    description: Random seed for reproducibility
+    example: '42'
+  - name: race
+    description: Race index for target population (1=Black, 2=White)
+    example: '1'
+  - name: M
+    description: Grid size for quantile functions
+    example: '100'
+  - name: rate
+    description: Source data sampling rate (0-1)
+    example: '1.0'
+  - name: gender
+    description: Gender for stratification (0=Female, 1=Male)
+    example: '0'
+- id: mortality_experiment
+  label: Mortality Experiment (RMSPR)
+  description: 'Primary end-to-end reproduction path for RMSPR metric using UN World
+    Population Prospects 2015 data. Target: Developed countries (45). Sources: Developing
+    countries (156). Computes per-test-point timing.
+
+    '
+  command: Rscript mortality_experiment2.R
+  notes: 'Uses wpp2015 R package for demographic data. Requires internet for package
+    installation. Reproduces Table 1 (Appendix A).
+
+    '
+dataset_download:
+  primary_method: r_package
+  sources:
+  - name: wpp2015
+    description: UN World Population Prospects 2015 mortality data
+    package: wpp2015
+  - name: NHANES
+    description: National Health and Nutrition Examination Survey physical activity
+      data
+    package: NHANES
+  notes:
+  - wpp2015 package loads UN demographic data on first use
+  - NHANES physical activity intensity data loaded via RealDataFunc.R
+  - Both datasets are publicly available from NIH
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No authentication required for R package data sources
+  - Internet connection needed for package installation and data download
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: null
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - name: wpp2015
+    description: UN World Population Prospects demographic data
+  - name: osqp
+    description: Quadratic programming solver for monotonicity projection
+  - name: Matrix
+    description: Sparse and dense matrix operations
+  - name: pracma
+    description: Practical numerical mathematics
+  - name: parallel
+    description: Parallel computation support
+  - name: NHANES
+    description: NHANES data retrieval
+  notes:
+  - CPU-only execution is sufficient for all routes
+  - GPU not required; workload is primarily statistical computation
+  - R-centric workflow; no Python or PyTorch dependencies
+  - OSQP solver used in Real Data route for quantile function monotonicity constraint
+risk_flags:
+- no_gpu_required
+- cpu_bound
+- r_only
+risk_notes:
+- Benchmark has no GPU requirement; resource costs are minimal
+- Execution time scales with grid size M and sample sizes
+- OSQP solver convergence may vary with data dimensionality
+recommended_when: 'Use this benchmark when you need a statistics-heavy transfer-learning
+  task that operates on distributional data in the Wasserstein space. Suitable for
+  evaluating methods that predict probability distributions from covariates using
+  optimal transport geometry. Ideal when working with mortality curves, physical activity
+  distributions, or other distributional response data where source domain knowledge
+  can improve target predictions. R-based execution makes it accessible without GPU
+  infrastructure.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you need neural-network-based
+  benchmarks, deep learning workflows, or CUDA-heavy training. Not suitable for tasks
+  requiring GPU acceleration or PyTorch-based implementations. Avoid if your research
+  focuses on scalar/vector responses rather than distributional outputs in non-Euclidean
+  spaces.
+
+  '
+paper:
+  title: Wasserstein Transfer Learning
+  authors:
+  - Kaicheng Zhang (Zhejiang University)
+  - Sinian Zhang (University of Minnesota)
+  - Doudou Zhou (National University of Singapore)
+  - Yidong Zhou (UC Davis)
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2505.17404
+  github: https://github.com/h7nian/WaTL
+display:
+  palette_seed: teal-stone-wasserstein
+  art_style: statistical-transport
+  accent_priority: medium
+image_path: ../image/097_aisb.t3.097_wassersteintl.jpg
+capability_tags:
+- transfer_learning
+- wasserstein_geometry
+- distributional_learning
+- statistical_modeling
+- optimal_transport
+- frechet_regression
+- non_euclidean_output
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null
+download:
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.097_wassersteintl.zip
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.097_wassersteintl.zip
+  archive_type: zip
+  sha256: 7878e684e20e96ca4ea5aa2ea5f33a4772d22a14b5bf6ab275a68664de302887
+  size_bytes: 104086

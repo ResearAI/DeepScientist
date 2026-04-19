@@ -1,0 +1,140 @@
+schema_version: 1
+id: aisb.t3.008_meanflows
+name: 用于一步生成建模的均值流
+version: 0.1.0
+one_line: 在 CIFAR-10 上训练并评估 MeanFlow 一步生成模型，通过捆绑的评估脚本测量 FID-50K，该脚本需要恢复源代码树和检查点。
+
+task_description: 本基准测试涵盖使用 MeanFlow 框架进行的一步图像生成，该框架学习平均速度场（而非标准流匹配中的瞬时速度），以实现单次 NFE 采样。打包的快照包含评估脚本（eval_cifar10.py）和配置文件，但缺少核心 MeanFlow 训练源代码树（位于 /py-meanflow/meanflow/）和预训练检查点（/checkpoints/cifar10_meanflow.pth）。在任何基准测试运行之前，智能体必须恢复上游 MeanFlow 代码库（模型定义、train_arg_parser、model_configs）并获取或重新训练 CIFAR-10 检查点。恢复后，评估路线使用 EMA 网络通过单次前向传递（1-NFE）生成 50,000 个样本，通过 torchmetrics FrechetInceptionDistance 计算相对于 CIFAR-10 训练图像的 FID，并报告标量 FID 分数。论文报告 ImageNet 256×256 上 FID 为 3.43；此处 CIFAR-10 路线是较小规模的复现目标。训练使用基于 JVP 的损失函数和对目标的停止梯度，原始论文使用 JAX 实现，但评估脚本使用 PyTorch。该方法本身不需要预训练、蒸馏或课程学习。优化目标是在保持一步（1-NFE）生成的同时最小化 FID。
+
+capability_tags:
+- research_code_optimization
+- generative_modeling
+- diffusion_models
+- computer_vision
+- image_generation
+- flow_matching
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: partial
+support_level: recovery
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- fid
+- generated_samples
+- evaluation_log
+launch_profiles:
+- id: analysis_only
+  label: 仅分析
+  description: 检查保存的 eval_cifar10.py、config.yaml 和指标合约，无需运行任何生成过程。用于理解评估路线并规划恢复缺失的源代码树。
+
+- id: restore_first
+  label: 先恢复
+  description: 克隆上游 MeanFlow 仓库以提供模型定义和 train_arg_parser，获取或重新训练 CIFAR-10 检查点，然后通过 eval_cifar10.py 运行完整的 FID-50K 评估流程。
+
+- id: train_and_eval
+  label: 训练并评估
+  description: 恢复完整的训练流程，使用基于 JVP 的平均速度损失从头开始在 CIFAR-10 上训练 MeanFlow，然后评估 FID-50K。预计在 2× A100 GPU 上需要数小时训练。
+
+dataset_download:
+  primary_method: torchvision
+  sources:
+  - kind: torchvision
+    url: https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz
+    access: public
+    note: CIFAR-10 训练集（50K 张图像，32×32）。评估脚本期望在 /tmp/cifar10_data/cifar10_data 处有预下载的数据，download=False。使用 torchvision.datasets.CIFAR10(download=True) 自动获取。
+
+  notes:
+  - CIFAR-10 压缩后约 170 MB，解压后不到 1 GB。
+  - 预训练检查点（cifar10_meanflow.pth）未捆绑，必须获取或重新训练。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 无需 API 密钥或凭证。CIFAR-10 可免费下载。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 60
+    gpu_count: 2
+    gpu_vram_gb: 40
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 120
+    gpu_count: 2
+    gpu_vram_gb: 80
+environment:
+  python: '3.10'
+  cuda: '12.1'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - torchvision
+  - torchmetrics
+  - numpy
+  notes:
+  - 原始论文实现使用 JAX 和 jax.jvp 进行基于 JVP 的训练损失；捆绑的评估脚本使用 PyTorch 和 torch.func.jvp。
+  - 本地复现配置使用两枚 A100 GPU 进行 FID-50K 评估。
+  - 上游 MeanFlow 源代码树（模型定义、train_arg_parser、model_configs）必须在执行前恢复。
+  - 默认批量大小为 128 用于评估；根据可用 VRAM 进行调整。
+risk_flags:
+- missing_source_tree
+- missing_checkpoint
+- hardcoded_paths
+- no_prior_execution
+risk_notes:
+- 评估脚本硬编码了 /py-meanflow/meanflow/ 和 /checkpoints/cifar10_meanflow.pth 的路径，这些路径在快照中不存在。
+- 核心 MeanFlow 模型代码（models/model_configs.py、train_arg_parser.py）未出现在本地快照中，必须从上游仓库获取。
+- 打包期间未执行任何基准测试；所有指标值均未验证。
+- 当前快照中没有 README；请参考 AGENTS.md、OPTIMIZATION.md 和论文。
+- 如果遵循论文的实现，训练路线需要 JAX，但评估路线基于 PyTorch，可能存在框架不匹配。
+recommended_when: 当您需要一个紧凑的、单数据集的图像生成任务，具有明确的标量 FID 目标、一步（1-NFE）采样作为核心约束，并对优化基于流的生成模型（无需蒸馏或课程学习）感兴趣时，可使用此基准测试。适合能够处理代码恢复和依赖项解析的智能体。
+
+not_recommended_when: 如果无法为样本生成和 FID 评分配置至少两枚现代 CUDA GPU（每枚 ≥40 GB VRAM），或者需要一个完全自包含的、随时可运行的基准测试而无需任何源代码树恢复，请勿使用。如果需要 ImageNet 规模的结果，也应避免，因为此快照仅针对 CIFAR-10。
+
+paper:
+  title: Mean Flows for One-step Generative Modeling
+  authors:
+  - Zhengyang Geng
+  - Mingyang Deng
+  - Xingjian Bai
+  - J. Zico Kolter
+  - Kaiming He
+  affiliations:
+  - CMU
+  - MIT
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2505.13447
+  key_results:
+  - metric: FID
+    value: 3.43
+    dataset: ImageNet 256×256
+    condition: 1-NFE, 从头训练, 无蒸馏
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.008_meanflows.zip
+  archive_type: zip
+  local_dir_name: paper-8-MeanFlows
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.008_meanflows.zip
+  sha256: 3583357776f7b2d323b8a8170a88cb6559c1c90319e5b2947dc84ad1baf822e3
+  size_bytes: 100179
+commercial:
+  annual_fee: null
+display:
+  palette_seed: magenta-slate-ode
+  art_style: modern-lab
+  accent_priority: high
+image_path: ../image/008_aisb.t3.008_meanflows.jpg

@@ -1,0 +1,174 @@
+id: aisb.t3.040_graniteguardian
+name: '花岗岩卫士：全面的LLM安全防护'
+version: 0.1.0
+one_line: 多头LLM安全防护，可在配置的标准下检测越狱、幻觉及其他跨提示和响应的风险。
+task_description: '本封装基准测试涵盖Granite Guardian风格的LLM安全防护，涉及风险维度包括越狱、社交偏见、粗口、暴力、色情内容、不道德行为以及RAG特定的幻觉风险（上下文相关性、扎根性、答案相关性）。任务涉及评估或校准风险检测头，以提升安全检测指标。当前快照捆绑了cookbook风格的使用路径和Jupyter笔记本，演示使用vLLM进行模型推理，但用于忠实复现指标的XSTEST风格评估器尚未包含在归档中。在将此作为完整基准测试路径之前，需要针对完整指标契约进行外部评估。
+
+  '
+capability_tags:
+- llm_safety
+- guardrails
+- risk_detection
+- classification
+- evaluation
+- rag_quality
+- content_moderation
+- research_code_optimization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- xstest_rh_auc
+- xstest_rh_f1
+- xstest_rr_auc
+- xstest_rr_f1
+- risk_scoring_examples
+- guardrail_auc
+- rag_hallucination_auc
+launch_profiles:
+- id: cookbook_demo
+  label: Cookbook演示
+  description: '运行封装的Granite Guardian cookbook（基于vLLM的笔记本），以验证配置标准下的模型使用和风险评分行为。涵盖越狱检测、RAG扎根性检查和自定义标准工作流。
+
+    '
+- id: restore_eval
+  label: 恢复评估路径
+  description: '在将此基准测试作为忠实指标复现路径之前，请附加或恢复缺失的XSTEST风格评估器。当前快照缺少XSTEST指标的可执行锚点。
+
+    '
+- id: external_benchmark_eval
+  label: 外部基准测试评估
+  description: '在外部基准测试上评估Granite Guardian模型，包括XSTEST、LLM-AggreFact和REVEAL，以获取可复现的AUC和F1分数。
+
+    '
+dataset_download:
+  primary_method: huggingface
+  sources:
+  - name: Granite Guardian模型
+    url: https://huggingface.co/ibm-granite
+    notes:
+    - granite-guardian-3.3-8b
+    - granite-guardian-3.2-5b
+    - granite-guardian-3.2-3b-a800m
+    - granite-guardian-3.1-8b
+    - granite-guardian-3.1-2b
+  - name: 评估数据集
+    url: https://huggingface.co/ibm
+    notes:
+    - SocialStigmaQA
+    - AttaQ
+    - ProvoQ
+    - WikiContradict
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 所有模型权重和数据集均可公开访问
+  - HF Spaces演示地址：https://huggingface.co/spaces/ibm-granite/granite-guardian
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 48
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - torch
+  - transformers
+  - vllm
+  notes:
+  - 参见捆绑的README/requirements获取完整依赖集
+  - 推荐使用vLLM进行高效推理
+  - 内容警告：示例可能包含冒犯性语言、刻板印象或歧视性内容
+risk_flags:
+- blocked_metrics
+- partial_snapshot
+risk_notes:
+- xstest_rh_auc指标在当前快照中没有可执行代码锚点
+- xstest_rh_f1指标在当前快照中没有可执行代码锚点
+- xstest_rr_auc指标在当前快照中没有可执行代码锚点
+- xstest_rr_f1指标在当前快照中没有可执行代码锚点
+- 本次打包未执行基准测试
+- 在恢复源文件或获取更完整的本地快照之前，请勿使用
+- 恢复规则：选择origin_path、source_ref和evaluation_protocol.code_paths时，优先使用现有代码文件而非仅README声明
+recommended_when: '当您需要带有可配置标准的实用LLM安全防护评估任务、生产级监控用例或RAG管道安全验证时使用此基准测试。特别适合评估检索增强生成场景中的风险检测（扎根性、上下文相关性、答案相关性）以及越狱抵抗测试。
+
+  '
+not_recommended_when: '如果您需要当前快照中具有XSTEST指标锚点的完全可执行基准测试，或者您的重点是生成质量而非安全和验证，请勿使用。当需要可复现指标而无需外部评估设置时也不适用。
+
+  '
+paper:
+  title: 'Granite Guardian: Comprehensive LLM Safeguarding'
+  authors: 'Inkit Padhi, Manish Nagireddy, Giandomenico Cornacchia, Subhajit Chaudhury,
+    Tejaswini Pedapati, Pierre Dognin, Keerthiram Murugesan, Erik Miehling, Martin
+    Santillan, Cooper Kieran Fraser, Giulio Zizzo, Muhammad Zaid Hameed, Mark Purcell,
+    Michael Desmond, Qian Pan, Zahra Ashktorab, Inge Vejsbjerg, Elizabeth Daly, Michael
+    Hind, Werner Geyer, Ambrish Rawat, Kush R. Varshney, Prasanna Sattigeri
+
+    '
+  venue: NAACL 2025 Industry Track
+  year: 2025
+  url: https://arxiv.org/abs/2412.07724
+  github: https://github.com/ibm-granite/granite-guardian
+  license: Apache 2.0
+  key_findings:
+  - 在有害内容基准测试上达到0.871的AUC分数
+  - 在RAG幻觉相关基准测试上达到0.854的AUC分数
+  - 在部署导向指标上优于其他开源和闭源模型
+  - 在结合人工标注和合成数据的独特数据集上训练
+  - 支持自定义标准用于自定义风险检测
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.040_graniteguardian.zip
+  archive_type: zip
+  local_dir_name: paper-40-GraniteGuardian
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.040_graniteguardian.zip
+  sha256: c98d57a175b4dc64b7f4bb81e3c4c16adb38a98775335f077f780d491e92b4e2
+  size_bytes: 2545921
+display:
+  palette_seed: indigo-sand-shield
+  art_style: safety-console
+  accent_priority: high
+image_path: ../image/040_aisb.t3.040_graniteguardian.jpg
+code_anchors:
+  executable:
+  - cookbooks/granite-guardian-3.3/quickstart.ipynb
+  - cookbooks/granite-guardian-3.2/detailed_guide_vllm.ipynb
+  - cookbooks/granite-guardian-3.1/quick_start_vllm.ipynb
+  code_roots:
+  - cookbooks/
+  blocked_metrics:
+  - xstest_rh_auc
+  - xstest_rh_f1
+  - xstest_rr_auc
+  - xstest_rr_f1
+recovery_rule: '选择origin_path、source_ref和evaluation_protocol.code_paths时，优先使用现有代码文件而非仅README声明。在获得可信执行输出之前，保持metrics_summary为空。如果当前快照中不存在可执行锚点，则将指标标记为临时/阻止状态。
+
+  '
+commercial:
+  annual_fee: null
+  notes: 模型以Apache 2.0许可证开源发布

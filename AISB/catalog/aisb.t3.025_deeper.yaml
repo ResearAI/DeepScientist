@@ -1,0 +1,143 @@
+id: aisb.t3.025_deeper
+name: 'DEEPER: Directed Persona Refinement for Dynamic Persona Modeling'
+version: 0.1.0
+one_line: Novel refinement-based dynamic persona modeling using offline reinforcement
+  learning and discrepancy-driven update direction search across 10 domains.
+task_description: 'This packaged benchmark covers dynamic persona modeling with a
+  novel refinement-based paradigm that addresses fundamental limitations of traditional
+  regeneration (replacing personas) and extension (incrementally appending behaviors)
+  approaches. DEEPER leverages prediction-behavior discrepancies to guide update directions
+  in a structured, reward-driven way, enabling continual persona optimization over
+  time. The method employs a tri-objective reward design balancing Previous Preservation,
+  Current Reflection, and Future Advancement, trained via two-stage iterative offline
+  RL with DPO fine-tuning. Evaluated on 4,800+ users across 10 domains including 4
+  unseen domains for cross-domain generalization testing. Primary evaluation metric
+  is MAE on future behavior prediction across four refinement rounds.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 2-4d
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- mae_round4
+- persona_refinement_model
+- evaluation_report
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run one packaged evaluation pass on the DEEPER persona modeling stack
+    using eval_round4.py. Evaluates MAE on Round 4 (predicting window 5 ratings using
+    persona S4 after 4 DEEPER updates). Uses meta-llama/llama-3.3-70b-instruct via
+    OpenRouter API with configurable concurrency.
+
+    '
+- id: full_refinement
+  label: Full Refinement
+  description: 'Run the complete persona refinement workflow including two-stage offline
+    training (iteration 1 and iteration 2) via LLaMA-Factory, persona updates across
+    all rounds, and downstream evaluation with MAE reporting per domain and round.
+
+    '
+dataset_download:
+  primary_method: huggingface
+  sources:
+  - https://huggingface.co/datasets/deeper-team/DEEPER_preprocess_data
+  - https://huggingface.co/datasets/deeper-team/DEEPER_user_context_data
+  - https://huggingface.co/datasets/deeper-team/DEEPER_train_data
+  - https://huggingface.co/deeper-team/DEEPER-llama-8B
+  notes:
+  - Four dataset components: Preprocessed Data, User Context Data, DEEPER Training
+      Data, Evolving Personas
+  - Preprocessed data spans 10 domains with chronological user rating histories (50+
+    entries per user)
+  - User context data organized by iteration (iteration_1 through iteration_4 for
+    eval, iteration_1 through iteration_2 for train)
+  - Training data constructed via self-sampling and iterative optimization over two
+    training iterations
+credential_requirements:
+  mode: api_key
+  items:
+  - openrouter_api_key
+  notes:
+  - OpenRouter API key required for LLM-based persona generation and behavior prediction
+    during evaluation
+  - API calls use meta-llama/llama-3.3-70b-instruct model
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 48
+    gpu_type: NVIDIA A100 or equivalent with high VRAM
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 2
+    gpu_vram_gb: 80
+    gpu_type: Multi-GPU setup for parallel training and inference
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - transformers==4.45.0
+  - vllm==0.7.3
+  - openai>=1.0.0
+  - llama-factory @ git+https://github.com/hiyouga/LLaMA-Factory.git
+  notes:
+  - LLaMA-Factory required for training pipeline (install via git clone and pip install
+    -e ".[torch,metrics]")
+  - Conda environment strongly recommended for dependency isolation
+  - See bundled README/requirements.txt for complete dependency set
+risk_flags:
+- multi_gpu_training
+- llm_api_dependency
+- rate_limiting
+- long_runtime
+risk_notes:
+- Multi-GPU training orchestration increases failure complexity; checkpointing recommended
+- Evaluation relies on OpenRouter API calls; rate limits may cause timeouts at MAX_WORKERS=8
+- Full refinement workflow spans multiple training iterations and 4 evaluation rounds
+- Train iterations use DPO fine-tuning which is sensitive to hyperparameters
+recommended_when: 'Use this benchmark when you need a personalization task that combines
+  behavior modeling, preference optimization, and cross-domain generalization testing.
+  Ideal for evaluating offline RL methods on dynamic user modeling scenarios requiring
+  iterative persona refinement with explicit direction search capabilities.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you cannot host or access 8B-class
+  LLMs, if you lack API infrastructure for OpenRouter calls, or if you need a quick
+  baseline task without RL components. Not suitable for environments without GPU capability
+  or with strict compute budgets below the minimum resource requirements.
+
+  '
+paper:
+  title: 'DEEPER: Directed Persona Refinement for Dynamic Persona Modeling'
+  venue: ACL 2025
+  year: 2025
+  url: https://arxiv.org/abs/2502.11078
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.025_deeper.zip
+  archive_type: zip
+  local_dir_name: paper-25-DEEPER
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.025_deeper.zip
+  sha256: 1c2f13d7dc01d3ff88b03778010e1d29b20d5bb4b687e9953a0b0b0977b0057e
+  size_bytes: 3096009
+display:
+  palette_seed: plum-sand-persona
+  art_style: human-centered
+  accent_priority: high
+image_path: ../image/025_aisb.t3.025_deeper.jpg

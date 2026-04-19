@@ -47,6 +47,8 @@ export interface QuestSummary {
   status: string
   active_anchor: string
   workspace_mode?: string
+  quest_class?: string
+  listed_in_projects?: boolean
   runner?: string
   branch?: string
   head?: string
@@ -672,6 +674,25 @@ export interface QuestDocumentAssetUploadPayload {
   mime_type?: string
   kind?: string
   saved_at?: string
+  message?: string
+}
+
+export interface QuestChatAttachmentUploadPayload {
+  ok: boolean
+  quest_id: string
+  draft_id: string
+  name: string
+  file_name: string
+  content_type?: string
+  path: string
+  quest_relative_path: string
+  asset_document_id: string
+  asset_url: string
+  size_bytes?: number
+  extracted_text_path?: string
+  upload_origin?: string
+  uploaded_at?: string
+  status?: string
   message?: string
 }
 
@@ -1441,6 +1462,7 @@ export type FeedItem =
       role: 'user' | 'assistant'
       source?: string
       content: string
+      attachments?: Array<Record<string, unknown>>
       createdAt?: string
       stream?: boolean
       streamId?: string | null
@@ -1451,6 +1473,19 @@ export type FeedItem =
       eventType?: string | null
       clientMessageId?: string | null
       deliveryState?: 'sending' | 'sent' | 'delivered' | 'failed' | string | null
+      readState?: 'read' | 'unread' | string | null
+      readReason?: string | null
+      readAt?: string | null
+    }
+  | {
+      id: string
+      type: 'message_state'
+      messageId?: string | null
+      clientMessageId?: string | null
+      readState?: 'read' | 'unread' | string | null
+      readReason?: string | null
+      readAt?: string | null
+      createdAt?: string
     }
   | {
       id: string

@@ -102,7 +102,12 @@ export function QuestMcpOperation({
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-2">
+    <div
+      className="flex min-w-0 flex-col gap-2"
+      data-copilot-tool-kind="mcp"
+      data-copilot-tool-server={resolvedIdentity.server || undefined}
+      data-copilot-tool-name={resolvedIdentity.tool || toolName || undefined}
+    >
       {comment ? <AgentCommentBlock comment={comment} /> : null}
       <div className="min-w-0 overflow-hidden rounded-[12px]">
         <McpToolView

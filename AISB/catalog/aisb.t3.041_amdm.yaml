@@ -1,0 +1,149 @@
+id: aisb.t3.041_amdm
+name: Auto-Regressive Moving Diffusion Models for Time Series Forecasting
+version: 0.1.0
+one_line: Diffusion-based time-series forecasting with auto-regressive moving structure
+  and continuous sequential diffusion for improved probabilistic forecasting.
+task_description: 'This benchmark implements the Auto-Regressive Moving Diffusion
+  (ARMD) model for time series forecasting. Unlike traditional diffusion models that
+  start from white Gaussian noise, ARMD employs chain-based diffusion with priors,
+  modeling the evolution of time series as a continuous sequential diffusion process.
+  The forward diffusion diffuses the future series into the historical series, while
+  the reverse denoising/devolution process transforms historical series into future
+  forecasts. This aligns the diffusion sampling procedure with the forecasting objective,
+  removing the need for conditional generation. The task is to tune diffusion schedules
+  and moving dynamics to improve probabilistic forecasting metrics on standard public
+  benchmark suites.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: partial
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- mse
+- mae
+- forecast_samples
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: Inspect the preserved diffusion forecasting code and configs before
+    a full run.
+- id: restore_first
+  label: Restore First
+  description: Restore the missing main entry files referenced by the README before
+    treating this package as runnable.
+- id: full_train_eval
+  label: Full Train and Evaluate
+  description: Run training with scheduler-aware training and evaluate on all metrics.
+    Use config files in Config/ directory (etth1.yaml, ettm1.yaml, exchange.yaml,
+    stock.yaml).
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: ETT dataset
+    url: https://github.com/thuml/iTransformer
+    license: MIT
+  - name: Solar Energy and Exchange datasets
+    url: https://github.com/thuml/iTransformer
+    license: MIT
+  - name: Stock dataset
+    url: https://github.com/Y-debug-sys/Diffusion-TS
+    license: MIT
+  notes:
+  - Download datasets and place in ./Data/datasets directory
+  - Datasets must be obtained from external repositories as they are not bundled
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - ema_pytorch
+  - tqdm
+  - torch
+  - numpy
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - seaborn
+  notes:
+  - Install dependencies via: pip install -r requirements.txt
+  - Full dependency set documented in bundled README
+risk_flags:
+- partial_snapshot
+- no_runtime_verification
+risk_notes:
+- Static code audit found executable anchors for all staged metrics
+- No benchmark execution was performed in this packaging pass
+- Runtime execution required before trusting metric values
+- Recovery mode recommended to restore any missing main entry files
+recommended_when: 'Use this benchmark when you need a diffusion-style probabilistic
+  forecasting task with standard public time-series datasets, require state-of-the-art
+  performance on multivariate forecasting, or want to explore continuous sequential
+  diffusion methods that align diffusion sampling with forecasting objectives.
+
+  '
+not_recommended_when: 'Do not use this if you need a tiny CPU-only benchmark, require
+  a non-generative point-estimate forecasting setup, or need pre-executed and verified
+  metric values without runtime overhead.
+
+  '
+paper:
+  title: Auto-Regressive Moving Diffusion Models for Time Series Forecasting
+  authors:
+  - Jiaxin Gao
+  - Qinglong Cao
+  - Yuntian Chen
+  venue: arXiv preprint
+  year: 2024
+  url: https://arxiv.org/abs/2412.09328
+  code_url: https://github.com/daxin007/ARMD
+display:
+  palette_seed: midnight-amber-diffusion
+  art_style: sequential-lab
+  accent_priority: high
+image_path: ../image/041_aisb.t3.041_amdm.jpg
+capability_tags:
+- research_code_optimization
+- time_series_forecasting
+- diffusion_models
+- forecasting
+- scientific_ml
+- probabilistic_forecasting
+- autoregressive_moving
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+download:
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.041_amdm.zip
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.041_amdm.zip
+  archive_type: zip
+  sha256: 9fc41b0433a71fc79ca141b9d6451c7323ab4286cead7d38e77d5ed793283244
+  size_bytes: 2172119

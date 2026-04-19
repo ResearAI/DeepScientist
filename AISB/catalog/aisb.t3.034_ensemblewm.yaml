@@ -1,0 +1,183 @@
+id: aisb.t3.034_ensemblewm
+name: Ensemble Watermarks for Large Language Models
+version: 0.1.0
+one_line: Multi-feature watermark detection combining red-green, acrostic, and sensorimotor-norm
+  signals for robust LLM output verification.
+task_description: 'This benchmark evaluates ensemble watermark detection methods for
+  large language model outputs. The ensemble combines three distinct watermark features:
+  the red-green watermark (token-level logit manipulation), acrostic embeddings (sentence-initial
+  letter encoding), and sensorimotor norms (perceptual/action category selection).
+  The task involves generating watermarked text via logit modification and detecting
+  watermarks in both clean and paraphrased outputs. Evaluation covers detection rate,
+  watermark score distributions, and robustness against paraphrasing attacks using
+  a T5-based attack pipeline. The unified detection function applies across all ensemble
+  configurations without modification.
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- detection_rate
+- watermark_scores
+- benchmark_report
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run one packaged watermark-detection evaluation route on generated
+    outputs. Uses a single model configuration and predefined test prompts to measure
+    baseline detection rates without attack simulation.
+- id: full_eval
+  label: Full Eval
+  description: Execute the complete multi-feature watermark detection workflow including
+    generation, soft paraphrasing attack (T5-based word replacement at configurable
+    percentage), and evaluation across all feature combinations. Produces detection
+    rate matrices and watermark score distributions.
+dataset_download:
+  primary_method: mixed
+  sources:
+  - url: https://deepscientist.cc/AISB/034_ensemblewm
+    type: archive
+    format: zip
+  - url: https://huggingface.co/datasets/know-center/Lancaster_sensorimotor_norms
+    type: external
+    format: csv
+    description: Lancaster Sensorimotor Norms dataset with 39,707 words across 11
+      perceptual and 5 action dimensions
+  notes:
+  - The Lancaster sensorimotor norms CSV is bundled in the archive
+  - Test prompts sourced from standard LLM evaluation datasets
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No external API keys required
+  - Local LLM weights must be obtained separately (e.g., Llama-3.1-8B via HuggingFace)
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: Supports quantized models (GPTQ 4-bit) to reduce VRAM requirements
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 48
+    notes: Full precision recommended for generation experiments; 4-bit quantization
+      available for memory-constrained setups
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: 2.x
+  key_packages:
+  - transformers
+  - torch
+  - numpy
+  - pandas
+  - spacy
+  - datasets
+  - tqdm
+  - bitsandbytes
+  - auto-gptq
+  notes:
+  - Requires spacy en_core_web_sm model: python -m spacy download en_core_web_sm
+  - T5 model for paraphrasing attack loaded via transformers (T5-small or T5-base)
+  - Llama model loaded via AutoModelForCausalLM with optional BitsAndBytesConfig for
+    4-bit quantization
+  - See bundled requirements.txt for full dependency specification
+risk_flags:
+- high_vram
+- extended_runtime
+risk_notes:
+- Generation experiments require significant GPU memory for LLM inference
+- Full evaluation with attack simulation may take several hours depending on dataset
+  size
+- Soft attack (paraphrasing) batch_size parameter affects memory usage
+recommended_when: 'Use this benchmark when you need an LLM-safeguard evaluation pipeline
+  focused on watermark detection quality, want to evaluate ensemble detection robustness
+  against paraphrasing, or need to compare single-feature versus multi-feature watermark
+  schemes. Suitable for evaluating detection-only approaches without requiring model
+  fine-tuning.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you cannot host open LLM checkpoints
+  locally, lack GPU resources with adequate VRAM, or need a benchmark without generation
+  and detection loops. Not suitable for evaluating text classification or perplexity-based
+  detection methods.
+
+  '
+paper:
+  title: Ensemble Watermarks for Large Language Models
+  authors:
+  - Georg Niess
+  - Roman Kern
+  venue: arXiv preprint
+  year: 2024
+  url: https://arxiv.org/abs/2411.19563
+  code_url: https://github.com/
+  abstract: 'As large language models reach human-like fluency, reliably distinguishing
+    AI-generated text from human authorship becomes increasingly difficult. We propose
+    a multi-feature method for generating watermarks that combines acrostica and sensorimotor
+    norms with the established red-green watermark to achieve a 98% detection rate.
+    After paraphrasing attacks, performance remains at 95% detection rate compared
+    to 49% for red-green alone.
+
+    '
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.034_ensemblewm.zip
+  archive_type: zip
+  local_dir_name: aisb-t3-034-ensemblewm
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.034_ensemblewm.zip
+  sha256: 8eae0196937e9b32feade1727d417158061f0741b7b0b80a9f154bdd6aaba079
+  size_bytes: 25404700
+display:
+  palette_seed: aqua-ink-watermark
+  art_style: verification-grid
+  accent_priority: high
+  tags:
+  - watermarking
+  - detection
+  - llm-safety
+  - robustness
+  - ensemble-methods
+image_path: ../image/034_aisb.t3.034_ensemblewm.jpg
+metric_contract:
+  primary_metric: detection_rate
+  origin_path: detection_notebook.ipynb
+  source_ref: detection_rate
+  evaluation_protocol:
+    code_paths:
+    - batch_run/run_experiments_soft.py
+    - batch_run/run_attack_soft.py
+    - detection_notebook.ipynb
+    - modules/text_generation.py
+  metrics_summary: []
+  execution_status: pending
+  execution_notes: 'Static code audit confirmed executable anchors for all staged
+    metrics. No benchmark execution was performed in this packaging pass. Metric values
+    should be treated as provisional pending trusted runtime outputs.
+
+    '
+executive_summary: 'This benchmark provides a comprehensive evaluation framework for
+  ensemble watermark detection in LLM outputs. The approach combines token-level (red-green),
+  sentence-level (acrostic), and semantic-level (sensorimotor) watermark features
+  to achieve robust detection even after paraphrasing attacks. The unified detection
+  function operates across all feature combinations, enabling flexible configuration
+  for different security-robustness tradeoffs.
+
+  '

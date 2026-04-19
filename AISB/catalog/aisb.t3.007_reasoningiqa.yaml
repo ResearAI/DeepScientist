@@ -1,0 +1,169 @@
+schema_version: 1
+id: aisb.t3.007_reasoningiqa
+name: 'RALI: Reasoning-Aligned Lightweight Image Quality Assessment'
+version: 0.1.0
+one_line: Evaluate a CLIP-based lightweight IQA scorer (RALI) distilled from reasoning-heavy
+  RL-trained multimodal models on standard image quality benchmarks using PLCC, SRCC,
+  and MAE.
+task_description: 'This benchmark evaluates RALI, a lightweight no-reference image
+  quality assessment (IQA) model that uses CLIP-based contrastive alignment to match
+  the generalization of much larger reasoning-based IQA models (e.g., Q-Insight) at
+  ~4% of their parameters and inference time. The execution route loads pretrained
+  RALI checkpoints (CLIP vision encoder, PCA transform, prototype scorer), runs inference
+  on IQA benchmark datasets (KONIQ, KADID10K, SPAQ, etc.), and computes Pearson Linear
+  Correlation Coefficient (PLCC), Spearman Rank Correlation Coefficient (SRCC), and
+  Mean Absolute Error (MAE) against ground-truth subjective quality scores. The primary
+  entry point is eval_json.sh / eval_json.py, which scores images from JSON-defined
+  test splits and writes per-image predictions to a JSON log. A demo script (demo_rali_score.py)
+  provides single-image scoring. No training is required; all checkpoints are pretrained.
+  The benchmark tests whether an agent can correctly set up the environment, download
+  external checkpoints and dataset images, configure paths, and reproduce the paper''s
+  reported correlation metrics.
+
+  '
+capability_tags:
+- research_code_optimization
+- computer_vision
+- image_quality_assessment
+- representation_learning
+- evaluation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- plcc
+- srcc
+- mae
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run demo_rali_score.py on a single bundled image to verify that the
+    checkpoint loads, PCA and prototype scorer initialize, and a quality score is
+    produced. No dataset download required.
+
+    '
+- id: benchmark_eval
+  label: Benchmark Eval
+  description: 'Run eval_json.sh on one or more IQA benchmark test splits (e.g., KADID10K,
+    KONIQ, SPAQ). Requires downloading pretrained RALI checkpoints from HuggingFace
+    and the Data-DeQA-Score dataset images. Produces per-image prediction JSONs and
+    computes PLCC, SRCC, MAE.
+
+    '
+dataset_download:
+  primary_method: huggingface
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/ByteDance/Q-Insight/tree/main/RALI
+    access: public
+    note: 'RALI pretrained checkpoints (ckpt.pt, pca.pkl, basis.npz, and CLIP fine-tuned
+      model under best/). Place under ./checkpoints/.
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/datasets/zhiyuanyou/Data-DeQA-Score/tree/main
+    access: public
+    note: 'IQA benchmark meta files and source images for KONIQ, KADID10K, SPAQ, and
+      others. Place under ./Data-DeQA-Score/. Image directories may total several
+      GB.
+
+      '
+  notes:
+  - Checkpoint download is ~1-2 GB. Dataset images vary by benchmark; full Data-DeQA-Score
+    may exceed 10 GB.
+  - The snapshot includes directory stubs (Data-DeQA-Score/KADID10K, Data-DeQA-Score/KONIQ)
+    but not the actual images.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - All checkpoints and datasets are publicly available on HuggingFace without authentication.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: null
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - transformers
+  - torch
+  - joblib
+  - numpy
+  - Pillow
+  - tqdm
+  notes:
+  - setup.sh installs all dependencies. See bundled README and requirements for the
+    full dependency set.
+  - Uses CLIPModel and CLIPProcessor from HuggingFace transformers.
+  - Exact Python/CUDA/PyTorch versions are not pinned; any recent compatible set should
+    work.
+risk_flags:
+- external_checkpoint_download
+- external_dataset_download
+- no_training_in_snapshot
+risk_notes:
+- Pretrained RALI checkpoints must be downloaded from HuggingFace (ByteDance/Q-Insight/RALI)
+  before any evaluation can run.
+- Dataset images are not bundled; only JSON meta files and directory stubs are included.
+  Images must be fetched from Data-DeQA-Score on HuggingFace.
+- No training code is included in the snapshot; this is inference/evaluation only.
+- No benchmark execution was performed during the packaging pass; metric values have
+  not been verified at runtime.
+recommended_when: 'Use this benchmark when you want a vision evaluation task with
+  pretrained checkpoints and straightforward image-benchmark execution. Good for testing
+  an agent''s ability to download external resources, configure paths, and run a self-contained
+  PyTorch inference pipeline that produces standard IQA correlation metrics.
+
+  '
+not_recommended_when: 'Do not use this if you need a large-scale training task, a
+  video quality benchmark, or a task that exercises long-horizon multi-stage model
+  training. Also not suitable if you want a fully self-contained benchmark with no
+  external downloads.
+
+  '
+paper:
+  title: 'Reasoning as Representation: Rethinking Visual Reinforcement Learning in
+    Image Quality Assessment'
+  venue: ICLR 2026 Oral
+  year: 2026
+  url: https://arxiv.org/abs/2510.11369
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.007_reasoningiqa.zip
+  archive_type: zip
+  local_dir_name: paper-7-ReasoningIQA
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.007_reasoningiqa.zip
+  sha256: 91b252c7f1616ea5b8889a80d6c6ba001c92f6b2f5db2998c133f533cdcc6bdf
+  size_bytes: 857520
+commercial:
+  annual_fee: null
+display:
+  palette_seed: cobalt-pearl-contrast
+  art_style: crisp-editorial
+  accent_priority: medium
+image_path: ../image/007_aisb.t3.007_reasoningiqa.jpg

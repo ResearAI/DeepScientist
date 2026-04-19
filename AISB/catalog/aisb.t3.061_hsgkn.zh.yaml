@@ -1,0 +1,113 @@
+schema_version: 1
+id: aisb.t3.061_hsgkn
+name: 分层最短路径图核网络
+version: 0.1.0
+one_line: 优化一个融合最短路径结构与可学习图表示的图核网络，用于图分类。
+task_description: '本基准测试涵盖分层最短路径图核网络（HSP-GKN），这是一个基于核的图学习框架，将图相似度估计与下游任务整合在统一的优化框架中。该方法设计了一种分层最短路径图核，通过将图转换为分层特征来高效保留语义和结构信息。这些特征与可学习的隐藏图特征进行匹配，生成相似度向量作为图的嵌入表示，用于端到端的MLP训练。与传统图核方法将表示学习与目标优化分离不同，HSP-GKN实现了任务特定的表示学习，计算复杂度为O(n² log n)，而标准SP核为O(n⁴)。
+
+  '
+capability_tags:
+- research_code_optimization
+- graph_learning
+- graph_kernels
+- classification
+- explainable_ml
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- imdb_binary_accuracy
+- graph_kernel_checkpoint
+- optuna_results
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: '直接从main.py运行打包的图分类基准测试路由。使用默认或提供的数据集，配合GPU加速。默认数据集为MUTAG。示例：python main.py --dataset MUTAG --device cuda:0
+
+    '
+- id: tune_and_eval
+  label: 调优+评估
+  description: '运行打包的HSGKN训练流程，配合Optuna超参数搜索。执行optuna_main.py进行自动化超参数优化，涵盖学习率、权重衰减、隐藏路径数量、正则化、截断值、dropout和属性归一化等参数。
+
+    '
+dataset_download:
+  primary_method: bundled
+  sources: []
+  notes:
+  - 图数据集通过DGL的TUDataset接口自动下载
+  - 支持的数据集：PROTEINS、PROTEINS_full、ENZYMES、SYNTHETIC、BZR、COX2、NCI1、MUTAG、IMDB-BINARY、IMDB-MULTI、COLLAB、DD、REDDIT-BINARY、REDDIT-MULTI-5K、REDDIT-MULTI-12K、PTC_MR、reddit_threads、SYNTHETICnew
+  - 首次下载后，数据集缓存至cache/目录
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 30
+    gpu_count: 1
+    gpu_vram_gb: 8
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.2.1
+  flash_attn: null
+  key_packages:
+  - dgl==1.1.3
+  - optuna
+  - scikit-learn
+  - numpy
+  - torch
+  notes:
+  - 执行前通过捆绑的requirements.txt安装依赖
+  - DGL（深度图库）用于图数据处理和TUDataset访问
+  - Optuna用于tune_and_eval配置文件的超参数优化
+risk_flags: []
+risk_notes: []
+recommended_when: '当需要结合核风格结构先验与可训练神经组件的图分类任务时，使用此基准测试。特别适合探索显式图核与端到端学习框架整合的研究人员，或需要针对传统核方法对TU图数据集进行基准测试的场景。
+
+  '
+not_recommended_when: '如果需要超大规模多模态或LLM基准测试，或者数据集主要由大规模图构成（其中O(n² log n)核计算可能成为瓶颈），请勿使用此基准测试。
+
+  '
+paper:
+  title: Hierarchical Shortest-Path Graph Kernel Network
+  venue: NeurIPS 2025 Spotlight
+  year: 2025
+  url: https://openreview.net/forum?id=721bDIvjen
+  code_url: https://github.com/JXWANG-GRAPH/HSP-GKN
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.061_hsgkn.zip
+  archive_type: zip
+  local_dir_name: paper-61-HSGKN
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.061_hsgkn.zip
+  sha256: ce45c434498873e02198eeda9b546b4ac85920213e0c65e013302a6bac0a5f90
+  size_bytes: 109708
+display:
+  palette_seed: stone-cyan-kernel
+  art_style: graph-kernel
+  accent_priority: medium
+commercial:
+  annual_fee: null
+image_path: ../image/061_aisb.t3.061_hsgkn.jpg

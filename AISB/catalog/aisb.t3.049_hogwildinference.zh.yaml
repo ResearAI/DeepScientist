@@ -1,0 +1,138 @@
+schema_version: 1
+id: aisb.t3.049_hogwildinference
+name: 'Hogwild! Inference: Parallel LLM Generation via Concurrent Attention'
+version: 0.1.0
+one_line: '在多个工作进程共享并发 KV 缓存的并行 LLM 推理场景下进行基准测试和优化，测量 L40 级 GPU 上的每秒令牌吞吐量和自定义 CUDA 内核延迟。
+
+  '
+task_description: '该基准测试评估名为 Hogwild! Inference 的并行 LLM 生成系统，其中多个 LLM"工作进程"通过共享键值注意力缓存并发运行，通过 RoPE 位置重旋转实现工作进程间的即时交叉注意力。优化任务是在不破坏并发缓存机制正确性或稳定性的前提下，最大化多工作进程推理吞吐量（tokens_per_second）。
+
+  该软件包提供两条执行路径：（1）Jupyter 笔记本（basic_example、full_example、hogwild_with_fast_kernels），使用 Python `shared_cache` 库和 `generation.py` 在开源推理 LLM（如 QwQ、DeepSeek-R1）上运行 2 智能体并行推理；（2）独立 C++/CUDA 内核基准测试（`inference_lib/src/benchmark.cpp`），用于测量自定义 Flash-Decoding 启发的分页注意力（带逐块查询旋转）的原始注意力内核延迟（微秒级）。
+
+  快速内核需要通过 CMake + nvcc 编译（CUDA 架构 80/86/89），并针对 L40 GPU 进行了优化。主要指标 `tokens_per_second` 通过内核基准测试可执行文件进行了路由支持，但在本次打包过程中未进行端到端验证，需要运行时执行后才能信任报告值。模型权重（如 Colab 用的 Llama-3.2-3B，或更大的推理模型如 QwQ-32B）需要在推理时从 HuggingFace 下载。无需训练——这是纯推理时系统基准测试。
+
+  '
+capability_tags:
+- research_code_optimization
+- large_language_models
+- parallel_inference
+- systems_efficiency
+- cuda_kernels
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: partial
+support_level: advanced
+time_band: 1-2d
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- tokens_per_second
+- kernel_latency_us
+- benchmark_logs
+launch_profiles:
+- id: notebook_inference
+  label: 笔记本推理
+  description: '运行捆绑的 Jupyter 笔记本（basic_example、full_example、hogwild_with_fast_kernels），使用共享 KV 缓存执行 2 智能体并行 LLM 推理。需要具有足够 VRAM 的 GPU 用于所选模型。输出生成轨迹和非正式吞吐量。
+
+    '
+- id: kernel_benchmark
+  label: CUDA 内核基准测试
+  description: '通过 CMake + nvcc 从 inference_lib 构建 C++ 基准测试可执行文件，然后运行它来测量原始注意力内核延迟。为自定义分页注意力内核（带查询旋转）生成微秒级计时。吞吐量转换为 tokens_per_second 必须手动验证以对抗端到端生成。
+
+    '
+dataset_download:
+  primary_method: huggingface
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/models
+    access: public
+    note: '模型权重（如 Llama-3.2-3B、QwQ-32B、DeepSeek-R1）在推理时通过 HuggingFace transformers 下载。不需要单独的数据集下载；基准测试操作在笔记本中定义的提示推理任务。
+
+      '
+  notes:
+  - 不需要大型离线数据集。存储主要由模型权重决定（根据模型选择为 7–65 GB）。
+  - evals/ 目录包含 LIMO、LiveCodeBench 和 OlympiadBench 的评估脚本，但这些是辅助性的。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 对于 Llama-3.2 等门控模型可能需要 HuggingFace 令牌，但并非所有模型选择都需要。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 48
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.6.0
+  key_packages:
+  - transformers==4.51.3
+  - numpy
+  - CLI11 (C++ 依赖，由 CMake 获取)
+  notes:
+  - 快速推理内核需要 nvcc 在 PATH 中（或设置 CUDACXX）。需要 CMake >= 3.22。
+  - 目标是 CUDA 架构 80、86、89（A100、L40、RTX 4090 类）。
+  - 内核专门针对 L40 和类似 GPU 进行了优化；其他架构上的性能可能有所不同。
+  - Colab 笔记本演示了使用 Llama-3.2-3B 和有限协作的最小路径。
+  - 在 inference_lib/ 中运行 pip install -e . 可构建绑定 Python 的 CUDA 扩展。
+risk_flags:
+- metric_not_verified_e2e
+- requires_cuda_compilation
+- model_download_at_runtime
+risk_notes:
+- '主要指标 tokens_per_second 通过 C++ 内核基准测试进行了路由支持，但在打包期间未执行端到端基准测试。在信任指标值之前需要运行时验证。
+
+  '
+- '构建快速内核需要可用的 nvcc 工具链和兼容的 GPU 架构。在非标准 CUDA 设置上可能出现编译失败。
+
+  '
+- '更大的推理模型（QwQ-32B、DeepSeek-R1）需要 48+ GB VRAM；最低 24 GB 规格仅支持较小的模型（如 Llama-3.2-3B），协作质量有限。
+
+  '
+- 'evals/ 目录引用了外部评估套件（LIMO、LiveCodeBench、OlympiadBench），这些可能需要快照中未完全记录的额外设置。
+
+  '
+recommended_when: '当您需要一个专注于并行推理吞吐量、并发 KV 缓存设计和自定义 CUDA 内核性能的 LLM 系统优化任务时使用此基准测试。适用于从事推理时并行性、注意力内核优化或在系统级别进行多智能体 LLM 协调的研究人员。
+
+  '
+not_recommended_when: '如果您无法访问现代 CUDA GPU（安培或更新），如果您需要以训练为导向的基准测试，或者如果您正在寻找具有自动评分的自包含准确性评估，请不要使用此基准测试。指标表面需要手动验证，内核构建增加了显著的设置复杂性。
+
+  '
+paper:
+  title: 'Hogwild! Inference: Parallel LLM Generation via Concurrent Attention'
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2504.06261
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.049_hogwildinference.zip
+  archive_type: zip
+  local_dir_name: paper-49-HogwildInference
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.049_hogwildinference.zip
+  sha256: b5cc4e8d0a697683307a664b948af23324ca548c6ce7b8380035fe7410dabcdd
+  size_bytes: 226660
+commercial:
+  annual_fee: null
+display:
+  palette_seed: orange-slate-cache
+  art_style: concurrent-systems
+  accent_priority: high
+image_path: ../image/049_aisb.t3.049_hogwildinference.jpg

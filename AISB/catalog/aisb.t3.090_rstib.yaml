@@ -1,0 +1,144 @@
+id: aisb.t3.090_rstib
+name: Information Bottleneck-guided MLPs for Robust Spatial-temporal Forecasting
+version: 0.1.0
+one_line: Teacher-student training of information-bottleneck-guided MLPs for robust
+  and efficient spatial-temporal forecasting.
+task_description: 'This packaged benchmark covers robust spatial-temporal forecasting
+  using the Robust Spatial-Temporal Information Bottleneck (RSTIB) principle and a
+  knowledge distillation training regime. The approach addresses the dual noise effect
+  in spatial-temporal data by first training a teacher model (STGCN), then distilling
+  its knowledge into an efficient RSTIB-MLP student. The goal is to achieve robustness
+  against noise perturbations while maintaining the computational efficiency of simple
+  MLP architectures compared to expensive graph neural networks.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- mae
+- rmse
+- mape
+- student_checkpoint
+launch_profiles:
+- id: teacher_student_train
+  label: Teacher-Student Train
+  description: 'Execute the full two-stage pipeline. First run run_teacher.sh to train
+    the STGCN teacher model, then run run_student.sh to train the RSTIB-MLP student
+    with knowledge distillation from the teacher. Training scripts use config files
+    in config/teacher/ and config/student/ respectively.
+
+    '
+- id: student_eval
+  label: Student Evaluation
+  description: 'Run evaluation of the trained RSTIB-MLP student model on held-out
+    test data. Uses train_student.py with saved checkpoint from the training profile.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - type: bundled
+    description: Preprocessed datasets including PEMS04 in data/ directory, loaded
+      via DataHandler_st.py
+  - type: external
+    description: PyG precompiled wheels for torch_scatter and torch_sparse (cp39-cp39-linux_x86_64)
+      required for graph operations
+  notes:
+  - PEMS04 traffic dataset is bundled in data/PEMS04/
+  - Precompiled PyG wheel files (torch_scatter-2.0.9, torch_sparse-0.6.16+pt113cu116)
+    must be installed separately
+  - See requirements.txt for additional Python dependencies
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+    notes: Minimum for running teacher or student training on PEMS04 dataset
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: Recommended for full teacher-student pipeline with larger batch sizes
+environment:
+  python: '3.9'
+  cuda: '11.7'
+  pytorch: 1.13.1
+  flash_attn: null
+  key_packages:
+  - torch==1.13.1
+  - torchvision==0.14.1
+  - torchaudio==0.13.1
+  - torch-scatter
+  - torch-sparse
+  - numpy
+  notes:
+  - Install PyTorch with CUDA 11.7 support: conda install pytorch==1.13.1 pytorch-cuda=11.7
+      -c pytorch -c nvidia
+  - Install precompiled PyG wheels: torch_scatter-2.0.9-cp39-cp39-linux_x86_64.whl
+      and torch_sparse-0.6.16+pt113cu116-cp39-cp39-linux_x86_64.whl
+  - See bundled requirements.txt for full dependency list
+risk_flags:
+- two_stage_training
+- gpu_memory_constrained
+- no_runtime_verification
+risk_notes:
+- Two-stage pipeline requires running teacher training before student training can
+  execute
+- Student model uses graph-based adjacency matrix processed via PyG; GPU memory requirements
+  may vary with spatial adjacency size
+- Static code audit confirmed executable anchors but no benchmark execution was performed
+  in packaging pass; runtime verification required before trusting metric values
+- MAPE metric is code-backed in new_metrics.py but not listed in current primary_outputs
+recommended_when: 'Use this benchmark when you want to study MLP efficiency for spatial-temporal
+  forecasting with explicit robustness to noise perturbations. The information bottleneck
+  regularization and teacher-student framework are suitable for researchers investigating
+  knowledge distillation from graph networks to simpler architectures while preserving
+  noise resistance.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you need a purely graph-based
+  approach (no student MLP distillation), a probabilistic forecasting benchmark, or
+  a lightweight benchmark without GPU requirements.
+
+  '
+paper:
+  title: Information Bottleneck-guided MLPs for Robust Spatial-temporal Forecasting
+  authors:
+  - Min Chen
+  - Guansong Pang
+  - Wenjun Wang
+  - Cheng Yan
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/chen25ar.html
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.090_rstib.zip
+  archive_type: zip
+  local_dir_name: paper-90-RSTIB
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.090_rstib.zip
+  sha256: 501c6d17e5bccd9cc64d8490c371ad914938d355be22814134f054566f302bea
+  size_bytes: 37796454
+display:
+  palette_seed: plum-cyan-bottleneck
+  art_style: robust-forecast
+  accent_priority: high
+image_path: ../image/090_aisb.t3.090_rstib.jpg

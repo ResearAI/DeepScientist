@@ -1,0 +1,197 @@
+id: aisb.t3.086_stella
+name: 'STELLA: Spatial-Temporal Knowledge Embedded Lightweight Model for Atmospheric
+  Time Series Forecasting'
+version: 0.1.0
+one_line: Lightweight atmospheric time-series forecasting via spatial-temporal position
+  embeddings and MLP, challenging Transformer-complexity assumptions.
+task_description: 'This packaged benchmark covers STELLA, a lightweight atmospheric
+  time-series forecasting model that replaces Transformer attention stacks with spatial-temporal
+  position embeddings (STPE) combined with a simple MLP. The core insight is that
+  geographical coordinates and temporal features—intrinsically linked to atmospheric
+  dynamics—are sufficient to capture spatial-temporal correlations without heavy attention
+  mechanisms. The current local snapshot preserves paper metadata and references but
+  lacks executable training and evaluation code; full restoration from the upstream
+  GitHub repository is required before benchmark execution is possible.
+
+  '
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- test_mae
+- test_rmse
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: Review preserved atmospheric forecasting benchmark metadata, paper
+    references, and architecture documentation without executing code.
+- id: restore_first
+  label: Restore Then Evaluate
+  description: Restore STELLA source implementation from upstream GitHub repository
+    before attempting training or evaluation runs. Code restoration from https://github.com/GestaltCogTeam/STELLA
+    is a prerequisite.
+dataset_download:
+  primary_method: pending_restoration
+  sources:
+  - type: upstream_repository
+    url: https://github.com/GestaltCogTeam/STELLA
+    notes: Source code and datasets referenced in paper require restoration from upstream;
+      not bundled in current snapshot.
+  - type: paper_reference
+    url: https://arxiv.org/abs/2408.09695
+    notes: Full paper with dataset descriptions for GlobalWind, PEMS-BAY, and three
+      additional atmospheric datasets.
+  notes:
+  - Current local snapshot does not preserve executable benchmark route; dataset setup
+    is part of upstream restoration.
+  - Five datasets referenced: one synthetic and four real-world atmospheric measurement
+      collections from weather station networks.
+  - Treat dataset acquisition as blocked until source restoration completes.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - Public benchmark; no authentication required for paper access.
+  - GitHub access required for source restoration phase.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+    gpu_arch: pascal+
+    network: required_for_restore
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    gpu_arch: ampere+
+    network: required_for_restore
+environment:
+  python: '3.9'
+  cuda: '11.1'
+  pytorch: 1.10.0
+  flash_attn: null
+  key_packages:
+  - pytorch
+  - numpy
+  - pandas
+  - scipy
+  notes:
+  - Environment specifications are provisional; derived from paper dependencies and
+    not anchored by preserved setup files.
+  - Current local snapshot lacks executable environment configuration; treat Python/pytorch/cuda
+    hints as reference for restoration target.
+  - Confirm exact dependency versions against upstream requirements.txt after restoration.
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- no_execution_anchor
+risk_notes:
+- The current snapshot preserves no executable code files; both primary metrics (test_mae,
+  test_rmse) are blocked-no-code.
+- No benchmark execution was performed in this packaging pass.
+- Top-level README absent in current snapshot; restoration from GitHub required.
+- Code-bearing roots: none detected in current snapshot.
+- Static code-audit status: blocked-no-code.
+- Prefer existing code files over README-only claims when restoring evaluation protocol.
+recommended_when: 'Use this entry for paper-backed analysis and planning of the STELLA
+  atmospheric forecasting route, or when evaluating lightweight model architectures
+  for spatial-temporal prediction tasks that challenge Transformer-complexity assumptions.
+  Appropriate for pre-execution analysis when the source restoration workflow is the
+  next action.
+
+  '
+not_recommended_when: 'Do not treat this local package as a ready-to-run forecasting
+  benchmark. Do not attempt benchmark execution without first completing source restoration
+  from the upstream GitHub repository. The executable training and evaluation code
+  is absent from the staged snapshot; execution attempts will fail.
+
+  '
+paper:
+  title: 'On the Integration of Spatial-Temporal Knowledge: A Lightweight Approach
+    to Atmospheric Time Series Forecasting'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://arxiv.org/abs/2408.09695
+  github: https://github.com/GestaltCogTeam/STELLA
+  authors:
+  - Yisong Fu
+  - Fei Wang
+  - Zezhi Shao
+  - Boyu Diao
+  - Lin Wu
+  - Zhulin An
+  - Chengqing Yu
+  - Yujie Li
+  - Yongjun Xu
+  affiliations:
+  - State Key Laboratory of AI Safety, Institute of Computing Technology, Chinese
+    Academy of Sciences
+  - University of Chinese Academy of Sciences
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.086_stella.zip
+  archive_type: zip
+  local_dir_name: paper-86-STELLA
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.086_stella.zip
+  sha256: ac2af82678fd2caab746e97744911de757709b1bc85d89ff8682b9f0d25548ed
+  size_bytes: 32873
+display:
+  palette_seed: sky-gold-atmosphere
+  art_style: climate-signal
+  accent_priority: high
+image_path: ../image/086_aisb.t3.086_stella.jpg
+capability_tags:
+- research_code_optimization
+- atmospheric_forecasting
+- time_series_forecasting
+- lightweight_models
+- spatial_temporal_modeling
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+operational_notes:
+- name: restoration_required
+  description: 'Source code and evaluation pipelines must be restored from https://github.com/GestaltCogTeam/STELLA
+    before any execution. Current snapshot contains no executable anchors.
+
+    '
+- name: metric_contract
+  description: 'Metrics test_mae and test_rmse are declared in the catalog but have
+    no executable code anchor in the current snapshot. Mark metrics as provisional
+    until trusted execution outputs exist.
+
+    '
+- name: architecture_summary
+  description: 'STELLA uses spatial-temporal position embedding (STPE) combined with
+    MLP layers, replacing Transformer attention mechanisms. Model size is approximately
+    10k parameters. Training time reported as approximately 1 hour on single GPU in
+    paper claims.
+
+    '
+- name: dataset_summary
+  description: 'Paper evaluates on five datasets including GlobalWind and PEMS-BAY
+    for atmospheric variable prediction across N weather station networks. Exact dataset
+    files require restoration.
+
+    '
+recovery_rule: 'Prefer existing code files over README-only claims when choosing origin_path,
+  source_ref, and evaluation_protocol.code_paths. Keep metrics_summary empty until
+  trusted execution outputs exist. If the current snapshot has no executable anchor
+  for a metric, mark that metric as provisional or blocked rather than claiming support.
+
+  '

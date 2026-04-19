@@ -16,8 +16,67 @@ def test_backend_routes_cover_shared_web_and_tui_surface() -> None:
     expected_routes = [
         ("GET", "/api/system/update", "system_update"),
         ("POST", "/api/system/update", "system_update_action"),
+        ("POST", "/api/system/shutdown", "system_shutdown"),
+        ("GET", "/api/system/doctor", "system_doctor"),
+        ("GET", "/api/system/tasks", "system_tasks"),
+        ("POST", "/api/system/tasks/doctor", "system_task_doctor_start"),
+        ("POST", "/api/system/tasks/system-update-check", "system_task_system_update_check_start"),
+        ("POST", "/api/system/tasks/system-update-action", "system_task_system_update_action_start"),
+        ("GET", "/api/system/tasks/systemtask-001", "system_task_detail"),
+        ("GET", "/api/system/tasks/systemtask-001/stream", "system_task_stream"),
+        ("GET", "/api/system/overview", "system_overview"),
+        ("GET", "/api/system/quests", "system_quests"),
+        ("GET", "/api/system/quests/q-001/summary", "system_quest_summary"),
+        ("GET", "/api/system/runtime/sessions", "system_runtime_sessions"),
+        ("GET", "/api/system/logs/sources", "system_log_sources"),
+        ("GET", "/api/system/logs/tail", "system_log_tail"),
+        ("GET", "/api/system/failures", "system_failures"),
+        ("GET", "/api/system/errors", "system_errors"),
+        ("GET", "/api/system/runtime-tools", "system_runtime_tools"),
+        ("GET", "/api/system/hardware", "system_hardware"),
+        ("POST", "/api/system/hardware", "system_hardware_update"),
+        ("GET", "/api/system/charts/catalog", "system_chart_catalog"),
+        ("POST", "/api/system/charts/query", "system_chart_query"),
+        ("GET", "/api/system/audit", "system_audit"),
+        ("GET", "/api/system/stats/summary", "system_stats_summary"),
+        ("GET", "/api/system/search", "system_search"),
+        ("POST", "/api/system/issues/draft", "system_issue_draft"),
+        ("GET", "/api/system/controllers", "system_controllers"),
+        ("POST", "/api/system/controllers/stale_running_quest_guard/run", "system_controller_run"),
+        ("POST", "/api/system/controllers/stale_running_quest_guard/toggle", "system_controller_toggle"),
+        ("GET", "/api/system/repairs", "system_repairs"),
+        ("POST", "/api/system/repairs", "system_repair_create"),
+        ("GET", "/api/system/repairs/repair-001", "system_repair_detail"),
+        ("POST", "/api/system/repairs/repair-001/close", "system_repair_close"),
+        ("GET", "/api/admin/doctor", "admin_doctor"),
+        ("POST", "/api/admin/shutdown", "admin_shutdown"),
+        ("GET", "/api/admin/tasks", "admin_tasks"),
+        ("POST", "/api/admin/tasks/doctor", "admin_task_doctor_start"),
+        ("POST", "/api/admin/tasks/system-update-check", "admin_task_system_update_check_start"),
+        ("POST", "/api/admin/tasks/system-update-action", "admin_task_system_update_action_start"),
+        ("GET", "/api/admin/tasks/admintask-001", "admin_task_detail"),
+        ("GET", "/api/admin/tasks/admintask-001/stream", "admin_task_stream"),
+        ("GET", "/api/admin/errors", "admin_errors"),
+        ("GET", "/api/admin/system/hardware", "admin_system_hardware"),
+        ("POST", "/api/admin/system/hardware", "admin_system_hardware_update"),
+        ("GET", "/api/admin/charts/catalog", "admin_chart_catalog"),
+        ("POST", "/api/admin/charts/query", "admin_chart_query"),
+        ("POST", "/api/admin/issues/draft", "admin_issue_draft"),
+        ("GET", "/api/admin/controllers", "admin_controllers"),
+        ("POST", "/api/admin/controllers/stale_running_quest_guard/run", "admin_controller_run"),
+        ("POST", "/api/admin/controllers/stale_running_quest_guard/toggle", "admin_controller_toggle"),
+        ("GET", "/api/admin/repairs", "admin_repairs"),
+        ("POST", "/api/admin/repairs", "admin_repair_create"),
+        ("GET", "/api/admin/repairs/repair-001", "admin_repair_detail"),
+        ("POST", "/api/admin/repairs/repair-001/close", "admin_repair_close"),
         ("GET", "/api/baselines", "baselines"),
         ("DELETE", "/api/baselines/demo-baseline", "baseline_delete"),
+        ("GET", "/api/benchstore/entries", "benchstore_entries"),
+        ("GET", "/api/benchstore/entries/aisb.t3.tdc_admet", "benchstore_entry"),
+        ("GET", "/api/benchstore/entries/aisb.t3.tdc_admet/image", "benchstore_entry_image"),
+        ("GET", "/api/benchstore/entries/aisb.t3.tdc_admet/setup-packet", "benchstore_entry_setup_packet"),
+        ("POST", "/api/benchstore/entries/aisb.t3.tdc_admet/install", "benchstore_entry_install"),
+        ("POST", "/api/benchstore/entries/aisb.t3.tdc_admet/launch", "benchstore_entry_launch"),
         ("GET", "/api/quests", "quests"),
         ("GET", "/api/quest-id/next", "quest_next_id"),
         ("POST", "/api/quests", "quest_create"),
@@ -71,6 +130,8 @@ def test_backend_routes_cover_shared_web_and_tui_surface() -> None:
         ("POST", "/api/quests/q-001/documents/assets", "document_asset_upload"),
         ("PUT", "/api/quests/q-001/documents/plan.md", "document_save"),
         ("PUT", "/api/quests/q-001/documents/path::literature/notes.md", "document_save"),
+        ("POST", "/api/quests/q-001/chat/uploads", "chat_upload_create"),
+        ("DELETE", "/api/quests/q-001/chat/uploads/draft-001", "chat_upload_delete"),
         ("POST", "/api/quests/q-001/chat", "chat"),
         ("POST", "/api/quests/q-001/commands", "command"),
         ("POST", "/api/quests/q-001/control", "quest_control"),
@@ -102,6 +163,7 @@ def test_backend_routes_cover_shared_web_and_tui_surface() -> None:
 
 def test_web_client_uses_acp_and_git_surface_expected_by_backend() -> None:
     source = _read("src/ui/src/lib/api.ts")
+    benchstore_source = _read("src/ui/src/lib/api/benchstore.ts")
     bash_source = _read("src/ui/src/lib/api/bash.ts")
     arxiv_source = _read("src/ui/src/lib/api/arxiv.ts")
     lab_source = _read("src/ui/src/lib/api/lab.ts")
@@ -157,6 +219,18 @@ def test_web_client_uses_acp_and_git_surface_expected_by_backend() -> None:
 
     for fragment in expected_fragments:
         assert fragment in source, f"Web API client is missing contract fragment: {fragment}"
+
+    benchstore_fragments = [
+        "/api/benchstore/entries",
+        "/api/benchstore/entries/${encodeURIComponent(entryId)}",
+        "/api/benchstore/entries/${encodeURIComponent(entryId)}/image",
+        "/api/benchstore/entries/${encodeURIComponent(entryId)}/setup-packet",
+        "/api/benchstore/entries/${encodeURIComponent(entryId)}/install",
+        "/api/benchstore/entries/${encodeURIComponent(entryId)}/launch",
+    ]
+
+    for fragment in benchstore_fragments:
+        assert fragment in benchstore_source, f"BenchStore API client is missing contract fragment: {fragment}"
 
     bash_fragments = [
         "/api/quests/${projectId}/bash/sessions",
@@ -215,6 +289,38 @@ def test_web_client_uses_acp_and_git_surface_expected_by_backend() -> None:
 
     for fragment in terminal_fragments:
         assert fragment in terminal_source, f"Terminal API client is missing contract fragment: {fragment}"
+
+
+def test_settings_control_center_client_prefers_system_alias_surface() -> None:
+    settings_api_source = _read("src/ui/src/lib/api/admin.ts")
+    task_stream_source = _read("src/ui/src/lib/hooks/useAdminTaskStream.ts")
+
+    expected_fragments = [
+        "const SYSTEM_BASE = '/api/system'",
+        "${SYSTEM_BASE}/overview",
+        "${SYSTEM_BASE}/quests",
+        "${SYSTEM_BASE}/runtime/sessions",
+        "${SYSTEM_BASE}/logs/sources",
+        "${SYSTEM_BASE}/logs/tail",
+        "${SYSTEM_BASE}/failures",
+        "${SYSTEM_BASE}/errors",
+        "${SYSTEM_BASE}/runtime-tools",
+        "${SYSTEM_BASE}/hardware",
+        "${SYSTEM_BASE}/audit",
+        "${SYSTEM_BASE}/stats/summary",
+        "${SYSTEM_BASE}/search",
+        "${SYSTEM_BASE}/issues/draft",
+        "${SYSTEM_BASE}/controllers",
+        "${SYSTEM_BASE}/doctor",
+        "${SYSTEM_BASE}/tasks",
+        "${SYSTEM_BASE}/repairs",
+    ]
+
+    for fragment in expected_fragments:
+        assert fragment in settings_api_source, f"Settings API client is missing system fragment: {fragment}"
+
+    assert "/api/admin/" not in settings_api_source
+    assert "/api/system/tasks/${encodeURIComponent(taskId)}/stream" in task_stream_source
 
 
 def test_local_workspace_does_not_route_markdown_or_commands_through_dead_notebook_and_auth_paths() -> None:
@@ -448,9 +554,13 @@ def test_runner_settings_surface_exposes_reasoning_and_retry_controls() -> None:
     settings_catalog_source = _read("src/ui/src/components/settings/settingsFormCatalog.ts")
     settings_form_source = _read("src/ui/src/components/settings/RegistrySettingsForm.tsx")
     config_service_source = _read("src/deepscientist/config/service.py")
+    doctor_source = _read("src/deepscientist/doctor.py")
 
-    assert "{ label: 'Claude', value: 'claude' }" not in settings_catalog_source
-    assert "not runnable yet" in settings_catalog_source
+    assert "{ label: 'Claude', value: 'claude' }" in settings_catalog_source
+    assert "{ label: 'OpenCode', value: 'opencode' }" in settings_catalog_source
+    assert "key: 'permission_mode'" in settings_catalog_source
+    assert "key: 'default_agent'" in settings_catalog_source
+    assert "key: 'variant'" in settings_catalog_source
     assert "key: 'model_reasoning_effort'" in settings_catalog_source
     assert "key: 'retry_on_failure'" in settings_catalog_source
     assert "key: 'retry_max_attempts'" in settings_catalog_source
@@ -458,14 +568,14 @@ def test_runner_settings_surface_exposes_reasoning_and_retry_controls() -> None:
     assert "key: 'retry_backoff_multiplier'" in settings_catalog_source
     assert "key: 'retry_max_backoff_sec'" in settings_catalog_source
     assert "retry_on_failure: true" in settings_form_source
-    assert "retry_max_attempts: 5" in settings_form_source
+    assert "retry_max_attempts: 7" in settings_form_source
     assert "retry_initial_backoff_sec: 10" in settings_form_source
     assert "retry_backoff_multiplier: 6" in settings_form_source
     assert "retry_max_backoff_sec: 1800" in settings_form_source
     assert "codex.retry_on_failure: true" in config_service_source
-    assert "at most `5` total attempts" in config_service_source
+    assert "at most `7` total attempts" in config_service_source
     assert "10s / 6x / 1800s max" in config_service_source
-    assert "not runnable yet" in config_service_source
+    assert "Enable one of `codex`, `claude`, or `opencode`" in doctor_source
 
 
 def test_ui_font_loading_uses_single_stylesheet_entrypoint() -> None:
@@ -522,3 +632,18 @@ def test_local_web_workspace_wraps_routes_with_auth_gate_and_shows_password_butt
     assert "LocalAuthTokenButton" in hero_nav_source
     assert "api/auth/login" in auth_provider_source
     assert "fetchBrowserAuthToken" in auth_provider_source
+
+
+def test_settings_control_center_exposes_summary_runtime_and_optional_ops_rail() -> None:
+    app_source = _read("src/ui/src/App.tsx")
+    settings_source = _read("src/ui/src/components/settings/SettingsPage.tsx")
+    ops_rail_source = _read("src/ui/src/components/settings/SettingsOpsRail.tsx")
+
+    assert 'path="/settings/runtime"' in app_source
+    assert "SettingsSummarySection" in settings_source
+    assert "SettingsRuntimeSection" in settings_source
+    assert "SettingsOpsRail" in settings_source
+    assert "SettingsOpsLauncher" in settings_source
+    assert "dockOpen ? 'xl:grid-cols-[260px_minmax(0,1fr)_420px]'" in settings_source
+    assert 'data-testid="settings-copilot-launcher"' in ops_rail_source
+    assert 'data-testid="settings-copilot-rail"' in ops_rail_source

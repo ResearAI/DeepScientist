@@ -8,6 +8,7 @@ export type SettingsField = {
   description: string
   whereToGet: string
   options?: Array<{ label: string; value: string }>
+  runners?: string[]
 }
 
 export type SettingsSection = {
@@ -45,6 +46,8 @@ export const configSections: SettingsSection[] = [
         whereToGet: 'Choose the runner id that should execute projects most of the time.',
         options: [
           { label: 'Codex', value: 'codex' },
+          { label: 'Claude', value: 'claude' },
+          { label: 'OpenCode', value: 'opencode' },
         ],
       },
       {
@@ -164,6 +167,39 @@ export const configSections: SettingsSection[] = [
         placeholder: '30',
         description: 'How long local runtime logs should be kept before cleanup.',
         whereToGet: 'Use a larger value if you keep long-running audits or reproducibility trails.',
+      },
+    ],
+  },
+  {
+    id: 'hardware',
+    title: 'Hardware preferences',
+    description: 'Operator-selected device boundaries and prompt-visible hardware hints.',
+    fields: [
+      {
+        key: 'hardware.gpu_selection_mode',
+        label: 'GPU selection mode',
+        kind: 'select',
+        description: 'Choose whether local GPU execution should treat all detected GPUs as available or only a selected subset.',
+        whereToGet: 'Use `all` by default. Switch to `selected` only when the admin operator wants to reserve or isolate GPUs.',
+        options: [
+          { label: 'All detected GPUs', value: 'all' },
+          { label: 'Selected GPU subset', value: 'selected' },
+        ],
+      },
+      {
+        key: 'hardware.selected_gpu_ids',
+        label: 'Selected GPU ids',
+        kind: 'list',
+        placeholder: '0, 1',
+        description: 'GPU ids allowed for local compute when selection mode is `selected`.',
+        whereToGet: 'Use the ids shown on the Admin runtime hardware panel. Leave empty when selection mode stays `all`.',
+      },
+      {
+        key: 'hardware.include_system_hardware_in_prompt',
+        label: 'Inject hardware summary into prompt',
+        kind: 'boolean',
+        description: 'Include the detected local hardware summary and effective GPU boundary in the runtime prompt.',
+        whereToGet: 'Keep enabled unless you intentionally want prompts to hide local hardware details.',
       },
     ],
   },
@@ -497,7 +533,12 @@ export const runnerCatalog: RunnerCatalogEntry[] = [
   {
     name: 'claude',
     label: 'Claude',
-    description: 'TODO / reserved runner slot. Keep disabled in the current release because it is not runnable yet.',
+    description: 'Anthropic Claude Code runner. Uses headless Claude Code CLI with DeepScientist MCP injection and dangerous bypassPermissions defaults.',
+  },
+  {
+    name: 'opencode',
+    label: 'OpenCode',
+    description: 'OpenCode runner. Uses the OpenCode CLI / JSON event path with DeepScientist MCP injection and permission allow defaults.',
   },
 ]
 
@@ -532,6 +573,7 @@ export const runnerFields: SettingsField[] = [
     placeholder: 'm27',
     description: 'Optional Codex profile passed through as `codex --profile <name>`.',
     whereToGet: 'Use this for provider-specific Codex setups such as MiniMax or other custom profiles. Leave it empty for the default login-based Codex path.',
+    runners: ['codex'],
   },
   {
     key: 'model',
@@ -543,6 +585,7 @@ export const runnerFields: SettingsField[] = [
   },
   {
     key: 'model_reasoning_effort',
+    runners: ['codex'],
     label: 'Reasoning effort',
     kind: 'select',
     description: 'Default reasoning intensity used by the runner when the request does not override it. `None` omits this parameter entirely.',
@@ -558,6 +601,7 @@ export const runnerFields: SettingsField[] = [
   },
   {
     key: 'approval_policy',
+    runners: ['codex'],
     label: 'Approval policy',
     kind: 'select',
     description: 'How the runner should request permission for privileged actions.',
@@ -571,6 +615,7 @@ export const runnerFields: SettingsField[] = [
   },
   {
     key: 'sandbox_mode',
+    runners: ['codex'],
     label: 'Sandbox mode',
     kind: 'select',
     description: 'Filesystem / process sandbox applied to runner actions.',
@@ -580,6 +625,40 @@ export const runnerFields: SettingsField[] = [
       { label: 'Workspace write', value: 'workspace-write' },
       { label: 'Danger full access', value: 'danger-full-access' },
     ],
+  },
+  {
+    key: 'permission_mode',
+    label: 'Permission mode',
+    kind: 'select',
+    description: 'Claude Code permission mode used for headless execution.',
+    whereToGet: 'Use `bypassPermissions` for Codex-like local automation, or choose a stricter mode when you want Claude Code to stop for permission decisions.',
+    options: [
+      { label: 'Default', value: 'default' },
+      { label: 'Bypass permissions', value: 'bypassPermissions' },
+      { label: 'Dont ask', value: 'dontAsk' },
+      { label: 'Accept edits', value: 'acceptEdits' },
+      { label: 'Delegate', value: 'delegate' },
+      { label: 'Plan', value: 'plan' },
+    ],
+    runners: ['claude'],
+  },
+  {
+    key: 'default_agent',
+    label: 'Default agent',
+    kind: 'text',
+    placeholder: 'research',
+    description: 'Optional OpenCode agent name passed through as `opencode run --agent <name>`.',
+    whereToGet: 'Leave empty to use the OpenCode default agent. Fill this when you want a specific OpenCode agent profile for DeepScientist turns.',
+    runners: ['opencode'],
+  },
+  {
+    key: 'variant',
+    label: 'Variant',
+    kind: 'text',
+    placeholder: 'high',
+    description: 'Optional OpenCode model variant such as provider-specific reasoning tiers.',
+    whereToGet: 'Use this only when your OpenCode provider documents a variant flag; otherwise leave it empty.',
+    runners: ['opencode'],
   },
   {
     key: 'retry_on_failure',
@@ -592,9 +671,9 @@ export const runnerFields: SettingsField[] = [
     key: 'retry_max_attempts',
     label: 'Max attempts',
     kind: 'number',
-    placeholder: '5',
+    placeholder: '7',
     description: 'Upper bound on total attempts for one project turn, including the first run.',
-    whereToGet: 'Use a small number; DeepScientist hard-caps this at `5` even if a larger value is entered.',
+    whereToGet: 'Use a small number; DeepScientist hard-caps this at `7` even if a larger value is entered.',
   },
   {
     key: 'retry_initial_backoff_sec',
@@ -602,7 +681,7 @@ export const runnerFields: SettingsField[] = [
     kind: 'number',
     placeholder: '10',
     description: 'Delay before the first retry after a failed attempt.',
-    whereToGet: 'Use `10` for the default Codex ladder of 10s → 60s → 360s → 1800s.',
+    whereToGet: 'Use `10` for the default Codex ladder of 10s → 60s → 360s → 1800s, then hold the 30-minute cap for the last two retries.',
   },
   {
     key: 'retry_backoff_multiplier',
@@ -610,7 +689,7 @@ export const runnerFields: SettingsField[] = [
     kind: 'number',
     placeholder: '6',
     description: 'Multiplier applied to each later retry delay to form exponential backoff.',
-    whereToGet: 'Use `6` to grow the default Codex retry ladder toward a 30-minute final retry.',
+    whereToGet: 'Use `6` to keep the default Codex retries exponential until they hit the 30-minute cap.',
   },
   {
     key: 'retry_max_backoff_sec',
@@ -618,13 +697,22 @@ export const runnerFields: SettingsField[] = [
     kind: 'number',
     placeholder: '1800',
     description: 'Maximum delay allowed between retries after exponential growth is applied.',
-    whereToGet: 'Use `1800` so the final retry waits about 30 minutes before the last attempt.',
+    whereToGet: 'Use `1800` so the final retry phase waits about 30 minutes between attempts.',
+  },
+  {
+    key: 'mcp_tool_timeout_sec',
+    label: 'MCP timeout (s)',
+    kind: 'number',
+    placeholder: '180000',
+    description: 'Codex MCP tool timeout for long-running `bash_exec(mode=await)` and other durable MCP calls.',
+    whereToGet: 'Keep the large default unless you explicitly want Codex to fail faster on long MCP operations.',
+    runners: ['codex'],
   },
   {
     key: 'status',
     label: 'Status note',
     kind: 'text',
-    placeholder: 'reserved_todo',
+    placeholder: 'supported_experimental',
     description: 'Optional operator note about the state of this runner integration.',
     whereToGet: 'Use this for reminders like reserved, experimental, or pending setup.',
   },

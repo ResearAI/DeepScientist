@@ -36,9 +36,10 @@ See the full notice here:
 Prepare these first:
 
 - Node.js `>=18.18` and npm `>=9`; install them from the official download page: https://nodejs.org/en/download
-- one working Codex path:
-  - default OpenAI login path: `codex login` (or just `codex`)
-  - provider-backed path: one working Codex profile such as `minimax`, `glm`, `ark`, or `bailian`
+- one working runner path:
+  - `codex` is the primary and most battle-tested path
+  - `claude` is supported experimental and should already work as `claude` in your shell
+  - `opencode` is supported experimental and should already work as `opencode` in your shell
 - a model or API credential if your project needs external inference
 - GPU or server access if your experiments are compute-heavy
 - if you plan to run DeepScientist for real work, prepare Docker or another isolated environment and a dedicated non-root user
@@ -57,9 +58,13 @@ If you are still choosing a coding plan or subscription, these are practical sta
 
 If you plan to use Qwen through Alibaba Bailian, use the Bailian **Coding Plan** endpoint only. The generic Bailian or DashScope Qwen API is not supported in the Codex-backed DeepScientist path.
 
-If you plan to use a provider-backed Codex profile instead of the default OpenAI login flow, read this next:
+If you want the safest recommendation, start with Codex first.
+
+Use the matching runner setup doc before your first real launch:
 
 - [15 Codex Provider Setup](./15_CODEX_PROVIDER_SETUP.md)
+- [24 Claude Code Setup](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [25 OpenCode Setup](./25_OPENCODE_PROVIDER_SETUP.md)
 
 ## 1. Install Node.js and DeepScientist
 
@@ -82,7 +87,18 @@ npm install -g @researai/deepscientist
 
 This installs the `ds` command globally.
 
-DeepScientist depends on a working Codex CLI. It prefers the `codex` already available on your machine and only falls back to the bundled npm dependency when no local Codex path is available. If `codex` is still missing afterward, repair it explicitly:
+DeepScientist ships three built-in runner paths:
+
+- `codex`: primary path
+- `claude`: supported experimental
+- `opencode`: supported experimental
+
+Important installation detail:
+
+- DeepScientist prefers the `codex` already available on your machine and only falls back to the bundled npm dependency when no local Codex path is available.
+- DeepScientist does not auto-install or auto-authenticate Claude Code or OpenCode for you. For those two paths, make the CLI work first, then let DeepScientist reuse it.
+
+If `codex` is still missing afterward, repair it explicitly:
 
 ```bash
 npm install -g @openai/codex
@@ -105,11 +121,11 @@ ds latex install-runtime
 
 This installs a lightweight TinyTeX runtime for local paper compilation.
 
-## 2. Finish Codex Setup Before The First `ds`
+## 2. Finish Your Chosen Runner Before The First `ds`
 
-Choose one of these two paths.
+If you are undecided, choose `codex` first.
 
-### 2.1 Default OpenAI login path
+### 2.1 Codex: default OpenAI login path
 
 Run:
 
@@ -131,7 +147,7 @@ Then verify:
 ds doctor
 ```
 
-### 2.2 Provider-backed Codex profile path
+### 2.2 Codex: provider-backed profile path
 
 If you already use a named Codex profile for MiniMax, GLM, Volcengine Ark, Alibaba Bailian Coding Plan, or another provider-backed path, verify that profile first in a terminal:
 
@@ -177,6 +193,50 @@ MiniMax note:
 - if you also want plain terminal `codex --profile <name>` to work directly, add `model_provider = "minimax"` and the matching top-level model such as `MiniMax-M2.7` or `MiniMax-M2.5` to `~/.codex/config.toml`
 - DeepScientist automatically downgrades `xhigh` to `high` when it detects an older Codex CLI that does not support `xhigh`
 
+### 2.3 Claude Code path
+
+Use this when `claude` already works directly in your terminal.
+
+The shortest validation path is:
+
+```bash
+claude --version
+claude -p --output-format json --tools "" "Reply with exactly HELLO."
+ds doctor --runner claude
+```
+
+Then launch DeepScientist through Claude Code:
+
+```bash
+ds --runner claude
+```
+
+If you want the full setup order, config mapping, and gateway notes, continue with:
+
+- [24 Claude Code Setup](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+
+### 2.4 OpenCode path
+
+Use this when `opencode` already works directly in your terminal.
+
+The shortest validation path is:
+
+```bash
+opencode --version
+opencode run --format json --pure "Reply with exactly HELLO"
+ds doctor --runner opencode
+```
+
+Then launch DeepScientist through OpenCode:
+
+```bash
+ds --runner opencode
+```
+
+If you want the full setup order, config mapping, and provider notes, continue with:
+
+- [25 OpenCode Setup](./25_OPENCODE_PROVIDER_SETUP.md)
+
 ## 3. Start the Local Runtime
 
 Run:
@@ -186,6 +246,15 @@ ds
 ```
 
 This starts the local daemon and the web workspace.
+
+If you want this launch to use a non-default runner, add `--runner`:
+
+```bash
+ds --runner claude
+ds --runner opencode
+```
+
+If the target runner passes `ds doctor` and you want to keep using it, switch `config.default_runner` later in `~/DeepScientist/config/config.yaml` or in the Settings page.
 
 Again, strongly recommended:
 

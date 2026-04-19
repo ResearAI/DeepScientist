@@ -282,6 +282,7 @@ export function QuestCopilotDockPanel({
     <div className="flex h-full min-h-0 flex-col" data-onboarding-id="workspace-copilot-panel">
       {mode === 'chat' ? (
         <QuestConnectorChatView
+          questId={questId}
           feed={workspace.feed}
           loading={workspace.loading}
           restoring={workspace.restoring}
@@ -296,6 +297,8 @@ export function QuestCopilotDockPanel({
           loadingOlderHistory={workspace.loadingOlderHistory}
           onLoadOlderHistory={workspace.loadOlderHistory}
           onSubmit={workspace.submit}
+          onReadNow={workspace.readNow}
+          onWithdraw={workspace.withdraw}
           onStopRun={handleStopRun}
           prefill={prefill}
         />
@@ -317,6 +320,8 @@ export function QuestCopilotDockPanel({
           loadingOlderHistory={workspace.loadingOlderHistory}
           onLoadOlderHistory={workspace.loadOlderHistory}
           onSubmit={workspace.submit}
+          onReadNow={workspace.readNow}
+          onWithdraw={workspace.withdraw}
           onStopRun={handleStopRun}
           prefill={prefill}
         />

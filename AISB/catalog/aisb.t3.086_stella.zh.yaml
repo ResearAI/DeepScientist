@@ -1,0 +1,142 @@
+id: aisb.t3.086_stella
+name: STELLA：用于大气时间序列预测的时空知识嵌入式轻量级模型
+version: 0.1.0
+one_line: 通过时空位置嵌入和 MLP 进行轻量级大气时间序列预测，挑战 Transformer 复杂性假设。
+task_description: 这个打包的基准测试涵盖了 STELLA，这是一种轻量级大气时间序列预测模型，它用时空位置嵌入 (STPE) 与简单的 MLP 相结合取代了 Transformer 注意力堆栈。核心见解是地理坐标和时间特征（与大气动力学本质上相关）足以捕获时空相关性，而无需大量关注机制。当前的本地快照保留了论文元数据和参考文献，但缺乏可执行的培训和评估代码；在执行基准测试之前，需要从上游 GitHub 存储库进行完全恢复。
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- test_mae
+- test_rmse
+launch_profiles:
+- id: analysis_only
+  label: 仅分析
+  description: 在不执行代码的情况下查看保存的大气预报基准元数据、论文参考文献和架构文档。
+- id: restore_first
+  label: 恢复然后评估
+  description: 在尝试训练或评估运行之前，从上游 GitHub 存储库恢复 STELLA 源实现。从 https://github.com/GestaltCogTeam/STELLA 恢复代码是先决条件。
+dataset_download:
+  primary_method: pending_restoration
+  sources:
+  - type: upstream_repository
+    url: https://github.com/GestaltCogTeam/STELLA
+    notes: Source code and datasets referenced in paper require restoration from upstream; not bundled in current snapshot.
+  - type: paper_reference
+    url: https://arxiv.org/abs/2408.09695
+    notes: Full paper with dataset descriptions for GlobalWind, PEMS-BAY, and three additional atmospheric datasets.
+  notes:
+  - 当前本地快照不保留可执行的基准路由；数据集设置是上游恢复的一部分。
+  - Five datasets referenced: 来自气象站网络的一份合成数据和四份真实世界大气测量数据集。
+  - 将数据集获取视为已阻止，直到源恢复完成。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 公共基准；纸质访问无需身份验证。
+  - 源恢复阶段需要 GitHub 访问权限。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+    gpu_arch: pascal+
+    network: required_for_restore
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    gpu_arch: ampere+
+    network: required_for_restore
+environment:
+  python: '3.9'
+  cuda: '11.1'
+  pytorch: 1.10.0
+  flash_attn: null
+  key_packages:
+  - pytorch
+  - numpy
+  - pandas
+  - scipy
+  notes:
+  - 环境规范是暂定的；源自纸张依赖性，并且不由保留的设置文件锚定。
+  - 当前本地快照缺少可执行环境配置；将 Python/pytorch/cuda 提示作为恢复目标的参考。
+  - 恢复后确认上游 requirements.txt 的确切依赖版本。
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- no_execution_anchor
+risk_notes:
+- 当前快照不保留任何可执行代码文件；两个主要指标（test_mae、test_rmse）都是无代码阻止的。
+- 在此打包过程中未执行任何基准测试。
+- 当前快照中缺少顶级自述文件；需要从 GitHub 恢复。
+- Code-bearing roots: 当前快照中未检测到任何内容。
+- Static code-audit status: 阻止无代码。
+- 恢复评估协议时，优先选择现有代码文件而不是仅自述文件声明。
+recommended_when: 使用此条目进行 STELLA 大气预报路线的纸质分析和规划，或者在评估挑战 Transformer 复杂性假设的时空预测任务的轻量级模型架构时。当源恢复工作流程是下一个操作时，适用于执行前分析。
+not_recommended_when: 不要将此本地包视为准备运行的预测基准。在未先从上游 GitHub 存储库完成源恢复之前，请勿尝试执行基准测试。分阶段快照中缺少可执行的训练和评估代码；执行尝试将会失败。
+paper:
+  title: 'On the Integration of Spatial-Temporal Knowledge: A Lightweight Approach to Atmospheric Time Series Forecasting'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://arxiv.org/abs/2408.09695
+  github: https://github.com/GestaltCogTeam/STELLA
+  authors:
+  - Yisong Fu
+  - Fei Wang
+  - Zezhi Shao
+  - Boyu Diao
+  - Lin Wu
+  - Zhulin An
+  - Chengqing Yu
+  - Yujie Li
+  - Yongjun Xu
+  affiliations:
+  - State Key Laboratory of AI Safety, Institute of Computing Technology, Chinese Academy of Sciences
+  - University of Chinese Academy of Sciences
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.086_stella.zip
+  archive_type: zip
+  local_dir_name: paper-86-STELLA
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.086_stella.zip
+  sha256: ac2af82678fd2caab746e97744911de757709b1bc85d89ff8682b9f0d25548ed
+  size_bytes: 32873
+display:
+  palette_seed: sky-gold-atmosphere
+  art_style: climate-signal
+  accent_priority: high
+image_path: ../image/086_aisb.t3.086_stella.jpg
+capability_tags:
+- research_code_optimization
+- atmospheric_forecasting
+- time_series_forecasting
+- lightweight_models
+- spatial_temporal_modeling
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+operational_notes:
+- name: restoration_required
+  description: 在执行任何操作之前，必须从 https://github.com/GestaltCogTeam/STELLA 恢复源代码和评估管道。当前快照不包含可执行锚点。
+- name: metric_contract
+  description: Error 500 (Server Error)!!1500.That’s an error.There was an error. Please try again later.That’s all we know.
+- name: architecture_summary
+  description: STELLA 使用时空位置嵌入（STPE）与 MLP 层相结合，取代了 Transformer 注意力机制。模型大小约为 10k 个参数。论文声称，在单个 GPU 上的训练时间约为 1 小时。
+- name: dataset_summary
+  description: 论文对包括 GlobalWind 和 PEMS-BAY 在内的五个数据集进行了评估，用于 N 个气象站网络的大气变量预测。精确的数据集文件需要恢复。
+recovery_rule: 选择 origin_path、source_ref 和 evaluation_protocol.code_paths 时，优先选择现有代码文件而不是仅自述文件声明。保持 metrics_summary 为空，直到存在可信执行输出。如果当前快照没有某个指标的可执行锚点，请将该指标标记为临时或已阻止，而不是声明支持。

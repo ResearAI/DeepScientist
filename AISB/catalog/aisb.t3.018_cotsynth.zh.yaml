@@ -1,0 +1,162 @@
+schema_version: 1
+id: aisb.t3.018_cotsynth
+name: 'CoT合成器：通过答案合成提升大语言模型性能'
+version: 0.1.0
+one_line: '推理时答案合成基准测试：从8B规模策略模型生成多样化的CoT候选响应，然后通过训练好的Synthesizer-8B合成更优答案，在GSM8k、MATH500、WikiTQ和FeTaQA上评估准确率。
+
+'
+task_description: '该基准测试复现了CoT合成器论文（ACL 2025）。核心工作流程为：（1）使用策略模型（如Llama3-8B-Instruct）通过温度/top-p解码为每个问题采样N个多样化候选响应，（2）将候选响应输入合成器模型，执行基于CoT的分析与合成以产生精炼的最终答案，（3）在四个基准测试上评估——GSM8k（精确匹配准确率）、MATH500（通过DART-Math评估器的精确匹配准确率）、WikiTQ（精确匹配准确率）和FeTaQA（ROUGE-L召回率）。快照包含data/文件夹中的捆绑评估测试数据、使用vLLM的推理代码、评估脚本、微调流程以及用于创建合成训练数据的数据生成流程。预训练的Synthesizer-8B检查点及训练数据可在Hugging Face获取。该工作流程为推理密集型：每次评估需要通过vLLM服务8B模型并运行多样本生成。MATH评估还需从GitHub安装dart-math包。该基准测试与自洽性、通用自洽性、基于奖励模型的Best-of-N以及LMCOR基线进行比较。
+
+'
+capability_tags:
+- research_code_optimization
+- large_language_models
+- answer_synthesis
+- mathematical_reasoning
+- table_qa
+- chain_of_thought
+- inference_scaling
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 1d+
+difficulty: hard
+data_access: public
+primary_outputs:
+- accuracy_gsm8k
+- accuracy_math500
+- accuracy_wikitq
+- rouge_l_fetaqa
+- synthesized_answers
+- vote_report
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '在单个数据集（如使用预生成候选响应的MATH500）上运行合成推理并评估准确率。验证vLLM服务和评估流程的端到端工作。
+
+'
+- id: synthesis_eval
+  label: 完整合成评估
+  description: '使用Synthesizer-8B模型或Llama3.1-70B作为合成器，在所有四个基准测试（GSM8k、MATH500、WikiTQ、FeTaQA）上运行完整的答案合成与评估工作流程。需要先从每个策略模型生成候选响应。
+
+'
+- id: data_pipeline
+  label: 数据生成流程
+  description: '运行两阶段数据生成流程（sampling.py → synthesizer.py → filter）以生成Synthesizer-8B的训练数据。需要70B响应LLM且计算密集。
+
+'
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: bundled
+    url: null
+    access: public
+    note: 'GSM8k、MATH500、WikiTQ和FeTaQA的测试集包含在快照压缩包的data/文件夹中。
+
+'
+  - kind: huggingface
+    url: https://huggingface.co/datasets/BoHanMint/Synthesizer-8B-math-train-data
+    access: public
+    note: '预生成的合成训练数据（295k MATH、87k WikiTQ）。仅在重新训练Synthesizer-8B时需要。
+
+'
+  - kind: huggingface
+    url: https://huggingface.co/BoHanMint/Synthesizer-8B-math
+    access: public
+    note: '预训练的Synthesizer-8B-math检查点。除非从头训练，否则推理时必需。
+
+'
+  - kind: github
+    url: https://github.com/hkust-nlp/dart-math
+    access: public
+    note: 'MATH500精确匹配评分所需的DART-Math评估库。必须单独pip安装。
+
+'
+  notes:
+  - 捆绑测试数据很小（仅几MB）。模型检查点约16 GB（8B模型）。
+  - 如使用Llama3.1-70B作为合成器运行基线，需要约140 GB的模型权重。
+credential_requirements:
+  mode: optional
+  items:
+  - HuggingFace token（如需访问门控模型以获取Llama3权重）
+  - OpenAI API key（仅在评估GPT-4o作为策略模型时需要）
+  - GLM-4-Plus API key（仅在评估GLM-4-Plus作为策略模型时需要）
+  notes:
+  - 使用开源模型的核心评估无需凭据。
+  - 仅在复现API基策略模型的完整论文结果时需要API密钥。
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 2
+    gpu_vram_gb: 48
+environment:
+  python: '3.11'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - deepspeed==0.15.2
+  - vllm==0.5.3
+  - transformers==4.43.1
+  - rouge-score
+  - dart-math (pip install from GitHub)
+  notes:
+  - vLLM是主要推理引擎；synthesis_infer.py默认tensor_parallel_size=1，max_model_len=8192。
+  - MATH评估需要通过`pip install -e .`从dart-math仓库克隆并安装。
+  - FeTaQA评估需要rouge-score包。
+  - 代码在多个脚本中硬编码了CUDA_VISIBLE_DEVICES；请根据您的GPU拓扑进行调整。
+  - 快照中的requirements.txt包含完整的依赖列表。
+risk_flags:
+- external_package_dependency
+- large_model_weights
+- hardcoded_gpu_ids
+risk_notes:
+- MATH评估依赖外部dart-math包（GitHub克隆 + pip install -e）。如不可用，MATH500评分将失败。
+- 脚本硬编码了CUDA_VISIBLE_DEVICES（如推理中为"0"，评估中为"3"）。在多GPU或不同硬件上必须调整。
+- 完整论文复现需要服务70B模型以生成候选响应基线，需要≥2×80GB GPU。
+- 基于API的策略模型评估（GPT-4o、GLM-4-Plus）会产生实际货币成本，需要API凭据。
+- 打包过程中未执行运行时验证；指标值尚未确认。
+recommended_when: '当您需要一个推理密集型的LLM评估任务，重点关注数学推理和表格问答的答案合成策略时使用此基准测试。非常适合研究推理时扩展、多响应聚合以及基于CoT的8B类模型后处理。所有评估数据已捆绑，预训练检查点可在Hugging Face公开获取。
+
+'
+not_recommended_when: '如果无法在GPU上服务8B类模型（最低24 GB显存）、需要无模型服务开销的基准测试，或需要完全自包含的评估而不依赖任何外部包依赖项（dart-math是MATH评分必需的），请勿使用此基准测试。
+
+'
+paper:
+  title: 'CoT-based Synthesizer: Enhancing LLM Performance through Answer Synthesis'
+  venue: ACL 2025
+  year: 2025
+  url: https://arxiv.org/abs/2501.01668
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.018_cotsynth.zip
+  archive_type: zip
+  local_dir_name: paper-18-CoTSynth
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.018_cotsynth.zip
+  sha256: 245a9c52e66e83cc77844c2375cf61a65cb6823fd84bdaf9142687559498a885
+  size_bytes: 925436
+commercial:
+  annual_fee: null
+display:
+  palette_seed: teal-gold-synthesis
+  art_style: benchmark-notebook
+  accent_priority: high
+image_path: ../image/018_aisb.t3.018_cotsynth.jpg

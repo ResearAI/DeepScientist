@@ -1,0 +1,117 @@
+id: aisb.t3.057_mdreid
+name: MDReID
+version: 0.1.0
+one_line: >-
+  两阶段多模态目标重识别，通过模态解耦特征学习支持任意到任意的查询-图库模态组合。
+task_description: >-
+  该封装基准测试涵盖多模态目标重识别任务，采用模态解耦特征处理和检索时重排序技术。
+  MDReID 提出了模态解耦学习（MDL）和模态感知度量学习（MML），将模态共享特征与模态特定特征分离，
+  使模态匹配和模态不匹配的查询-图库场景下均能实现有效检索。支持三个多光谱数据集：RGBNT201、RGBNT100 和 MSVR310。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- map
+- rank1
+- reid_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: >-
+    使用预训练权重在单一数据集上运行一条封装的多模态重识别测试流程。
+- id: full_train_eval
+  label: 完整训练+评估
+  description: >-
+    从头训练 MDReID 模型，并在所有封装的人员/物体重识别数据集上进行评估。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: RGBNT201
+    url: https://drive.google.com/drive/folders/1EscBadX-wMAT56_It5lXY-S3-b5nK1wH
+    type: google_drive
+  - name: RGBNT100
+    url: https://pan.baidu.com/s/1xqqhN4Lctm3RcUdskG0Ug
+    type: baidu_pan
+    access_code: rjin
+  - name: MSVR310
+    url: https://drive.google.com/file/d/1IxI-fGiluPO_Ies6YjDHeTEuVYhFdYwD/view
+    type: google_drive
+  - name: CLIP ViT-B-16 Pretrained
+    url: https://pan.baidu.com/s/1YPhaL0YgpI-TQ_pSzXHRKw
+    type: baidu_pan
+    access_code: 52fu
+  notes:
+  - 训练前请下载所有人员数据集；如使用 RGBNT100 和 MSVR310，需修改配置文件中的数据集路径
+  - 预训练的 CLIP ViT-B-16 是骨干网络初始化所必需的
+  - RGBNT201、RGBNT100 和 MSVR310 均提供预训练模型权重
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 300
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.8'
+  cuda: '11.3'
+  pytorch: 1.12.0
+  flash_attn: null
+  key_packages:
+  - torch-geometric==2.1.0
+  notes:
+  - 推荐使用 CUDA 11.3；与 CUDA 11.x 系列兼容
+  - 通过 requirements.txt 安装依赖
+  - config/defaults.py 中可配置设备 ID
+  - 训练速度优化默认启用 cudnn.benchmark
+risk_flags:
+- large_dataset_storage
+- multi_source_download
+- baidu_pan_access_required
+risk_notes:
+- RGBNT100 和 MSVR310 需要使用提供的提取码访问百度云盘
+- 大型多模态图像数据集需要大量磁盘空间用于训练
+- 本次封装过程未执行基准测试；建议进行运行时验证
+recommended_when: >-
+  当您需要针对真实人员和物体重识别数据集在不同模态条件下进行多模态检索任务时使用此基准测试。
+  适用于监控或异构传感器场景下的跨模态检索、模态泛化以及视觉-语言特征解耦研究。
+not_recommended_when: >-
+  若您无法在本地托管大型多模态图像数据集，或需要以文本为中心、语言密集型的基准测试，
+  或无法访问百度云盘下载数据集，请勿使用。训练时单卡显存低于 16GB 不推荐使用。
+paper:
+  title: 'MDReID: Modality-Decoupled Learning for Any-to-Any Multi-Modal Object Re-Identification'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=7jg26Fd1ra
+  code_url: https://github.com/stone96123/MDReID
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.057_mdreid.zip
+  archive_type: zip
+  local_dir_name: paper-57-MDReID
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.057_mdreid.zip
+  sha256: 443ff33a90ece8148f74b30103881c6835a07e69205d2d151c54fbc15215b9e8
+  size_bytes: 1554938
+display:
+  palette_seed: crimson-cobalt-reid
+  art_style: retrieval-vision
+  accent_priority: high
+image_path: ../image/057_aisb.t3.057_mdreid.jpg

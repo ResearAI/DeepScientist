@@ -1,6 +1,6 @@
-The first decision is now simple.
+This is the first real fork in the road.
 
-- **Copilot** means quiet start, human-led pacing.
-- **Autonomous** means standard DeepScientist, create and run.
+- **Copilot** = enter first, inspect first, decide the first action yourself.
+- **Autonomous** = create the workspace and let the system begin the standard workflow.
 
-This guide continues with the autonomous path because it shows the full startup flow.
+For a beginner tutorial, `Autonomous` is more useful because it exposes the full startup path in one run.

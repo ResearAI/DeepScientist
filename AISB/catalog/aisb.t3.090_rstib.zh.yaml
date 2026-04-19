@@ -1,0 +1,109 @@
+id: aisb.t3.090_rstib
+name: 用于鲁棒时空预测的信息瓶颈引导 MLP
+version: 0.1.0
+one_line: 信息瓶颈引导 MLP 的师生培训，以实现稳健、高效的时空预测。
+task_description: 该打包基准涵盖使用鲁棒时空信息瓶颈 (RSTIB) 原理和知识蒸馏训练机制进行鲁棒时空预测。该方法首先训练教师模型 (STGCN)，然后将其知识提炼成高效的 RSTIB-MLP 学生，从而解决时空数据中的双重噪声效应。目标是实现对噪声扰动的鲁棒性，同时保持简单 MLP 架构与昂贵的图神经网络相比的计算效率。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- mae
+- rmse
+- mape
+- student_checkpoint
+launch_profiles:
+- id: teacher_student_train
+  label: 师生列车
+  description: 执行完整的两阶段管道。首先运行 run_teacher.sh 来训练 STGCN 教师模型，然后运行 ​​run_student.sh 通过教师的知识蒸馏来训练 RSTIB-MLP 学生。训练脚本分别使用 config/teacher/ 和 config/student/ 中的配置文件。
+- id: student_eval
+  label: 学生评价
+  description: 根据保留的测试数据对经过训练的 RSTIB-MLP 学生模型进行评估。使用 train_student.py 和训练配置文件中保存的检查点。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - type: bundled
+    description: Preprocessed datasets including PEMS04 in data/ directory, loaded via DataHandler_st.py
+  - type: external
+    description: PyG precompiled wheels for torch_scatter and torch_sparse (cp39-cp39-linux_x86_64) required for graph operations
+  notes:
+  - PEMS04流量数据集捆绑在data/PEMS04/中
+  - 预编译的PyG轮文件（torch_scatter-2.0.9、torch_sparse-0.6.16+pt113cu116）必须单独安装
+  - 请参阅 requirements.txt 了解其他 Python 依赖项
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+    notes: 在 PEMS04 数据集上运行教师或学生培训的最低要求
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 推荐用于具有较大批量的完整师生管道
+environment:
+  python: '3.9'
+  cuda: '11.7'
+  pytorch: 1.13.1
+  flash_attn: null
+  key_packages:
+  - torch==1.13.1
+  - torchvision==0.14.1
+  - torchaudio==0.13.1
+  - torch-scatter
+  - torch-sparse
+  - numpy
+  notes:
+  - Install PyTorch with CUDA 11.7 support: conda 安装 pytorch==1.13.1 pytorch-cuda=11.7 -c pytorch -c nvidia
+  - Install precompiled PyG wheels: torch_scatter-2.0.9-cp39-cp39-linux_x86_64.whl 和 torch_sparse-0.6.16+pt113cu116-cp39-cp39-linux_x86_64.whl
+  - 请参阅捆绑的 requirements.txt 以获取完整的依赖项列表
+risk_flags:
+- two_stage_training
+- gpu_memory_constrained
+- no_runtime_verification
+risk_notes:
+- 两阶段管道需要先运行教师培训，然后才能执行学生培训
+- 学生模型使用通过 PyG 处理的基于图的邻接矩阵； GPU 内存要求可能会因空间邻接大小而异
+- 静态代码审计确认了可执行锚点，但在打包过程中未执行基准测试；在信任指标值之前需要运行时验证
+- MAPE 指标在 new_metrics.py 中由代码支持，但未在当前 primary_outputs 中列出
+recommended_when: 当您想要研究时空预测的 MLP 效率以及对噪声扰动的显式鲁棒性时，请使用此基准。信息瓶颈正则化和师生框架适合研究人员研究从图网络到更简单的架构的知识蒸馏，同时保持抗噪性。
+not_recommended_when: 如果您需要纯粹基于图形的方法（无学生 MLP 蒸馏）、概率预测基准或没有 GPU 要求的轻量级基准，请不要使用此基准。
+paper:
+  title: Information Bottleneck-guided MLPs for Robust Spatial-temporal Forecasting
+  authors:
+  - Min Chen
+  - Guansong Pang
+  - Wenjun Wang
+  - Cheng Yan
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/chen25ar.html
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.090_rstib.zip
+  archive_type: zip
+  local_dir_name: paper-90-RSTIB
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.090_rstib.zip
+  sha256: 501c6d17e5bccd9cc64d8490c371ad914938d355be22814134f054566f302bea
+  size_bytes: 37796454
+display:
+  palette_seed: plum-cyan-bottleneck
+  art_style: robust-forecast
+  accent_priority: high
+image_path: ../image/090_aisb.t3.090_rstib.jpg

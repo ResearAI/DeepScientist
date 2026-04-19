@@ -1,0 +1,137 @@
+id: aisb.t3.041_amdm
+name: 时间序列预测的自回归移动扩散模型
+version: 0.1.0
+one_line: 基于扩散的时间序列预测，采用自回归移动结构和连续顺序扩散，提升概率预测能力。
+task_description: >
+  本基准实现了用于时间序列预测的自回归移动扩散（ARMD）模型。与从白高斯噪声开始
+  的传统扩散模型不同，ARMD采用基于链的扩散与先验，将时间序列的演化建模为连续顺序扩
+  散过程。前向扩散将未来序列扩散到历史序列，而反向去噪/演化过程则将历史序列转换为
+  未来预测。这使扩散采样过程与预测目标对齐，无需条件生成。任务是通过调整扩散调度
+  和移动动态来提升标准公开基准套件上的概率预测指标。
+
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: partial
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- mse
+- mae
+- forecast_samples
+launch_profiles:
+- id: analysis_only
+  label: 仅分析
+  description: 在完整运行前，检查保存的扩散预测代码和配置。
+- id: restore_first
+  label: 优先恢复
+  description: 在将此包视为可运行之前，恢复README中引用的缺失主入口文件。
+- id: full_train_eval
+  label: 完整训练和评估
+  description: 使用调度器感知训练进行训练，并在所有指标上评估。使用Config/目录下的
+    配置文件（etth1.yaml、ettm1.yaml、exchange.yaml、stock.yaml）。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: ETT数据集
+    url: https://github.com/thuml/iTransformer
+    license: MIT
+  - name: 太阳能和汇率数据集
+    url: https://github.com/thuml/iTransformer
+    license: MIT
+  - name: 股票数据集
+    url: https://github.com/Y-debug-sys/Diffusion-TS
+    license: MIT
+  notes:
+  - 下载数据集并放置在 ./Data/datasets 目录
+  - 数据集必须从外部仓库获取，因未捆绑
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - ema_pytorch
+  - tqdm
+  - torch
+  - numpy
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - seaborn
+  notes:
+  - 通过以下命令安装依赖：pip install -r requirements.txt
+  - 完整依赖集记录在捆绑的README中
+risk_flags:
+- partial_snapshot
+- no_runtime_verification
+risk_notes:
+- 静态代码审计发现所有分阶段指标都有可执行锚点
+- 本次打包未执行基准测试
+- 运行时执行是验证指标值之前必需的
+- 建议使用恢复模式以恢复任何缺失的主入口文件
+recommended_when: >
+  当您需要使用标准公开时间序列数据集进行扩散式概率预测任务、需要在多元预测上达
+  到最优性能，或想要探索将扩散采样与预测目标对齐的连续顺序扩散方法时，请使用此基准。
+
+not_recommended_when: >
+  如果您需要仅CPU运行的小型基准测试、需要非生成式的点估计预测设置，或需要在无运行
+  时开销的情况下获得预先执行并验证的指标值，请勿使用此基准。
+
+paper:
+  title: Auto-Regressive Moving Diffusion Models for Time Series Forecasting
+  authors:
+  - Jiaxin Gao
+  - Qinglong Cao
+  - Yuntian Chen
+  venue: arXiv preprint
+  year: 2024
+  url: https://arxiv.org/abs/2412.09328
+  code_url: https://github.com/daxin007/ARMD
+display:
+  palette_seed: midnight-amber-diffusion
+  art_style: sequential-lab
+  accent_priority: high
+image_path: ../image/041_aisb.t3.041_amdm.jpg
+capability_tags:
+- research_code_optimization
+- time_series_forecasting
+- diffusion_models
+- forecasting
+- scientific_ml
+- probabilistic_forecasting
+- autoregressive_moving
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+download:
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.041_amdm.zip
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.041_amdm.zip
+  archive_type: zip
+  sha256: 9fc41b0433a71fc79ca141b9d6451c7323ab4286cead7d38e77d5ed793283244
+  size_bytes: 2172119

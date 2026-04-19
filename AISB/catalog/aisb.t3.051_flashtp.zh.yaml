@@ -1,0 +1,124 @@
+schema_version: 1
+id: aisb.t3.051_flashtp
+name: FlashTP：用于机器学习原子间势能融合的稀疏感知张量积
+version: 0.1.0
+one_line: >
+  对融合的稀疏感知CUDA张量积内核进行基准测试和优化，加速等变机器学习原子间势能（MLIP），以毫秒为单位测量前向、反向和双反向内核延迟。
+task_description: >
+  本基准测试评估等变机器学习原子间势能（MLIP）中使用的张量积层的CUDA内核性能。张量积层是等变MLIP模型（如SevenNet）中的主要计算瓶颈，占推理时间的89%和训练时间的75%。FlashTP通过将张量积层及其后续归约层中的所有内核融合为单一内核、利用Clebsch-Gordan系数矩阵的高稀疏性（71-86%），并引入路径聚合执行以增加输入重用来解决这一问题。
+
+  评估流程完全自包含：使用ir_config/中的IR配置（NequIP、MACE、SevenNet配置已捆绑）运行example/benchmark_timing.py。该脚本使用CUDA事件对前向、反向和双反向传播进行计时（50次预热迭代，200次计时迭代），并以毫秒为单位报告每次迭代的延迟。可以通过example/test.sh进行更简单的冒烟测试。无需外部数据集、凭证或评估服务器。必须从源码编译自定义CUDA扩展（pip install . --no-build-isolation），这可能需要长达10分钟。默认情况下，内核针对NVIDIA A100（sm_80）和H100（sm_90）编译；设置CUDA_ARCH_LIST以针对其他架构。
+
+  优化任务是提高内核吞吐量（降低forward_ms、backward_ms、double_backward_ms），同时不违反与参考e3nn TensorProduct实现的数值正确性。
+capability_tags:
+- research_code_optimization
+- cuda_kernels
+- scientific_ml
+- interatomic_potentials
+- systems_efficiency
+- gpu_kernel_fusion
+- sparse_computation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 2-6h
+difficulty: hard
+data_access: public
+primary_outputs:
+- forward_ms
+- backward_ms
+- double_backward_ms
+- kernel_benchmark
+launch_profiles:
+- id: microbenchmark
+  label: 微观基准
+  description: >
+    在单个IR配置上运行example/benchmark_timing.py，测量前向、反向和双反向内核延迟。最快的方式；每个配置几分钟内完成。
+- id: full_eval
+  label: 完整评估
+  description: >
+    跨所有捆绑的IR配置（NequIP、MACE、SevenNet）运行基准测试，包含多个边数和数据类型，以生成全面的内核性能配置文件。
+- id: smoke_test
+  label: 冒烟测试
+  description: >
+    运行example/test.sh验证CUDA扩展编译成功，并在一种NequIP配置（4_32_3_p_sc，32768条边，fp32）上确认FlashTP内核产生正确输出。
+dataset_download:
+  primary_method: none
+  sources: []
+  notes:
+  - 无需下载外部数据集。所有用于微观基准测试的IR配置都捆绑在ir_config/中。
+  - 边图在运行时由flashTP_e3nn.utils.fixed_generate_edgepair合成生成。
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 120
+    gpu_count: 1
+    gpu_vram_gb: 80
+environment:
+  python: '3.10'
+  cuda: '12'
+  pytorch: 2.4.1
+  key_packages:
+  - e3nn==0.6.6
+  - torch_scatter
+  notes:
+  - README明确要求CUDA Toolkit 12或更高版本。
+  - Python 3.11被提及为非严格要求；3.10+应该可以工作。
+  - 在pip install期间编译自定义CUDA内核最多需要10分钟。
+  - 默认CUDA_ARCH_LIST针对sm_80（A100）和sm_90（H100）。设置CUDA_ARCH_LIST以匹配您的GPU。
+  - torch_scatter是精确e3nn参考基准测试所必需的。
+  - 完整的依赖项列表请参见requirements.txt和pyproject.toml。
+risk_flags:
+- custom_cuda_compilation
+- gpu_architecture_dependency
+risk_notes:
+  - CUDA扩展必须从源码编译；在不支持的架构上编译失败是常见的失败模式。
+  - 默认构建仅针对A100/H100。其他GPU需要将CUDA_ARCH_LIST设置为正确的计算能力。
+  - 打包过程中未执行基准测试运行；指标值应在运行时验证。
+  - e3nn参考实现用于数值正确性检查；不匹配的e3nn版本可能导致细微差异。
+recommended_when: >
+  当您需要一个专注于原子级ML工作负载中等变张量积操作的独立CUDA内核优化任务时使用此基准测试。非常适合评估内核融合、稀疏性利用和GPU内存优化策略，使用具有前向/反向/双反向阶段的定义明确的微观基准。
+not_recommended_when: >
+  如果您无法编译自定义CUDA扩展、缺少计算能力8.0+的NVIDIA GPU，或需要带有端到端MD模拟评估的高级应用程序基准测试，请勿使用此基准测试。不适合纯CPU环境。
+paper:
+  title: 'FlashTP: Fused, Sparsity-Aware Tensor Product for Machine Learning Interatomic
+    Potentials'
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/lee25l.html
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.051_flashtp.zip
+  archive_type: zip
+  local_dir_name: paper-51-FlashTP
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.051_flashtp.zip
+  sha256: c347ddfa54284f9900fb0629240f73461930b7d0eaa83a68b1bfce61cf6d5fb6
+  size_bytes: 148422
+commercial:
+  annual_fee: null
+display:
+  palette_seed: graphite-amber-tensor
+  art_style: hpc-kernel
+  accent_priority: high
+image_path: ../image/051_aisb.t3.051_flashtp.jpg

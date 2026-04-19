@@ -1,0 +1,138 @@
+id: aisb.t3.052_nsdiff
+name: 非平稳扩散概率时间序列预测
+version: 0.1.0
+one_line: 针对非平稳时间序列动力学的基于扩散的概率预测框架，在ETTh基准上通过CRPS进行评估。
+task_description: |
+  NsDiff是一个基于扩散的概率预测理论框架，专为非平稳场景设计。该打包的基准测试包含此方法的训练和评估流程，
+  包括预训练脚本、主实验入口点（./src/experiments/NsDiff.py）以及配置文件。然而，当前的本地快照未保留
+  README中引用的完整可执行源代码树；代码所在目录（configs/、notebooks/）仅提供部分锚点。
+  基准测试需要在执行前进行上游恢复。数据集在执行期间自动下载。评估使用CRPS（连续排序概率得分）作为主要指标。
+
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: 困难
+data_access: public
+primary_outputs:
+- crps
+launch_profiles:
+- id: analysis_only
+  label: 仅分析
+  description: 检查notebooks/uncertainty_variation.ipynb中的保留笔记本、configs/nsdiff.yml中的配置，
+    以及NsDiff路线的捆绑文档。
+- id: restore_first
+  label: 优先恢复
+  description: 在尝试基准测试执行之前，恢复README中引用的缺失源代码树。
+    需要从上游恢复./src/experiments/NsDiff.py和./scripts/目录。
+dataset_download:
+  primary_method: automatic
+  sources:
+  - README指出数据集在执行期间自动下载。
+  - 引用的基准测试包括ETTh1、ETTh2、ETTm1、ETTm2及其他ETT数据集变体。
+  notes:
+  - 将数据集设置视为上游恢复的一部分；当前快照中未捆绑下载脚本。
+  - 执行命令引用dataset_type参数（例如--dataset_type="ETTh1"）。
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.8'
+  cuda: '11.8'
+  pytorch: '2.0'
+  flash_attn: null
+  key_packages:
+  - 完整的依赖项请参见./requirements.txt
+  - 从configs/nsdiff.yml测试配置推断的核心依赖项
+  notes:
+  - 当前的本地包未保留可执行设置文件或除部分configs/和notebooks/根目录外的可运行源代码。
+  - 环境提示待上游恢复后生效。
+  - 安装命令：pip install -r ./requirements.txt
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- crps_metric_blocked
+risk_notes:
+- 当前快照未暴露可执行代码文件，无法锚定CRPS指标。
+- 本次打包过程中未执行任何基准测试；所有指标声明均视为临时性质。
+- configs/nsdiff.yml提供了采样和测试参数（batch_size=256、sampling_size=1000、n_z_samples=200、n_bins=10），
+  但无可执行的评估锚点。
+recommended_when: 当您需要论文支持的规划、上游恢复指导，或对NsDiff扩散预测路线的保留笔记本和配置文件
+  进行探索性分析时使用此条目。
+not_recommended_when: 请勿将本地包视为可直接运行的扩散基准测试。
+  README中引用的源代码树（src/experiments/、scripts/）未在本地保留。
+  在CRPS评估执行之前，需要先上游恢复可执行源代码树。
+paper:
+  title: Non-stationary Diffusion For Probabilistic Time Series Forecasting
+  venue: ICML 2025 Spotlight
+  year: 2025
+  url: https://arxiv.org/abs/2505.08613
+  authors:
+  - Weiwei Ye (equal contribution)
+  - Zhuopeng Xu (equal contribution)
+  - Ning Gui (corresponding author)
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.052_nsdiff.zip
+  archive_type: zip
+  local_dir_name: paper-52-NsDiff
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.052_nsdiff.zip
+  sha256: cc513276d021fd69cb749c3d843a64dc99b18428e9d1d66f040d07d62bed139a
+  size_bytes: 435952
+display:
+  palette_seed: navy-mint-diffusion
+  art_style: probabilistic-signal
+  accent_priority: high
+image_path: ../image/052_aisb.t3.052_nsdiff.jpg
+execution_evidence:
+  pretrain_script: bash ./scripts/pretrain_F/ETTh1.sh
+  main_entry: python3 ./src/experiments/NsDiff.py
+  example_args:
+  - --dataset_type=ETTh1
+  - --device=cuda:0
+  - --batch_size=32
+  - --horizon=1
+  - --pred_len=192
+  - --windows=168
+  - --load_pretrain=True
+  notes:
+  - 执行期间必须将PYTHONPATH设置为项目根目录。
+  - 多GPU设置建议使用CUDA_DEVICE_ORDER=PCI_BUS_ID。
+  - seeds参数接受列表格式：--seeds='[1232132, 3]'
+  - --load_pretrain=False选项可用于非预训练运行。
+config_anchors:
+- path: configs/nsdiff.yml
+  role: 主要配置文件
+  contains:
+  - 采样参数：batch_size=256, sampling_size=1000, last_only=True
+  - 测试参数：batch_size=256, n_z_samples=200, n_bins=10, minisample=1
+  - 覆盖率与NLL跟踪参数
+- path: notebooks/uncertainty_variation.ipynb
+  role: 分析笔记本锚点
+- path: configs/csbi.yaml
+  role: 附加配置（非主要）
+- path: configs/tmdm.yml
+  role: 附加配置（非主要）
+code_audit_status: blocked
+metric_blocking_reason: 当前快照中无可用于CRPS评估的可执行代码锚点。
+  configs/nsdiff.yml包含测试参数，但实际评估代码路径未被保留。

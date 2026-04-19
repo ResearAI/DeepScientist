@@ -1,0 +1,129 @@
+id: aisb.t3.069_treehfd
+name: Tree Ensemble Explainability through the Hoeffding Functional Decomposition
+  and TreeHFD Algorithm
+version: 0.1.0
+one_line: Decompose XGBoost ensemble predictions into interpretable main effects and
+  second-order interactions via the TreeHFD algorithm.
+task_description: 'This packaged benchmark evaluates explainability for XGBoost ensembles
+  using the Hoeffding functional decomposition (HFD). The TreeHFD algorithm decomposes
+  black-box tree-ensemble predictions into a unique sum of lower-dimensional functions—main
+  effects (single variables) and second-order interactions (pairs of variables)—that
+  are intrinsically transparent while preserving model accuracy. Unlike TreeSHAP,
+  the Hoeffding decomposition enforces hierarchical orthogonality, yielding clean
+  main-effect estimates where interactions are properly separated. The benchmark measures
+  decomposition quality via mean squared error against ground-truth analytical targets
+  on a controlled simulation study (p=6 dimensions, n=5000 samples, correlated inputs).
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- mse_eta12
+- mse_eta1
+- mse_eta2
+- mse_eta3
+- mse_eta4
+- mse_eta5
+- mse_eta6
+- mse_eta34
+- mse_others
+- functional_decomposition_report
+launch_profiles:
+- id: explainability_eval
+  label: Explainability Eval
+  description: Run the packaged Hoeffding-style decomposition route on the tree-ensemble
+    benchmark. Evaluates decomposition accuracy against analytical ground truth across
+    all main effects and second-order interactions.
+dataset_download:
+  primary_method: pip
+  sources:
+  - url: https://pypi.org/project/treehfd/
+    method: pip
+    package_name: treehfd
+  - url: https://deepscientist.cc/AISB/069_treehfd
+    method: archive
+    archive_type: zip
+    local_dir_name: paper-69-TreeHFD
+  notes:
+  - Install via `pip install treehfd` for latest release
+  - Archive provides full source with examples and tests
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.11'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - xgboost>=3.1,<4.0
+  - scipy>=1.16,<2.0
+  - numpy>=1.24
+  - scikit-learn>=1.3
+  notes:
+  - CPU-only execution fully sufficient for all benchmark routes
+  - GPU support optional via xgboost's proprietary NVIDIA modules
+  - Python >=3.11 required due to language features used
+  - Full dependency set in bundled requirements.txt or pyproject.toml
+risk_flags: []
+risk_notes: []
+recommended_when: 'Use this benchmark when you need interpretable explanations for
+  XGBoost models on tabular data with properly separated main effects and interactions.
+  Ideal for CPU-only environments and for comparing against TreeSHAP-based approaches
+  where entanglement of main effects with interactions is a concern.
+
+  '
+not_recommended_when: 'Do not use this if you require GPU acceleration (xgboost GPU
+  mode is unsupported), need explanations for neural networks or non-tree models,
+  or require explanations for high-cardinality categorical variables without one-hot
+  encoding.
+
+  '
+paper:
+  title: Tree Ensemble Explainability through the Hoeffding Functional Decomposition
+    and TreeHFD Algorithm
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=dRLWcpBQxS
+  authors:
+  - Clément Bénard
+  institutions:
+  - Thales cortAIx-Labs
+  - SINCLAIR AI Lab
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.069_treehfd.zip
+  archive_type: zip
+  local_dir_name: paper-69-TreeHFD
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.069_treehfd.zip
+  sha256: 7b44fd7e4586498d04dbdb0d6d8059aee6621c4253e2292dda069fab6d4abe37
+  size_bytes: 123618
+display:
+  palette_seed: cedar-ivory-tree
+  art_style: model-decomposition
+  accent_priority: medium
+image_path: ../image/069_aisb.t3.069_treehfd.jpg

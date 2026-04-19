@@ -1,0 +1,153 @@
+schema_version: 1
+id: aisb.t3.004_decentralattn
+name: 'TeCh：去中心化注意力机制无法捕获集中化信号'
+version: 0.1.0
+one_line: 在五个EEG/ECG基准数据集上，基于主题无关协议训练和评估TeCh（基于CoTAR）医学时间序列分类框架。
+task_description: '本基准测试评估TeCh框架——一种用线性复杂度的CoTAR（核心令牌聚合-重分配）模块替代标准二次自注意力的Transformer变体——在医学时间序列（MedTS）分类任务上的表现。任务是在最多五个预处理的临床数据集（3个EEG：APAVA、ADFTD、TDBrain；2个ECG：PTB、PTB-XL）上训练和调优TeCh，使用主题无关评估协议，其中训练集/验证集/测试集按患者划分，因此模型必须能够泛化到未见过的受试者。每个数据集在./scripts/下有专门的shell脚本，用于启动run.py → exp/exp_classification.py，并带有数据集特定的超参数（批大小、学习率、时间/通道编码器层数、增强混合、epoch预算）。模型输出分类logits；评估计算准确率、精确率、召回率、F1、AUROC和AUPRC。数据集必须从Medformer仓库外部下载并放置在./dataset/下。TDBrain数据集还需要机构许可。目标是改进分类质量（主要是准确率和F1），通过修改架构、训练循环或超参数，同时不破坏多数据集评估流程。
+
+  '
+capability_tags:
+- research_code_optimization
+- medical_time_series
+- transformers
+- classification
+- health_ai
+- eeg
+- ecg
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: restricted
+primary_outputs:
+- accuracy
+- precision
+- recall
+- f1
+- auroc
+- auprc
+- model_checkpoint
+- training_logs
+launch_profiles:
+- id: quick_check
+  label: 快速检查（单数据集）
+  description: '运行单个数据集脚本（如 bash ./scripts/APAVA.sh），使用默认超参数来验证训练循环、数据加载和指标计算是否端到端正常工作。在APAVA上运行5次迭代×40个epoch；在单个GPU上预计需要1-3小时。
+
+    '
+- id: full_eval
+  label: 完整基准测试套件
+  description: '按顺序或并行运行所有数据集脚本（APAVA、ADFTD、FLAAP、PTB、PTB-XL，以及可选的TDBrain）。每个脚本运行5个随机种子迭代。在单个GPU上根据数据集大小和epoch预算，预计总共需要6-24小时。
+
+    '
+- id: ablation
+  label: 消融实验/架构修改
+  description: '修改TeCh架构（如时间编码器与通道编码器的层数、CoTAR核心令牌维度、增强策略），并重新运行完整套件以测量对所有六个分类指标的影响。
+
+    '
+dataset_download:
+  primary_method: external
+  sources:
+  - kind: github
+    url: https://github.com/DL4mHealth/Medformer
+    access: public
+    note: '所有预处理的MedTS数据集（APAVA、ADFTD、FLAAP、PTB、PTB-XL、UCI-HAR）都托管在Medformer仓库中或从其中链接。下载并放置在./dataset/下。
+
+      '
+  - kind: restricted
+    url: https://github.com/DL4mHealth/Medformer
+    access: permission_required
+    note: 'TDBrain数据集需要机构许可才能下载。详见Medformer仓库的访问说明。
+
+      '
+  notes:
+  - Shell脚本硬编码了数据路径如/data/gqyu/dataset/med/APAVA/；请更新每个脚本中的--root_path以匹配您在./dataset/下的本地布局。
+  - 所有数据集的总磁盘占用估计为5-30 GB，取决于包含哪些数据集。
+credential_requirements:
+  mode: conditional
+  items:
+  - TDBrain数据集需要机构数据访问许可
+  notes:
+  - 六个数据集中有五个通过Medformer仓库公开可用。
+  - TDBrain需要单独的访问请求；即使不使用它，基准测试仍可完全运行。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 120
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: 2.4.1
+  flash_attn: null
+  key_packages:
+  - scikit-learn
+  - psutil
+  - numpy
+  notes:
+  - 完整依赖项列表请参见requirements.txt。
+  - 代码使用psutil进行CPU亲和性固定；请确保已安装。
+  - 未明确指定CUDA版本；任何与PyTorch 2.4.1兼容的版本都应该可以工作。
+risk_flags:
+- external_dataset_dependency
+- hardcoded_paths
+- restricted_data_subset
+risk_notes:
+- 数据集未打包在快照中；必须从Medformer仓库下载并放置在./dataset/下。
+- Shell脚本包含硬编码的绝对路径（如/data/gqyu/dataset/med/APAVA/），运行前必须编辑。
+- TDBrain数据集需要机构许可；省略它仍有五个可运行的基准测试。
+- 每个shell脚本运行5个随机种子迭代（--itr 5），这会使实际运行时间成倍增加；可减少迭代次数以快速验证。
+- num_workers在run.py中默认为16；如果CPU核心数较少，请减少此值。
+recommended_when: '当您想在严格的的主题无关评估协议下，在临床相关的EEG/ECG数据上测试医学时间序列分类的架构或训练循环修改，并自动计算六个标准分类指标时，请使用此基准测试。
+
+  '
+not_recommended_when: '如果无法从Medformer仓库获取外部数据集，如果您需要一个完全自包含且无外部下载的数据流程，或者如果您的研究重点是时间序列预测而非分类，则不要使用此基准测试。
+
+  '
+paper:
+  title: 'Decentralized Attention Fails Centralized Signals: Rethinking Transformers
+    for Medical Time Series'
+  venue: ICLR 2026 (Oral)
+  year: 2026
+  url: https://openreview.net/forum?id=oZJFY2BQt2
+  abstract_summary: '本论文重新审视了Transformer架构在医学时间序列分类中的应用，发现标准去中心化注意力机制无法有效捕获临床信号中的全局模式。我们提出了TeCh框架，通过核心令牌聚合-重分配（CoTAR）模块实现线性复杂度的注意力计算，在五个医学基准数据集上实现了最先进的性能。
+
+    '
+  abstract: 'We re-examine the Transformer architecture for medical time-series classification and find that standard decentralized attention mechanisms fail to effectively capture global patterns in clinical signals. We propose the TeCh framework with the Core Token Aggregation-Redistribution (CoTAR) module that achieves linear-complexity attention computation and state-of-the-art performance across five medical benchmark datasets.
+
+    '
+  notes:
+  - 本论文被ICLR 2026接收为Oral报告。
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.004_decentralattn.zip
+  archive_type: zip
+  local_dir_name: paper-4-DecentralAttn
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.004_decentralattn.zip
+  sha256: bf0dd8489ed4694dc4c1e494d25e9f564d99813e669ded0cef9a85cb3a2ae36c
+  size_bytes: 71932
+commercial:
+  annual_fee: null
+display:
+  palette_seed: crimson-teal-clinic
+  art_style: signal-lab
+  accent_priority: high
+image_path: ../image/004_aisb.t3.004_decentralattn.jpg

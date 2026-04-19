@@ -1,0 +1,166 @@
+schema_version: 1
+id: aisb.t3.030_processrm
+name: EpicPRM – 过程监督奖励模型数据构建
+version: 0.1.0
+one_line: '通过基于困惑度的蒙特卡洛估计和自适应二分搜索构建高质量过程监督数据（Epic50k），在Qwen2-math-1.5B上训练PRM，并在ProcessBench（GSM8K、MATH、OlympiadBench、OmniMATH）上评估步骤级F1分数。
+
+  '
+task_description: '此基准测试复现EpicPRM框架，用于构建数学推理的过程监督奖励模型。流水线包含三个阶段：（1）从多个LLM（LLaMA3-8B-Instruct、LLaMA3.1-8B-Instruct、Qwen2-7B-Instruct）在MATH数据集问题上生成链式思维推理链；（2）使用基于困惑度加权的蒙特卡洛估计和自适应二分搜索算法对中间推理步骤进行标注，该算法根据问题难度动态调整起始位置和采样数量；（3）在生成的Epic50k数据集（50k个标注步骤）上使用Qwen2-math-1.5B-base和二分类头训练过程奖励模型（PRM），然后通过ProcessBench严格协议评估步骤级正确性预测。评估脚本（eval_strict.py）计算F1作为acc_correct（正确识别的正确解决方案比例）和acc_error（预测的首个错误与真实值匹配的错误解决方案比例）的调和均值，阈值在GSM8K上调整后应用于MATH、OlympiadBench和OmniMATH。数据构建阶段（generate_train_data.py）需要运行多个7-8B参数LLM作为补全器进行rollout采样，这是计算最密集的阶段。PRM训练本身使用DeepSpeed ZeRO（提供stage 1/2/3配置）。快照包含所有阶段的可执行代码，但不含预生成的数据或预训练检查点；Epic50k和模型可在HuggingFace上获取。
+
+  '
+capability_tags:
+- research_code_optimization
+- process_reward_modeling
+- mathematical_reasoning
+- large_language_models
+- data_construction
+- monte_carlo_estimation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 1d+
+difficulty: hard
+data_access: public
+primary_outputs:
+- f1_gsm8k
+- f1_math
+- f1_olympiadbench
+- f1_omnimath
+- process_reward_dataset
+- verifier_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: '从HuggingFace下载预训练的PRM检查点和Epic50k，然后在ProcessBench数据集（GSM8K、MATH、OlympiadBench、OmniMATH）上运行eval_strict.py以复现F1指标。推理1.5B模型需要至少24GB显存的单块GPU。
+
+    '
+- id: train_and_eval
+  label: 训练+评估
+  description: '使用DeepSpeed在Epic50k上从头训练PRM，然后通过eval_strict.py进行评估。通过使用已发布的数据集跳过数据构建阶段。
+
+    '
+- id: full_pipeline
+  label: 完整流水线
+  description: '运行所有三个阶段：通过generate_train_data.py生成CoT链并标注步骤（需要通过vLLM运行多个7-8B LLM）、使用DeepSpeed训练PRM，然后进行评估。这是计算最密集的配置，需要多GPU进行rollout采样。
+
+    '
+dataset_download:
+  primary_method: huggingface
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/SunW7777/EpicPRM
+    access: public
+    note: 'Epic50k数据集（50k个标注的中间推理步骤）及相关模型。也链接自https://github.com/xiaolizh1/EpicPRM。
+
+      '
+  - kind: external
+    url: https://github.com/openai/prm800k
+    access: public
+    note: 'PRM800k数据集，用于论文中的对比和阈值分析。
+
+      '
+  - kind: external
+    url: https://github.com/peiyi9979/Math-Shepherd
+    access: public
+    note: 'Math-Shepherd数据集，用于基线对比。
+
+      '
+  notes:
+  - Epic50k相对较小（~50k步骤）；下载量不大。
+  - '如果运行完整流水线，需要MATH数据集（Hendrycks等人，2021）用于CoT生成。eval_strict.py需要ProcessBench评估数据。
+
+    '
+  - '训练和数据构建需要从HuggingFace下载基础模型（Qwen2-math-1.5B-base、LLaMA3-8B-Instruct、LLaMA3.1-8B-Instruct、Qwen2-7B-Instruct）。
+
+    '
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 下载LLaMA3系列等 gated 模型可能需要HuggingFace账号。
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 2
+    gpu_vram_gb: 48
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  key_packages:
+  - deepspeed==0.15.4
+  - transformers
+  - vllm
+  - scikit-learn
+  - numpy
+  - torch
+  notes:
+  - 'DeepSpeed ZeRO配置（stage 1/2/3，bf16）捆绑在deepspeed_config/中。典型2-GPU训练使用ds_config_bf16_zero2.json。
+
+    '
+  - 'vLLM用于加速数据构建阶段（generate_train_data.py）的rollout采样。评估或仅训练配置文件不需要。
+
+    '
+  - 参见捆绑的requirements和scripts/获取具体启动命令。
+risk_flags:
+- large_model_downloads
+- multi_model_dependency
+- compute_intensive_data_construction
+risk_notes:
+- '完整数据构建流水线需要同时运行多个7-8B参数LLM作为补全器，每个问题采样大量rollout。此阶段可能需要多个GPU天。
+
+  '
+- '打包期间未执行基准测试；论文中的指标值尚未对此快照进行独立验证。
+
+  '
+- 'eval_strict.py脚本实现了ProcessBench评估协议；如果未捆绑则需单独获取ProcessBench数据文件。
+
+  '
+- '训练需要基础模型权重（Qwen2-math-1.5B-base）。LLaMA3模型可能需要在HuggingFace上接受许可协议。
+
+  '
+recommended_when: '当您想研究高效数据构建的过程监督奖励模型训练、比较标注策略（基于困惑度与基于计数的蒙特卡洛估计）、或评估PRM在数学推理步骤正确性预测上的质量时使用此基准测试。对对数据高效PRM训练感兴趣的研究人员特别有帮助——Epic50k不到PRM800k的10%但能达到相当或更优的结果。
+
+  '
+not_recommended_when: '如果您无法支持基于DeepSpeed的奖励模型训练、仅需要提示级评估而无需步骤级标注、或无法访问至少24GB GPU，请勿使用。完整数据构建流水线需要更多计算资源（多个7-8B LLM进行rollout采样）。
+
+  '
+paper:
+  title: 'An Efficient and Precise Training Data Construction Framework for Process-supervised
+    Reward Model in Mathematical Reasoning
+
+    '
+  venue: ACL 2025
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.216/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.030_processrm.zip
+  archive_type: zip
+  local_dir_name: paper-30-ProcessRM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.030_processrm.zip
+  sha256: e34d67b264044c51d0bcdaa9d6dc4d7b9cb59f9c2285b4a629b3ac02af8c725a
+  size_bytes: 54360
+display:
+  palette_seed: bronze-indigo-verifier
+  art_style: math-lab
+  accent_priority: high
+image_path: ../image/030_aisb.t3.030_processrm.jpg

@@ -1,0 +1,131 @@
+id: aisb.t3.024_outputcentric
+name: 通过以输出为中心的特征描述增强自动化可解释性
+version: 0.1.0
+one_line: 双角度可解释性评估流程，从输入激活和输出行为两个视角描述LLM特征。
+task_description: '本基准测试包含一个可解释性评估流程，通过输出行为来描述特征。该任务通过模型输出层面描述大型语言模型中的潜在特征，提出了以输出为中心的方法（VocabProj、TokenChange）以及标准的MaxAct方法。基准测试从两个互补维度评估特征描述：基于输入的评估（描述如何准确识别激活输入）和基于输出的评估（描述如何有效捕捉对模型生成的因果影响）。实验涵盖来自残差层和MLP层的神经元对齐特征和稀疏自编码器（SAE）特征，涉及GPT-small、LLaMA-3.1-8B和Gemma-2-2B等多个LLM。
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- output_based_evaluation_score
+- input_based_evaluation_score
+- feature_descriptions
+launch_profiles:
+- id: notebook_eval
+  label: 笔记本评估
+  description: 运行打包好的feature_descriptions_pipeline.ipynb笔记本，对所有模型变体进行以输出为中心的特征描述评估。
+dataset_download:
+  primary_method: direct_archive
+  sources:
+  - url: https://deepscientist.cc/AISB/024_outputcentric
+    type: primary_archive
+  notes:
+  - 压缩包包含descriptions/目录下的预计算特征描述
+  - 包含gpt-small、llama-3.1-8b、llama-3.1-8b-it和gemma-2-2b的CSV文件
+  - 最低配置可仅使用CPU执行
+credential_requirements:
+  mode: optional_api_keys
+  items:
+  - name: HF_TOKEN
+    description: Hugging Face令牌，用于模型访问
+    required: false
+  - name: GAI_KEY
+    description: Gemini API密钥，用于生成描述
+    required: false
+  notes:
+  - 如需使用则应在环境变量中配置OPENAI密钥
+  - 无需API密钥即可使用预计算描述进行评估
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes: 最低配置支持纯CPU执行
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: 建议使用GPU加速以完成完整流程评估
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - transformers
+  - torch
+  - pandas
+  - numpy
+  - jupyter
+  notes:
+  - 详见捆绑的README/requirements.txt获取完整依赖列表
+  - 最低配置可仅使用CPU执行
+  - SAE特征评估可能需要额外包
+risk_flags:
+- metric_provisional
+- api_key_optional
+risk_notes:
+- 静态代码审查确认所有阶段性指标均有可执行锚点
+- 打包过程中未执行基准测试
+- 使用前需进行运行时执行验证指标值
+- API密钥可选；可使用预计算特征描述进行评估
+recommended_when: '当您进行LLM特征可解释性研究、开发自动化描述流程、比较输入中心与输出中心描述方法、评估SAE特征，或为 steering 应用评估特征描述质量时，可以使用此基准测试。该基准测试非常适合在输入激活和输出行为两个维度上基准测试描述的忠实度。
+
+  '
+not_recommended_when: '如果您需要大规模监督训练基准测试、密集多模态数据处理或以重训练为重点的工作流程，请勿使用此基准测试。不适用于需要密集标注流程或非LLM模型可解释性的任务。
+
+  '
+paper:
+  title: Enhancing Automated Interpretability with Output-Centric Feature Descriptions
+  authors:
+  - Yoav Gur-Arieh
+  - Roy Mayan
+  - Chen Agassy
+  - Atticus Geiger
+  - Mor Geva
+  venue: arXiv preprint
+  year: 2025
+  eprint: '2501.08319'
+  primary_class: cs.CL
+  url: https://arxiv.org/abs/2501.08319
+  code_url: https://github.com/yoavgur/Feature-Descriptions
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.024_outputcentric.zip
+  archive_type: zip
+  local_dir_name: paper-24-OutputCentric
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.024_outputcentric.zip
+  sha256: 98fbc91e990b4a6c440895a60947c3f09069c8e5d5cce6283f925f6f27876614
+  size_bytes: 3484257
+display:
+  palette_seed: ivory-rose-neuron
+  art_style: interpretability-atlas
+  accent_priority: medium
+image_path: ../image/024_aisb.t3.024_outputcentric.jpg
+capability_tags:
+- research_code_optimization
+- mechanistic_interpretability
+- automated_evaluation
+- large_language_models
+- feature_analysis
+- sparse_autoencoders
+- model_steering
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

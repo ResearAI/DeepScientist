@@ -1,0 +1,132 @@
+id: aisb.t3.091_timeawarecausal
+name: Learning Time-Aware Causal Representation for Model Generalization in Evolving
+  Domains
+version: 0.1.0
+one_line: Evolving-domain generalization via time-aware causal representation learning
+  using a sequential VAE framework that mitigates spurious correlations.
+task_description: 'This packaged benchmark covers evolving-domain generalization (EDG)
+  through SYNC (Static-DYNamic Causal Representation Learning), a time-aware causal
+  approach that learns representations robust to temporal distribution shift. The
+  method introduces a time-aware structural causal model (SCM) that explicitly models
+  dynamic causal factors and causal mechanism drifts. A sequential VAE framework captures
+  evolving patterns, while information-theoretic objectives preserve intra-class compactness
+  of causal factors across and within temporal domains. The approach theoretically
+  guarantees optimal causal predictors per time domain.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- average_accuracy
+- causal_representation_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run one packaged SYNC evaluation route on a single evolving-domain
+    dataset from the bundled suite.
+- id: full_train_eval
+  label: Full Train + Eval
+  description: Run the full time-aware causal representation learning workflow end
+    to end, covering all bundled datasets.
+dataset_download:
+  primary_method: mixed
+  sources:
+  - url: https://github.com/WonderSeven/LSSAE
+    note: Primary upstream source for bundled datasets
+  - url: https://deepscientist.cc/AISB/091_timeawarecausal
+    note: Local archive with prepackaged data splits
+  notes:
+  - 'Bundled datasets: Circle, Sine (synthetic), RMNIST, Portraits, Caltran, PowerSupply,
+    ONP'
+  - 'Caltran: vehicle presence detection with temporal lighting confounds (day/night
+    spurious correlations)'
+  - 'RMNIST: rotated MNIST with concept drift across temporal domains'
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+  notes:
+  - Tested on NVIDIA GeForce RTX 4090
+  - Single GPU is sufficient; multi-GPU training is not required
+environment:
+  python: 3.8.18
+  cuda: '11.6'
+  pytorch: 1.12.1
+  flash_attn: null
+  key_packages:
+  - torch==1.12.1
+  - torchvision==0.13.1
+  - torchaudio==0.12.1
+  - DomainBed
+  - LSSAE
+  notes:
+  - Full dependency set in bundled requirements.txt
+  - 'Install via: conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1
+    cudatoolkit=11.6 -c pytorch -c conda-forge'
+risk_flags:
+- spurious_correlation_risk
+- temporal_drift_risk
+risk_notes:
+- Caltran contains lighting-based spurious correlations that must be explicitly mitigated
+- Model relies on learning time-aware causal features rather than shortcut features
+recommended_when: 'Use this benchmark when you need a causal-representation approach
+  for evolving domains, spurious-correlation mitigation in temporal distribution shift,
+  or benchmark EDG methods with causal guarantees.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you need a small static-domain
+  generalization task, a ready-to-use image classification benchmark without temporal
+  structure, or methods that do not require causal disentanglement.
+
+  '
+paper:
+  title: Learning Time-Aware Causal Representation for Model Generalization in Evolving
+    Domains
+  authors:
+  - Zhuo He
+  - Shuang Li
+  - Wenze Song
+  - Longhui Yuan
+  - Jian Liang
+  - Han Li
+  - Kun Gai
+  venue: ICML 2025
+  year: 2025
+  url: https://openreview.net/forum?id=KhCKypSaqx
+  note: Kuaishou Technology; PMLR 267
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.091_timeawarecausal.zip
+  archive_type: zip
+  local_dir_name: paper-91-TimeAwareCausal
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.091_timeawarecausal.zip
+  sha256: f135895ff69ff80efe2ba4f8752a8677949d0f078a2bff940425f43f6ab228d9
+  size_bytes: 187191114
+display:
+  palette_seed: navy-rose-causal
+  art_style: evolving-domain
+  accent_priority: high
+image_path: ../image/091_aisb.t3.091_timeawarecausal.jpg

@@ -1,0 +1,229 @@
+id: aisb.t3.066_tropicalattention
+name: 'Tropical Attention: Neural Algorithmic Reasoning for Combinatorial Algorithms'
+version: 0.1.0
+one_line: 基于热带几何的注意力机制，用于组合任务的神经算法推理，在分布外泛化方面表现优异，可超越PTIME扩展至NP难问题。
+task_description: |
+  本基准测试包涵盖Tropical Attention，这是一种基于热带几何的注意力机制，将注意力核提升到热带投影空间中进行推理，其推理过程是分段线性的且满足1-Lipschitz条件。基准测试评估用热带几何结构替代或增强传统softmax注意力是否能改善11个组合任务上的算法泛化能力，涵盖多项式时间算法（Floyd-Warshall、Quickselect、凸包、SCC）、NP完全问题（3SUM、均衡划分、子集和）以及NP难问题（0/1背包装箱、装箱问题、最小硬币找零）。任务在分布外（OOD）条件下进行评估，包括长度外推和数值范围泛化。主要指标是quickselect_length_ood_f1，即Quickselect任务的长度OOD F1分数。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- quickselect_length_ood_f1
+- algorithmic_reasoning_report
+- trained_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: |
+    运行一条封装的神经算法推理评估路线。加载预训练检查点，在所有11个组合任务的OOD测试集上评估。使用--job_file参数指定jobs_to_do_evaluate.csv文件，通过--job_id选择目标任务。输出每个任务的长度OOD和数值OOD F1分数。
+- id: full_train_eval
+  label: 完整训练+评估
+  description: |
+    运行完整的热带注意力训练和OOD推理基准测试工作流。从零开始在每个任务上训练100k样本，使用schedulefree优化器，然后在OOD测试集上评估。训练日志保存到outputs/<timestamp>/目录。使用--job_file参数指定jobs_to_do_train.csv文件，通过--job_id选择任务行。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - url: https://deepscientist.cc/AISB/066_tropicalattention
+    type: benchmark_archive
+    archive_type: zip
+    local_dir_name: paper-66-TropicalAttention
+  - url: https://github.com/Baran-phys/Tropical-Attention
+    type: upstream_repository
+  notes:
+  - 压缩包包含完整代码、数据加载器、模型和评估脚本
+  - 数据集在运行时通过dataloaders.py程序化生成
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: 可运行单任务训练；仅评估模式需求更低
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: |
+      推荐用于完整多任务训练运行。单GPU即可，因为参数量比Universal Transformer基线少约20%。
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - torch
+  - schedulefree
+  - pandas
+  - matplotlib
+  - scikit-learn
+  notes:
+  - 详见打包的requirements.txt获取完整依赖列表
+  - TropicalAttention.py是标准Transformer块的即插即用模块
+  - 训练需要CUDA支持；推理支持CPU回退
+risk_flags:
+- ood_metric_variance
+- multi_seed_required
+risk_notes:
+- OOD F1分数在不同随机种子间存在方差（例如子集和问题为87.50±6.45）；建议进行多种子评估
+- Floyd-Warshall和分数背包的OOD分数低于分类任务
+- 每个任务训练使用100k样本；需要磁盘空间存储outputs/<timestamp>/下的产物
+recommended_when: |
+  在需要评估神经网络对图和组合问题的推理能力，并关注明确的OOD行为时使用此基准测试。特别适用于：（1）在长度外推任务上评估注意力机制；（2）在PTIME之外对NP难/完全问题求解进行基准测试；（3）将热带几何归纳偏置与softmax变换器进行比较；（4）研究神经算法推理中的多面体决策边界。
+not_recommended_when: |
+  如果需要一个无需专属推理数据集的即插即用应用基准测试，请勿使用。当仅关注分布内准确性即可，或PTIME算法推理已足够时，不适合使用。如果研究问题不涉及组合优化、注意力机制设计或OOD泛化，请避免使用。
+paper:
+  title: 'Tropical Attention: Neural Algorithmic Reasoning for Combinatorial Algorithms'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://arxiv.org/abs/2505.17190
+  authors:
+  - Hashemi, Baran (Origins Data Science Lab, Technical University of Munich)
+  - Pasque, Kurt (Naval Postgraduate School)
+  - Teska, Chris (Naval Postgraduate School)
+  - Yoshida, Ruriko (Naval Postgraduate School)
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.066_tropicalattention.zip
+  archive_type: zip
+  local_dir_name: paper-66-TropicalAttention
+  upstream_url: https://github.com/Baran-phys/Tropical-Attention
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.066_tropicalattention.zip
+  sha256: 59c566c1c49e1649bad3e39f2100133d7cb97cea8df9665ae1dea27bcd4a80db
+  size_bytes: 1618773
+display:
+  palette_seed: lime-violet-tropical
+  art_style: geometric-reasoning
+  accent_priority: high
+image_path: ../image/066_aisb.t3.066_tropicalattention.jpg
+capability_tags:
+- research_code_optimization
+- neural_algorithmic_reasoning
+- combinatorial_optimization
+- transformers
+- mathematical_reasoning
+- tropical_geometry
+- out_of_distribution_generalization
+- attention_mechanisms
+- np_complete_problems
+- np_hard_problems
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null
+experiment_anchors:
+  train_script: experiment.py
+  train_job_csv: jobs_to_do_train.csv
+  eval_job_csv: jobs_to_do_evaluate.csv
+  attention_module: TropicalAttention.py
+  eval_script: eval.py
+  metric_contract: json/metric_contract.json
+task_specifications:
+- task_name: Quickselect
+  type: classification
+  ood_metric: length_ood_f1
+  training_length_range: (10,30)
+  evaluation_length_range: (10,1024)
+  epochs: 100
+  notes: 主要OOD基准；尖锐的注意力图保留第k个元素选择能力
+- task_name: SubsetSumDecision
+  type: classification
+  complexity: NP-complete
+  training_length_range: (8,8)
+  value_range: (-5,5)
+  epochs: 100
+- task_name: Knapsack
+  type: classification
+  complexity: NP-hard
+  training_length_range: (10,20)
+  epochs: 100
+- task_name: BalancedPartition
+  type: classification
+  complexity: NP-complete
+  training_length_range: (10,30)
+  epochs: 1000
+- task_name: BinPacking
+  type: classification
+  complexity: NP-hard
+  training_length_range: (10,30)
+  epochs: 1000
+- task_name: MinCoinChange
+  type: classification
+  training_length_range: (10,20)
+  epochs: 100
+- task_name: ConvexHull
+  type: classification
+  training_length_range: (10,30)
+  epochs: 100
+- task_name: FractionalKnapsack
+  type: regression
+  training_length_range: (10,20)
+  epochs: 100
+  notes: 回归任务预期OOD性能较低
+- task_name: FloydWarshall
+  type: regression
+  training_length_range: (10,30)
+  epochs: 100
+  notes: 全源最短路径；OOD分数低于分类任务
+- task_name: SCC
+  type: classification
+  training_length_range: (10,30)
+  epochs: 100
+- task_name: 3SUM
+  type: classification
+  complexity: NP-complete
+  training_length_range: (10,30)
+  epochs: 100
+execution_notes:
+  training_invocation: 'python experiment.py --job_file jobs_to_do_train.csv --job_id
+    <row_index>
+
+    '
+  evaluation_invocation: 'python experiment.py --job_file jobs_to_do_evaluate.csv
+    --job_id <row_index>
+
+    '
+  job_csv_fields:
+  - task
+  - model_type
+  - dataset_name
+  - input_dim
+  - d_model
+  - n_heads
+  - num_layers
+  - num_epochs
+  - dropout
+  - lr
+  - seed
+  - n_samples
+  - batch_size
+  - length_range
+  - value_range
+  - noise_prob
+  output_directory: outputs/<timestamp>/
+  default_hyperparameters:
+    d_model: 64
+    n_heads: 2
+    num_layers: 1
+    dropout: 0
+    learning_rate: 0.0001
+    batch_size: 500
+    n_samples: 100000
+    seed: 999

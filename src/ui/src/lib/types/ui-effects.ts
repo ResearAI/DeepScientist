@@ -12,6 +12,8 @@ export type UIEffectName =
   | 'pdf:annotation_created'
   | 'notebook:focus'
   | 'notebook:block_inserted'
+  | 'route:navigate'
+  | 'start_setup:patch'
 
 export type PdfRect = {
   x1: number
@@ -81,6 +83,26 @@ export interface PdfAnnotationEffectData {
   [key: string]: unknown
 }
 
+export interface RouteNavigateEffectData {
+  to: string
+  replace?: boolean
+  issueDraft?: {
+    ok?: boolean
+    title: string
+    body_markdown: string
+    issue_url_base: string
+    repo_url: string
+    generated_at?: string
+  }
+  [key: string]: unknown
+}
+
+export interface StartSetupPatchEffectData {
+  patch: Record<string, unknown>
+  message?: string | null
+  [key: string]: unknown
+}
+
 export interface UIEffectDataMap {
   'file:read': FileEffectData
   'file:write': FileEffectData
@@ -102,6 +124,8 @@ export interface UIEffectDataMap {
     blockId: string
     blockType?: string
   }
+  'route:navigate': RouteNavigateEffectData
+  'start_setup:patch': StartSetupPatchEffectData
 }
 
 export type KnownEffect = {

@@ -1,0 +1,237 @@
+id: aisb.t3.062_visionts
+name: 'VisionTS: Visual Masked Autoencoders Are Free-Lunch Zero-Shot Time Series Forecasters'
+version: 0.1.0
+one_line: Zero-shot time-series forecasting by repurposing a visual masked autoencoder
+  pretrained on ImageNet, reformulating TSF as image reconstruction.
+task_description: 'This benchmark evaluates VisionTS, a time series forecasting foundation
+  model built from a visual masked autoencoder (MAE) pretrained on ImageNet. The key
+  insight is that pixel variations in natural images share intrinsic similarities
+  with time series—both are continuous signals from real-world physical systems, unlike
+  discrete text. VisionTS reformulates the TSF task as a patch-level image reconstruction
+  problem: 1D time-series data is segmented and rendered into 2D matrices, mapping
+  lookback windows to visible patches and forecast horizons to masked patches. This
+  allows zero-shot forecasting without any time-series adaptation. Achieved #1 rank
+  on GIFT-Eval for zero-shot point forecasting (MASE) as of November 2024, surpassing
+  Moirai, TimesFM, chronos, and other foundation models.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- avg_mse
+- avg_mae
+- zeroshot_forecast_report
+launch_profiles:
+- id: quick_demo
+  label: Quick Demo
+  description: 'Run the packaged VisionTS demo notebook or execute a single zero-shot
+    script on a prepared dataset. Suitable for validating the pipeline or visualizing
+    image reconstruction.
+
+    '
+- id: full_zeroshot_eval
+  label: Full Zero-Shot Evaluation
+  description: 'Run the complete packaged zero-shot forecasting benchmark across all
+    supported datasets including long-term TSF benchmarks, Monash benchmarks, and
+    probabilistic forecasting tests.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: Long-term TSF datasets
+    method: manual
+    instructions: Follow Time-Series-Library instructions to download to long_term_tsf/dataset
+    url: https://github.com/thuml/Time-Series-Library
+  - name: Monash benchmarks
+    method: automatic
+    notes: Automatically downloaded during eval_gluonts/run_monash.sh execution
+  - name: Walmart sales
+    method: manual
+    url: https://www.kaggle.com/competitions/walmart-recruiting-store-sales-forecasting/overview
+    local_path: long_term_tsf/dataset/walmart-recruiting-store-sales-forecasting/train.csv
+  - name: Istanbul Traffic
+    method: manual
+    url: https://www.kaggle.com/datasets/leonardo00/istanbul-traffic-index
+    local_path: long_term_tsf/dataset/istanbul-traffic-index/istanbul_traffic.csv
+  - name: Turkey Power
+    method: manual
+    url: https://www.kaggle.com/datasets/dharanikra/electrical-power-demand-in-turkey
+    local_path: long_term_tsf/dataset/electrical-power-demand-in-turkey/power Generation
+      and consumption.csv
+  notes:
+  - Long-term TSF datasets (ETTh1, ETTh2, ETTm1, ETTm2, Weather, Electricity, Traffic,
+    ILI) require manual download via Time-Series-Library
+  - Three Kaggle datasets require separate account registration
+  - Monash benchmarks are auto-downloaded during execution
+credential_requirements:
+  mode: kaggle_api
+  items:
+  - Kaggle account for Walmart, Istanbul Traffic, Turkey Power datasets
+  notes:
+  - Kaggle API token (kaggle.json) required for automated dataset downloads
+environment:
+  python: 3.8.18
+  cuda: '11.8'
+  pytorch: 1.7.1
+  torchvision: 0.8.2
+  flash_attn: null
+  key_packages:
+  - timm==0.3.2
+  - einops
+  - numpy
+  - pandas
+  - gluonts
+  notes:
+  - Results are evaluated based on python==3.8.18, torch==1.7.1, torchvision==0.8.2,
+    timm==0.3.2
+  - Different package versions may lead to slightly different performance
+  - Install via pip install visionts or clone from GitHub
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: GPU required for MAE inference; CPU-only will be significantly slower
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: A100 or equivalent recommended for full benchmark runs within 24h window
+risk_flags:
+- kaggle_download_required
+- long_runtime_full_eval
+risk_notes:
+- Three datasets require manual Kaggle downloads before full evaluation
+- Full zero-shot evaluation may take 6-12 hours depending on dataset count and GPU
+- Monash benchmark auto-downloads ~29 datasets during execution
+recommended_when: 'Use this benchmark when you need a cross-modality forecasting task
+  with strong zero-shot generalization, want to evaluate vision-to-time-series transfer
+  learning, or need a foundation model for diverse time series domains without domain-specific
+  fine-tuning.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you need a purely text-native
+  foundation model evaluation, require state-of-the-art supervised forecasting accuracy
+  on a single dataset, or lack GPU resources for reasonable runtime.
+
+  '
+paper:
+  title: 'VisionTS: Visual Masked Autoencoders Are Free-Lunch Zero-Shot Time Series
+    Forecasters'
+  authors:
+  - Mouxiang Chen (Zhejiang University)
+  - Lefei Shen (Zhejiang University)
+  - Zhuo Li (State Street Technology)
+  - Xiaoyun Joy Wang (State Street Technology)
+  - Jianling Sun (Zhejiang University)
+  - Chenghao Liu (Salesforce Research Asia)
+  venue: ICML 2025
+  year: 2025
+  arxiv: '2408.17253'
+  github: https://github.com/Keytoyze/VisionTS
+  pypi: visionts
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.062_visionts.zip
+  archive_type: zip
+  local_dir_name: paper-62-VisionTS
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.062_visionts.zip
+  sha256: 42f1ae7f94f9ba4a1ed78ce0c20d77af5f53bbf59d1395a443b273e40fb1f17b
+  size_bytes: 3065717
+display:
+  palette_seed: ivory-emerald-vision
+  art_style: image-to-signal
+  accent_priority: high
+  tags:
+  - visual-MAE
+  - zero-shot
+  - foundation-model
+  - cross-modality
+  - time-series
+image_path: ../image/062_aisb.t3.062_visionts.jpg
+evaluation_datasets:
+  long_term_tsf:
+    count: 8
+    names:
+    - ETTH1
+    - ETTH2
+    - ETTM1
+    - ETTM2
+    - Weather
+    - Electricity
+    - Traffic
+    - ILI
+    horizon_lengths:
+    - 96
+    - 192
+    - 336
+    - 720
+  monash:
+    count: 29
+    note: Auto-downloaded during execution
+  gift_eval:
+    count: 23
+    note: Used for MASE evaluation in zero-shot setting
+  probabilistic:
+    datasets:
+    - Walmart
+    - Istanbul Traffic
+    - Turkey Power
+    note: Requires separate Kaggle downloads
+metric_contracts:
+  origin_path: long_term_tsf/run.py
+  source_ref: Exp_Long_Term_Forecast
+  metrics_summary:
+    avg_mse:
+      status: code-backed
+      aggregation: mean across all datasets and horizons
+    avg_mae:
+      status: code-backed
+      aggregation: mean across all datasets and horizons
+    mse_96:
+      status: code-backed
+      horizon: 96
+    mse_192:
+      status: code-backed
+      horizon: 192
+    mse_336:
+      status: code-backed
+      horizon: 336
+    mse_720:
+      status: code-backed
+      horizon: 720
+  caveat: 'Static code audit confirmed executable anchors for all staged metrics.
+    No benchmark execution performed in packaging pass; runtime validation required.
+
+    '
+executables:
+- path: long_term_tsf/run.py
+  type: main_evaluation
+  dependencies:
+  - exp/exp_long_term_forecasting.py
+  - requirements.txt
+- path: eval_gluonts/run.py
+  type: gluonts_evaluation
+  dependencies:
+  - eval_gluonts/dataset.py
+  - visionts/model.py
+  - visionts/models_mae.py
+- path: eval_gluonts/run_monash.sh
+  type: monash_evaluation_script
+- path: eval_gluonts/run_pf.sh
+  type: probabilistic_forecast_script

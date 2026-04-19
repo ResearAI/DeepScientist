@@ -127,4 +127,30 @@ def diagnose_runner_failure(
             matched_text="invalid params",
         )
 
+    if normalized_runner == "codex" and (
+        "unknown file extension" in lower
+        or ("file extension" in lower and ".png" in lower)
+        or ("file extension" in lower and ".jpg" in lower)
+        or ("file extension" in lower and ".jpeg" in lower)
+        or ("file extension" in lower and ".gif" in lower)
+        or ("file extension" in lower and ".webp" in lower)
+        or ("file extension" in lower and ".bmp" in lower)
+        or ("file extension" in lower and ".mp4" in lower)
+    ):
+        return FailureDiagnosis(
+            code="runner_binary_attachment_path_unsupported",
+            problem="Codex rejected a binary attachment path from the prompt.",
+            why=(
+                "The request exposed an image, video, or other binary file path that the Codex CLI tried to treat "
+                "as an inline readable input, but that extension is not supported on stdin-driven prompt parsing."
+            ),
+            guidance=(
+                "Prefer OCR text, extracted text, or archive manifests over raw binary attachment paths in the runner prompt.",
+                "If a milestone needs binary delivery, keep the binary path inside the tool call payload instead of embedding it directly in prompt guidance.",
+                "Do not keep retrying the same turn until the prompt or attachment summary no longer exposes the unsupported binary path.",
+            ),
+            retriable=False,
+            matched_text="unknown file extension",
+        )
+
     return None

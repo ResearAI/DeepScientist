@@ -1,0 +1,171 @@
+id: aisb.t3.098_xmahalanobis
+name: 'X-Mahalanobis: Transformer Feature Mixing for Reliable OOD Detection'
+version: 0.1.0
+one_line: Adaptive transformer layer fusion with Mahalanobis distance scoring for
+  state-of-the-art out-of-distribution detection.
+task_description: 'This packaged benchmark covers transformer-based out-of-distribution
+  (OOD) detection through an adaptive fusion module that dynamically assigns importance
+  weights to representations learned by each Transformer layer. The method detects
+  OOD samples using Mahalanobis distance scoring across multiple intermediate layers,
+  moving beyond reliance on final-layer features alone. The benchmark supports parameter-efficient
+  fine-tuning (PEFT) strategies including AdaptFormer, LoRA, Adapter, Visual Prompt
+  Tuning (VPT), bias tuning, and full fine-tuning. Evaluation is conducted on class-balanced
+  (CIFAR100) and long-tailed (ImageNet-LT) in-distribution classification tasks against
+  nine diverse OOD datasets, reporting AUROC and FPR95 metrics.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- auroc
+- fpr95
+- ood_detection_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run OOD detection evaluation on a prepared checkpoint using main_test.py.
+    Requires trained model weights and config alignment with training setup. Suitable
+    for evaluating baselines or comparing fine-tuned checkpoints.
+
+    '
+  estimated_time: 1-2h
+  compute_profile: quick_eval
+- id: train_and_test
+  label: Train + Test
+  description: 'Full PEFT training workflow on CIFAR100 or ImageNet-LT followed by
+    OOD evaluation. Supports AdaptFormer (default), LoRA, Adapter, VPT, bias tuning,
+    and full fine-tuning. Trains ViT-B/16 (IN21K pretrained or CLIP pretrained) and
+    evaluates against multiple OOD datasets.
+
+    '
+  estimated_time: 6-18h
+  compute_profile: full_training
+dataset_download:
+  primary_method: bundled
+  sources:
+  - cifar100: torchvision datasets (auto-download)
+  - imagenet_lt: requires manual download from ImageNet, LT split preconfigured in
+      configs
+  - ood_datasets: preconfigured in evaluation pipeline (e.g., SVHN, LSUN, iNaturalist)
+  notes:
+  - CIFAR100 downloads automatically via torchvision
+  - ImageNet-LT requires manual download from ImageNet official source
+  - OOD test datasets (TIN, SVHN, LSUN, etc.) handled by evaluation script
+  - Data configs located in configs/data/ (cifar100.yaml, imagenet_lt.yaml, imagenet.yaml)
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - ImageNet download may require academic registration
+  - All other datasets are publicly accessible or auto-downloaded
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: Supports single-GPU execution for quick_eval and small-scale training
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: '24GB VRAM recommended for batch_size 64 with full PEFT methods on ImageNet-LT.
+      AdaptFormer training at lr 0.1 for 20 epochs on ImageNet-LT with CLIP ViT-B/16
+      is the most demanding configuration.
+
+      '
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: '2.0'
+  flash_attn: null
+  key_packages:
+  - torch>=2.0
+  - torchvision
+  - numpy
+  - scikit-learn
+  - scipy
+  - timm
+  - open_clip_torch
+  notes:
+  - See bundled requirements.txt or README for full dependency set
+  - open_clip_torch required for CLIP ViT-B/16 model support
+  - timm required for IN21K ViT-B/16 pretrained models
+risk_flags:
+- long_runtime
+- gpu_memory_sensitive
+- config_sensitivity
+risk_notes:
+- Full training on ImageNet-LT with 20 epochs may take 12-18 hours
+- Batch size 64 on 24GB GPU requires AdaptFormer PEFT; full fine-tuning may OOM
+- Config alignment between train and test is critical; mismatched configs produce
+  invalid results
+- PEFT method flags (adaptformer, lora, adapter, etc.) must be explicitly set per
+  experiment
+- Seed setting via --seed flag available but not enforced; reproducibility requires
+  manual seed setting
+recommended_when: 'Use this benchmark when developing transformer-based reliability
+  and OOD detection methods. Particularly suited for research on: (1) adaptive layer
+  fusion strategies, (2) Mahalanobis-based OOD scoring, (3) parameter-efficient fine-tuning
+  for out-of-distribution generalization, (4) comparing shallow vs. deep transformer
+  representations, and (5) benchmarking OOD detection under class-imbalanced (long-tailed)
+  distributions.
+
+  '
+not_recommended_when: 'Do not use this benchmark for: (1) text-only reliability tasks
+  (OOD detection here is vision-only), (2) non-transformer architectures (pure CNN-based
+  methods), (3) tasks requiring OOD detection without fine-tuning (zero-shot OOD evaluation),
+  or (4) resource-constrained environments without GPU access.
+
+  '
+paper:
+  title: 'X-Mahalanobis: Transformer Feature Mixing for Reliable OOD Detection'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://arxiv.org/abs/2505.09128
+  notes: 'NeurIPS 2025 publication; benchmark packages official implementation from
+    the paper. Experiments demonstrate SOTA OOD detection across nine OOD datasets.
+
+    '
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.098_xmahalanobis.zip
+  archive_type: zip
+  local_dir_name: paper-98-XMahalanobis
+  notes: 'Bundled archive includes full training/test code, configs, utility modules,
+    and pretrained model loading support for CLIP and IN21K ViT variants.
+
+    '
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.098_xmahalanobis.zip
+  sha256: c65b3f81a78754d84bff9a76b8a0c13e180f6b3b6d379801647ed189b1f4741e
+  size_bytes: 1420263
+display:
+  palette_seed: cobalt-silver-mahalanobis
+  art_style: reliability-vision
+  accent_priority: high
+image_path: ../image/098_aisb.t3.098_xmahalanobis.jpg
+capability_tags:
+- ood_detection
+- transformers
+- computer_vision
+- reliable_ml
+- parameter_efficient_finetuning
+- layer_fusion
+- mahalanobis_distance
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

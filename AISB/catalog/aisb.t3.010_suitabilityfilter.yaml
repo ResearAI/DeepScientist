@@ -1,0 +1,221 @@
+schema_version: 1
+id: aisb.t3.010_suitabilityfilter
+name: 'Suitability Filter: A Statistical Framework for Classifier Evaluation in Real-World
+  Deployment Settings'
+version: 0.1.0
+one_line: 'Optimize a deployment-time statistical filter that uses non-inferiority
+  hypothesis testing on model-derived suitability signals to decide whether a classifier''s
+  accuracy has degraded beyond an acceptable margin on unlabeled, distribution-shifted
+  user data (evaluated on WILDS FMoW/RxRx1/CivilComments).
+
+  '
+task_description: 'This benchmark packages the Suitability Filter framework from ICML
+  2025. The core task is to improve a statistical decision system that determines
+  whether a pre-trained classifier remains safe to deploy under covariate shift, without
+  access to ground-truth labels on the target data.
+
+  The filter works by: (1) extracting suitability signals (max softmax, predictive
+  entropy, logit statistics, loss/energy features — 12 signals total) from both labeled
+  test data and unlabeled user data; (2) training a lightweight prediction-correctness
+  estimator (logistic regression by default, calibrated via CalibratedClassifierCV)
+  on a labeled holdout set to map signals to per-sample correctness probabilities
+  p_c; (3) comparing the p_c distributions between test and user data via a one-sided
+  non-inferiority test (Welch''s t-test or z-test) with configurable margin m and
+  significance level alpha; (4) outputting SUITABLE (reject H0) or INCONCLUSIVE.
+
+  The packaged evaluation route runs cached FMoW-WILDS features across multiple seeds
+  (0, 1, 2), fold configurations, feature subsets (confidence/logit/loss-energy),
+  and classifier hyperparameters. Primary metrics are the OOD suitability score (ROC-AUC
+  of the filter''s p-values against ground-truth suitability labels across ~29k experiments),
+  the raw p-value, and the binary suitability decision. Optimization targets include
+  the correctness estimator''s regularization (C sweep), signal subset selection,
+  fold count, calibration strategy, and Stouffer''s method for combining p-values
+  across feature subsets.
+
+  Pre-extracted feature caches and split indices are bundled under results/features/
+  and results/split_indices/. The WILDS datasets themselves (FMoW, RxRx1, CivilComments)
+  and pretrained model weights are needed only if regenerating features from scratch;
+  the default execution route uses cached features and does not require downloading
+  WILDS data.
+
+  '
+capability_tags:
+- research_code_optimization
+- classifier_evaluation
+- distribution_shift
+- statistical_testing
+- reliability
+- hypothesis_testing
+- deployment_monitoring
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- ood_suitability_score
+- p_value
+- suitability_decision
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run the packaged suitability filter logic on cached FMoW features
+    for a single seed to verify statistical test outputs (p-value, suitability decision)
+    and basic ROC-AUC.
+
+    '
+- id: shift_eval
+  label: Full Shift Evaluation
+  description: 'Run the complete FMoW-WILDS deployment-shift evaluation across all
+    seeds (0, 1, 2), feature subsets, fold configurations, and classifier settings
+    using run_fmow.py. Reports OOD suitability ROC-AUC across ~29k experiment configurations.
+
+    '
+- id: lr_tune
+  label: LR Hyperparameter Sweep
+  description: 'Run run_fmow_lr_tune.py to sweep logistic regression regularization
+    C values (0.01, 0.1, 1.0, 5.0, 10.0) on OOD data for seed=0 to find optimal correctness
+    estimator configuration.
+
+    '
+- id: seed_search
+  label: Seed Search
+  description: 'Run run_fmow_seed_search.py variants to explore reproducibility and
+    seed sensitivity of the suitability filter decisions.
+
+    '
+dataset_download:
+  primary_method: bundled_cache
+  sources:
+  - kind: bundled
+    url: null
+    access: public
+    note: 'Pre-extracted feature caches (results/features/*.pkl) and split indices
+      (results/split_indices/*.pkl) are included in the snapshot. No download needed
+      for the default execution route.
+
+      '
+  - kind: pip_package
+    url: https://pypi.org/project/wilds/
+    access: public
+    note: 'WILDS 2.0.0 package needed for feature re-extraction from raw data. FMoW-WILDS,
+      RxRx1-WILDS, and CivilComments-WILDS datasets are downloaded on first use via
+      the wilds library. FMoW alone is ~50 GB; all three together can exceed 100 GB.
+
+      '
+  notes:
+  - Default route uses bundled cached features; WILDS download only needed for feature
+    regeneration.
+  - Pretrained model weights (ERM) are required for feature regeneration but not for
+    cached route.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No API keys or credentials required for any execution route.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: 3.11.9
+  cuda: '11.7'
+  pytorch: 2.0.0
+  flash_attn: null
+  key_packages:
+  - transformers==4.41.2
+  - torch-geometric==2.5.3
+  - wilds==2.0.0
+  - scikit-learn
+  - scipy
+  - statsmodels
+  - pandas
+  - numpy
+  notes:
+  - See the bundled requirements.txt for the full conda environment specification.
+  - GPU is used for feature extraction (torch.device("cuda" if available)); the cached-feature
+    route runs statistical tests on CPU only (scikit-learn, scipy).
+  - The run_fmow.py scripts set sys.path to '/repo' — adjust if running outside the
+    expected container.
+risk_flags:
+- large_experiment_matrix
+- external_dataset_for_regeneration
+risk_notes:
+- 'The full evaluation route runs ~29k experiment configurations across seeds, folds,
+  feature subsets, and margins. Wall time can reach several hours on CPU.
+
+  '
+- 'Feature regeneration from raw WILDS data requires downloading FMoW-WILDS (~50 GB)
+  and pretrained ERM model weights, but this is not needed for the default cached
+  route.
+
+  '
+- 'The run scripts hardcode sys.path to ''/repo'' and os.chdir(''/repo''); execution
+  outside the expected container environment may require path adjustments.
+
+  '
+- 'No runtime execution was performed during the packaging pass; metric values should
+  be verified by running the benchmark.
+
+  '
+recommended_when: 'Use this benchmark when you want a model-monitoring optimization
+  task that combines statistical hypothesis testing (non-inferiority tests) with realistic
+  WILDS deployment shifts. Well-suited for research on deployment-time safety, distribution
+  shift detection, unsupervised accuracy estimation, and selective prediction. The
+  cached-feature route makes iteration fast without needing to re-run model inference.
+
+  '
+not_recommended_when: 'Not suitable if you need a tiny or quick-to-iterate toy benchmark,
+  cannot allocate 32+ GB RAM for the experiment matrices, or want to evaluate non-classification
+  tasks. Also not ideal if you need end-to-end training of the base classifier — this
+  benchmark focuses on the filter/monitoring layer, not the upstream model training.
+
+  '
+paper:
+  title: 'Suitability Filter: A Statistical Framework for Classifier Evaluation in
+    Real-World Deployment Settings'
+  authors:
+  - Angéline Pouget
+  - Mohammad Yaghini
+  - Stephan Rabanser
+  - Nicolas Papernot
+  venue: ICML 2025
+  year: 2025
+  url: https://arxiv.org/abs/2505.22356
+  volume: 267
+  publisher: PMLR
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.010_suitabilityfilter.zip
+  archive_type: zip
+  local_dir_name: paper-10-SuitabilityFilter
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.010_suitabilityfilter.zip
+  sha256: 146f3477fb91d43974f51dac9013768be094e9ad355d2196c820915f062645f1
+  size_bytes: 54606221
+commercial:
+  annual_fee: null
+display:
+  palette_seed: sand-graphite-verify
+  art_style: clean-statistical
+  accent_priority: high
+image_path: ../image/010_aisb.t3.010_suitabilityfilter.jpg

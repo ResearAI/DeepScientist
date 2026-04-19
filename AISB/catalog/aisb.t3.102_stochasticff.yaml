@@ -1,0 +1,178 @@
+id: aisb.t3.102_stochasticff
+name: Stochastic Forward-Forward Learning through Representational Dimensionality
+  Compression
+version: 0.1.0
+one_line: Non-BP training via effective dimensionality goodness function that compresses
+  within-class representations and leverages stochasticity as a computational resource.
+task_description: 'This benchmark implements stochastic forward-forward (FF) learning
+  with a novel "dimensionality compression" goodness function derived from effective
+  dimensionality (ED) of neural responses. Unlike standard FF that requires hand-crafted
+  negative samples and uses sum-of-squared-activations as goodness, this approach
+  exploits second-order statistical structure through the eigenvalue spectrum of uncentered
+  covariance matrices. Training objectives minimize ED for noisy isologues of individual
+  inputs while maximizing ED across the sample distribution, eliminating the need
+  for explicit negative sample generation. The method achieves competitive accuracy
+  against other non-backpropagation methods on CIFAR-10, CIFAR-100, and MNIST, with
+  inherent support for energy-based inference from mean-squared outputs. Includes
+  information breakdown analysis tools for estimating mutual information in individual
+  neurons and synergistic neuron combinations.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- cifar10_val_accuracy
+- cifar100_val_accuracy
+- mnist_val_accuracy
+- best_model_checkpoint
+- training_log
+- representation_analysis
+launch_profiles:
+- id: quick_cifar10
+  label: Quick CIFAR-10
+  description: 'Execute the CIFAR-10 training route with default hyperparameters.
+    Downloads datasets via torchvision, caches ZCA statistics under ./data/, saves
+    checkpoints to ./checkpoint/, and reports final validation accuracy. Typical runtime
+    2-4 hours on single GPU.
+
+    '
+  hardware_notes: 'Default config uses 3 epochs, batch size 128, learning rate 0.001
+    with cosine annealing.
+
+    '
+- id: full_suite_analysis
+  label: Full Suite + Analysis
+  description: 'Run multi-dataset training workflow across CIFAR-10, CIFAR-100, and
+    MNIST, then invoke bundled analysis route to produce information breakdown plots
+    (Fig. 4c/5c equivalents). Requires manually calling specific experiment functions
+    per training.py comments.
+
+    '
+  hardware_notes: 'Full suite with analysis extends runtime proportionally. Phase
+    2 training uses 60 epochs.
+
+    '
+dataset_download:
+  primary_method: torchvision
+  sources:
+  - name: CIFAR-10
+    path: torchvision.datasets.CIFAR10
+  - name: CIFAR-100
+    path: torchvision.datasets.CIFAR100
+  - name: MNIST
+    path: torchvision.datasets.MNIST
+  notes:
+  - Datasets are downloaded automatically on first run and cached locally under ./data/
+  - ZCA whitening statistics are precomputed and cached per dataset under ./data/
+  - The cited fast_mnist snippet informs helper implementation; it is not the dataset
+    acquisition route
+  - No external API credentials required for torchvision-served datasets
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No explicit dataset or API credentials detected in bundled source
+  - GitHub repository available at https://github.com/ZhichaoZhu/StochasticForwardForward
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 30
+    gpu_count: 1
+    gpu_vram_gb: 8
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - torch>=2.0
+  - torchvision
+  - numpy
+  - scipy
+  - scikit-learn
+  - pandas
+  - tqdm
+  notes:
+  - See bundled requirements.txt for pinned versions
+  - See bundled README/requirements for full dependency set
+risk_flags:
+- experimental_algorithm
+- nonstandard_training_paradigm
+risk_notes:
+- FF learning is less mature than backpropagation; results may vary across random
+  seeds
+- No standard fine-tuning recipes exist for this algorithm family
+- Hyperparameter sensitivity: ED loss balance factors, sampling length, projecting
+    dimensions require tuning
+recommended_when: '- Exploring alternative training paradigms to backpropagation -
+  Studying biologically plausible learning algorithms - Investigating neuromorphic
+  computing applications where stochasticity is a resource - Research on representation
+  learning with second-order statistical structure - Information-theoretic analysis
+  of neural network representations
+
+  '
+not_recommended_when: '- Requiring conventional large-model finetuning workflows -
+  Needing production-grade training pipelines with extensive tooling - Tasks requiring
+  rapid iteration without algorithm-specific expertise
+
+  '
+paper:
+  title: Stochastic Forward-Forward Learning through Representational Dimensionality
+    Compression
+  authors:
+  - Zhu, Zhichao
+  - Qi, Yang
+  - Ma, Hengyuan
+  - Lu, Wenlian
+  - Feng, Jianfeng
+  venue: NeurIPS
+  year: 2025
+  url: https://arxiv.org/abs/2505.16649
+  github: https://github.com/ZhichaoZhu/StochasticForwardForward
+  citation: "@article{zhu2025stochastic,\n  title={Stochastic Forward-Forward Learning\
+    \ through Representational Dimensionality Compression},\n  author={Zhu, Zhichao\
+    \ and Qi, Yang and Ma, Hengyuan and Lu, Wenlian and Feng, Jianfeng},\n  journal={arXiv\
+    \ preprint arXiv:2505.16649},\n  year={2025}\n}\n"
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.102_stochasticff.zip
+  archive_type: zip
+  local_dir_name: paper-102-StochasticFF
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.102_stochasticff.zip
+  sha256: 4eab3f39d4cc098ee47e9d4a31c8485f3b09752123b134a05292f5bfababe41e
+  size_bytes: 65412
+display:
+  palette_seed: amber-indigo-forward
+  art_style: learning-dynamics
+  accent_priority: medium
+image_path: ../image/102_aisb.t3.102_stochasticff.jpg
+capability_tags:
+- forward_forward_learning
+- representation_learning
+- non_backpropagation
+- effective_dimensionality
+- image_classification
+- efficient_training
+- biologically_plausible_learning
+- information_breakdown_analysis
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3

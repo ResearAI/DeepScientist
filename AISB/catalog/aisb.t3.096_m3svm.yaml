@@ -1,0 +1,189 @@
+id: aisb.t3.096_m3svm
+name: Multi-Class Support Vector Machine with Differential Privacy
+version: 0.1.0
+one_line: Differentially private multi-class SVM using all-in-one single-data-access
+  training with weight and gradient perturbation methods.
+task_description: 'This packaged benchmark covers differentially private multi-class
+  SVMs (PMSVM) that address the privacy-budget scaling problem in traditional OvR
+  and OvO multi-class strategies. Unlike conventional approaches that repeatedly query
+  each data sample when building multiple binary classifiers (consuming the privacy
+  budget proportionally to the number of classes), this method uses all-in-one SVM
+  training to access each data point exactly once. Two perturbation routes are provided:
+  (1) Weight Perturbation (WP), which adds calibrated Gaussian noise to the primal
+  weight matrix of all-in-one SVMs, and (2) Gradient Perturbation (GP), which applies
+  a smoothed hinge-loss approximation with differentially private gradient descent
+  via Opacus. The task preserves rigorous margin guarantees while enabling privacy-preserving
+  multi-class classification with improved utility-privacy trade-offs.
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- accuracy
+- accuracy_std
+- private_svm_checkpoint
+launch_profiles:
+- id: gradient_perturbation
+  label: Gradient Perturbation (Opacus)
+  description: 'Run the gradient perturbation route using Opacus for differentially
+    private stochastic gradient descent. Uses smoothed hinge-loss approximation with
+    Adam optimizer. Example: python main-opacus.py --data Cornell --optimizer adam
+    --num_epoch 20 --lr_scale 0.1 --eps 2.0. Supports multiple datasets with dataset-specific
+    hyperparameters. No GPU required but recommended for larger datasets.
+
+    '
+- id: weight_perturbation
+  label: Weight Perturbation (Sklearn)
+  description: 'Run the weight perturbation SVM route using scikit-learn''s LinearSVC
+    with differentially private weight perturbation. Example: python main-sklearn.py
+    --data=Cornell. CPU-only execution is fully supported. Alternative to gradient-based
+    approaches with potentially different utility-privacy trade-offs.
+
+    '
+dataset_download:
+  primary_method: bundled
+  sources:
+  - url: https://deepscientist.cc/AISB/096_m3svm
+    format: zip
+    local_dir: paper-96-M3SVM
+  - source: dataset/
+    format: .mat files
+    description: Preprocessed multi-class datasets (Cornell, Dermatology, Glass, HHAR,
+      ISOLET, ORL, USPS, Vehicle)
+  notes:
+  - Datasets are bundled in .mat format in the dataset/ folder
+  - Dataset-specific hyperparameter configurations are defined in run notebooks and
+    main scripts
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 1
+    gpu_vram_gb: 8
+  notes:
+  - CPU-only execution is fully viable for both launch profiles
+  - GPU acceleration reduces training time for larger datasets (ISOLET, HHAR) but
+    is not required
+environment:
+  python: '3.8'
+  cuda: null
+  pytorch: 2.0.1
+  flash_attn: null
+  key_packages:
+  - opacus==1.2.0
+  - torch>=2.0.0
+  - scikit-learn>=1.0.0
+  - scipy>=1.7.0
+  - numpy>=1.21.0
+  - pandas>=1.3.0
+  notes:
+  - CPU-only execution is supported and recommended for the minimum configuration
+    route
+  - Opacus is required for the gradient perturbation launch profile only
+  - See bundled requirements.txt for the full dependency set
+  - See bundled README/OPTIMIZATION.md for hyperparameter tuning guidance
+risk_flags:
+- privacy_parameter_tuning
+- hyperparameter_sensitivity
+risk_notes:
+- Privacy budget (epsilon, delta) must be set appropriately for target privacy guarantees
+- Hyperparameter sensitivity: lr_scale, epochs, and C regularization interact with
+    privacy noise
+- Dataset-specific tuning is required; naive defaults may yield poor accuracy
+- Gradient perturbation may require careful clipping threshold selection
+recommended_when: 'Use this benchmark when you need a privacy-aware classical ML task
+  with rigorous differential privacy guarantees. Particularly suitable for tabular
+  multi-class classification with strict data-privacy requirements where traditional
+  deep-learning-heavy benchmarks are overkill. Ideal for evaluating privacy-utility
+  trade-offs in traditional ML settings.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you need large-scale deep learning,
+  multimodal data, sequence modeling, or complex feature extraction pipelines. Not
+  suitable when no privacy requirements exist or when accuracy trade-offs from noise
+  injection are unacceptable for your application.
+
+  '
+paper:
+  title: Multi-Class Support Vector Machine with Differential Privacy
+  venue: NeurIPS
+  year: 2025
+  url: https://openreview.net/forum?id=Jz4PENUsRo
+  authors:
+  - Jinseong Park
+  - Yujin Choi
+  - Jaewook Lee
+  institution:
+  - Korea Institute for Advanced Study
+  - Seoul National University
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.096_m3svm.zip
+  archive_type: zip
+  local_dir_name: paper-96-M3SVM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.096_m3svm.zip
+  sha256: 320d7f75f10ec480816b2627d4fda2587da3d4455a6119e552fd92b6649e80e9
+  size_bytes: 60022973
+display:
+  palette_seed: ivory-indigo-privacy
+  art_style: classical-ml
+  accent_priority: medium
+image_path: ../image/096_aisb.t3.096_m3svm.jpg
+metric_contract:
+  accuracy:
+    origin_path: run/run_pmsvm_gp-adam.ipynb
+    source_ref: code-backed
+    evaluation_protocol:
+      code_paths:
+      - run/run_pmsvm_gp-adam.ipynb
+      - models/train.py
+      - main-opacus.py
+  accuracy_std:
+    origin_path: run/run_pmsvm_gp-adam.ipynb
+    source_ref: code-backed
+    evaluation_protocol:
+      code_paths:
+      - run/run_pmsvm_gp-adam.ipynb
+      - models/train.py
+  private_svm_checkpoint:
+    origin_path: models/model.py
+    source_ref: code-backed
+    description: Trained model checkpoint with differential privacy applied
+    evaluation_protocol:
+      code_paths:
+      - models/model.py
+      - models/train.py
+capability_tags:
+- research_code_optimization
+- differential_privacy
+- support_vector_machines
+- classification
+- trustworthy_ml
+- privacy_preserving_ml
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null

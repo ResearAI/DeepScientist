@@ -1,0 +1,284 @@
+id: aisb.t3.038_tinysam
+name: 'TinySAM: Pushing the Envelope for Efficient Segment Anything Model'
+version: 0.1.0
+one_line: Efficient Segment Anything Model variant achieving 100x speedup over SAM
+  via knowledge distillation, post-training quantization, and hierarchical inference
+  for zero-shot instance segmentation.
+task_description: 'TinySAM is a compressed Segment Anything Model that maintains SAM-style
+  promptable segmentation capabilities while dramatically reducing model size, inference
+  latency, and computational cost. The benchmark covers three core optimization techniques:
+  (1) full-stage knowledge distillation with hard mask weighting and online hard prompt
+  sampling to train a lightweight ViT-tiny student network from the SAM teacher; (2)
+  post-training INT8 quantization adapted for prompt-based segmentation (Q-TinySAM)
+  achieving 20.3 GFLOPs; and (3) a hierarchical "segment everything" inference strategy
+  that accelerates grid-based mask generation by 2x with negligible accuracy loss.
+  Evaluation targets zero-shot instance segmentation on COCO and LVIS datasets following
+  the original SAM evaluation protocol using ViTDet-generated detection boxes. The
+  benchmark includes packaged demo routes for point/box prompting, quantized inference,
+  and hierarchical everything mode.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- id: coco_ap
+  label: COCO Average Precision
+  description: Zero-shot instance segmentation AP on COCO val2017 using ViTDet boxes
+    as prompts
+  code_anchor: eval/eval_coco.sh
+  provenance: code-backed
+- id: coco_ap50
+  label: COCO AP at IoU=0.50
+  description: COCO instance segmentation AP at IoU threshold 0.50
+  code_anchor: eval/eval_coco.sh
+  provenance: code-backed
+- id: coco_ap75
+  label: COCO AP at IoU=0.75
+  description: COCO instance segmentation AP at IoU threshold 0.75
+  code_anchor: eval/eval_coco.sh
+  provenance: code-backed
+- id: lvis_ap
+  label: LVIS Average Precision
+  description: Zero-shot instance segmentation AP on LVIS v1 val using ViTDet boxes
+    as prompts
+  code_anchor: eval/tinysam_zero_shot_ins_eval.py
+  provenance: code-backed
+- id: segmentation_checkpoint
+  label: TinySAM Checkpoint
+  description: Trained or quantized model weights for deployment
+- id: latency_metrics
+  label: Inference Latency
+  description: Per-image inference time in ms (TensorRT on NVIDIA T4)
+launch_profiles:
+- id: quick_demo
+  label: Quick Demo
+  description: 'Run the basic TinySAM demo with point or box prompts on a sample image.
+    Demonstrates promptable segmentation with foreground/background point inputs and
+    bounding box prompts. No dataset download required. Suitable for qualitative verification
+    of model loading and basic functionality.
+
+    '
+  entry_point: demo.py
+  requires_weights: true
+  dataset_download: false
+- id: quantized_demo
+  label: Quantized Demo
+  description: 'Run Q-TinySAM (INT8 post-training quantized variant) demo for ultra-efficient
+    inference. Loads pre-quantized weights (w8a8) demonstrating 50% FLOPs reduction
+    vs full-precision model. Ideal for profiling quantized inference performance.
+
+    '
+  entry_point: demo_quant.py
+  requires_weights: true
+  dataset_download: false
+- id: hierarchical_everything
+  label: Hierarchical Everything
+  description: 'Execute the hierarchical segment-everything mode that generates comprehensive
+    object masks via a two-stage grid sampling strategy. Achieves 2x speedup over
+    naive grid-point prompting with negligible quality degradation.
+
+    '
+  entry_point: demo_hierachical_everything.py
+  requires_weights: true
+  dataset_download: false
+- id: coco_eval
+  label: COCO Zero-Shot Eval
+  description: 'Run full zero-shot instance segmentation evaluation on COCO val2017
+    (5000 images). Requires downloading COCO detection boxes (ViTDet predictions)
+    and ground-truth instance annotations. Computes COCO AP, AP50, AP75 metrics. Expected
+    results: TinySAM 42.3% AP, Q-TinySAM 41.4% AP. Standard benchmark evaluation route.
+
+    '
+  entry_point: eval/eval_coco.sh
+  requires_weights: true
+  dataset_download: true
+  estimated_time: 2-4h
+- id: lvis_eval
+  label: LVIS Zero-Shot Eval
+  description: 'Run zero-shot instance segmentation evaluation on LVIS v1 validation
+    set. Requires LVIS detection boxes and ground-truth annotations. Computes LVIS
+    AP. Expected results: TinySAM 38.6% AP, Q-TinySAM 37.2% AP. Tests generalization
+    to long-tailed distribution of object categories.
+
+    '
+  entry_point: eval/tinysam_zero_shot_ins_eval.py
+  requires_weights: true
+  dataset_download: true
+  estimated_time: 4-6h
+dataset_download:
+  primary_method: mixed
+  sources:
+  - id: checkpoints
+    label: Model Checkpoints
+    url: https://github.com/xinghaochen/TinySAM/releases
+    type: github_release
+    items:
+    - name: tinysam_42.3.pth
+      description: Full-precision TinySAM checkpoint (vit_tiny, 42.3 COCO AP)
+      sha256: null
+    - name: tinysam_w8a8.pth
+      description: INT8 quantized TinySAM checkpoint (Q-TinySAM, 41.4 COCO AP)
+      sha256: null
+  - id: coco_detection_boxes
+    label: COCO ViTDet Detection Boxes
+    url: https://github.com/xinghaochen/TinySAM/releases/download/2.0/coco_instances_results_vitdet.json
+    description: Pre-computed detection boxes from ViTDet used as prompts for zero-shot
+      evaluation
+    type: json
+  - id: coco_annotations
+    label: COCO Instance Annotations
+    url: https://cocodataset.org
+    description: Ground-truth instance segmentation annotations for val2017
+    type: dataset
+  - id: lvis_detection_boxes
+    label: LVIS ViTDet Detection Boxes
+    url: https://github.com/xinghaochen/TinySAM/releases/download/3.0/lvis_instances_results_vitdet.json
+    description: Pre-computed detection boxes from ViTDet for LVIS evaluation
+    type: json
+  - id: lvis_annotations
+    label: LVIS Instance Annotations
+    url: https://www.lvisdataset.org
+    description: Ground-truth annotations for LVIS v1 validation set
+    type: dataset
+  - id: huggingface
+    label: HuggingFace Hub
+    url: https://huggingface.co/merve/tinysam
+    description: Alternative checkpoint hosting with online demo
+    type: huggingface
+  notes:
+  - Detection box JSON files must be placed in eval/json_files/ before running evaluation
+  - COCO val2017 images (~2.5GB) required for full evaluation
+  - LVIS v1 val images required for LVIS evaluation route
+  - Checkpoint URLs are from GitHub releases, verify availability
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - All resources publicly available via GitHub, HuggingFace, and official dataset
+    sites
+  - No authentication required for download or execution
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+    notes: Suitable for running demos and Q-TinySAM quantized inference
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 'Recommended for full COCO/LVIS evaluation runs. Higher RAM accommodates
+      batch processing during evaluation. 24GB VRAM handles full-precision TinySAM
+      with comfortable margin.
+
+      '
+environment:
+  python: '3.7'
+  cuda: null
+  pytorch: 1.10.2
+  torchvision: 0.11.3
+  flash_attn: null
+  key_packages:
+  - name: pycocotools
+    version: null
+    notes: Required for COCO evaluation metrics
+  - name: matplotlib
+    version: 3.5.1
+    notes: Required for visualization in demos
+  notes:
+  - The codebase explicitly requires torchvision 0.11.3 paired with torch 1.10.2
+  - Do not upgrade to torch >=2.x without verification; compatibility issues likely
+  - pycocotools is required for COCOeval metric computation
+  - matplotlib >=3.5.1 needed for demo visualization
+  - See bundled requirements.txt for complete dependency list
+risk_flags:
+- version_lock
+- hardware_specific
+risk_notes:
+- Torch 1.10.2 and torchvision 0.11.3 are pinned; upgrading may break model loading
+  or produce incorrect results
+- Code uses torch.load() without weights_only parameter; torch >=2.0 may emit warnings
+  or security errors
+- GPU inference assumed; CPU-only execution will be extremely slow (not recommended)
+- Mixed-precision (AMP) support not explicitly tested in this codebase
+recommended_when: 'Use this benchmark when you need a vision efficiency task with
+  well-documented checkpoint artifacts and standardized promptable segmentation evaluation.
+  Ideal for exploring model compression techniques (knowledge distillation, quantization)
+  on foundation model tasks. The benchmark provides code-backed metrics for both full-precision
+  and quantized variants, making it suitable for compression-accuracy trade-off studies.
+
+  '
+not_recommended_when: 'Do not use this benchmark if your research requires text-based
+  or language grounding tasks, as TinySAM is purely visual. Also avoid if your workflow
+  requires PyTorch >=2.0 or CUDA 12+ compatibility out of the box. This is not a training
+  benchmark; the distillation artifacts are pre-trained checkpoints, not train-from-scratch
+  routes.
+
+  '
+paper:
+  title: 'TinySAM: Pushing the Envelope for Efficient Segment Anything Model'
+  venue: AAAI 2025
+  year: 2025
+  authors:
+  - Han Shu
+  - Wenshuo Li
+  - Yehui Tang
+  - Yiman Zhang
+  - Yihao Chen
+  - Houqiang Li
+  - Yunhe Wang
+  - Xinghao Chen
+  institution:
+  - University of Science and Technology of China
+  - Huawei Noah's Ark Lab
+  url: https://arxiv.org/abs/2312.13789
+  code_url: https://github.com/xinghaochen/TinySAM
+  license: Apache-2.0
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.038_tinysam.zip
+  archive_type: zip
+  local_dir_name: paper-38-TinySAM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.038_tinysam.zip
+  sha256: 516538beacd620a9ebb4f55a3f1fb0e29f00c90b1d978da822727ba879a1caff
+  size_bytes: 101755926
+display:
+  palette_seed: sky-slate-mask
+  art_style: promptable-vision
+  accent_priority: medium
+  tags:
+  - segment-anything
+  - model-compression
+  - knowledge-distillation
+  - quantization
+  - zero-shot
+  - instance-segmentation
+  - efficient-inference
+capability_tags:
+- research_code_optimization
+- computer_vision
+- segmentation
+- model_compression
+- efficient_inference
+- vision_transformer
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null
+image_path: ../image/038_aisb.t3.038_tinysam.jpg

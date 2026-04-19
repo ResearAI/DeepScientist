@@ -1,0 +1,194 @@
+schema_version: 1
+id: aisb.t3.006_physense
+name: 'PhySense: Sensor Placement Optimization for Accurate Physics Sensing'
+version: 0.1.0
+one_line: 'Two-stage flow-based physics-field reconstruction and sensor placement
+  optimization across turbulent-flow, sea-temperature, and car-aerodynamics benchmarks.
+
+  '
+task_description: 'This benchmark implements PhySense, a synergistic two-stage framework
+  for physics sensing. Stage 1 trains a flow-matching generative model (DiT for regular
+  grids, Transolver for irregular meshes) with cross-attention to reconstruct dense
+  physical fields from sparse sensor observations at arbitrary placements. Stage 2
+  optimizes sensor positions via projected gradient descent under spatial constraints,
+  using reconstruction feedback to discover informative placements. The agent must
+  run training and inference across three bundled scientific domains: (1) Turbulent-Flow
+  (pipe simulation on regular grid), (2) Sea-Temperature (global SST reanalysis on
+  regular grid with land mask), and (3) Car-Aerodynamics (3D surface pressure on irregular
+  mesh). For each domain the snapshot provides both a base-model inference script
+  (random placement) and a walk inference script (optimized placement). Primary metrics
+  are relative L2 error and MSE loss; secondary output is the optimized sensor layout.
+  Data paths in inference scripts point to external locations that must be populated.
+  Pretrained checkpoints are expected under per-domain ./checkpoints/ directories.
+  No external evaluation service is required; all metrics are computed locally in
+  the inference scripts.
+
+  '
+capability_tags:
+- research_code_optimization
+- physics_ml
+- sensor_placement
+- scientific_ml
+- field_reconstruction
+- flow_matching
+- generative_models
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- relative_l2
+- mse_loss
+- sensor_layout
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run a single-domain inference route (e.g. pipe_infer.py or sea_infer.py)
+    with a pretrained checkpoint to verify the pipeline produces relative_l2 and mse_loss.
+
+    '
+- id: full_benchmark
+  label: Full Benchmark
+  description: 'Train base reconstruction models and run sensor placement optimization
+    across all three domains (Turbulent-Flow, Sea-Temperature, Car-Aerodynamics),
+    then evaluate both random-placement and optimized-placement reconstruction quality.
+
+    '
+- id: placement_only
+  label: Placement Optimization Only
+  description: 'Starting from pretrained base models, run only the Stage 2 sensor
+    placement optimization (walk scripts) and compare against random-placement baselines.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: github
+    url: https://github.com/thuml/PhySense
+    access: public
+    note: 'Source code repository. Data for each benchmark must be obtained separately;
+      see per-domain README files for download links.
+
+      '
+  notes:
+  - 'Sea-Temperature data is loaded from a hardcoded path (/workspace/mayuezhou/ddim/sea_data_large/)
+    in inference scripts. The agent must download the sea temperature .npy files and
+    update paths accordingly.
+
+    '
+  - 'Turbulent-Flow data is loaded via datasets/senseiver_dataloader.py; the underlying
+    data source must be obtained and placed in the expected location.
+
+    '
+  - 'Car-Aerodynamics uses DDP training scripts; data paths are configured via command-line
+    arguments in shell scripts under Car-Aerodynamics/scripts/.
+
+    '
+  - 'Total dataset size across all three domains is estimated at 20-60 GB depending
+    on resolution choices; exact sizes are not stated in the README.
+
+    '
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  key_packages:
+  - dotwiz
+  - pyyaml
+  - numpy
+  - matplotlib
+  notes:
+  - See requirements.txt for the full dependency set.
+  - 'Inference scripts use torch.cuda.amp.autocast and hardcode GPU device indices
+    (e.g. cuda:5, cuda:0). Adjust device IDs to match your hardware.
+
+    '
+  - 'Car-Aerodynamics uses DDP (DistributedDataParallel); multi-GPU may be needed
+    for training but single-GPU suffices for inference.
+
+    '
+risk_flags:
+- hardcoded_paths
+- hardcoded_device_ids
+- dataset_not_bundled
+- checkpoint_not_verified
+risk_notes:
+- 'Inference scripts contain hardcoded absolute data paths (e.g. /workspace/mayuezhou/ddim/sea_data_large/)
+  and hardcoded CUDA device indices (torch.cuda.set_device(5)). These must be edited
+  before running.
+
+  '
+- 'Pretrained checkpoints (e.g. pipe_best_base_model.pth, sea_best_base_model.pth,
+  pipe_50sensor_opt.pth) are expected under per-domain ./checkpoints/ directories.
+  Availability depends on the snapshot packaging; if missing, training must be run
+  first.
+
+  '
+- 'No benchmark execution was performed during the packaging pass; metric values have
+  not been verified at runtime.
+
+  '
+- 'The walk inference scripts (sensor placement optimization evaluation) require optimized
+  checkpoints that are produced only after Stage 2 training.
+
+  '
+recommended_when: 'Use this benchmark when you want a scientific-ML task that combines
+  physics-field reconstruction with constrained sensor placement optimization, testing
+  generative modeling (flow matching) across heterogeneous physical domains with both
+  regular and irregular geometries.
+
+  '
+not_recommended_when: 'Do not use this if you need a lightweight benchmark with minimal
+  storage, no iterative optimization loop, or no GPU requirement. Also not suitable
+  if you cannot modify hardcoded paths and device indices in the source scripts.
+
+  '
+paper:
+  title: 'PhySense: Sensor Placement Optimization for Accurate Physics Sensing'
+  venue: NeurIPS 2025 Oral
+  year: 2025
+  url: https://arxiv.org/abs/2505.18190
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.006_physense.zip
+  archive_type: zip
+  local_dir_name: paper-6-PhySense
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.006_physense.zip
+  sha256: b35419c897e1c56bad7037fc90249da8589f432ba58831550a257b99d19e8b6c
+  size_bytes: 94438
+commercial:
+  annual_fee: null
+display:
+  palette_seed: slate-cyan-fluid
+  art_style: scientific-visualization
+  accent_priority: high
+image_path: ../image/006_aisb.t3.006_physense.jpg

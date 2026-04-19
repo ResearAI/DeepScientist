@@ -238,7 +238,7 @@ class QuestStageViewBuilder:
         self.stage_key = self._resolve_effective_stage_key()
         if selection_type == "idea_candidate":
             return self._build_idea_candidate()
-        if selection_type == "branch_node" and not explicit_stage_key:
+        if selection_type == "branch_node" and explicit_stage_key in {"", "idea"}:
             return self._build_branch()
         if self.stage_key == "baseline":
             return self._build_baseline()

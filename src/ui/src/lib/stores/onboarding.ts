@@ -30,7 +30,7 @@ type OnboardingState = OnboardingPersistence & {
 }
 
 const ONBOARDING_STORAGE_KEY = 'ds:onboarding:v1'
-export const PROJECT_ONBOARDING_START_STEP = 10
+export const PROJECT_ONBOARDING_START_STEP = 22
 
 const defaultPersistence: OnboardingPersistence = {
   firstRunHandled: false,

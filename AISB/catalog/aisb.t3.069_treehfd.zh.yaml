@@ -1,0 +1,111 @@
+id: aisb.t3.069_treehfd
+name: 通过Hoeffding函数分解与TreeHFD算法实现树集成模型可解释性
+version: 0.1.0
+one_line: 通过TreeHFD算法将XGBoost集成预测分解为可解释的主效应和二阶交互作用。
+task_description: |
+  本基准测试包旨在使用Hoeffding函数分解（HFD）评估XGBoost集成的可解释性。TreeHFD算法将黑盒树集成预测分解为唯一的低维函数和——主效应（单变量）和二阶交互作用（变量对）——这些函数本质上是透明的，同时保持了模型精度。与TreeSHAP不同，Hoeffding分解强制执行分层正交性，产生干净的主效应估计，其中交互作用被正确分离。基准测试通过与控制模拟研究（p=6维，n=5000样本，相关输入）中的解析真值对比来测量分解质量。
+
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- mse_eta12
+- mse_eta1
+- mse_eta2
+- mse_eta3
+- mse_eta4
+- mse_eta5
+- mse_eta6
+- mse_eta34
+- mse_others
+- functional_decomposition_report
+launch_profiles:
+- id: explainability_eval
+  label: 可解释性评估
+  description: 在树集成基准上运行打包的Hoeffding风格分解流程。在所有主效应和二阶交互作用上，针对解析真值评估分解精度。
+dataset_download:
+  primary_method: pip
+  sources:
+  - url: https://pypi.org/project/treehfd/
+    method: pip
+    package_name: treehfd
+  - url: https://deepscientist.cc/AISB/069_treehfd
+    method: archive
+    archive_type: zip
+    local_dir_name: paper-69-TreeHFD
+  notes:
+  - 通过 `pip install treehfd` 安装最新版本
+  - 压缩包提供完整源代码及示例和测试
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.11'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - xgboost>=3.1,<4.0
+  - scipy>=1.16,<2.0
+  - numpy>=1.24
+  - scikit-learn>=1.3
+  notes:
+  - CPU仅执行对所有基准测试流程完全足够
+  - GPU支持可选，通过xgboost的专有NVIDIA模块
+  - 由于使用的语言特性，需要Python >=3.11
+  - 完整依赖项在捆绑的requirements.txt或pyproject.toml中
+risk_flags: []
+risk_notes: []
+recommended_when: |
+  当需要对表格数据的XGBoost模型进行可解释性解释、且主效应与交互作用需要正确分离时，使用此基准测试。非常适合CPU仅环境，以及在与TreeSHAP方法进行对比时——当主效应与交互作用的纠缠成为问题时。
+
+not_recommended_when: |
+  如果需要GPU加速（不支持xgboost GPU模式）、需要对神经网络或非树模型进行解释，或者需要对高基数分类变量（未经独热编码）进行解释时，请勿使用此基准测试。
+
+paper:
+  title: Tree Ensemble Explainability through the Hoeffding Functional Decomposition
+    and TreeHFD Algorithm
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=dRLWcpBQxS
+  authors:
+  - Clément Bénard
+  institutions:
+  - Thales cortAIx-Labs
+  - SINCLAIR AI Lab
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.069_treehfd.zip
+  archive_type: zip
+  local_dir_name: paper-69-TreeHFD
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.069_treehfd.zip
+  sha256: 7b44fd7e4586498d04dbdb0d6d8059aee6621c4253e2292dda069fab6d4abe37
+  size_bytes: 123618
+display:
+  palette_seed: cedar-ivory-tree
+  art_style: model-decomposition
+  accent_priority: medium
+image_path: ../image/069_aisb.t3.069_treehfd.jpg

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from collections import deque
 import hashlib
 import json
@@ -33,6 +34,10 @@ def require_yaml() -> None:
 
 def utc_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat()
+
+
+_TEXT_SUBPROCESS_ENCODING = "utf-8"
+_TEXT_SUBPROCESS_ERRORS = "replace"
 
 
 def ensure_dir(path: Path) -> Path:
@@ -158,6 +163,28 @@ def resolve_within(root: Path, relative: str) -> Path:
     return candidate
 
 
+def utf8_text_subprocess_kwargs() -> dict[str, Any]:
+    return {
+        "text": True,
+        "encoding": _TEXT_SUBPROCESS_ENCODING,
+        "errors": _TEXT_SUBPROCESS_ERRORS,
+    }
+
+
+def ensure_utf8_subprocess_env(env: Mapping[str, object] | None = None) -> dict[str, str]:
+    resolved: dict[str, str] = {}
+    for key, value in (env or {}).items():
+        env_key = str(key or "").strip()
+        if not env_key or value is None:
+            continue
+        resolved[env_key] = str(value)
+    if not str(resolved.get("PYTHONIOENCODING") or "").strip():
+        resolved["PYTHONIOENCODING"] = _TEXT_SUBPROCESS_ENCODING
+    if not str(resolved.get("PYTHONUTF8") or "").strip():
+        resolved["PYTHONUTF8"] = "1"
+    return resolved
+
+
 def run_command(
     args: list[str],
     *,
@@ -168,8 +195,8 @@ def run_command(
         args,
         cwd=str(cwd) if cwd else None,
         check=check,
-        text=True,
         capture_output=True,
+        **utf8_text_subprocess_kwargs(),
         **process_session_popen_kwargs(hide_window=True, new_process_group=False),
     )
 
@@ -234,15 +261,19 @@ def resolve_runner_binary(binary: str, *, runner_name: str | None = None) -> str
         return resolved_reference
 
     normalized_runner = str(runner_name or candidate.name or normalized).strip().lower()
-    if normalized_runner != "codex":
-        return resolved_reference
-
-    for env_name in ("DEEPSCIENTIST_CODEX_BINARY", "DS_CODEX_BINARY"):
+    env_runner = normalized_runner.upper().replace("-", "_")
+    for env_name in (
+        f"DEEPSCIENTIST_{env_runner}_BINARY",
+        f"DS_{env_runner}_BINARY",
+    ):
         override = os.environ.get(env_name)
         if override:
             resolved_override = _resolve_executable_reference(override)
             if resolved_override:
                 return resolved_override
+
+    if normalized_runner != "codex":
+        return resolved_reference
 
     # Match the Codex installation the user already runs successfully in shell
     # before falling back to the npm-bundled helper copy.

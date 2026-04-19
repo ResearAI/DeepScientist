@@ -1,0 +1,182 @@
+schema_version: 1
+id: aisb.t3.027_citeeval
+name: 'CiteEval: Principle-Driven Citation Evaluation for Source Attribution'
+version: 0.1.0
+one_line: 'Evaluate and optimize citation quality metrics on the CiteBench benchmark
+  using CiteEval-Auto, a principle-driven framework that assesses citations against
+  full retrieval context, user queries, and generated text — measuring statement-level
+  Pearson correlation with human judgments.
+
+  '
+task_description: 'This packaged benchmark covers principle-driven citation evaluation
+  for retrieval-augmented generation (RAG) systems. The core task is to run the CiteEval-Auto
+  metric suite — comprising context attribution (CA), citation editing (CE), and citation
+  rating (CR via IterCoE and EditDist) modules — against the CiteBench dataset, which
+  contains multi-domain queries (ASQA, ELI5, MS MARCO, LFRQA) with statement-level
+  human annotations of citation quality on a 1-5 Likert scale. The primary metric
+  is statement-level Pearson correlation between predicted and human citation ratings.
+  The evaluation goes beyond simple NLI-based supportiveness by considering full retrieval
+  sources, user context, response context, and parametric knowledge. The benchmark
+  supports two evaluation scenarios: "Full" (all citable statements, uncited ones
+  penalized) and "Cited" (only cited statements evaluated). Execution requires an
+  LLM API (OpenAI or DeepSeek) for the CiteEval-Auto modules, which use prompted LLM
+  calls for context attribution and citation rating. The CiteBench dataset must be
+  downloaded separately from Google Drive. Pre-computed metric outputs for baselines
+  (AutoAIS, LQAC, AttriScore) are bundled in the snapshot.
+
+  '
+capability_tags:
+- research_code_optimization
+- citation_evaluation
+- retrieval_augmented_generation
+- source_attribution
+- evaluation
+- meta_evaluation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: medium
+time_band: 2-6h
+difficulty: medium
+data_access: public
+primary_outputs:
+- statement_level_pearson
+- context_attribution_correlation
+- citation_rating_correlation
+- citation_eval_report
+- principle_judgments
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run the packaged CiteEval-Auto evaluation on a small example batch
+    or the pre-computed metric outputs to verify the pipeline and reproduce baseline
+    correlation numbers.
+
+    '
+- id: full_eval
+  label: Full Metric Evaluation
+  description: 'Run the full CiteEval-Auto pipeline (CA, CE, CR modules) over the
+    CiteBench metric test set from scratch using an LLM API, then compute human correlation
+    metrics against statement-level and response-level human annotations.
+
+    '
+- id: system_eval
+  label: System Evaluation
+  description: 'Evaluate citation quality of a custom RAG system''s outputs using
+    CiteEval-Auto. Requires converting system output to .citeeval format, running
+    the metric suite, and printing results with run_system_eval.sh. Supports --cited
+    and full scenarios.
+
+    '
+dataset_download:
+  primary_method: manual
+  sources:
+  - kind: google_drive
+    url: https://drive.google.com/drive/folders/12Evj0f92wKz_7OGuuwq3KShTdSM8eu4v?usp=drive_link
+    access: public
+    note: 'CiteBench dataset including metric_dev, metric_test, full dev, and full
+      test splits. Must be downloaded manually and placed under data/ in the project
+      root.
+
+      '
+  notes:
+  - Pre-computed metric outputs for baseline metrics (AutoAIS, LQAC, AttriScore) are
+    bundled in data/metric_eval_outputs/.
+  - Dataset size is moderate (thousands of queries with annotations); exact download
+    size not documented but expected under 1 GB.
+credential_requirements:
+  mode: api_key
+  items:
+  - OPENAI_API_KEY (for GPT-4o-based CiteEval-Auto runs, or substitute with DeepSeek
+    API)
+  notes:
+  - The default config in run_citeeval.sh uses model=deepseek-chat; run_system_eval.sh
+    references gpt-4o.
+  - API costs depend on the number of statements evaluated and the chosen model. The
+    metric test set has ~1000 responses.
+  - CPU-only execution of the evaluation scripts is possible but still requires an
+    LLM API for the CiteEval-Auto modules.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.10'
+  cuda: '11.7'
+  pytorch: 1.13.0
+  key_packages:
+  - openai==1.16.2
+  - transformers==4.38.2
+  notes:
+  - CPU-only execution is plausible for the minimum route; GPU is only needed if running
+    local NLI models for baselines.
+  - The requirements.txt file has a typo in the README (requirments.txt) — use the
+    actual file in the snapshot.
+  - CITEEVAL_ROOT and PYTHONPATH environment variables must be set as described in
+    README.
+risk_flags:
+- api_dependency
+- external_dataset_download
+- api_cost_variable
+risk_notes:
+- CiteEval-Auto modules require live LLM API calls (OpenAI or DeepSeek). Without an
+  API key, only pre-computed metric outputs can be evaluated.
+- CiteBench data must be manually downloaded from Google Drive; it is not bundled
+  in the snapshot.
+- API costs scale with the number of evaluated statements and the LLM model used.
+  The metric test set has ~1000 responses with multiple statements each.
+- The default model in run_citeeval.sh is deepseek-chat, not GPT-4o as used in the
+  paper's main results. Reproducing paper numbers requires GPT-4o.
+- No benchmark execution was performed during the packaging pass; metric values should
+  be verified at runtime.
+recommended_when: 'Use this benchmark when you want a citation-quality metric task
+  that evaluates full retrieval context, user queries, and generated text rather than
+  simple NLI-based supportiveness proxies. Ideal for research on improving RAG citation
+  quality, developing better automatic citation metrics, or benchmarking citation
+  quality of new RAG systems against human judgments.
+
+  '
+not_recommended_when: 'Do not use this if you need a fully self-contained benchmark
+  with no external API calls, if you lack access to OpenAI or DeepSeek APIs, or if
+  your task does not involve retrieval passages and source attribution. Not suitable
+  if you need a benchmark that can run entirely offline without any LLM API dependency.
+
+  '
+paper:
+  title: 'CiteEval: Principle-Driven Citation Evaluation for Source Attribution'
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2506.01829
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.027_citeeval.zip
+  archive_type: zip
+  local_dir_name: paper-27-CiteEval
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.027_citeeval.zip
+  sha256: 5eb48e11b91ec4856d18461899c236f658b110dc49ff29487205908230ac8d0b
+  size_bytes: 83173
+commercial:
+  annual_fee: null
+display:
+  palette_seed: cream-navy-citation
+  art_style: reference-audit
+  accent_priority: high
+image_path: ../image/027_aisb.t3.027_citeeval.jpg

@@ -28,8 +28,12 @@ from urllib.request import Request
 
 from .. import __version__
 from ..annotations import AnnotationService
+from ..admin import AdminTaskService
+from ..admin.repairs import AdminRepairService
+from ..admin.service import AdminService
 from ..acp import build_session_update
 from ..artifact import ArtifactService
+from ..benchstore import BenchStoreService
 from ..bash_exec import BashExecService
 from ..bash_exec.models import TerminalClient
 from ..bash_exec.service import DEFAULT_TERMINAL_SESSION_ID
@@ -79,9 +83,10 @@ from ..prompts import PromptBuilder
 from ..prompts.builder import classify_turn_intent, current_standard_skills
 from ..connector.qq_profiles import list_qq_profiles, merge_qq_profile_config, normalize_qq_connector_config
 from ..quest import QuestService
-from ..runners import CodexRunner, RunRequest, get_runner_factory, register_builtin_runners
+from ..runners import ClaudeRunner, CodexRunner, OpenCodeRunner, RunRequest, get_runner_factory, register_builtin_runners
+from ..runners.metadata import get_runner_metadata
 from ..runtime_logs import JsonlLogger
-from ..shared import append_jsonl, ensure_dir, generate_id, iter_jsonl, read_json, read_jsonl, read_jsonl_tail, read_text, resolve_within, run_command, slugify, utc_now, which, write_json
+from ..shared import append_jsonl, ensure_dir, generate_id, iter_jsonl, read_json, read_jsonl, read_jsonl_tail, read_text, resolve_within, run_command, slugify, utc_now, utf8_text_subprocess_kwargs, which, write_json
 from ..skills import SkillInstaller
 from ..team import SingleTeamService
 from ..connector.weixin_support import (
@@ -108,7 +113,10 @@ _AUTO_CONTINUE_ACTIVE_WORK_DELAY_SECONDS = 0.2
 _TERMINAL_PREWARM_DEBOUNCE_SECONDS = 20.0
 _STALLED_RUNNING_TURN_INACTIVITY_SECONDS = 30 * 60
 _STALLED_RUNNING_TURN_INTERRUPT_TIMEOUT_SECONDS = 5.0
-CODEX_RETRY_DEFAULT_MAX_ATTEMPTS = 5
+_IMMEDIATE_READ_INTERRUPT_TIMEOUT_SECONDS = 5.0
+_RESUME_CONTINUE_TEXT = "Continue"
+CODEX_RETRY_DEFAULT_MAX_ATTEMPTS = 7
+PREVIOUS_CODEX_RETRY_DEFAULT_MAX_ATTEMPTS = 5
 CODEX_RETRY_DEFAULT_INITIAL_BACKOFF_SEC = 10.0
 CODEX_RETRY_DEFAULT_BACKOFF_MULTIPLIER = 6.0
 CODEX_RETRY_DEFAULT_MAX_BACKOFF_SEC = 1800.0
@@ -202,6 +210,7 @@ class DaemonApp:
         self.memory_service = MemoryService(home)
         self.annotation_service = AnnotationService(home)
         self.artifact_service = ArtifactService(home)
+        self.benchstore_service = BenchStoreService(home, repo_root=self.repo_root)
         self.bash_exec_service = BashExecService(home)
         self.team_service = SingleTeamService(home)
         self.cloud_service = CloudLinkService(home)
@@ -213,6 +222,16 @@ class DaemonApp:
             sync_existing_quests_enabled=bool(skill_config.get("sync_quest_on_open", True)),
         )
         self.logger = JsonlLogger(home / "logs", level=config.get("logging", {}).get("level", "info"))
+        self.admin_task_service = AdminTaskService(
+            home,
+            repo_root=self.repo_root,
+            logger=self.logger,
+            system_update_status_fn=self.system_update_status,
+            system_update_action_fn=self.request_system_update,
+        )
+        self.admin_task_service.logger = self.logger
+        self.admin_repair_service = AdminRepairService(self)
+        self.admin_service = AdminService(self)
         self.reconciled_quests = self.quest_service.reconcile_runtime_state()
         for item in self.reconciled_quests:
             self.logger.log(
@@ -236,11 +255,32 @@ class DaemonApp:
             prompt_builder=self.prompt_builder,
             artifact_service=self.artifact_service,
         )
-        register_builtin_runners(codex_runner=self.codex_runner)
+        self.claude_runner = ClaudeRunner(
+            home=home,
+            repo_root=self.repo_root,
+            binary=self.runners_config.get("claude", {}).get("binary", "claude"),
+            logger=self.logger,
+            prompt_builder=self.prompt_builder,
+            artifact_service=self.artifact_service,
+        )
+        self.opencode_runner = OpenCodeRunner(
+            home=home,
+            repo_root=self.repo_root,
+            binary=self.runners_config.get("opencode", {}).get("binary", "opencode"),
+            logger=self.logger,
+            prompt_builder=self.prompt_builder,
+            artifact_service=self.artifact_service,
+        )
+        register_builtin_runners(
+            codex_runner=self.codex_runner,
+            claude_runner=self.claude_runner,
+            opencode_runner=self.opencode_runner,
+        )
         register_builtin_connector_bridges()
         register_builtin_channels(home=home, connectors_config=self.connectors_config)
         self.runners = {
-            "codex": self._create_runner("codex"),
+            name: self._create_runner(name)
+            for name in ("codex", "claude", "opencode")
         }
         self.channels = {name: self._create_channel(name) for name in list_channel_names()}
         self.sessions = SessionStore()
@@ -1028,10 +1068,10 @@ class DaemonApp:
                 command,
                 cwd=str(self.repo_root),
                 capture_output=True,
-                text=True,
                 timeout=8,
                 check=False,
                 env=os.environ.copy(),
+                **utf8_text_subprocess_kwargs(),
                 **_windows_hidden_subprocess_kwargs(),
             )
         except subprocess.TimeoutExpired as exc:
@@ -1076,10 +1116,10 @@ class DaemonApp:
                 command,
                 cwd=str(self.repo_root),
                 capture_output=True,
-                text=True,
                 timeout=8,
                 check=False,
                 env=os.environ.copy(),
+                **utf8_text_subprocess_kwargs(),
                 **_windows_hidden_subprocess_kwargs(),
             )
         except subprocess.TimeoutExpired as exc:
@@ -1093,6 +1133,24 @@ class DaemonApp:
         if not isinstance(payload, dict):
             raise RuntimeError("DeepScientist update request returned an invalid payload.")
         return payload
+
+    def start_benchstore_install(self, entry_id: str) -> dict[str, Any]:
+        entry_payload = self.benchstore_service.get_entry(entry_id)
+        entry = entry_payload.get("entry") if isinstance(entry_payload.get("entry"), dict) else {}
+        normalized_id = str(entry.get("id") or entry_id).strip() or str(entry_id).strip()
+        entry_name = str(entry.get("name") or normalized_id).strip() or normalized_id
+        return self.admin_task_service.start_task(
+            "benchstore_install",
+            metadata={
+                "entry_id": normalized_id,
+                "entry_name": entry_name,
+            },
+            target=lambda reporter, current_task: self.benchstore_service.run_install_task(
+                entry_id=normalized_id,
+                reporter=reporter,
+                task_id=str(current_task.get("task_id") or ""),
+            ),
+        )
 
     def _process_terminal_attach_request(
         self,
@@ -1566,25 +1624,44 @@ class DaemonApp:
 
     def reload_runners_config(self) -> dict[str, object]:
         self.runners_config = self.config_manager.load_runners_config()
-        codex_config = self.runners_config.get("codex", {})
-        if isinstance(codex_config, dict):
-            self.codex_runner.binary = str(codex_config.get("binary") or "codex")
-        return {
+        runner_instances = {
+            "codex": self.codex_runner,
+            "claude": self.claude_runner,
+            "opencode": self.opencode_runner,
+        }
+        payload: dict[str, object] = {
             "ok": True,
             "runners": sorted(name for name, config in self.runners_config.items() if isinstance(config, dict)),
-            "codex": {
-                "binary": self.codex_runner.binary,
-                "approval_policy": codex_config.get("approval_policy") if isinstance(codex_config, dict) else None,
-                "sandbox_mode": codex_config.get("sandbox_mode") if isinstance(codex_config, dict) else None,
-                "mcp_tool_timeout_sec": codex_config.get("mcp_tool_timeout_sec") if isinstance(codex_config, dict) else None,
-            },
         }
+        for runner_name, instance in runner_instances.items():
+            runner_config = self.runners_config.get(runner_name, {})
+            if isinstance(runner_config, dict):
+                instance.binary = str(runner_config.get("binary") or getattr(instance, "binary", runner_name))
+            payload[runner_name] = {
+                "binary": getattr(instance, "binary", None),
+                "enabled": runner_config.get("enabled") if isinstance(runner_config, dict) else None,
+                "model": runner_config.get("model") if isinstance(runner_config, dict) else None,
+                "config_dir": runner_config.get("config_dir") if isinstance(runner_config, dict) else None,
+            }
+            if runner_name == "codex" and isinstance(runner_config, dict):
+                payload[runner_name]["approval_policy"] = runner_config.get("approval_policy")
+                payload[runner_name]["sandbox_mode"] = runner_config.get("sandbox_mode")
+                payload[runner_name]["mcp_tool_timeout_sec"] = runner_config.get("mcp_tool_timeout_sec")
+        return payload
 
     def _preferred_locale(self) -> str:
         return str(self.runtime_config.get("default_locale") or "en-US").lower()
 
     def _polite_copy(self, *, zh: str, en: str) -> str:
         return zh if self._preferred_locale().startswith("zh") else en
+
+    @staticmethod
+    def _resume_continue_source(source: str) -> str:
+        normalized = normalize_conversation_id(source)
+        parsed = parse_conversation_id(normalized)
+        if parsed is not None and str(parsed.get("connector") or "").strip().lower() != "local":
+            return normalized
+        return "local"
 
     def submit_user_message(
         self,
@@ -1645,6 +1722,30 @@ class DaemonApp:
             **scheduled,
         }
 
+    def submit_web_user_message(
+        self,
+        quest_id: str,
+        *,
+        text: str,
+        source: str,
+        attachment_draft_ids: list[str],
+        reply_to_interaction_id: str | None = None,
+        client_message_id: str | None = None,
+    ) -> dict:
+        finalized_attachments = self.quest_service.finalize_chat_attachment_drafts(
+            quest_id,
+            draft_ids=attachment_draft_ids,
+            client_message_id=client_message_id,
+        )
+        return self.submit_user_message(
+            quest_id,
+            text=text,
+            source=source,
+            attachments=finalized_attachments,
+            reply_to_interaction_id=reply_to_interaction_id,
+            client_message_id=client_message_id,
+        )
+
     def create_quest(
         self,
         *,
@@ -1664,10 +1765,13 @@ class DaemonApp:
         normalized_requested_bindings = self._normalize_requested_connector_bindings(requested_connector_bindings)
         if len(normalized_requested_bindings) > 1:
             raise ValueError("A quest may bind at most one external connector target.")
+        configured = self.config_manager.load_named("config")
+        default_runner = str(configured.get("default_runner") or "codex").strip().lower() or "codex"
         snapshot = self.quest_service.create(
             goal=goal,
             title=title,
             quest_id=quest_id,
+            runner=default_runner,
             requested_baseline_ref=dict(requested_baseline_ref) if isinstance(requested_baseline_ref, dict) else None,
             startup_contract=dict(startup_contract) if isinstance(startup_contract, dict) else None,
         )
@@ -2282,6 +2386,240 @@ class DaemonApp:
             "notice": notice,
         }
 
+    def _quiet_interrupt_for_turn_restart(self, quest_id: str, *, source: str) -> dict[str, Any]:
+        snapshot = self.quest_service.snapshot(quest_id)
+        snapshot = self._reconcile_stale_active_turn(quest_id, snapshot=snapshot)
+        runner_name = self._runner_name_for(snapshot)
+        active_run_id = str(snapshot.get("active_run_id") or "").strip() or None
+        turn_state = self._refresh_turn_worker_state(quest_id)
+        runtime_status = str(snapshot.get("runtime_status") or snapshot.get("status") or "").strip().lower()
+        if not active_run_id and not turn_state.get("running"):
+            if runtime_status in {"stopped", "paused", "completed", "error"}:
+                snapshot = self.quest_service.set_status(quest_id, "active")
+            return {
+                "snapshot": snapshot,
+                "interrupted": False,
+                "stopped_bash_session_ids": [],
+            }
+
+        interrupted = False
+        try:
+            runner = self.get_runner(runner_name)
+        except KeyError:
+            runner = None
+        with self._turn_lock:
+            state = self._turn_state.setdefault(quest_id, {"running": False, "pending": False})
+            state["pending"] = False
+            state["stop_requested"] = True
+        runner_supports_interrupt = runner is not None and hasattr(runner, "interrupt")
+        if runner_supports_interrupt:
+            interrupted = bool(getattr(runner, "interrupt")(quest_id))
+        stopped_bash_session_ids = self._stop_active_bash_exec_sessions(
+            quest_id,
+            run_id=active_run_id,
+            reason="immediate_read",
+            user_id=source,
+        )
+        turn_state = self._wait_for_turn_worker_exit(
+            quest_id,
+            timeout_seconds=_IMMEDIATE_READ_INTERRUPT_TIMEOUT_SECONDS,
+        )
+        if turn_state.get("running"):
+            detail_parts = [
+                f"runner={runner_name or 'unknown'}",
+                f"interrupt_attempted={runner_supports_interrupt}",
+                f"interrupt_returned={interrupted}",
+                f"active_run_id={active_run_id or 'none'}",
+                f"runtime_status={runtime_status or 'unknown'}",
+                f"timeout_seconds={_IMMEDIATE_READ_INTERRUPT_TIMEOUT_SECONDS:g}",
+            ]
+            worker = turn_state.get("worker")
+            if isinstance(worker, threading.Thread):
+                detail_parts.append(f"worker_alive={worker.is_alive()}")
+                detail_parts.append(f"worker_name={worker.name}")
+            stopped_count = len(stopped_bash_session_ids)
+            if stopped_count > 0:
+                detail_parts.append(f"stopped_bash_sessions={stopped_count}")
+            if runner is None:
+                detail_parts.append("reason=runner_not_available")
+            elif not runner_supports_interrupt:
+                detail_parts.append("reason=runner_has_no_interrupt")
+            elif not interrupted:
+                detail_parts.append("reason=runner_interrupt_returned_false")
+            else:
+                detail_parts.append("reason=worker_did_not_exit_before_timeout")
+            raise RuntimeError(
+                "The active agent turn could not be interrupted for immediate read. "
+                + "; ".join(detail_parts)
+            )
+        normalized_status = "active" if runtime_status == "running" else (runtime_status or "active")
+        if normalized_status in {"stopped", "paused", "completed", "error"}:
+            snapshot = self.quest_service.set_status(quest_id, "active")
+        else:
+            snapshot = self.quest_service.mark_turn_finished(quest_id, status=normalized_status)
+        with self._turn_lock:
+            state = self._turn_state.setdefault(quest_id, {"running": False, "pending": False})
+            state["stop_requested"] = False
+            state["running"] = False
+            state.pop("worker", None)
+        return {
+            "snapshot": snapshot,
+            "interrupted": interrupted,
+            "stopped_bash_session_ids": stopped_bash_session_ids,
+        }
+
+    def read_queued_user_messages_now(
+        self,
+        quest_id: str,
+        *,
+        message_id: str | None = None,
+        source: str = "local",
+    ) -> dict[str, Any]:
+        snapshot = self.quest_service.snapshot(quest_id)
+        snapshot = self._reconcile_stale_active_turn(quest_id, snapshot=snapshot)
+        quest_root = self.quest_service._quest_root(quest_id)
+        target_message_id = str(message_id or "").strip() or None
+        if target_message_id:
+            status_payload = self.quest_service.pending_user_message_status(
+                quest_root,
+                message_id=target_message_id,
+            )
+            queue_state = str(status_payload.get("queue_state") or "missing")
+            current_message_state = (
+                dict(status_payload.get("message_state") or {})
+                if isinstance(status_payload.get("message_state"), dict)
+                else None
+            )
+            if queue_state == "read":
+                return {
+                    "ok": True,
+                    "status": "already_read",
+                    "quest_id": quest_id,
+                    "message": "This message was already sent to the agent.",
+                    "message_ids": [target_message_id],
+                    "current_message_state": current_message_state,
+                    "snapshot": snapshot,
+                }
+            if queue_state == "withdrawn":
+                return {
+                    "ok": False,
+                    "status": "withdrawn",
+                    "quest_id": quest_id,
+                    "message": "This message was already withdrawn from the waiting queue.",
+                    "message_ids": [target_message_id],
+                    "current_message_state": current_message_state,
+                    "snapshot": snapshot,
+                }
+            if queue_state == "missing":
+                return {
+                    "ok": False,
+                    "status": "missing",
+                    "quest_id": quest_id,
+                    "message": f"Message `{target_message_id}` is not waiting in the queue.",
+                    "message_ids": [target_message_id],
+                    "current_message_state": current_message_state,
+                    "snapshot": snapshot,
+                }
+        queue_payload = self.quest_service._read_message_queue(quest_root)
+        pending = [dict(item) for item in (queue_payload.get("pending") or [])]
+        if not pending:
+            return {
+                "ok": False,
+                "status": "empty",
+                "quest_id": quest_id,
+                "message": "No unread user message is waiting in the queue.",
+                "snapshot": snapshot,
+            }
+
+        try:
+            restart = self._quiet_interrupt_for_turn_restart(quest_id, source=source)
+        except RuntimeError as exc:
+            failed_message_ids = (
+                [target_message_id]
+                if target_message_id
+                else [
+                    str(item.get("message_id") or "").strip()
+                    for item in pending
+                    if str(item.get("message_id") or "").strip()
+                ]
+            )
+            return {
+                "ok": False,
+                "status": "interrupt_failed",
+                "quest_id": quest_id,
+                "message": str(exc),
+                "message_ids": failed_message_ids,
+                "snapshot": snapshot,
+            }
+        mailbox_payload = self.quest_service.consume_pending_user_messages(
+            quest_root,
+            interaction_id=None,
+            delivery_reason="immediate_read",
+        )
+        recent_inbound_messages = [
+            dict(item)
+            for item in (mailbox_payload.get("recent_inbound_messages") or [])
+            if isinstance(item, dict)
+        ]
+        if not recent_inbound_messages:
+            return {
+                "ok": False,
+                "quest_id": quest_id,
+                "message": "No unread user message remained after the restart.",
+            }
+
+        self.quest_service.set_turn_message_override(
+            quest_root,
+            turn_reason="immediate_read",
+            message=str(mailbox_payload.get("agent_instruction") or "").strip(),
+            message_ids=[
+                str(item.get("message_id") or "").strip()
+                for item in recent_inbound_messages
+                if str(item.get("message_id") or "").strip()
+            ],
+            delivery_batch_id=str(((mailbox_payload.get("delivery_batch") or {}).get("batch_id") or "")).strip() or None,
+            source=source,
+        )
+        post_snapshot = self.quest_service.snapshot(quest_id)
+        runtime_status = str(post_snapshot.get("runtime_status") or post_snapshot.get("status") or "").strip().lower()
+        if runtime_status in {"stopped", "paused", "completed", "error"}:
+            post_snapshot = self.quest_service.set_status(quest_id, "active")
+        scheduling = self.schedule_turn(quest_id, reason="immediate_read")
+        return {
+            "ok": True,
+            "status": "scheduled",
+            "quest_id": quest_id,
+            "snapshot": self.quest_service.snapshot(quest_id),
+            "message_ids": [
+                str(item.get("message_id") or "").strip()
+                for item in recent_inbound_messages
+                if str(item.get("message_id") or "").strip()
+            ],
+            "delivery_batch": mailbox_payload.get("delivery_batch"),
+            "recent_inbound_messages": recent_inbound_messages,
+            "interrupted": bool(restart.get("interrupted")),
+            "stopped_bash_session_ids": list(restart.get("stopped_bash_session_ids") or []),
+            "message": "Queued user messages were forced into an immediate-read turn.",
+            **scheduling,
+        }
+
+    def withdraw_queued_user_message(
+        self,
+        quest_id: str,
+        *,
+        message_id: str,
+        source: str = "local",
+    ) -> dict[str, Any]:
+        quest_root = self.quest_service._quest_root(quest_id)
+        result = self.quest_service.withdraw_pending_user_message(
+            quest_id,
+            message_id=message_id,
+            source=source,
+        )
+        result.setdefault("quest_id", quest_id)
+        result["snapshot"] = self.quest_service.snapshot(quest_id)
+        return result
+
     def _stop_active_bash_exec_sessions(
         self,
         quest_id: str,
@@ -2345,25 +2683,23 @@ class DaemonApp:
             last_recovery_abandoned_run_id=recovery_abandoned_run_id,
             last_recovery_summary=recovery_summary,
         )
-        # Ensure continuation_policy matches current workspace_mode after resume.
-        snapshot = self.quest_service.snapshot(quest_id)
-        workspace_mode = self._workspace_mode_for(snapshot)
-        current_policy = str(snapshot.get("continuation_policy") or "auto").strip().lower()
-        if workspace_mode == "autonomous" and current_policy == "wait_for_user_or_resume":
-            self.quest_service.update_runtime_state(
-                quest_root=self.quest_service._quest_root(quest_id),
-                continuation_policy="auto",
-                continuation_reason="autonomous_mode_reconciled",
-                continuation_updated_at=utc_now(),
-            )
-        elif workspace_mode == "copilot" and current_policy == "auto":
-            self.quest_service.update_runtime_state(
-                quest_root=self.quest_service._quest_root(quest_id),
-                continuation_policy="wait_for_user_or_resume",
-                continuation_reason="copilot_mode_reconciled",
-                continuation_updated_at=utc_now(),
-            )
-        snapshot = self.quest_service.snapshot(quest_id)
+        scheduling: dict[str, Any] | None = None
+        if not source.startswith("auto:"):
+            if int(snapshot.get("pending_user_message_count") or 0) > 0:
+                scheduling = self.schedule_turn(quest_id, reason="queued_user_messages")
+            else:
+                continue_payload = self.submit_user_message(
+                    quest_id,
+                    text=_RESUME_CONTINUE_TEXT,
+                    source=self._resume_continue_source(source),
+                )
+                scheduling = {
+                    "scheduled": bool(continue_payload.get("scheduled")),
+                    "started": bool(continue_payload.get("started")),
+                    "queued": bool(continue_payload.get("queued")),
+                    "reason": str(continue_payload.get("reason") or "user_message"),
+                    "resume_trigger_message": continue_payload.get("message"),
+                }
         summary = f"Quest {quest_id} resumed."
         event = self._append_control_event(
             quest_id,
@@ -2392,6 +2728,7 @@ class DaemonApp:
             "message": summary,
             "event": event,
             "notice": notice,
+            **(dict(scheduling or {})),
         }
 
     def _append_control_event(
@@ -2603,8 +2940,17 @@ class DaemonApp:
         runtime_status = str(snapshot.get("runtime_status") or snapshot.get("status") or "").strip()
         if runtime_status in {"stopped", "paused", "completed", "error"} and not snapshot.get("active_run_id"):
             return
-        latest_user_message = self._latest_user_message(quest_id)
-        if turn_reason != "auto_continue" and latest_user_message is None:
+        quest_root = Path(snapshot["quest_root"])
+        turn_override = (
+            self.quest_service.consume_turn_message_override(
+                quest_root,
+                expected_turn_reason=turn_reason,
+            )
+            if turn_reason == "immediate_read"
+            else None
+        )
+        latest_user_message = self._latest_actionable_user_message(quest_id, turn_reason=turn_reason)
+        if turn_reason not in {"auto_continue", "immediate_read"} and latest_user_message is None:
             return
 
         runner_name = self._runner_name_for(snapshot)
@@ -2616,7 +2962,11 @@ class DaemonApp:
         model = str(runner_cfg.get("model", "gpt-5.4"))
         run_message = ""
         claimed_message_id: str | None = None
-        if turn_reason != "auto_continue":
+        if turn_reason == "immediate_read":
+            run_message = str((turn_override or {}).get("message") or "").strip()
+            if not run_message:
+                return
+        elif turn_reason != "auto_continue":
             run_message = str((latest_user_message or {}).get("content") or "").strip()
             claimed_message_id = str((latest_user_message or {}).get("id") or "").strip() or None
             if not run_message:
@@ -2680,7 +3030,6 @@ class DaemonApp:
             max_attempts=max_attempts,
         )
         turn_id = resumed_turn_id or generate_id("turn")
-        quest_root = Path(snapshot["quest_root"])
         worktree_root = Path(str(snapshot["current_workspace_root"])) if snapshot.get("current_workspace_root") else None
 
         for attempt_index in range(resumed_start_attempt, max_attempts + 1):
@@ -3146,13 +3495,24 @@ class DaemonApp:
     @staticmethod
     def _direct_user_turn_skill(snapshot: dict) -> str:
         available_stage_skills = current_standard_skills(repo_root())
+        workspace_mode = DaemonApp._workspace_mode_for(snapshot)
+        has_explicit_baseline_context = bool(
+            isinstance(snapshot.get("confirmed_baseline_ref"), dict)
+            or isinstance(snapshot.get("requested_baseline_ref"), dict)
+            or str(snapshot.get("active_baseline_id") or "").strip()
+        )
         for candidate in (
             str(snapshot.get("active_anchor") or "").strip(),
             str(snapshot.get("continuation_anchor") or "").strip(),
         ):
             if candidate in available_stage_skills and candidate != "decision":
+                if workspace_mode == "copilot" and candidate == "baseline" and not has_explicit_baseline_context:
+                    continue
                 return DaemonApp._turn_skill_stage_gate(snapshot, candidate)
-        fallback = "baseline" if "baseline" in available_stage_skills else "scout"
+        if workspace_mode == "copilot" and "scout" in available_stage_skills:
+            fallback = "scout"
+        else:
+            fallback = "baseline" if "baseline" in available_stage_skills else "scout"
         return DaemonApp._turn_skill_stage_gate(snapshot, fallback)
 
     @staticmethod
@@ -3226,6 +3586,14 @@ class DaemonApp:
             if str(item.get("role") or "") == "user":
                 return item
         return None
+
+    def _latest_actionable_user_message(self, quest_id: str, *, turn_reason: str) -> dict | None:
+        normalized_reason = str(turn_reason or "").strip() or "user_message"
+        if normalized_reason in {"user_message", "queued_user_messages"}:
+            pending_message = self.quest_service.latest_pending_user_message(quest_id)
+            if pending_message is not None:
+                return pending_message
+        return self._latest_user_message(quest_id)
 
     @staticmethod
     def _runner_binary_issue(runner_name: str, runner: object) -> str | None:
@@ -3305,6 +3673,14 @@ class DaemonApp:
             initial_backoff = CODEX_RETRY_DEFAULT_INITIAL_BACKOFF_SEC
             multiplier = CODEX_RETRY_DEFAULT_BACKOFF_MULTIPLIER
             max_backoff = CODEX_RETRY_DEFAULT_MAX_BACKOFF_SEC
+        if (
+            runner_name == "codex"
+            and max_attempts == PREVIOUS_CODEX_RETRY_DEFAULT_MAX_ATTEMPTS
+            and self._float_matches(initial_backoff, CODEX_RETRY_DEFAULT_INITIAL_BACKOFF_SEC)
+            and self._float_matches(multiplier, CODEX_RETRY_DEFAULT_BACKOFF_MULTIPLIER)
+            and self._float_matches(max_backoff, CODEX_RETRY_DEFAULT_MAX_BACKOFF_SEC)
+        ):
+            max_attempts = CODEX_RETRY_DEFAULT_MAX_ATTEMPTS
         return {
             "enabled": enabled,
             "max_attempts": max_attempts,
@@ -3545,10 +3921,17 @@ class DaemonApp:
             active_run_id=None,
             retry_state=retry_state,
         )
-        notice_message = summary
+        runner_label = self._connector_runner_label(runner_name)
+        user_notice = self._polite_copy(
+            zh=f"DeepScientist 意外停止运行，请检查你所绑定的{runner_label}是否能够顺利连接。",
+            en=f"DeepScientist stopped unexpectedly. Please check whether the bound {runner_label} can connect normally.",
+        )
+        notice_message = "\n".join([user_notice, "", summary]).strip()
         if normalized_guidance:
             notice_message = "\n".join(
                 [
+                    user_notice,
+                    "",
                     summary,
                     "",
                     "Suggested fix:",
@@ -3918,6 +4301,7 @@ class DaemonApp:
         self._shutdown_requested.set()
         self._stop_background_connectors()
         self._stop_terminal_attach_server()
+        self.admin_service.system_monitor.stop()
         self.bash_exec_service.shutdown()
         self.logger.log(
             "info",
@@ -4784,10 +5168,16 @@ class DaemonApp:
                     exclude_conversation_id=conversation_id,
                 )
                 self.update_quest_binding(created["quest_id"], binding_conversation_id, force=True)
-                self.submit_user_message(
+                startup = self.submit_user_message(
                     created["quest_id"],
                     text=goal_text,
                     source=conversation_id,
+                )
+                created_snapshot = self.quest_service.snapshot(created["quest_id"])
+                startup_message = self._connector_turn_start_message(
+                    quest_id=created["quest_id"],
+                    startup=startup,
+                    snapshot=created_snapshot,
                 )
                 return channel.send(
                     {
@@ -4801,7 +5191,9 @@ class DaemonApp:
                                 quest_id=created["quest_id"],
                                 goal=goal_text,
                                 previous_quest_id=previous_quest_id,
-                            ),
+                            )
+                            + "\n"
+                            + startup_message,
                         ),
                     }
                 )
@@ -5210,7 +5602,7 @@ class DaemonApp:
             message_id=str(message.get("message_id") or "").strip() or None,
             attachments=[dict(item) for item in (message.get("attachments") or []) if isinstance(item, dict)],
         )
-        self.submit_user_message(
+        startup = self.submit_user_message(
             quest_id,
             text=self._connector_message_text_with_attachment_notice(
                 original_text=text,
@@ -5219,18 +5611,18 @@ class DaemonApp:
             source=conversation_id,
             attachments=materialized_attachments,
         )
+        snapshot = self.quest_service.snapshot(quest_id)
+        startup_message = self._connector_turn_start_message(
+            quest_id=quest_id,
+            startup=startup,
+            snapshot=snapshot,
+        )
         return channel.send(
             {
                 "conversation_id": conversation_id,
                 "quest_id": quest_id,
                 "kind": "ack",
-                "message": self._with_qq_main_chat_notice(
-                    message,
-                    self._polite_copy(
-                        zh=f"老师，已收到您的消息，当前会话已绑定到 {quest_id}。我会继续推进，并通过后续消息同步进展。",
-                        en=f"Received. This conversation is bound to {quest_id}; I’ll continue the work and keep you updated with the next progress checkpoint.",
-                    ),
-                ),
+                "message": self._with_qq_main_chat_notice(message, startup_message),
             }
         )
 
@@ -6221,6 +6613,78 @@ class DaemonApp:
         return self._polite_copy(
             zh="我会先把当前任务整理清楚，再继续推进。",
             en="I will clarify the current task first, then keep moving. ✨",
+        )
+
+    def _connector_runner_label(self, runner_name: str) -> str:
+        normalized = str(runner_name or "codex").strip().lower() or "codex"
+        if normalized == "claude":
+            return "Claude Code"
+        if normalized == "opencode":
+            return "Open Code"
+        try:
+            metadata = get_runner_metadata(normalized)
+        except Exception:
+            return runner_name or "Codex"
+        return str(metadata.label or runner_name or "Codex")
+
+    def _connector_runner_readiness(self, runner_name: str) -> dict[str, Any]:
+        try:
+            state = self.config_manager.runner_bootstrap_state(runner_name)
+        except Exception:
+            return {"runner": runner_name, "ready": True, "last_result": {}}
+        if not isinstance(state, dict):
+            return {"runner": runner_name, "ready": True, "last_result": {}}
+        return state
+
+    def _connector_turn_start_message(
+        self,
+        *,
+        quest_id: str,
+        startup: dict[str, Any],
+        snapshot: dict[str, Any],
+    ) -> str:
+        runner_name = self._runner_name_for(snapshot)
+        runner_label = self._connector_runner_label(runner_name)
+        readiness = self._connector_runner_readiness(runner_name)
+        readiness_result = readiness.get("last_result") if isinstance(readiness.get("last_result"), dict) else {}
+        readiness_summary = str(readiness_result.get("summary") or "").strip()
+        readiness_errors = [str(item).strip() for item in (readiness_result.get("errors") or []) if str(item).strip()]
+        readiness_guidance = [str(item).strip() for item in (readiness_result.get("guidance") or []) if str(item).strip()]
+        ready = bool(readiness.get("ready", True))
+        reason = str(startup.get("reason") or "").strip().lower()
+        started = bool(startup.get("started"))
+        queued = bool(startup.get("queued"))
+        auto_resumed = bool(startup.get("auto_resumed"))
+        has_explicit_runner_failure = bool(readiness_summary or readiness_errors or readiness_guidance)
+        if reason == "stalled_turn_recovery_pending":
+            return self._polite_copy(
+                zh=f"正在启动 DeepScientist，当前会先恢复 `{quest_id}` 里停滞的运行，再继续处理您的新消息。",
+                en=f"DeepScientist is starting up. I’m recovering the stalled run in `{quest_id}` first, then I’ll continue with your new message.",
+            )
+        if not ready and has_explicit_runner_failure:
+            status_line = f" 当前状态：{readiness_summary}" if readiness_summary else ""
+            return self._polite_copy(
+                zh=(
+                    f"DeepScientist 仍然不在线哟，请检查你所绑定的{runner_label}是否能够顺利连接。{status_line}"
+                ),
+                en=(
+                    f"DeepScientist is still offline. Please check whether the bound {runner_label} can connect normally."
+                    f"{(' Current status: ' + readiness_summary) if readiness_summary else ''}"
+                ),
+            )
+        if started or auto_resumed:
+            return self._polite_copy(
+                zh=f"已经成功收到消息，DeepScientist 已经启动并开始处理 `{quest_id}` 啦。",
+                en=f"Message received successfully. DeepScientist has started and is now processing `{quest_id}`.",
+            )
+        if queued:
+            return self._polite_copy(
+                zh=f"已经成功收到消息，`{quest_id}` 当前正在运行中，这条消息也已经排进队列了。",
+                en=f"Message received successfully. `{quest_id}` is already running, and this message has been queued.",
+            )
+        return self._polite_copy(
+            zh=f"已经成功收到消息，我会继续推进 `{quest_id}` 并同步后续进展。",
+            en=f"Message received successfully. I’ll continue `{quest_id}` and keep you updated.",
         )
 
     def _quest_created_connector_message(
@@ -7279,6 +7743,10 @@ class DaemonApp:
                                     "event_id": event.get("event_id") or f"evt-{quest_id}-{current_cursor}",
                                     **event,
                                 }
+                                enriched_event = self.quest_service.enrich_conversation_message_event(
+                                    quest_id,
+                                    enriched_event,
+                                )
                                 update = build_session_update(
                                     enriched_event,
                                     quest_id=quest_id,
@@ -7356,6 +7824,75 @@ class DaemonApp:
                         heartbeat_at = now
                     idle_sleep_seconds = min(0.9, idle_sleep_seconds * 1.25)
                 time.sleep(idle_sleep_seconds)
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            return
+
+    def stream_admin_task(
+        self,
+        handler: BaseHTTPRequestHandler,
+        *,
+        task_id: str,
+        headers: dict[str, str] | None = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> None:
+        try:
+            task = self.admin_task_service.get_task(task_id)
+        except FileNotFoundError:
+            self._write_handler_response(
+                handler,
+                code=404,
+                content=json.dumps(
+                    {"ok": False, "message": f"Unknown admin task `{task_id}`."},
+                    ensure_ascii=False,
+                ).encode("utf-8"),
+                content_type="application/json; charset=utf-8",
+                extra_headers=extra_headers,
+            )
+            return
+
+        last_event_raw = str((headers or {}).get("Last-Event-ID") or (headers or {}).get("last-event-id") or "").strip()
+        cursor = int(last_event_raw) if last_event_raw.isdigit() else 0
+
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        handler.send_header("Cache-Control", "no-cache, no-transform")
+        handler.send_header("Connection", "keep-alive")
+        handler.send_header("X-Accel-Buffering", "no")
+        for key, value in (extra_headers or {}).items():
+            handler.send_header(key, value)
+        handler.end_headers()
+        handler.wfile.write(b"retry: 1000\n\n")
+        handler.wfile.flush()
+
+        self._write_sse_event(
+            handler,
+            event="task.snapshot",
+            data={"task": task},
+        )
+        heartbeat_at = time.monotonic()
+        terminal_statuses = {"completed", "failed", "cancelled"}
+        try:
+            while True:
+                current_task = self.admin_task_service.get_task(task_id)
+                events = self.admin_task_service.read_events(task_id, after=cursor, limit=200)
+                if events:
+                    for item in events:
+                        cursor = max(cursor, int(item.get("seq") or 0))
+                        self._write_sse_event(
+                            handler,
+                            event=str(item.get("event") or "task.log"),
+                            data=item,
+                            event_id=str(cursor),
+                        )
+                    heartbeat_at = time.monotonic()
+                elif time.monotonic() - heartbeat_at >= 10:
+                    handler.wfile.write(b": keep-alive\n\n")
+                    handler.wfile.flush()
+                    heartbeat_at = time.monotonic()
+                current_status = str(current_task.get("status") or "").strip().lower()
+                if current_status in terminal_statuses and cursor >= int(current_task.get("last_event_seq") or 0):
+                    return
+                time.sleep(0.2 if current_status == "running" else 0.6)
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
             return
 
@@ -7721,6 +8258,18 @@ class DaemonApp:
                         },
                     )
                     return
+                if route_name in {"admin_task_stream", "system_task_stream"}:
+                    try:
+                        app.stream_admin_task(self, **params, headers=request_headers, extra_headers=auth_headers)
+                    except Exception as exc:
+                        app.logger.log(
+                            "error",
+                            "http.stream_admin_task_failed",
+                            path=self.path,
+                            error=str(exc),
+                        )
+                        self.close_connection = True
+                    return
                 if route_name == "quest_events" and app._wants_event_stream(self.path, request_headers):
                     try:
                         app.stream_quest_events(self, **params, path=self.path, headers=request_headers, extra_headers=auth_headers)
@@ -7792,6 +8341,7 @@ class DaemonApp:
 
                 try:
                     result = getattr(app.handlers, route_name)
+                    route_alias = route_name.removeprefix("admin_").removeprefix("system_")
                     if route_name == "asset":
                         status, headers, content = result(**params)
                         app._write_handler_response(
@@ -7801,7 +8351,17 @@ class DaemonApp:
                             extra_headers=app._merge_response_headers(headers, auth_headers),
                         )
                         return
-                    if route_name in {
+                    if route_alias in {
+                        "quests",
+                        "runtime_sessions",
+                        "log_tail",
+                        "failures",
+                        "errors",
+                        "audit",
+                        "search",
+                        "repairs",
+                        "tasks",
+                    } or route_name in {
                         "quest_events",
                         "bash_sessions",
                         "bash_logs",
@@ -7824,9 +8384,28 @@ class DaemonApp:
                         "annotations_project",
                     }:
                         payload = result(**params, path=self.path)
+                    elif route_name in {
+                        "benchstore_entries",
+                        "benchstore_entry",
+                        "benchstore_entry_image",
+                        "benchstore_entry_setup_packet",
+                    }:
+                        payload = result(**params, path=self.path) if params else result(self.path)
                     elif method == "GET":
                         payload = result(**params) if params else result()
-                    elif route_name in {"document_open", "document_asset_upload", "quest_file_create_folder", "quest_file_upload", "quest_file_rename", "quest_file_move", "quest_file_delete", "chat", "command", "quest_control", "config_save", "quest_create", "quest_baseline_binding", "run_create", "qq_inbound", "connector_inbound", "docs_open", "admin_shutdown", "bash_stop", "quest_settings", "quest_bindings", "quest_delete", "quest_layout_update", "terminal_session_ensure", "terminal_attach", "terminal_input", "stage_view", "latex_init", "latex_compile", "system_update_action", "weixin_login_qr_start", "weixin_login_qr_wait", "arxiv_import", "annotation_create", "auth_login", "auth_rotate"}:
+                    elif route_alias in {
+                        "shutdown",
+                        "chart_query",
+                        "task_doctor_start",
+                        "task_system_update_check_start",
+                        "task_system_update_action_start",
+                        "issue_draft",
+                        "controller_run",
+                        "controller_toggle",
+                        "repair_create",
+                        "repair_close",
+                        "hardware_update",
+                    } or route_name in {"document_open", "document_asset_upload", "quest_file_create_folder", "quest_file_upload", "quest_file_rename", "quest_file_move", "quest_file_delete", "chat_upload_create", "chat_upload_delete", "chat", "command", "quest_control", "quest_message_read_now", "quest_message_withdraw", "config_save", "quest_create", "quest_baseline_binding", "run_create", "qq_inbound", "connector_inbound", "docs_open", "bash_stop", "quest_settings", "quest_bindings", "quest_delete", "quest_layout_update", "terminal_session_ensure", "terminal_attach", "terminal_input", "stage_view", "latex_init", "latex_compile", "system_update_action", "weixin_login_qr_start", "weixin_login_qr_wait", "arxiv_import", "annotation_create", "auth_login", "auth_rotate"}:
                         payload = result(**params, body=body)
                     elif route_name == "config_validate":
                         payload = result(body)
@@ -7836,6 +8415,8 @@ class DaemonApp:
                         payload = result(**params, body=body)
                     elif route_name == "memory":
                         payload = result(app.handlers.parse_query(self.path))
+                    elif route_name == "benchstore_entry_launch":
+                        payload = result(**params, path=self.path, body=body)
                     else:
                         payload = result(**params) if params else result()
                 except Exception as exc:
@@ -7883,6 +8464,8 @@ class DaemonApp:
         self._serve_host = host
         self._serve_port = port
         self._shutdown_requested.clear()
+        self.admin_service.system_monitor.start()
+        self.admin_service.metrics_collector.start()
         self._start_terminal_attach_server(host, port)
         self._start_background_connectors()
         self._resume_reconciled_quests()
@@ -7904,6 +8487,8 @@ class DaemonApp:
         finally:
             self._stop_background_connectors()
             self._stop_terminal_attach_server()
+            self.admin_service.metrics_collector.stop()
+            self.admin_service.system_monitor.stop()
             self.bash_exec_service.shutdown()
             self._server = None
             self._serve_host = None

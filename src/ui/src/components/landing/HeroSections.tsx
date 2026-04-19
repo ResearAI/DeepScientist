@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useReducedMotion } from 'framer-motion'
+import { useMobileViewport } from '@/lib/hooks/useMobileViewport'
 import { cn } from '@/lib/utils'
 import type { Locale } from '@/types'
 import { getHeroBundle, type HeroFeature } from './hero-content'
@@ -105,18 +106,9 @@ export default function HeroSections({ locale }: { locale: Locale }) {
   const prefersReducedMotion = useReducedMotion()
   const hero = getHeroBundle(locale)
   const [activeStep, setActiveStep] = useState(0)
-  const [isMobile, setIsMobile] = useState(false)
+  const isMobile = useMobileViewport()
   const stepRefs = useRef<(HTMLElement | null)[]>([])
   const carouselRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    const updateSize = () => {
-      setIsMobile(window.innerWidth < 1024)
-    }
-    updateSize()
-    window.addEventListener('resize', updateSize)
-    return () => window.removeEventListener('resize', updateSize)
-  }, [])
 
   useEffect(() => {
     if (isMobile) return

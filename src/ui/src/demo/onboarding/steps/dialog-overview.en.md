@@ -1,3 +1,5 @@
-The form now starts with the essentials first.
+You are now inside the launch form.
 
-The main column focuses on the few fields you usually need right away. The rest lives under **Advanced options** so the first launch is easier to read.
+**Simple beginner rule:** go from top to bottom and only fill the blocks the tutorial points at.
+
+The left side holds the information that matters most for a first run. Advanced controls still exist, but you do not need to master them on day one.

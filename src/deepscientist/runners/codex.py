@@ -21,9 +21,16 @@ from ..gitops import export_git_graph
 from ..process_control import process_session_popen_kwargs
 from ..prompts import PromptBuilder
 from ..runtime_logs import JsonlLogger
-from ..shared import append_jsonl, ensure_dir, generate_id, read_yaml, resolve_runner_binary, utc_now, write_json, write_text
+from ..shared import append_jsonl, ensure_dir, ensure_utf8_subprocess_env, generate_id, read_yaml, resolve_runner_binary, utc_now, write_json, write_text
 from ..web_search import extract_web_search_payload
-from .base import RunRequest, RunResult
+from .base import (
+    SETTINGS_ISSUE_CUSTOM_PROFILE,
+    START_SETUP_PREPARE_PROFILE,
+    RunRequest,
+    RunResult,
+    builtin_mcp_server_names_for_custom_profile,
+    resolve_mcp_tool_profile_for_quest,
+)
 
 _TOOL_EVENT_ARGS_TEXT_LIMIT = 8_000
 _TOOL_EVENT_OUTPUT_TEXT_LIMIT = 16_000
@@ -73,6 +80,21 @@ _BUILTIN_MCP_TOOL_APPROVALS: dict[str, tuple[str, ...]] = {
         "bash_exec",
     ),
 }
+
+
+def _builtin_mcp_tool_approvals_for_profile(custom_profile: str | None) -> dict[str, tuple[str, ...]]:
+    normalized = str(custom_profile or "").strip().lower()
+    if normalized == SETTINGS_ISSUE_CUSTOM_PROFILE:
+        return {
+            "artifact": ("prepare_github_issue",),
+            "bash_exec": _BUILTIN_MCP_TOOL_APPROVALS.get("bash_exec", ()),
+        }
+    if normalized == START_SETUP_PREPARE_PROFILE:
+        return {
+            "artifact": ("prepare_start_setup_form",),
+            "bash_exec": _BUILTIN_MCP_TOOL_APPROVALS.get("bash_exec", ()),
+        }
+    return _BUILTIN_MCP_TOOL_APPROVALS
 
 _PROVIDER_ENV_CONFLICT_KEYS = (
     "OPENAI_API_KEY",
@@ -743,6 +765,8 @@ class CodexRunner:
             "stdout": subprocess.PIPE,
             "stderr": subprocess.PIPE,
             "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
             **process_session_popen_kwargs(hide_window=True),
         }
 
@@ -799,6 +823,7 @@ class CodexRunner:
         env["CODEX_HOME"] = str(codex_home)
         env = self._sanitize_provider_env(env, runner_config=runner_config)
         env["DEEPSCIENTIST_HOME"] = str(self.home)
+        env["DEEPSCIENTIST_REPO_ROOT"] = str(self.repo_root)
         env["DS_HOME"] = str(self.home)
         env["DS_QUEST_ID"] = request.quest_id
         env["DS_QUEST_ROOT"] = str(request.quest_root)
@@ -812,6 +837,7 @@ class CodexRunner:
         env["DS_CONVERSATION_ID"] = f"quest:{request.quest_id}"
         env["DS_AGENT_ROLE"] = request.skill_id
         env["DS_TEAM_MODE"] = "single"
+        env = ensure_utf8_subprocess_env(env)
         popen_kwargs = self._subprocess_popen_kwargs(workspace_root=workspace_root, env=env)
         process = subprocess.Popen(command, **popen_kwargs)
         with self._process_lock:
@@ -1162,8 +1188,9 @@ class CodexRunner:
         resolved_runner_config = runner_config if isinstance(runner_config, dict) else self._load_runner_config()
         tool_timeout_sec = self._positive_timeout_seconds(resolved_runner_config.get("mcp_tool_timeout_sec"))
 
-        shared_env = {
+        shared_env = ensure_utf8_subprocess_env({
             "DEEPSCIENTIST_HOME": str(self.home),
+            "DEEPSCIENTIST_REPO_ROOT": str(self.repo_root),
             "DS_HOME": str(self.home),
             "DS_QUEST_ID": quest_id,
             "DS_QUEST_ROOT": str(quest_root),
@@ -1174,26 +1201,38 @@ class CodexRunner:
             "DS_CONVERSATION_ID": f"quest:{quest_id}",
             "DS_AGENT_ROLE": "pi",
             "DS_TEAM_MODE": "single",
-        }
+        })
+        custom_profile = resolve_mcp_tool_profile_for_quest(quest_root)
+        if custom_profile:
+            shared_env["DS_CUSTOM_PROFILE"] = custom_profile
         if pythonpath:
             shared_env["PYTHONPATH"] = pythonpath
 
+        server_names = builtin_mcp_server_names_for_custom_profile(custom_profile)
+        tool_approvals = _builtin_mcp_tool_approvals_for_profile(custom_profile)
         block = "\n".join(
-            [
-                marker_start,
-                self._mcp_block("memory", shared_env, tool_timeout_sec=tool_timeout_sec),
-                "",
-                self._mcp_block("artifact", shared_env, tool_timeout_sec=tool_timeout_sec),
-                "",
-                self._mcp_block("bash_exec", shared_env, tool_timeout_sec=tool_timeout_sec),
-                marker_end,
+            [marker_start]
+            + [
+                item
+                for index, name in enumerate(server_names)
+                for item in (
+                    [self._mcp_block(name, shared_env, tool_timeout_sec=tool_timeout_sec, approvals=tool_approvals.get(name, ()))]
+                    + ([""] if index < len(server_names) - 1 else [])
+                )
             ]
+            + [marker_end]
         ).strip()
         new_text = f"{prefix}\n\n{block}\n" if prefix else f"{block}\n"
         write_text(config_path, new_text)
 
     @staticmethod
-    def _mcp_block(name: str, env: dict[str, str], *, tool_timeout_sec: float | None = None) -> str:
+    def _mcp_block(
+        name: str,
+        env: dict[str, str],
+        *,
+        tool_timeout_sec: float | None = None,
+        approvals: tuple[str, ...] = (),
+    ) -> str:
         args = ["-m", "deepscientist.mcp.server", "--namespace", name]
         lines = [
             f"[mcp_servers.{name}]",
@@ -1212,7 +1251,7 @@ class CodexRunner:
         )
         for key, value in env.items():
             lines.append(f"{key} = {json.dumps(value)}")
-        for tool_name in _BUILTIN_MCP_TOOL_APPROVALS.get(name, ()):
+        for tool_name in approvals:
             lines.extend(
                 [
                     "",

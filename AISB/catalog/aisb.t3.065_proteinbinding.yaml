@@ -1,0 +1,234 @@
+schema_version: 1
+id: aisb.t3.065_proteinbinding
+name: StaB-ddG — Predicting Mutational Effects on Protein Binding from Folding Energy
+version: 0.1.0
+one_line: Transfer-learning benchmark for protein-protein binding ΔΔG prediction via
+  stability-to-binding parameterization using ProteinMPNN and two-stage fine-tuning.
+task_description: "This packaged benchmark covers the full StaB-ddG workflow for predicting\
+  \ mutational effects on protein-protein binding free energies (ΔΔG, kcal/mol). The\
+  \ core idea is the thermodynamic identity ΔG_bind(A:B) = ΔG_fold(A:B) − ΔG_fold(A)\
+  \ − ΔG_fold(B), which allows binding energy prediction to be reduced to folding\
+  \ energy prediction and enables transfer from copious stability data to scarce binding\
+  \ data.\nThe benchmark proceeds in two fine-tuning stages:\n\n  Stage 1 — Stability\
+  \ fine-tuning: ProteinMPNN is fine-tuned on the Megascale high-throughput\n  folding\
+  \ stability dataset (Tsuboyama 2023, ~350 k measurements, AlphaFold PDB structures,\n\
+  \  downloaded from Zenodo record 7992926).\n\n  Stage 2 — Binding fine-tuning: The\
+  \ stability-fine-tuned model is further fine-tuned on a\n  quality-filtered subset\
+  \ of the SKEMPI v2 database of protein-protein binding ΔΔG measurements,\n  using\
+  \ interface-homology cluster splits to prevent data leakage.\n\nEvaluation reproduces\
+  \ the SKEMPI benchmark results reported in the ICML 2025 paper, computing per-interface\
+  \ Pearson and Spearman correlations, overall correlations, RMSE, and ROC-AUC. Baseline\
+  \ comparisons against FoldX and Flex ddG are included in the packaged baselines/\
+  \ directory. StaB-ddG is the first deep-learning predictor reported to match FoldX\
+  \ accuracy while offering a >1,000× speed-up.\nInputs: PDB structure files (wild-type\
+  \ complex), chain specifications, and mutation strings. Outputs: per-mutant ΔΔG\
+  \ predictions (kcal/mol), per-interface correlation metrics, and a full evaluation\
+  \ CSV.\n"
+capability_tags:
+- protein_modeling
+- binding_energy_prediction
+- structural_biology
+- scientific_ml
+- transfer_learning
+- research_code_optimization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- per_interface_pearson
+- per_interface_spearman
+- overall_pearson
+- overall_spearman
+- roc_auc
+- ddg_predictions
+- binding_report
+launch_profiles:
+- id: single_prediction
+  label: Single Prediction
+  description: 'Run a single-mutation or multi-mutation ΔΔG prediction for one complex
+    using run_stabddg.py. Requires a PDB file, chain specification (e.g. ABC_DE),
+    and a mutation string (e.g. EA63Q,QD30V,KA66A). Uses the pre-trained stabddg.pt
+    checkpoint. Outputs output.csv with pred_1 column. No training data download required.
+
+    '
+- id: eval_only
+  label: Evaluation Only
+  description: 'Reproduce SKEMPI benchmark numbers using the pre-trained stabddg.pt
+    checkpoint via skempi_eval.py. Requires downloading SKEMPI2_PDBs from life.bsc.es.
+    Produces cache/eval.csv and per-interface correlation metrics. Fastest path to
+    paper numbers.
+
+    '
+- id: train_and_eval
+  label: Full Train + Eval
+  description: 'Run the complete two-stage fine-tuning and evaluation pipeline: (1)
+    stability fine-tuning on Megascale via stability_finetune.py, then (2) SKEMPI
+    binding fine-tuning via skempi_finetune.py, then (3) evaluation via skempi_eval.py.
+    Requires both Megascale and SKEMPI data downloads. Optional Wandb tracking via
+    --wandb flag.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: Megascale Folding Stability Dataset (Stage 1)
+    url: https://zenodo.org/records/7992926
+    files:
+    - Tsuboyama2023_Dataset2_Dataset3_20230416.csv
+    - AlphaFold_model_PDBs.zip
+    - Processed_K50_dG_datasets.zip
+    notes: 'Download via wget from Zenodo record 7992926. Unzip both archives before
+      running stability_finetune.py. Download takes several minutes. Required for
+      Stage 1 only.
+
+      '
+  - name: SKEMPI v2 Binding Energy Dataset (Stage 2 and Eval)
+    url: https://life.bsc.es/pid/skempi2/database/download/SKEMPI2_PDBs.tgz
+    files:
+    - SKEMPI2_PDBs.tgz
+    notes: 'Download via wget from life.bsc.es and extract with tar -xvzf. A quality-filtered
+      SKEMPI CSV and interface-homology cluster train/test splits are pre-packaged
+      in data/SKEMPI/. The raw PDB structures must be downloaded separately. Required
+      for Stage 2 fine-tuning and for eval_only profile.
+
+      '
+  - name: Benchmark Package Archive
+    url: https://deepscientist.cc/AISB/065_proteinbinding
+    archive_type: zip
+    local_dir_name: paper-65-ProteinBinding
+    notes: 'Contains pre-trained model checkpoints (model_ckpts/stabddg.pt, model_ckpts/stability_finetuned.pt,
+      model_ckpts/proteinmpnn.pt), packaged SKEMPI splits, baseline prediction CSVs,
+      and example inputs.
+
+      '
+  notes:
+  - Pre-trained checkpoints are included in the benchmark archive; full training requires
+    both external dataset downloads.
+  - SKEMPI PDB download is required even for eval_only; the filtered CSV is pre-packaged.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - All data sources are publicly accessible without authentication.
+  - Optional Wandb account needed only if using the --wandb training flag.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: 'Sufficient for single-prediction and eval_only profiles using the pre-trained
+      checkpoint. Stability fine-tuning requires torch.device=''cuda'' and will OOM
+      below 16 GB VRAM.
+
+      '
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 'Recommended for full train+eval profile. Extra disk headroom accommodates
+      Megascale AlphaFold PDBs (~50 GB unzipped) and SKEMPI PDB structures alongside
+      checkpoints.
+
+      '
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: 2.6.0
+  flash_attn: null
+  key_packages:
+  - biopython==1.85
+  - scipy
+  - tqdm
+  - wandb
+  - pandas
+  setup_method: conda
+  setup_file: environment.yaml
+  notes:
+  - Create environment with: conda env create -f environment.yaml && conda activate
+      stabddg
+  - Alternatively, install into an existing PyTorch environment with: pip install
+      tqdm scipy wandb pandas biopython
+  - Optional editable install: pip install -e .
+  - See environment.yaml for the full pinned dependency set.
+  - CUDA is required for training stages (torch.device='cuda'); inference can run
+    on CPU but is significantly slower.
+paper:
+  title: Predicting mutational effects on protein binding from folding energy
+  authors:
+  - Arthur Deng
+  - Karsten Householder
+  - Fang Wu
+  - Sebastian Thrun
+  - K. Christopher Garcia
+  - Brian Trippe
+  affiliation: Stanford University
+  venue: Proceedings of the 42nd International Conference on Machine Learning (ICML
+    2025)
+  year: 2025
+  url: https://arxiv.org/abs/2507.05502
+  code: https://github.com/LDeng0205/StaB-ddG
+  notes: 'Originally posted as an arXiv preprint (2507.05502) and accepted at ICML
+    2025 (PMLR 267). Introduces StaB-ddG as the first DL predictor to match FoldX
+    accuracy on SKEMPI while offering >1,000× speed-up over Rosetta-based Flex ddG.
+
+    '
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.065_proteinbinding.zip
+  archive_type: zip
+  local_dir_name: paper-65-ProteinBinding
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.065_proteinbinding.zip
+  sha256: 07ea82db652e56e0bd609f637362cd91f74d76f1356d3b7cd3d9c14d82fda319
+  size_bytes: 2277469
+commercial:
+  annual_fee: null
+display:
+  palette_seed: sage-bone-protein
+  art_style: molecular-atlas
+  accent_priority: high
+image_path: ../image/065_aisb.t3.065_proteinbinding.jpg
+recommended_when: 'Use this benchmark when evaluating models on structural-biology
+  tasks involving PDB inputs, mutation lists, and ΔΔG regression or ranking metrics.
+  Ideal when the goal is to assess transfer learning from stability to binding, compare
+  against FoldX or Flex ddG baselines, or reproduce ICML 2025 SKEMPI benchmark results.
+  Also suitable for single-complex inference workflows where only the pre-trained
+  checkpoint is needed.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you need a text-only or sequence-only
+  task with no structural inputs. Avoid if your environment cannot provide PDB structure
+  files for the wild-type interface or cannot satisfy the GPU memory requirement for
+  training. Not appropriate for benchmarks requiring fast iteration cycles, as the
+  full train+eval profile takes up to 24 h and requires large external dataset downloads.
+
+  '
+risk_flags:
+- external_data_download_required
+- gpu_required_for_training
+- no_execution_verified_in_packaging_pass
+risk_notes:
+- Metric values in metric_contract.json are code-backed but not yet verified by live
+  execution; trust only after a successful benchmark run produces cache/eval.csv.
+- Megascale AlphaFold PDB download (~50 GB unzipped) may be slow or interrupted on
+  low-bandwidth connections; resume support via wget -c.
+- SKEMPI PDB structures must be downloaded separately from life.bsc.es; the filtered
+  CSV and splits are pre-packaged but the raw PDBs are not.
+- Monte Carlo variance reduction uses ensemble=20 samples by default at inference;
+  reducing this speeds up inference but increases prediction variance.

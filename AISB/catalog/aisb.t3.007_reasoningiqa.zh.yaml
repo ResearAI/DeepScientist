@@ -1,0 +1,133 @@
+schema_version: 1
+id: aisb.t3.007_reasoningiqa
+name: 'RALI: 基于对齐推理的轻量级图像质量评估'
+version: 0.1.0
+one_line: 评估基于CLIP的轻量级IQA评分模型（RALI），该模型从推理密集型RL训练的多模态模型中蒸馏而来，在标准图像质量基准测试中使用PLCC、SRCC和MAE进行评估。
+task_description: '本基准测试评估RALI，这是一款轻量级无参考图像质量评估（IQA）模型，采用基于CLIP的对比对齐技术，在仅使用约4%参数和推理时间的前提下，达到与大型推理驱动IQA模型（如Q-Insight）相当的泛化能力。执行路由加载预训练的RALI检查点（CLIP视觉编码器、PCA变换、原型评分器），在IQA基准数据集（KONIQ、KADID10K、SPAQ等）上进行推理，并计算皮尔逊线性相关系数（PLCC）、斯皮尔曼等级相关系数（SRCC）和平均绝对误差（MAE）与主观质量评分ground truth的对比结果。主要入口点是eval_json.sh / eval_json.py，对JSON定义的测试分割中的图像进行评分，并将每张图像的预测结果写入JSON日志。演示脚本（demo_rali_score.py）提供单图像评分功能。无需训练，所有检查点均为预训练。本基准测试检验智能体能否正确设置环境、下载外部检查点和数据集图像、配置路径，并复现论文中报告的相关性指标。
+
+  '
+capability_tags:
+- research_code_optimization
+- computer_vision
+- image_quality_assessment
+- representation_learning
+- evaluation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- plcc
+- srcc
+- mae
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '运行demo_rali_score.py对单个捆绑图像进行评分，验证检查点加载、PCA和原型评分器初始化，并产生质量评分。无需下载数据集。
+
+    '
+- id: benchmark_eval
+  label: 基准评估
+  description: '在某一个或多个IQA基准测试分割（如KADID10K、KONIQ、SPAQ）上运行eval_json.sh。需要从HuggingFace下载预训练的RALI检查点和Data-DeQA-Score数据集图像。生成每张图像的预测JSON，并计算PLCC、SRCC、MAE。
+
+    '
+dataset_download:
+  primary_method: huggingface
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/ByteDance/Q-Insight/tree/main/RALI
+    access: public
+    note: 'RALI预训练检查点（ckpt.pt、pca.pkl、basis.npz以及best/下的CLIP微调模型）。放置于./checkpoints/目录下。
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/datasets/zhiyuanyou/Data-DeQA-Score/tree/main
+    access: public
+    note: 'IQA基准测试元文件和KONIQ、KADID10K、SPAQ等数据集的源图像。放置于./Data-DeQA-Score/目录下。图像目录总计可能达数GB。
+
+      '
+  notes:
+  - 检查点下载约1-2 GB。数据集图像大小因基准测试而异，完整的Data-DeQA-Score可能超过10 GB。
+  - 快照包含目录存根（Data-DeQA-Score/KADID10K、Data-DeQA-Score/KONIQ），但不包含实际图像。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 所有检查点和数据集均可通过HuggingFace公开访问，无需身份验证。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: null
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - transformers
+  - torch
+  - joblib
+  - numpy
+  - Pillow
+  - tqdm
+  notes:
+  - setup.sh安装所有依赖项。参见捆绑的README和requirements以了解完整的依赖集合。
+  - 使用HuggingFace transformers中的CLIPModel和CLIPProcessor。
+  - 未固定精确的Python/CUDA/PyTorch版本，任何近期兼容版本组合均应可用。
+risk_flags:
+- external_checkpoint_download
+- external_dataset_download
+- no_training_in_snapshot
+risk_notes:
+- 必须从HuggingFace（ByteDance/Q-Insight/RALI）下载预训练的RALI检查点后才能运行任何评估。
+- 数据集图像未捆绑，仅包含JSON元文件和目录存根。图像必须从HuggingFace上的Data-DeQA-Score获取。
+- 快照中不包含训练代码，仅用于推理/评估。
+- 打包过程中未执行基准测试，运行时指标值未经核实。
+recommended_when: '当您需要一个视觉评估任务且具备预训练检查点和直接的图像基准执行时使用此基准测试。适合测试智能体下载外部资源、配置路径和运行自包含PyTorch推理管道以产生标准IQA相关性指标的能力。
+
+  '
+not_recommended_when: '如果需要大规模训练任务、视频质量基准测试或需要长时间多阶段模型训练的任务，请勿使用。也不适合需要完全自包含且无外部下载的基准测试。
+
+  '
+paper:
+  title: 'Reasoning as Representation: Rethinking Visual Reinforcement Learning in
+    Image Quality Assessment'
+  venue: ICLR 2026 Oral
+  year: 2026
+  url: https://arxiv.org/abs/2510.11369
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.007_reasoningiqa.zip
+  archive_type: zip
+  local_dir_name: paper-7-ReasoningIQA
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.007_reasoningiqa.zip
+  sha256: 91b252c7f1616ea5b8889a80d6c6ba001c92f6b2f5db2998c133f533cdcc6bdf
+  size_bytes: 857520
+commercial:
+  annual_fee: null
+display:
+  palette_seed: cobalt-pearl-contrast
+  art_style: crisp-editorial
+  accent_priority: medium
+image_path: ../image/007_aisb.t3.007_reasoningiqa.jpg

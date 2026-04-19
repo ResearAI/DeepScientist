@@ -1,0 +1,162 @@
+id: aisb.t3.063_tsrag
+name: 'TS-RAG: Retrieval-Augmented Generation based Time Series Foundation Models
+  are Stronger Zero-Shot Forecaster'
+version: 0.1.0
+one_line: Retrieval-augmented zero-shot forecasting framework combining time series
+  foundation models with a knowledge base and Adaptive Retrieval Mixer for domain-generalizable
+  predictions.
+task_description: 'This packaged benchmark implements TS-RAG, a retrieval-augmented
+  generation framework for time series forecasting that enhances the generalization
+  and interpretability of Time Series Foundation Models (TSFMs). The framework consists
+  of three key components: (1) a pretrained time series foundation model (TSFM) as
+  the backbone forecaster, (2) a retriever that queries a dedicated knowledge base
+  to find semantically relevant time series segments and their future horizons, and
+  (3) a learnable Adaptive Retrieval Mixer (ARM) module that dynamically fuses retrieved
+  patterns with the TSFM''s internal representation. Given an input series, the retriever
+  finds top-k similar contexts, which are embedded and combined through the ARM module
+  that adaptively assigns importance scores. The unified representation is passed
+  to the foundation model''s output layer to produce enhanced forecasts without task-specific
+  fine-tuning. Supports chronos-bolt as the primary backbone model.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 1d+
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- mae
+- mse
+- retrieval_database
+- forecast_report
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run one packaged TS-RAG zero-shot script on a prepared retrieval database
+    with a single backbone model configuration.
+- id: full_rag_eval
+  label: Full RAG Eval
+  description: Run the full packaged retrieval-augmented zero-shot forecasting workflow
+    including retrieval database construction, ARM mixing, and multi-dataset evaluation.
+dataset_download:
+  primary_method: mixed
+  sources:
+  - url: https://drive.google.com/drive/folders/12wesXfVwFhdrUY5Kv8yuAWWqN9M77irw
+    type: google_drive
+    description: Preprocessed datasets and pretrained models
+  - url: https://huggingface.co/nkh/TS-RAG-Data
+    type: huggingface
+    description: Alternative mirror on HuggingFace Hub
+  notes:
+  - Download both datasets and model checkpoints before running evaluation scripts
+  - Expected directory structure includes datasets/, retrieval_database/, and TS-RAG/checkpoints/
+  - Datasets include ETT-small, weather, electricity, traffic, exchange_rate, and
+    illness
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 48
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - chronos-forecasting>=1.5.1
+  - faiss-gpu>=1.7.2
+  - transformers
+  - scikit-learn
+  - pandas
+  - numpy
+  - tqdm
+  notes:
+  - This workflow depends on an external retrieval database plus pretrained TSFM checkpoints
+  - See bundled requirements.txt for the full dependency set
+  - FAISS-GPU is required for efficient similarity search in retrieval database
+  - Chronos pipeline is required for the default backbone model
+risk_flags:
+- external_dependencies
+- large_model_checkpoints
+- retrieval_database_required
+- no_execution_verification
+risk_notes:
+- Pretrained foundation model checkpoints must be downloaded separately (chronos-bolt,
+  MOMENT)
+- Retrieval database must be pre-built or generated before running evaluation
+- No benchmark execution was performed during packaging pass; metric values are provisional
+- External Google Drive link may require manual download and organization
+recommended_when: 'Use this benchmark when evaluating retrieval-augmented time series
+  forecasting methods, testing zero-shot generalization of foundation models across
+  diverse domains, or benchmarking the contribution of retrieved contextual patterns
+  to forecasting accuracy without fine-tuning.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you cannot host large retrieval
+  databases (FAISS index) and pretrained foundation-model checkpoints; if your use
+  case requires only simple statistical baselines; or if you need immediate reproducibility
+  without downloading external assets.
+
+  '
+paper:
+  title: 'TS-RAG: Retrieval-Augmented Generation based Time Series Foundation Models
+    are Stronger Zero-Shot Forecaster'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://arxiv.org/abs/2503.07649
+  authors:
+  - Kanghui Ning
+  - Zijie Pan
+  - Yu Liu
+  - Yushan Jiang
+  - James Y. Zhang
+  - Kashif Rasul
+  - Anderson Schneider
+  - Lintao Ma
+  - Yuriy Nevmyvaka
+  - Dongjin Song
+  affiliation: University of Connecticut (UConn DSIS), Morgan Stanley, Ant Group,
+    TWG Global
+display:
+  palette_seed: steel-jade-retrieval
+  art_style: retrieval-signal
+  accent_priority: high
+image_path: ../image/063_aisb.t3.063_tsrag.jpg
+capability_tags:
+- research_code_optimization
+- time_series_forecasting
+- retrieval_augmented_generation
+- foundation_models
+- zero_shot_learning
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+commercial:
+  annual_fee: null
+download:
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.063_tsrag.zip
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.063_tsrag.zip
+  archive_type: zip
+  sha256: 0a4979e3c9db6019ae60f697cd400cdfe7b21f1bb8bc1685d8b1279912aced59
+  size_bytes: 1358610

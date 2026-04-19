@@ -1,0 +1,211 @@
+schema_version: 1
+id: aisb.t3.019_dyscaleut
+name: Dynamic Scaling of Unit Tests for Code Reward Modeling
+version: 0.1.0
+one_line: 'Generate and dynamically scale LLM-produced unit tests as reward signals
+  for best-of-N code solution selection, evaluated via pass@1 on HumanEval Plus, MBPP
+  Plus, and LiveCodeBench.
+
+  '
+task_description: 'This benchmark reproduces the CodeRM pipeline for improving code
+  generation through scaled unit-test reward modeling. The core workflow is: (1) a
+  policy LLM generates N candidate code solutions per programming problem, (2) a reward
+  LLM (or the fine-tuned CodeRM-8B unit test generator) produces M unit tests per
+  problem, (3) unit tests are executed against solutions inside a Docker sandbox,
+  and (4) the best solution is selected via variance-weighted majority voting over
+  execution results. A dynamic scaling mechanism allocates more unit tests to harder
+  problems using a trained difficulty classifier. The primary metric is pass@1 (best-of-N
+  accuracy) computed by evaluation/calculate_result.py. The local snapshot includes
+  the evaluation/execution code, bundled benchmark data, pre-computed inference results,
+  and a Docker image specification for sandboxed code execution. The inference and
+  preprocessing steps (generating new solutions/unit tests from scratch with policy/reward
+  LLMs) require external model access and are partially covered by bundled scripts
+  but may need adaptation. A pre-computed output.tar.gz from Google Drive can substitute
+  for the inference+execution steps.
+
+  '
+capability_tags:
+- research_code_optimization
+- code_generation
+- reward_modeling
+- unit_test_generation
+- evaluation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: partial
+support_level: advanced
+cost_band: high
+time_band: 1d+
+difficulty: hard
+data_access: public
+primary_outputs:
+- pass_at_1
+- scaled_unit_tests
+- reward_scores
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run evaluation/calculate_result.py on the bundled or downloaded pre-computed
+    execution results to verify pass@1 on a single benchmark/model combination. No
+    GPU or Docker required.
+
+    '
+- id: code_reward_eval
+  label: Code Reward Eval
+  description: 'Pull the Docker sandbox image, execute unit tests against candidate
+    solutions using evaluation/evaluate.py, then compute pass@1 with evaluation/calculate_result.py.
+    Requires Docker and moderate compute. Uses bundled benchmark data and pre-generated
+    solutions/unit tests; does not require LLM inference.
+
+    '
+- id: full_pipeline
+  label: Full Pipeline (Inference + Eval)
+  description: 'Run end-to-end: multi-process LLM inference to generate solutions
+    and unit tests, preprocessing/merging, Docker-based execution, and final pass@1
+    calculation. Requires GPU access for LLM inference (CodeRM-8B or larger models)
+    and Docker for execution.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/KAKA22/CodeRM-UnitTest
+    access: public
+    note: 60k synthetic Python unit tests used to train CodeRM-8B.
+  - kind: huggingface
+    url: https://huggingface.co/KAKA22/CodeRM-8B
+    access: public
+    note: Fine-tuned 8B unit test generator model weights.
+  - kind: google_drive
+    url: https://drive.google.com/drive/folders/1-wUvy9Ox49V5CY38TMjCr5RlLysapyyj?usp=sharing
+    access: public
+    note: 'Pre-computed execution output (output.tar.gz) that can replace Steps 1-3
+      of the pipeline.
+
+      '
+  - kind: bundled
+    url: null
+    access: local
+    note: 'Benchmark data (HumanEval Plus, MBPP Plus, LiveCodeBench) and pre-generated
+      inference results are included under data/benchmark/ and data/result/ in the
+      snapshot.
+
+      '
+  notes:
+  - Training dataset is ~60k examples; model weights are ~16 GB; pre-computed outputs
+    vary by benchmark.
+  - Benchmarks themselves (HumanEval Plus, MBPP Plus, LiveCodeBench) are public.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No API keys required if using bundled data and CodeRM-8B for inference.
+  - If replicating GPT-4o-mini or GPT-3.5 policy/reward experiments, OpenAI API keys
+    are needed.
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 2
+    gpu_vram_gb: 48
+environment:
+  python: null
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - vllm
+  - transformers
+  - docker
+  notes:
+  - 'The snapshot includes a dedicated Docker execution environment (kaka0605/exec_unit_test:24.12.30)
+    for sandboxed large-scale code execution of generated unit tests.
+
+    '
+  - See docker_source/Dockerfile and docker_source/requirements.txt for the sandbox
+    dependencies.
+  - See bundled README and requirements for the host-side dependency set.
+  - Inference uses multi-process Python (inference/inference_mp.py) and likely requires
+    vLLM or similar for efficient serving.
+risk_flags:
+- docker_required
+- partial_snapshot
+- external_model_for_full_replication
+- code_execution_sandbox
+risk_notes:
+- 'The Docker sandbox (kaka0605/exec_unit_test:24.12.30) must be pulled or built locally
+  before running evaluation/evaluate.py. Without Docker, only the final calculate_result.py
+  step works on pre-computed outputs.
+
+  '
+- 'The preprocessing scripts (preprocess/) are present but the full inference pipeline
+  requires serving a policy LLM and a reward LLM, which is not fully automated in
+  the snapshot.
+
+  '
+- 'exec_main.py executes arbitrary generated Python code with a timeout mechanism
+  via signal.SIGALRM; this should only be run inside the provided Docker sandbox or
+  an equivalent isolated environment.
+
+  '
+- 'No benchmark execution was performed during the packaging pass; metric values are
+  not yet validated.
+
+  '
+recommended_when: 'Use this benchmark when you want to study how scaling LLM-generated
+  unit tests improves code reward signal quality and best-of-N code selection, or
+  when you need a code-generation task with real unit-test execution in the evaluation
+  loop. Also suitable for evaluating lightweight unit test generators against larger
+  teacher models.
+
+  '
+not_recommended_when: 'Do not use this if you cannot provide Docker-based containerized
+  code execution, if you need a text-only reward-model benchmark without code execution,
+  or if you lack GPU resources for LLM inference and only need a quick metric check
+  (use the quick_check profile with pre-computed outputs instead).
+
+  '
+paper:
+  title: Dynamic Scaling of Unit Tests for Code Reward Modeling
+  authors:
+  - Zeyao Ma
+  - Xiaokang Zhang
+  - Jing Zhang
+  - Jifan Yu
+  - Sijia Luo
+  - Jie Tang
+  venue: ACL 2025
+  year: 2025
+  url: https://arxiv.org/abs/2501.01054
+  homepage: https://code-reward-model.github.io/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.019_dyscaleut.zip
+  archive_type: zip
+  local_dir_name: paper-19-DyScaleUT
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.019_dyscaleut.zip
+  sha256: 2eee5573353ade5e13c254f7372a3294b71459ee7c668205f27f2852347c141f
+  size_bytes: 60766
+commercial:
+  annual_fee: null
+display:
+  palette_seed: olive-ink-runtime
+  art_style: code-lab
+  accent_priority: high
+image_path: ../image/019_aisb.t3.019_dyscaleut.jpg

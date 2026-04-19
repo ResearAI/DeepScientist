@@ -1,0 +1,117 @@
+schema_version: 1
+id: aisb.t3.081_qmamba
+name: Meta-Black-Box-Optimization through Offline Q-function Learning
+version: 0.1.0
+one_line: 面向黑盒优化的离线元学习框架，使用 Q 函数分解与 Mamba 架构处理长配置轨迹。
+task_description: 该条目覆盖 Q-Mamba：一种离线元黑盒优化框架，用于缓解 MetaBBO 的效果-效率矛盾。方法把动态算法配置（DAC）转化为长序列决策过程，并为每个超参数维度分解 Q 函数。核心包括：(1) 结合强基线与随机策略的离线数据采集以平衡探索与利用；(2) 通过组合式 Q-loss 的保守 Q-learning 处理分布偏移；(3) 使用具备选择性状态建模与硬件友好并行扫描的 Mamba RL 代理进行高效长序列训练。当前本地快照保留元数据与论文引用，但缺少可运行代码，需上游恢复后执行。
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- mean_reward
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: 'Review the preserved benchmark metadata, paper assets, and offline Q-learning route documentation without attempting execution.
+
+    '
+- id: restore_first
+  label: Restore First
+  description: 'Restore the missing Q-Mamba implementation from upstream sources before treating this benchmark as runnable. Requires fetching executable code from the published repository.
+
+    '
+dataset_download:
+  primary_method: pending_restoration
+  sources: []
+  notes:
+  - The current local package does not bundle executable benchmark code or runnable evaluation data.
+  - Dataset and implementation must be restored from upstream sources referenced in the paper.
+  - The benchmark route is not available in the current snapshot state.
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '12.1'
+  pytorch: 2.1.1
+  flash_attn: null
+  key_packages:
+  - mamba-ssm>=1.2.0
+  notes:
+  - Environment specifications are provisional based on the paper and upstream restoration requirements.
+  - The current staged snapshot does not preserve executable setup files or runnable source code.
+  - Full dependency set should be obtained from the published Q-Mamba source repository.
+  - mamba-ssm is the core architectural dependency for the Mamba-based RL agent.
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- no_executable_anchor
+risk_notes:
+- No executable code files detected in the current snapshot that can anchor staged metrics.
+- No benchmark execution was performed during this packaging pass.
+- The primary metric mean_reward is blocked pending source restoration.
+- Treat this entry as blocked until upstream restoration provides runnable implementation.
+recommended_when: 当你需要对 Q-Mamba 离线元优化方法进行基于论文的分析，或规划恢复 Mamba 元学习黑盒优化路线时可用本条目。也适合理解长时程配置任务中的 Q 函数分解。
+not_recommended_when: 不要把当前本地包视为可直接运行的离线元黑盒优化基准。分阶段快照缺少可执行代码、评估协议和基准数据，恢复实现前不应尝试顺序优化运行。
+paper:
+  title: Meta-Black-Box-Optimization through Offline Q-function Learning
+  authors: Zeyuan Ma, Zhiguang Cao, Zhou Jiang, Hongshu Guo, Yue-Jiao Gong
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/ma25b.html
+  notes:
+  - Proposes Q-Mamba framework for offline MetaBBO with Q-function decomposition.
+  - Addresses effectiveness-efficiency trade-off in meta-learning for dynamic algorithm configuration.
+  - Uses Mamba architecture for long-sequence learning with parallel scan efficiency.
+  - Source codes available online per the paper.
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.081_qmamba.zip
+  archive_type: zip
+  local_dir_name: paper-81-QMamba
+  notes:
+  - Archive contains metadata and documentation; executable code requires restoration from upstream.
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.081_qmamba.zip
+  sha256: f565acdff164658ee030066f9a6c81cb7685ad3616de081df7c56a837b33cfd4
+  size_bytes: 31451
+display:
+  palette_seed: slate-gold-offline
+  art_style: trajectory-systems
+  accent_priority: high
+image_path: ../image/081_aisb.t3.081_qmamba.jpg
+capability_tags:
+- research_code_optimization
+- black_box_optimization
+- offline_rl
+- mamba_models
+- meta_learning
+- q_function_decomposition
+- dynamic_algorithm_configuration
+- long_sequence_decision
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

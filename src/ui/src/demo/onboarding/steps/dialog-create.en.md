@@ -1,3 +1,14 @@
-In the guided tutorial, **Create project** still does not consume real resources.
+Ready? Click "Create Project"
 
-It opens the staged demo workspace so you can practice the real project layout before running a real quest.
+Don't worry—this is tutorial mode:
+- No real compute resources used
+- No charges incurred
+- Just a guided tour of a demo project
+
+After clicking, you'll see:
+- Where project files live
+- What the research map looks like
+- How the memory system works
+- Where the AI assistant is
+
+Tip: This is like a game tutorial level—feel free to explore.

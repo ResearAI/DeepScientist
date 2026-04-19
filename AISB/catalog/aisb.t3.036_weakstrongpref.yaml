@@ -1,0 +1,210 @@
+id: aisb.t3.036_weakstrongpref
+name: COWEST
+version: 0.1.0
+one_line: Weak-strong model collaboration via DPO, SFT, and preference-aligned candidate
+  aggregation to improve response quality on specialized QA tasks.
+task_description: 'This benchmark implements COWEST (Collaboration method between
+  Weak and Strong models), a framework that pairs a specialized weak model with a
+  general strong model to tackle reasoning tasks requiring domain-specific knowledge.
+  During inference, the weak model generates initial drafts and background information
+  while the strong model refines them using advanced reasoning. During training, the
+  framework quantifies the weak model''s contribution influence and constructs preference
+  pairs to guide DPO fine-tuning of the weak model. The pipeline supports both individual
+  model baselines and the full collaborative workflow.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: advanced
+time_band: 1d+
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- f1_ifqa
+- em_ifqa
+- preference_checkpoint
+- aligned_candidates
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run one packaged evaluation route on the weak-strong preference stack
+    using pretrained checkpoints.
+- id: full_alignment
+  label: Full Alignment
+  description: Run the complete SFT, DPO, and preference-aligned aggregation workflow
+    from scratch.
+- id: inference_only
+  label: Inference Only
+  description: Run inference pipelines for weak-only, strong-only, and weak-strong
+    collaborative modes without training.
+dataset_download:
+  primary_method: mixed
+  sources:
+  - type: url
+    url: https://deepscientist.cc/AISB/036_weakstrongpref
+    format: zip
+  - type: huggingface
+    note: Some datasets may require Hugging Face authentication for IFQA
+  notes:
+  - Archive extracts to paper-36-WeakStrongPref
+  - IFQA dataset components included in bundle
+credential_requirements:
+  mode: partial
+  items:
+  - HuggingFace token for Llama-3-8B-Instruct access
+  - Azure OpenAI API key for GPT-35-turbo (used as strong model in inference)
+  notes:
+  - Strong model can be swapped for open-weight alternatives to avoid proprietary
+    API requirements
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.0.1
+  flash_attn: null
+  key_packages:
+  - bitsandbytes==0.41.1
+  - peft
+  - transformers
+  - datasets
+  - sklearn
+  - torch>=2.0.0
+  notes:
+  - Bundled requirements pin torch to <=2.0.1 and rely on a custom Transformers fork
+    for left-padding behavior
+  - See bundled README/requirements.txt for the full dependency set
+  - Requires multi-GPU setup for full training pipeline
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: Single GPU feasible only for inference; training requires multi-GPU for
+      LoRA with 8B models
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 4
+    gpu_vram_gb: 24
+    notes: SFT script configured for 4x24GB GPUs (WORLD_SIZE=4); DPO uses 3-GPU setup
+risk_flags:
+- proprietary_model_dependency
+- multi_gpu_training_complexity
+- dataset_size
+risk_notes:
+- Full pipeline requires access to Llama-3-8B-Instruct via HuggingFace
+- DPO training uses RMSProp optimizer (non-standard choice)
+- Azure OpenAI dependency for strong model inference can introduce API latency and
+  cost
+recommended_when: 'Use this benchmark when you want to study weak-strong model collaboration
+  with alignment objectives, explore preference data construction from collaborative
+  feedback, or evaluate alignment methods on knowledge-intensive QA tasks requiring
+  specialized domain knowledge.
+
+  '
+not_recommended_when: 'Do not use this if you cannot support LLaMA-class 8B model
+  training with LoRA, or if you need a lightweight benchmark without DPO-style optimization.
+  Not recommended when Azure API access is unavailable and no alternative strong model
+  is configured.
+
+  '
+paper:
+  title: Synergistic Weak-Strong Collaboration by Aligning Preferences
+  venue: ACL 2025
+  year: 2025
+  url: https://arxiv.org/abs/2504.15188
+  authors:
+  - Yizhu Jiao
+  - Xuchao Zhang
+  - Zhaoyang Wang
+  - Yubo Ma
+  - Zhun Deng
+  - Rujia Wang
+  - Chetan Bansal
+  - Saravan Rajmohan
+  - Jiawei Han
+  - Huaxiu Yao
+  institutions:
+  - Microsoft Research
+  - University of Illinois Urbana-Champaign
+  - University of North Carolina at Chapel Hill
+  - Nanyang Technological University
+display:
+  palette_seed: coral-ink-alignment
+  art_style: preference-dashboard
+  accent_priority: high
+image_path: ../image/036_aisb.t3.036_weakstrongpref.jpg
+capability_tags:
+- research_code_optimization
+- alignment
+- preference_optimization
+- large_language_models
+- evaluation
+- weak_to_strong_generalization
+- collaborative_inference
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+execution_notes:
+  stages:
+  - id: sft
+    script: sft.sh
+    model: meta-llama/Meta-Llama-3-8B-Instruct
+    dataset: ifqa_sft
+    epochs: 3
+    batch_per_device: 1
+    gradient_accumulation: 8
+    lora_r: 16
+    lora_alpha: 16
+    lr: 1.41e-05
+    output: ./lora_weights/llama3-8b-sft-ifqa
+  - id: dpo
+    script: dpo.sh
+    model: meta-llama/Meta-Llama-3-8B-Instruct
+    dataset: ifqa_dpo
+    epochs: 1
+    batch_per_device: 1
+    gradient_accumulation: 16
+    lora_r: 16
+    lora_alpha: 16
+    lr: 1.41e-05
+    optimizer: rmsprop
+    output: ./lora_weights/llama3-8b-dpo-ifqa
+  - id: inference
+    script: inference_weak_strong_models.py
+    weak_model: local/lora_adapters
+    strong_model: gpt-35-turbo (or open-weight alternative)
+    modes:
+    - weak_only
+    - strong_only
+    - weak_strong_collaborative
+  metric_protocol:
+    f1_ifqa:
+      origin: code-backed
+      source: evaluation.py
+      description: F1 score computed over question-level answers for IFQA dataset
+    em_ifqa:
+      origin: code-backed
+      source: evaluation.py
+      description: Exact match metric for IFQA question answering
+  caveats:
+  - No benchmark execution performed in packaging pass; metric values require trusted
+    runtime output
+  - Static audit confirms executable anchors exist for all staged metrics
+  - README absent in current snapshot; follow AGENTS.md code anchors
+download:
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.036_weakstrongpref.zip
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.036_weakstrongpref.zip
+  archive_type: zip
+  sha256: e98abaf4d388b77c120e970e947bd56f2be0276171180bf6c9ee3d5e144a77e7
+  size_bytes: 55245

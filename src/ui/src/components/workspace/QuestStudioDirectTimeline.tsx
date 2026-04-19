@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import type { Components } from 'react-markdown'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -10,19 +11,26 @@ import {
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { useToast } from '@/components/ui/toast'
 import { LogoIcon } from '@/components/ui/workspace-icons'
 import { findLatestRenderedOperationId, mergeFeedItemsForRender } from '@/lib/feedOperations'
+import { useOpenFile } from '@/hooks/useOpenFile'
 import { useI18n } from '@/lib/i18n/useI18n'
 import { deriveMcpIdentity } from '@/lib/mcpIdentity'
 import OrbitLogoStatus from '@/lib/plugins/ai-manus/components/OrbitLogoStatus'
 import { ThinkingIndicator } from '@/lib/plugins/ai-manus/components/ThinkingIndicator'
 import { ChatScrollProvider } from '@/lib/plugins/ai-manus/lib/chat-scroll-context'
+import { useFileTreeStore } from '@/lib/stores/file-tree'
 import { buildStudioTurns, type StudioTurn, type StudioTurnBlock } from '@/lib/studioTurns'
 import { useAutoFollowScroll } from '@/lib/useAutoFollowScroll'
 import { cn } from '@/lib/utils'
 import type { AgentComment, FeedItem, QuestSummary } from '@/types'
 import { QuestBashExecOperation } from './QuestBashExecOperation'
+import { QuestMessageAttachments } from './QuestMessageAttachments'
+import { QuestUserReadStateMeta } from './QuestUserReadStateMeta'
 import { StudioToolCard } from './StudioToolCards'
+import { dispatchWorkspaceLeftVisibility, dispatchWorkspaceRevealFile } from './workspace-events'
+import { resolveStudioFileLinkTarget } from './studio-file-links'
 
 type QuestStudioDirectTimelineProps = {
   questId: string
@@ -37,6 +45,9 @@ type QuestStudioDirectTimelineProps = {
   hasOlderHistory?: boolean
   loadingOlderHistory?: boolean
   onLoadOlderHistory?: () => Promise<void>
+  onReadNow?: (messageId: string) => Promise<unknown>
+  onWithdraw?: (messageId: string) => Promise<unknown>
+  messageAction?: { messageId: string; kind: 'read_now' | 'withdraw' } | null
   emptyLabel?: string
   bottomInset?: number
 }
@@ -175,10 +186,12 @@ function StreamMarkdownBlock({
   content,
   streaming,
   className,
+  components,
 }: {
   content: string
   streaming: boolean
   className: string
+  components?: Components
 }) {
   if (streaming) {
     return <div className={cn(className, 'whitespace-pre-wrap font-normal')}>{content}</div>
@@ -186,15 +199,19 @@ function StreamMarkdownBlock({
 
   return (
     <div className={className}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {content}
+      </ReactMarkdown>
     </div>
   )
 }
 
 function StudioMessageBlock({
   block,
+  markdownComponents,
 }: {
   block: Extract<StudioTurnBlock, { kind: 'message' }>
+  markdownComponents?: Components
 }) {
   return (
     <div className="min-w-0 overflow-hidden pl-0.5">
@@ -202,6 +219,7 @@ function StudioMessageBlock({
         content={block.item.content || ''}
         streaming={Boolean(block.item.stream)}
         className="ds-copilot-markdown prose prose-sm prose-p:my-0 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1.5 prose-pre:rounded-md prose-pre:px-3 prose-pre:py-2 prose-code:text-[12px] max-w-none break-words text-[12.5px] leading-[1.72] [overflow-wrap:anywhere] text-foreground dark:prose-invert"
+        components={markdownComponents}
       />
     </div>
   )
@@ -209,8 +227,10 @@ function StudioMessageBlock({
 
 function StudioReasoningBlock({
   block,
+  markdownComponents,
 }: {
   block: Extract<StudioTurnBlock, { kind: 'reasoning' }>
+  markdownComponents?: Components
 }) {
   const { t } = useI18n('workspace')
   if (!block.item.content.trim()) {
@@ -245,6 +265,7 @@ function StudioReasoningBlock({
           content={block.item.content}
           streaming={Boolean(block.item.stream)}
           className="ds-copilot-markdown prose prose-sm prose-p:my-0 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1.5 prose-pre:rounded-md prose-pre:px-3 prose-pre:py-2 prose-code:text-[11px] max-w-none break-words text-[12px] leading-[1.65] [overflow-wrap:anywhere] text-foreground dark:prose-invert"
+          components={markdownComponents}
         />
       </div>
     </details>
@@ -359,10 +380,12 @@ function AssistantTurn({
   questId,
   turn,
   latestOperationId,
+  markdownComponents,
 }: {
   questId: string
   turn: StudioTurn
   latestOperationId: string | null
+  markdownComponents?: Components
 }) {
   const hasStreamingMessage = turn.blocks.some(
     (block) =>
@@ -388,10 +411,10 @@ function AssistantTurn({
 
         {turn.blocks.map((block) => {
           if (block.kind === 'message') {
-            return <StudioMessageBlock key={block.id} block={block} />
+            return <StudioMessageBlock key={block.id} block={block} markdownComponents={markdownComponents} />
           }
           if (block.kind === 'reasoning') {
-            return <StudioReasoningBlock key={block.id} block={block} />
+            return <StudioReasoningBlock key={block.id} block={block} markdownComponents={markdownComponents} />
           }
           if (block.kind === 'operation') {
             return (
@@ -415,7 +438,19 @@ function AssistantTurn({
   )
 }
 
-function UserTurn({ turn }: { turn: StudioTurn }) {
+function UserTurn({
+  turn,
+  markdownComponents,
+  onReadNow,
+  onWithdraw,
+  messageAction,
+}: {
+  turn: StudioTurn
+  markdownComponents?: Components
+  onReadNow?: (messageId: string) => Promise<unknown>
+  onWithdraw?: (messageId: string) => Promise<unknown>
+  messageAction?: { messageId: string; kind: 'read_now' | 'withdraw' } | null
+}) {
   const { t } = useI18n('workspace')
   const messageBlock = turn.blocks.find((block) => block.kind === 'message')
   if (!messageBlock || messageBlock.kind !== 'message') {
@@ -432,10 +467,25 @@ function UserTurn({ turn }: { turn: StudioTurn }) {
         <div className="mb-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
           <span className="font-medium text-foreground">{t('copilot_connector_you')}</span>
           {turn.createdAt ? <span>{formatTime(turn.createdAt)}</span> : null}
+          <QuestUserReadStateMeta
+            readState={messageBlock.item.readState}
+            readReason={messageBlock.item.readReason}
+            messageId={messageBlock.item.messageId}
+            busyAction={
+              messageAction && messageAction.messageId === messageBlock.item.messageId
+                ? messageAction.kind
+                : null
+            }
+            onReadNow={onReadNow}
+            onWithdraw={onWithdraw}
+          />
         </div>
         <div className="ds-copilot-markdown prose prose-sm prose-p:my-0 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1.5 prose-pre:rounded-md prose-pre:px-3 prose-pre:py-2 prose-code:text-[12px] max-w-none whitespace-pre-wrap break-words text-[12.5px] leading-[1.72] [overflow-wrap:anywhere] text-foreground dark:prose-invert">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{messageBlock.item.content || ''}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {messageBlock.item.content || ''}
+          </ReactMarkdown>
         </div>
+        <QuestMessageAttachments attachments={messageBlock.item.attachments} />
       </div>
     </div>
   )
@@ -466,10 +516,18 @@ export function QuestStudioDirectTimeline({
   hasOlderHistory = false,
   loadingOlderHistory = false,
   onLoadOlderHistory,
+  onReadNow,
+  onWithdraw,
+  messageAction = null,
   emptyLabel = 'Copilot trace appears here.',
   bottomInset = 28,
 }: QuestStudioDirectTimelineProps) {
   const { t } = useI18n('workspace')
+  const { addToast } = useToast()
+  const { openFileInTab } = useOpenFile()
+  const findNode = useFileTreeStore((state) => state.findNode)
+  const findNodeByPath = useFileTreeStore((state) => state.findNodeByPath)
+  const refreshTree = useFileTreeStore((state) => state.refresh)
   const turns = React.useMemo(() => buildStudioTurns(feed), [feed])
   const latestOperationId = React.useMemo(
     () => findLatestRenderedOperationId(mergeFeedItemsForRender(feed)),
@@ -500,6 +558,127 @@ export function QuestStudioDirectTimeline({
     }
     await onLoadOlderHistory()
   }, [hasOlderHistory, loadingOlderHistory, onLoadOlderHistory])
+
+  const handleOpenStudioFile = React.useCallback(
+    async (href: string) => {
+      const target = resolveStudioFileLinkTarget(href, {
+        currentOrigin: typeof window !== 'undefined' ? window.location.origin : null,
+      })
+      if (!target) {
+        return false
+      }
+
+      let node =
+        target.kind === 'file_id' ? findNode(target.fileId) : findNodeByPath(target.filePath)
+
+      if (!node) {
+        await refreshTree()
+        const refreshedStore = useFileTreeStore.getState()
+        node =
+          target.kind === 'file_id'
+            ? refreshedStore.findNode(target.fileId)
+            : refreshedStore.findNodeByPath(target.filePath)
+      }
+
+      if (!node) {
+        addToast({
+          title: t('copilot_trace_open_file_failed', undefined, 'Unable to open file'),
+          message:
+            target.kind === 'file_id'
+              ? t('copilot_trace_file_missing', undefined, 'The linked file is not available in Explorer yet.')
+              : target.filePath,
+          variant: 'error',
+        })
+        return true
+      }
+
+      dispatchWorkspaceLeftVisibility({ projectId: questId, visible: true })
+      if (node.path) {
+        const revealDetail = {
+          projectId: questId,
+          filePath: node.path,
+          label: node.name,
+        }
+        dispatchWorkspaceRevealFile(revealDetail)
+        if (typeof window !== 'undefined') {
+          window.setTimeout(() => dispatchWorkspaceRevealFile(revealDetail), 50)
+          window.setTimeout(() => dispatchWorkspaceRevealFile(revealDetail), 180)
+          window.setTimeout(() => dispatchWorkspaceRevealFile(revealDetail), 360)
+        }
+      }
+
+      const revealNodeInExplorer = () => {
+        const store = useFileTreeStore.getState()
+        store.expandToFile(node.id)
+        store.select(node.id)
+        store.setFocused(node.id)
+        store.highlightFile(node.id)
+      }
+
+      const retriggerExplorerReveal = () => {
+        const store = useFileTreeStore.getState()
+        store.clearHighlight()
+        revealNodeInExplorer()
+      }
+
+      revealNodeInExplorer()
+      if (typeof window !== 'undefined') {
+        window.setTimeout(retriggerExplorerReveal, 80)
+        window.setTimeout(retriggerExplorerReveal, 220)
+      }
+
+      if (node.type === 'folder') {
+        useFileTreeStore.getState().expand(node.id)
+        return true
+      }
+
+      useFileTreeStore.getState().markFileRead(node.id)
+      const result = await openFileInTab(node, {
+        customData: { projectId: questId },
+      })
+      if (!result.success) {
+        addToast({
+          title: t('copilot_trace_open_file_failed', undefined, 'Unable to open file'),
+          message: result.error || t('copilot_trace_file_missing', undefined, 'The linked file is not available in Explorer yet.'),
+          variant: 'error',
+        })
+      }
+      return true
+    },
+    [addToast, findNode, findNodeByPath, openFileInTab, questId, refreshTree, t]
+  )
+
+  const markdownComponents = React.useMemo<Components>(
+    () => ({
+      a: ({ href, children, ...props }) => {
+        const rawHref = typeof href === 'string' ? href : ''
+        const fileTarget = rawHref
+          ? resolveStudioFileLinkTarget(rawHref, {
+              currentOrigin: typeof window !== 'undefined' ? window.location.origin : null,
+            })
+          : null
+        const shouldOpenInNewTab = !fileTarget && /^(https?:)?\/\//i.test(rawHref)
+
+        return (
+          <a
+            {...props}
+            href={rawHref || undefined}
+            target={shouldOpenInNewTab ? '_blank' : undefined}
+            rel={shouldOpenInNewTab ? 'noopener noreferrer' : undefined}
+            onClick={(event) => {
+              if (!fileTarget) return
+              event.preventDefault()
+              event.stopPropagation()
+              void handleOpenStudioFile(rawHref)
+            }}
+          >
+            {children}
+          </a>
+        )
+      },
+    }),
+    [handleOpenStudioFile]
+  )
 
   React.useEffect(() => {
     if (!prependAnchorRef.current.active || loadingOlderHistory) {
@@ -555,7 +734,16 @@ export function QuestStudioDirectTimeline({
             ) : (
               turns.map((turn) => {
                 if (turn.role === 'user') {
-                  return <UserTurn key={turn.id} turn={turn} />
+                  return (
+                    <UserTurn
+                      key={turn.id}
+                      turn={turn}
+                      markdownComponents={markdownComponents}
+                      onReadNow={onReadNow}
+                      onWithdraw={onWithdraw}
+                      messageAction={messageAction}
+                    />
+                  )
                 }
                 if (turn.role === 'system') {
                   return <SystemTurn key={turn.id} turn={turn} />
@@ -566,6 +754,7 @@ export function QuestStudioDirectTimeline({
                     questId={questId}
                     turn={turn}
                     latestOperationId={latestOperationId}
+                    markdownComponents={markdownComponents}
                   />
                 )
               })

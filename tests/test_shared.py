@@ -84,6 +84,8 @@ def test_run_command_hides_windows_console(monkeypatch, tmp_path: Path) -> None:
         "cwd": str(tmp_path),
         "check": False,
         "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
         "capture_output": True,
         "creationflags": 1536,
     }
@@ -118,3 +120,23 @@ def test_run_command_bytes_hides_windows_console(monkeypatch, tmp_path: Path) ->
         "capture_output": True,
         "creationflags": 1536,
     }
+
+
+def test_ensure_utf8_subprocess_env_sets_python_defaults() -> None:
+    env = shared.ensure_utf8_subprocess_env({"CUSTOM_FLAG": "1"})
+
+    assert env["CUSTOM_FLAG"] == "1"
+    assert env["PYTHONIOENCODING"] == "utf-8"
+    assert env["PYTHONUTF8"] == "1"
+
+
+def test_ensure_utf8_subprocess_env_preserves_explicit_python_encoding() -> None:
+    env = shared.ensure_utf8_subprocess_env(
+        {
+            "PYTHONIOENCODING": "utf-16",
+            "PYTHONUTF8": "0",
+        }
+    )
+
+    assert env["PYTHONIOENCODING"] == "utf-16"
+    assert env["PYTHONUTF8"] == "0"

@@ -3,6 +3,7 @@
 import * as React from 'react'
 
 import { useToast } from '@/components/ui/toast'
+import { useQuestMessageAttachments, type QuestMessageAttachmentDraft } from '@/lib/hooks/useQuestMessageAttachments'
 import { useI18n } from '@/lib/i18n/useI18n'
 import type { CopilotPrefill } from '@/lib/plugins/ai-manus/view-types'
 import type { FeedItem, QuestSummary } from '@/types'
@@ -13,6 +14,12 @@ import { QuestStudioDirectTimeline } from './QuestStudioDirectTimeline'
 type ConnectorCommand = {
   name: string
   description?: string
+}
+
+type MessageQueueActionResult = {
+  ok?: boolean
+  status?: string
+  message?: string
 }
 
 type QuestStudioTraceViewProps = {
@@ -31,7 +38,9 @@ type QuestStudioTraceViewProps = {
   hasOlderHistory?: boolean
   loadingOlderHistory?: boolean
   onLoadOlderHistory?: () => Promise<void>
-  onSubmit: (message: string) => Promise<void>
+  onSubmit: (message: string, attachments?: QuestMessageAttachmentDraft[]) => Promise<void>
+  onReadNow?: (messageId: string) => Promise<MessageQueueActionResult | void>
+  onWithdraw?: (messageId: string) => Promise<MessageQueueActionResult | void>
   onStopRun: () => Promise<void>
   prefill?: CopilotPrefill | null
 }
@@ -53,6 +62,8 @@ export function QuestStudioTraceView({
   loadingOlderHistory = false,
   onLoadOlderHistory,
   onSubmit,
+  onReadNow,
+  onWithdraw,
   onStopRun,
   prefill = null,
 }: QuestStudioTraceViewProps) {
@@ -60,6 +71,11 @@ export function QuestStudioTraceView({
   const { addToast } = useToast()
   const [input, setInput] = React.useState('')
   const [submitting, setSubmitting] = React.useState(false)
+  const attachmentState = useQuestMessageAttachments(questId)
+  const [messageAction, setMessageAction] = React.useState<{
+    messageId: string
+    kind: 'read_now' | 'withdraw'
+  } | null>(null)
   const statusLine = React.useMemo(() => {
     if (error) {
       return error
@@ -86,11 +102,14 @@ export function QuestStudioTraceView({
 
   const handleSubmit = React.useCallback(async () => {
     const trimmed = input.trim()
-    if (!trimmed || submitting) return
+    if (submitting) return
+    if (!trimmed && attachmentState.successfulAttachments.length === 0) return
+    if (attachmentState.hasUploading || attachmentState.hasFailures) return
     setSubmitting(true)
     try {
-      await onSubmit(trimmed)
+      await onSubmit(trimmed, attachmentState.successfulAttachments)
       setInput('')
+      await attachmentState.clearAll()
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught)
       addToast({
@@ -101,7 +120,7 @@ export function QuestStudioTraceView({
     } finally {
       setSubmitting(false)
     }
-  }, [addToast, input, onSubmit, submitting, t])
+  }, [addToast, attachmentState, input, onSubmit, submitting, t])
 
   const handleStop = React.useCallback(async () => {
     if (stopping) return
@@ -116,6 +135,77 @@ export function QuestStudioTraceView({
       })
     }
   }, [addToast, onStopRun, stopping, t])
+
+  const handleReadNow = React.useCallback(
+    async (messageId: string) => {
+      if (!onReadNow || !messageId || messageAction) return
+      setMessageAction({ messageId, kind: 'read_now' })
+      try {
+        const result = await onReadNow(messageId)
+        if (result?.status === 'already_read') {
+          addToast({
+            type: 'success',
+            title: t('copilot_message_read_now_already_sent', undefined, 'Already sent'),
+            description: t('copilot_message_read_now_already_sent_desc', undefined, 'This message was already sent to the agent.'),
+          })
+        } else if (result?.ok === false) {
+          addToast({
+            type: 'error',
+            title: t('copilot_message_read_now_failed', undefined, 'Read now failed'),
+            description:
+              result.message ||
+              t('copilot_message_read_now_failed_desc', undefined, 'Unable to force immediate read for this message.'),
+          })
+        }
+      } catch (caught) {
+        const message = caught instanceof Error ? caught.message : String(caught)
+        addToast({
+          title: t('copilot_message_read_now_failed', undefined, 'Read now failed'),
+          description: message,
+          type: 'error',
+        })
+      } finally {
+        setMessageAction(null)
+      }
+    },
+    [addToast, messageAction, onReadNow, t]
+  )
+
+  const handleWithdraw = React.useCallback(
+    async (messageId: string) => {
+      if (!onWithdraw || !messageId || messageAction) return
+      setMessageAction({ messageId, kind: 'withdraw' })
+      try {
+        const result = await onWithdraw(messageId)
+        if (result?.status === 'already_withdrawn') {
+          addToast({
+            type: 'info',
+            title: t('copilot_message_withdrawn', undefined, 'Withdrawn'),
+            description: t('copilot_message_withdraw_already_done', undefined, 'This message was already withdrawn.'),
+          })
+        } else if (result?.ok === false) {
+          addToast({
+            type: 'error',
+            title: t('copilot_message_withdraw_failed', undefined, 'Withdraw failed'),
+            description:
+              result.status === 'already_read'
+                ? t('copilot_message_withdraw_failed_already_read_desc', undefined, 'Withdrawal failed because this message was already sent to the agent.')
+                : result.message || t('copilot_message_withdraw_failed_desc', undefined, 'Unable to withdraw this message.'),
+          })
+        }
+      } catch (caught) {
+        const message = caught instanceof Error ? caught.message : String(caught)
+        addToast({
+          type: 'error',
+          title: t('copilot_message_withdraw_failed', undefined, 'Withdraw failed'),
+          description: message,
+        })
+      } finally {
+        setMessageAction(null)
+      }
+    },
+    [addToast, messageAction, onWithdraw, t]
+  )
 
   React.useEffect(() => {
     if (!prefill?.text) return
@@ -145,6 +235,9 @@ export function QuestStudioTraceView({
           sendLabel={t('copilot_send')}
           stopLabel={t('copilot_stop')}
           focusToken={prefill?.focus ? prefill.token : null}
+          attachments={attachmentState.attachments}
+          onQueueFiles={attachmentState.queueFiles}
+          onRemoveAttachment={attachmentState.removeAttachment}
         />
       }
     >
@@ -162,6 +255,9 @@ export function QuestStudioTraceView({
           hasOlderHistory={hasOlderHistory}
           loadingOlderHistory={loadingOlderHistory}
           onLoadOlderHistory={onLoadOlderHistory}
+          onReadNow={handleReadNow}
+          onWithdraw={handleWithdraw}
+          messageAction={messageAction}
           emptyLabel={t('copilot_studio_empty', undefined, 'Copilot trace appears here.')}
           bottomInset={bottomInset}
         />

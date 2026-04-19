@@ -1,0 +1,206 @@
+schema_version: 1
+id: aisb.t3.012_efficientqat
+name: 'EfficientQAT: Efficient Quantization-Aware Training for Large Language Models'
+version: 0.1.0
+one_line: 'Two-phase low-bit quantization-aware training (Block-AP → E2E-QP) for Llama-2/3
+  and Mistral families (7B–70B), evaluated via WikiText-2 perplexity, C4 perplexity,
+  and zero-shot accuracy on five reasoning benchmarks.
+
+  '
+task_description: 'This benchmark implements EfficientQAT, a two-stage quantization-aware
+  training pipeline for large language models at 2/3/4-bit weight-only precision.
+  Stage 1 (Block-AP) trains all parameters—weights, step sizes, and zero points—block-by-block
+  using reconstruction loss on 4096 RedPajama samples (context length 2048). Stage
+  2 (E2E-QP) freezes the quantized integer weights and fine-tunes only the quantization
+  step sizes end-to-end on a target dataset (RedPajama or Alpaca, context length 4096).
+  The primary executable anchors are main_block_ap.py and main_e2e_qp.py, with supplementary
+  scale-calibration scripts (calibrate_scales.py, calibrate_scales_v2.py). Evaluation
+  measures WikiText-2 perplexity, C4 perplexity, and average zero-shot accuracy on
+  WinoGrande, PIQA, HellaSwag, ARC-Easy, and ARC-Challenge using lm-eval v0.4.2. Pre-quantized
+  checkpoints for many model/bit configurations are available on HuggingFace and can
+  be converted to GPTQ or BitBLAS formats via bundled transfer scripts. The paper
+  reports that 2-bit Llama-2-70B can be obtained on a single A100-80GB in 41 hours
+  with <3 points accuracy degradation. No external evaluation service is required;
+  all metrics are computed locally.
+
+  '
+capability_tags:
+- research_code_optimization
+- large_language_models
+- quantization
+- model_compression
+- efficient_inference
+- quantization_aware_training
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 1d+
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- wikitext2_ppl
+- c4_ppl
+- quantized_checkpoint
+- avg_accuracy
+launch_profiles:
+- id: calibration_only
+  label: Calibration Only
+  description: 'Run scale calibration (calibrate_scales.py or calibrate_scales_v2.py)
+    on a pre-quantized checkpoint using WikiText-2 train data. Produces updated scale
+    parameters without full Block-AP or E2E-QP retraining. Fastest route; requires
+    a pre-quantized model on disk.
+
+    '
+- id: qat_eval
+  label: QAT + Eval
+  description: 'Run the full two-stage EfficientQAT pipeline: Block-AP block-wise
+    training via main_block_ap.py, followed by E2E-QP end-to-end step-size training
+    via main_e2e_qp.py, then evaluate WikiText-2/C4 perplexity and zero-shot accuracy
+    on five reasoning tasks. This is the paper-faithful route and requires significant
+    GPU time (hours to days depending on model size).
+
+    '
+- id: eval_pretrained
+  label: Evaluate Pre-Quantized
+  description: 'Download a pre-quantized EfficientQAT checkpoint from HuggingFace
+    and evaluate perplexity and zero-shot accuracy without any training. Uses main_block_ap.py
+    with --resume_quant.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/togethercomputer/RedPajama-Data-1T-Sample
+    access: public
+    note: 'RedPajama calibration data used for both Block-AP (4096 samples, seqlen
+      2048) and E2E-QP (4096 samples, seqlen 4096). Downloaded automatically by datautils_block.py.
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/datasets/wikitext
+    access: public
+    note: 'WikiText-2 (wikitext-2-raw-v1) used for perplexity evaluation and scale
+      calibration. Downloaded automatically during eval.
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/ChenMnZ
+    access: public
+    note: 'Pre-quantized model checkpoints for Llama-2 (7B/13B/70B), Llama-3 (8B/70B),
+      Llama-3-Instruct, and Mistral-Large in EQAT/GPTQ/BitBLAS formats. Individual
+      checkpoints range from ~2 GB to ~39 GB.
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/datasets/tatsu-lab/alpaca
+    access: public
+    note: 'Alpaca instruction-tuning dataset, used as alternative E2E-QP training
+      data for instruction-tuning scenarios.
+
+      '
+  notes:
+  - Full-precision base models (e.g. Llama-2-70B at ~131 GB) must be downloaded separately
+    from their original HuggingFace repos if running Block-AP from scratch.
+  - Pre-quantized checkpoints are much smaller (e.g. w2g64 Llama-2-70B is ~20 GB).
+  - Total disk usage depends heavily on which model families and bit widths are targeted.
+credential_requirements:
+  mode: none
+  items:
+  - HuggingFace account may be needed for gated models (Llama-2, Llama-3) but not
+    for the EfficientQAT checkpoints themselves
+  notes:
+  - Meta Llama model weights require accepting a license on HuggingFace before download.
+  - Pre-quantized EfficientQAT checkpoints under ChenMnZ namespace are publicly accessible.
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 48
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 500
+    gpu_count: 2
+    gpu_vram_gb: 80
+environment:
+  python: '3.11'
+  cuda: null
+  pytorch: 2.2.2
+  flash_attn: null
+  key_packages:
+  - bitsandbytes==0.41.0
+  - transformers==4.40.1
+  - lm-eval==0.4.2
+  - accelerate
+  - datasets
+  notes:
+  - See the bundled requirements.txt for the full dependency set.
+  - CUDA toolkit version is not pinned in the repo; any version supporting PyTorch
+    2.2.2 should work.
+  - GPTQModel (v0.9.8 tested) is required only for model format transfer to GPTQ/BitBLAS;
+    not needed for core QAT or evaluation.
+  - bitsandbytes is used for the AdamW optimizer in E2E-QP training.
+risk_flags:
+- large_model_download
+- high_gpu_memory
+- long_training_time
+- gated_model_access
+risk_notes:
+- 70B model routes require a single A100-80GB (paper reports 41 hours for 2-bit Llama-2-70B
+  Block-AP + E2E-QP) or multi-GPU setups.
+- 7B model routes are feasible on a single 48GB GPU but still take multiple hours
+  for full Block-AP + E2E-QP.
+- Full-precision base model weights for Llama-2/3 are gated on HuggingFace and require
+  license acceptance.
+- The --off_load_to_disk flag in Block-AP can reduce CPU memory usage at the cost
+  of training speed.
+- No benchmark execution was performed during the packaging pass; runtime verification
+  is still needed.
+- E2E-QP memory for 2-bit Llama-2-70B is reported as 34.2 GB in the paper.
+recommended_when: 'Use this benchmark when you want an LLM-systems task centered on
+  quantization-aware training at aggressive bit widths (2–4 bit), with self-contained
+  training and evaluation pipelines covering multiple model scales from 7B to 70B.
+  Suitable for evaluating optimization strategies for low-bit QAT, comparing against
+  PTQ and Q-PEFT baselines, or producing deployable quantized checkpoints in GPTQ/BitBLAS
+  formats.
+
+  '
+not_recommended_when: 'Do not use this if you lack access to at least one GPU with
+  ≥48 GB VRAM, if you need sub-hour benchmark turnaround, or if your focus is on small
+  models (<7B parameters). Also not suitable if you need weight-activation quantization
+  benchmarks (this benchmark is weight-only quantization).
+
+  '
+paper:
+  title: 'EfficientQAT: Efficient Quantization-Aware Training for Large Language Models'
+  venue: ACL 2025 Main
+  year: 2025
+  url: https://arxiv.org/abs/2407.11062
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.012_efficientqat.zip
+  archive_type: zip
+  local_dir_name: paper-12-EfficientQAT
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.012_efficientqat.zip
+  sha256: 8f53850f12f1bdbc4e3212b21fb51a7479ebb8ab715f3138d96ef1da979b2977
+  size_bytes: 107235
+commercial:
+  annual_fee: null
+display:
+  palette_seed: amber-steel-llm
+  art_style: hardware-editorial
+  accent_priority: high
+image_path: ../image/012_aisb.t3.012_efficientqat.jpg

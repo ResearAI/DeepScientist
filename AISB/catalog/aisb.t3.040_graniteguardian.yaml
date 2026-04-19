@@ -1,0 +1,199 @@
+id: aisb.t3.040_graniteguardian
+name: 'Granite Guardian: Comprehensive LLM Safeguarding'
+version: 0.1.0
+one_line: Multi-head LLM safeguard that detects jailbreaks, hallucinations, and other
+  risks across prompts and responses under configurable criteria.
+task_description: 'This packaged benchmark covers Granite Guardian style LLM safeguarding
+  across risk dimensions including jailbreaks, social bias, profanity, violence, sexual
+  content, unethical behavior, and RAG-specific hallucination risks (context relevance,
+  groundedness, answer relevance). The task involves evaluating or calibrating risk
+  detection heads so that safety detection metrics improve. The current snapshot bundles
+  cookbook-style usage routes and Jupyter notebooks demonstrating model inference
+  with vLLM, but the packaged XSTEST-style evaluator for faithful metric reproduction
+  is not yet included in the archive. External evaluation against the full metric
+  contract is required before treating this as a complete benchmark route.
+
+  '
+capability_tags:
+- llm_safety
+- guardrails
+- risk_detection
+- classification
+- evaluation
+- rag_quality
+- content_moderation
+- research_code_optimization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- xstest_rh_auc
+- xstest_rh_f1
+- xstest_rr_auc
+- xstest_rr_f1
+- risk_scoring_examples
+- guardrail_auc
+- rag_hallucination_auc
+launch_profiles:
+- id: cookbook_demo
+  label: Cookbook Demo
+  description: 'Run the packaged Granite Guardian cookbooks (vLLM-based notebooks)
+    to verify model usage and risk scoring behavior for configured criteria. Covers
+    jailbreak detection, RAG groundedness checking, and bring-your-own-criteria workflows.
+
+    '
+- id: restore_eval
+  label: Restore Eval Route
+  description: 'Attach or restore the missing XSTEST-style evaluator before treating
+    this benchmark as a faithful metric reproduction route. Current snapshot lacks
+    executable anchors for XSTEST metrics.
+
+    '
+- id: external_benchmark_eval
+  label: External Benchmark Eval
+  description: 'Evaluate Granite Guardian models on external benchmarks including
+    XSTEST, LLM-AggreFact, and REVEAL to obtain reproducible AUC and F1 scores.
+
+    '
+dataset_download:
+  primary_method: huggingface
+  sources:
+  - name: Granite Guardian Models
+    url: https://huggingface.co/ibm-granite
+    notes:
+    - granite-guardian-3.3-8b
+    - granite-guardian-3.2-5b
+    - granite-guardian-3.2-3b-a800m
+    - granite-guardian-3.1-8b
+    - granite-guardian-3.1-2b
+  - name: Evaluation Datasets
+    url: https://huggingface.co/ibm
+    notes:
+    - SocialStigmaQA
+    - AttaQ
+    - ProvoQ
+    - WikiContradict
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - All model weights and datasets are publicly accessible
+  - HF Spaces demo available at https://huggingface.co/spaces/ibm-granite/granite-guardian
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 48
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - torch
+  - transformers
+  - vllm
+  notes:
+  - See bundled README/requirements for the full dependency set
+  - vLLM recommended for efficient inference
+  - Content warning: examples may contain offensive language, stereotypes, or discriminatory
+      content
+risk_flags:
+- blocked_metrics
+- partial_snapshot
+risk_notes:
+- xstest_rh_auc metric has no executable code anchor in current snapshot
+- xstest_rh_f1 metric has no executable code anchor in current snapshot
+- xstest_rr_auc metric has no executable code anchor in current snapshot
+- xstest_rr_f1 metric has no executable code anchor in current snapshot
+- No benchmark execution was performed in this packaging pass
+- Treat as blocked until source restoration or richer local snapshot is recovered
+- Recovery rule: prefer existing code files over README-only claims
+recommended_when: 'Use this benchmark when you want a practical LLM-safeguard evaluation
+  task with configurable criteria, production-style monitoring use cases, or RAG pipeline
+  safety verification. Particularly suited for evaluating risk detection in retrieval-augmented
+  generation settings (groundedness, context relevance, answer relevance) and jailbreak
+  resistance testing.
+
+  '
+not_recommended_when: 'Do not use this if you need a fully executable benchmark with
+  XSTEST metric anchors in the current snapshot, or if your focus is on generative
+  quality rather than safety and verification. Not suitable when reproducible metric
+  reproduction is required without external evaluation setup.
+
+  '
+paper:
+  title: 'Granite Guardian: Comprehensive LLM Safeguarding'
+  authors: 'Inkit Padhi, Manish Nagireddy, Giandomenico Cornacchia, Subhajit Chaudhury,
+    Tejaswini Pedapati, Pierre Dognin, Keerthiram Murugesan, Erik Miehling, Martin
+    Santillan, Cooper Kieran Fraser, Giulio Zizzo, Muhammad Zaid Hameed, Mark Purcell,
+    Michael Desmond, Qian Pan, Zahra Ashktorab, Inge Vejsbjerg, Elizabeth Daly, Michael
+    Hind, Werner Geyer, Ambrish Rawat, Kush R. Varshney, Prasanna Sattigeri
+
+    '
+  venue: NAACL 2025 Industry Track
+  year: 2025
+  url: https://arxiv.org/abs/2412.07724
+  github: https://github.com/ibm-granite/granite-guardian
+  license: Apache 2.0
+  key_findings:
+  - AUC scores of 0.871 on harmful content benchmarks
+  - AUC scores of 0.854 on RAG-hallucination-related benchmarks
+  - Outperforms other open-source and closed-source models on deployment-focused metrics
+  - Trained on unique dataset combining human annotations and synthetic data
+  - Supports bring-your-own-criteria for custom risk detection
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.040_graniteguardian.zip
+  archive_type: zip
+  local_dir_name: paper-40-GraniteGuardian
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.040_graniteguardian.zip
+  sha256: c98d57a175b4dc64b7f4bb81e3c4c16adb38a98775335f077f780d491e92b4e2
+  size_bytes: 2545921
+display:
+  palette_seed: indigo-sand-shield
+  art_style: safety-console
+  accent_priority: high
+image_path: ../image/040_aisb.t3.040_graniteguardian.jpg
+code_anchors:
+  executable:
+  - cookbooks/granite-guardian-3.3/quickstart.ipynb
+  - cookbooks/granite-guardian-3.2/detailed_guide_vllm.ipynb
+  - cookbooks/granite-guardian-3.1/quick_start_vllm.ipynb
+  code_roots:
+  - cookbooks/
+  blocked_metrics:
+  - xstest_rh_auc
+  - xstest_rh_f1
+  - xstest_rr_auc
+  - xstest_rr_f1
+recovery_rule: 'Prefer existing code files over README-only claims when choosing origin_path,
+  source_ref, and evaluation_protocol.code_paths. Keep metrics_summary empty until
+  trusted execution outputs exist. Mark metrics as provisional/blocked if no executable
+  anchor exists in current snapshot.
+
+  '
+commercial:
+  annual_fee: null
+  notes: Models released as open-source under Apache 2.0 license

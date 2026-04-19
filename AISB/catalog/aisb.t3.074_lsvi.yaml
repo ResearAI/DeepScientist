@@ -1,0 +1,163 @@
+id: aisb.t3.074_lsvi
+name: Least Squares Variational Inference
+version: 0.1.0
+one_line: Gradient-free variational inference via least-squares updates on tempered
+  log-target evaluations, supporting Gaussian BBVI and exponential-family posteriors
+  without gradient estimators.
+task_description: 'This packaged benchmark implements LSVI (Least Squares Variational
+  Inference), a gradient-free, Monte Carlo-based scheme for variational inference
+  within exponential families. Instead of gradient-based optimization, LSVI performs
+  successive ordinary least squares regression on tempered log-target evaluations
+  under the variational approximation. Each iteration solves a fixed-point equation
+  via OLS, yielding a bias-corrected stochastic natural gradient descent step. The
+  approach avoids unstable gradient estimators required when gradients of log pi are
+  unavailable, such as for discrete distributions or likelihood-free inference. The
+  benchmark includes Gaussian variational family implementations that eliminate Fisher
+  information matrix inversion: O(d) complexity for mean-field Gaussians and O(d^3)
+  for full-covariance cases. Primary evaluation uses the Pima Indians diabetes logistic
+  regression task, measuring KL divergence to the true posterior via the kl_objective
+  metric.
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 2-6h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- kl_objective
+- variational_inference_report
+launch_profiles:
+- id: gaussian_logreg
+  label: Gaussian Logistic Regression
+  description: 'Execute the packaged least-squares variational inference experiment
+    using Gaussian variational approximation on the Pima Indians diabetes binary classification
+    task. Runs 8 random seeds with 8000-step phase-1 and 1500-step phase-2 optimization.
+    Outputs KL divergence metrics and variational parameter trajectories.
+
+    '
+dataset_download:
+  primary_method: bundled
+  sources:
+  - type: package
+    path: LSVI/
+    description: Benchmark code and experiments are bundled in the archive
+  notes:
+  - Pima Indians dataset is included in the package under experiments/logisticRegression/
+  - No external data fetching required
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - All data and code are self-contained in the package
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes:
+    - CPU-only execution fully supported via JAX CPU backend
+    - 8-core CPU recommended for parallel seed execution
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes:
+    - Additional cores reduce wall-clock time for multi-seed experiments
+    - GPU is optional; JAX supports GPU acceleration if available
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - jax>=0.4.0
+  - jaxlib
+  - numpy>=1.21
+  - scipy
+  notes:
+  - JAX is the primary computation library; no PyTorch dependency
+  - GPU support is optional via CUDA-enabled jaxlib
+  - CPU-only execution is the primary tested configuration
+  - See bundled requirements.txt or setup.py for full dependency list
+risk_flags: []
+risk_notes:
+- No external API calls; fully offline benchmark
+- CPU-bound execution eliminates GPU availability risk
+- Long runtime (up to 6h) but low computational cost
+recommended_when: 'Use this benchmark for evaluating probabilistic inference methods
+  that must operate without gradient access, including discrete variable models, likelihood-free
+  inference, and non-differentiable posteriors. The CPU-friendly execution profile
+  makes it suitable for resource-constrained environments or methodological research
+  on variational inference.
+
+  '
+not_recommended_when: 'Do not use this benchmark for evaluating large-scale deep learning
+  methods, GPU-accelerated neural network training, or tasks requiring automatic differentiation
+  of the target density. It does not test gradient-based VI alternatives like reparameterization
+  tricks or score-function estimators.
+
+  '
+paper:
+  title: Least squares variational inference
+  venue: NeurIPS
+  year: 2025
+  url: https://arxiv.org/abs/2502.18475
+  authors:
+  - Yvann Le Fay
+  - Nicolas Chopin
+  - Simon Barthelme
+  affiliation:
+  - ENSAE, CREST, IP Paris
+  - GIPSA-Lab, CNRS
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.074_lsvi.zip
+  archive_type: zip
+  local_dir_name: paper-74-LSVI
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.074_lsvi.zip
+  sha256: 2f33740ed8cefdcd2bfd419c0ad454037de523a1b5a515e8da465918cc54af7a
+  size_bytes: 71181
+display:
+  palette_seed: cream-slate-gaussian
+  art_style: probabilistic-notebook
+  accent_priority: medium
+image_path: ../image/074_aisb.t3.074_lsvi.jpg
+capability_tags:
+- variational_inference
+- bayesian_inference
+- gradient_free_optimization
+- probabilistic_modeling
+- research_code_optimization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+code_anchors:
+  primary_executable:
+    path: LSVI/experiments/logisticRegression/pima_logistic_regression/gaussian.py
+    description: Gaussian variational inference experiment for Pima logistic regression
+      with BBVI baseline
+  variational_modules:
+    path: LSVI/variational/
+    description: Core variational inference implementations including LSVI, Laplace
+      approximation, and exponential family distributions
+metric_contract:
+  primary_metric: kl_objective
+  backing: LSVI/experiments/logisticRegression/pima_logistic_regression/gaussian.py
+  provenance: code-backed
+caveats:
+- No benchmark execution was performed during this packaging pass
+- Runtime metric values require validation before publication
+- Top-level README is absent in the current snapshot

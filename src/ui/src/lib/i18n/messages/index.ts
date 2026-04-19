@@ -12,6 +12,7 @@ import { aiManusMessages } from '@/lib/i18n/messages/ai_manus'
 import { cliMessages } from '@/lib/i18n/messages/cli'
 import { docViewerMessages } from '@/lib/i18n/messages/doc_viewer'
 import { codeViewerMessages } from '@/lib/i18n/messages/code_viewer'
+import { adminMessages } from '@/lib/i18n/messages/admin'
 
 export type I18nNamespace =
   | 'common'
@@ -27,6 +28,7 @@ export type I18nNamespace =
   | 'cli'
   | 'doc_viewer'
   | 'code_viewer'
+  | 'admin'
 
 export type I18nMessages = Partial<Record<UILanguage, Record<string, string>>>
 
@@ -44,4 +46,5 @@ export const I18N_MESSAGES: Record<I18nNamespace, I18nMessages> = {
   cli: cliMessages,
   doc_viewer: docViewerMessages,
   code_viewer: codeViewerMessages,
+  admin: adminMessages,
 }

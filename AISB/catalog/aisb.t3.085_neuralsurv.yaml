@@ -1,0 +1,183 @@
+id: aisb.t3.085_neuralsurv
+name: 'NeuralSurv: Deep Survival Analysis with Bayesian Uncertainty Quantification'
+version: 0.1.0
+one_line: Bayesian deep survival analysis with CAVI inference, sigmoidal hazard modeling,
+  and uncertainty-aware event-time predictions.
+task_description: 'NeuralSurv is the first deep survival model to incorporate full
+  Bayesian uncertainty quantification. The framework uses a sigmoidal hazard function
+  combining a Weibull-type baseline hazard with a Bayesian neural network modulation
+  component. Inference proceeds via coordinate-ascent variational inference (CAVI)
+  with closed-form updates derived through local linearization of the BNN and Pólya-Gamma
+  data augmentation. The current packaged snapshot preserves paper metadata, method
+  documentation, and metric definitions but does not contain executable source code.
+  This entry is intended for paper-backed planning, upstream restoration, or theoretical
+  evaluation of the survival analysis route.
+
+  '
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- harrell_c_index
+- survival_calibration_metrics
+- posterior_credible_intervals
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: Review the preserved survival-analysis benchmark metadata, metric definitions,
+    and method documentation without execution.
+- id: restore_first
+  label: Restore First
+  description: Recover the missing NeuralSurv implementation from upstream before
+    treating this as a runnable benchmark. See GitHub repository for source restoration.
+dataset_download:
+  primary_method: restoration_required
+  sources:
+  - name: GitHub Repository
+    url: https://github.com/MLGlobalHealth/neuralsurv
+    type: upstream_source
+    notes: MIT Licensed; source code available for restoration
+  - name: Synthetic Benchmarks
+    url: null
+    type: unspecified
+    notes: Reproducible synthetic data described in paper; restoration required
+  - name: Real-World Datasets
+    url: null
+    type: unspecified
+    notes: Clinical datasets referenced in experiments section; restoration required
+  notes:
+  - The current local snapshot does not preserve an executable benchmark route; dataset
+    setup is part of upstream restoration.
+  - External datasets used in experiments may require separate access arrangements;
+    consult paper for provenance.
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes: CPU-only execution is plausible for theoretical analysis and metadata review.
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: GPU recommended when source restoration provides runnable training code;
+      CAVI with BNN inference benefits from GPU acceleration.
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - numpy
+  - scipy
+  - pytorch
+  - pandas
+  notes:
+  - The current local package does not preserve executable setup files or runnable
+    source code; environment hints here should be treated as provisional until upstream
+    restoration.
+  - Core dependencies inferred from paper methodology: PyTorch for BNN implementation,
+      NumPy/SciPy for statistical computations.
+  - CPU-only execution is plausible for the minimum route; GPU acceleration would
+    benefit variational inference iterations.
+  - Consult bundled README/requirements for full dependency set after upstream restoration.
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- blocked_no_code
+risk_notes:
+- The current snapshot does not expose executable code files that can anchor the staged
+  metrics.
+- No benchmark execution was performed in this packaging pass.
+- Treat this entry as blocked until source restoration or a richer local snapshot
+  is recovered.
+- Top-level README is absent in the current snapshot.
+recommended_when: 'Use this entry when you want paper-backed planning for the Bayesian
+  survival modeling route, upstream restoration of the NeuralSurv implementation,
+  or theoretical evaluation of the CAVI-based uncertainty quantification framework
+  for time-to-event data.
+
+  '
+not_recommended_when: 'Do not treat this local package as a ready-to-run survival
+  benchmark; the staged snapshot preserves metadata only. Do not attempt execution
+  without first restoring the upstream source code from the GitHub repository.
+
+  '
+paper:
+  title: 'NeuralSurv: Deep Survival Analysis with Bayesian Uncertainty Quantification'
+  authors:
+  - Mélodie Monod (Imperial College London)
+  - Alessandro Micheli (Imperial College London)
+  - Samir Bhatt (Imperial College London; University of Copenhagen)
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2505.11054
+  code_url: https://github.com/MLGlobalHealth/neuralsurv
+  license: MIT
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.085_neuralsurv.zip
+  archive_type: zip
+  local_dir_name: paper-85-NeuralSurv
+  notes:
+  - Download preserves paper metadata, method documentation, and metric definitions.
+  - Executable code and benchmark runner are not included in the current snapshot.
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.085_neuralsurv.zip
+  sha256: 99bb852c3f56a3596cdc9c1f5d1ae5c2941061585df48e407faa78f902aa8789
+  size_bytes: 51459
+display:
+  palette_seed: burgundy-ivory-survival
+  art_style: clinical-probability
+  accent_priority: medium
+image_path: ../image/085_aisb.t3.085_neuralsurv.jpg
+metric_definitions:
+- id: harrell_c_index
+  name: Harrell's C-index
+  type: discriminative_performance
+  description: 'Concordance index measuring the model''s ability to correctly rank
+    pairs of patients based on predicted risk scores. Higher values indicate better
+    discriminative ability. Range approximately 0.5 to 1.0; 0.5 indicates no discriminative
+    ability, 1.0 indicates perfect.
+
+    '
+  blocked: true
+  execution_note: Metric definition preserved; no executable code anchor in current
+    snapshot.
+- id: survival_calibration_metrics
+  name: Survival Calibration Metrics
+  type: calibration
+  description: 'Metrics assessing the alignment between predicted survival probabilities
+    and observed event rates. The paper emphasizes superior calibration compared to
+    state-of-the-art deep survival models as a key contribution.
+
+    '
+  blocked: true
+  execution_note: Calibration evaluation described in paper experiments; restoration
+    required.
+- id: posterior_credible_intervals
+  name: Posterior Credible Intervals
+  type: uncertainty_quantification
+  description: 'Bayesian credible intervals for individual survival functions derived
+    from the variational posterior. Communicate model confidence in predictions.
+
+    '
+  blocked: true
+  execution_note: Uncertainty quantification is a core contribution; implementation
+    restoration needed.

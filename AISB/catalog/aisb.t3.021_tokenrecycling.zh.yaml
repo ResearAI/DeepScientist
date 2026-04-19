@@ -1,0 +1,129 @@
+schema_version: 1
+id: aisb.t3.021_tokenrecycling
+name: '变废为宝：利用 Token 循环加速大语言模型推理'
+version: 0.1.0
+one_line: 评估 Token 循环，这是一种无需训练的字验证解码方法，通过一个 <2 MB 的邻接矩阵重用候选 token，在 SpecBench 和 MBPP 上实现约 2 倍的 LLM 推理加速。
+task_description: '此打包基准测试用于评估 Token 循环（TR），这是一种即插即用、无需训练的字验证解码方法，用于加速 LLM 推理。TR 将每个解码步骤中的 top-k 候选 token 存储在一个词汇表大小的邻接矩阵中（<2 MB），然后通过类 BFS 检索构建草稿树，并使用树注意力机制进行验证。评估流程运行 eval.sh 脚本，对 Vicuna 7B/13B/33B（在 SpecBench 上）和 Code Llama 7B/13B/34B（在 MBPP 上）进行迭代测试，测量平均接受 token 数（MAT）、token/秒以及相对于 HuggingFace 自回归解码的加速比。模型需要预先下载到项目根目录的 ../models/ 目录下。该代码库基于 SpecBench 评估框架，使用贪心解码（temperature=0，batch size=1）。论文报告在 7B 模型上实现约 2 倍加速，比之前的无训练方法提升 30% 以上，比 Medusa（需要训练）提升 25%。所有原始实验均使用单块 A100-80GB GPU，搭配 PyTorch 2.3 和 CUDA 12.2。
+
+  '
+capability_tags:
+- research_code_optimization
+- large_language_models
+- speculative_decoding
+- inference_acceleration
+- systems_efficiency
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- mean_accepted_tokens
+- spec_bench_speedup
+- throughput_report
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '使用单个模型（例如 vicuna-7b-v1.3）在 spec_bench 上运行 eval.sh。需要在 ../models/ 中放置模型权重。在 A100-80GB 上预计需要 1-3 小时。
+
+    '
+- id: specbench_eval
+  label: 完整 SpecBench + MBPP 评估
+  description: '在 SpecBench 上对所有三种 Vicuna 规模，在 MBPP 上对所有三种 Code Llama 规模，运行完整的 eval.sh 循环。根据评估的模型规模，在单块 A100-80GB 上预计需要 6-24 小时。
+
+    '
+dataset_download:
+  primary_method: bundled_plus_models
+  sources:
+  - kind: bundled
+    url: null
+    access: public
+    note: SpecBench 问题文件和 MBPP 数据已打包在 data/ 目录中。
+  - kind: huggingface
+    url: https://huggingface.co/lmsys/vicuna-7b-v1.3
+    access: public
+    note: Vicuna 7B/13B/33B 权重需单独下载到 ../models/。
+  - kind: huggingface
+    url: https://huggingface.co/codellama/CodeLlama-7b-hf
+    access: public
+    note: Code Llama 7B/13B/34B 权重需单独下载到 ../models/。
+  notes:
+  - 模型权重总计 60-130 GB，取决于使用的规模。
+  - eval.sh 期望模型位于 ../models/vicuna-7b-v1.3、../models/vicuna-13b-v1.3 等位置。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 某些门控模型变体可能需要 HuggingFace 登录，但 Vicuna 和 Code Llama 权重是公开可用的。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 80
+environment:
+  python: '3.10'
+  cuda: '12.2'
+  pytorch: '2.3'
+  key_packages:
+  - transformers==4.37.1
+  - fschat
+  - shortuuid
+  notes:
+  - 论文实验使用 PyTorch 2.3、CUDA 12.2、单块 A100-80GB、128 核 CPU。
+  - 打包的 requirements.txt 继承自 SpecBench；通过 pip install -r requirements.txt 安装。
+  - 现有的 YAML 列出了 PyTorch 2.1.1，但论文和代码参考的是 PyTorch 2.3。
+risk_flags:
+- model_download_required
+- gpu_intensive
+- currently_vicuna_only
+risk_notes:
+- 必须提前从外部下载模型（Vicuna、Code Llama）才能进行评估；总计约 60-130 GB。
+- 最小的 24 GB 显存只能以 float16 运行 7B 模型；33B/34B 模型需要 ≥48 GB 显存。
+- 代码库目前仅适配 LLaMA/Vicuna 架构（modeling_llama_kv.py）；适配更新模型已列为待办事项。
+- 打包过程中未执行基准测试；指标值尚未验证。
+recommended_when: '当您需要对 7B+ LLM 进行推理加速评估任务，且无需草稿模型训练、无需大型检索数据存储、额外内存占用极小（<2 MB）时，可使用此基准测试。非常适合在受控的贪心解码、batch size 为 1 的条件下比较无训练的字验证解码方法。
+
+  '
+not_recommended_when: '如果您没有 ≥24 GB 显存的 GPU 来服务开放权重 LLM，或者需要以训练为中心的基准测试，或者需要评估 LLaMA/Vicuna 系列之外的模型（代码目前仅支持基于 LLaMA 的架构），则不建议使用此基准测试。
+
+  '
+paper:
+  title: 'Turning Trash into Treasure: Accelerating Inference of Large Language Models
+    with Token Recycling'
+  venue: ACL 2025 Oral
+  year: 2025
+  url: https://arxiv.org/abs/2408.08696
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.021_tokenrecycling.zip
+  archive_type: zip
+  local_dir_name: paper-21-TokenRecycling
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.021_tokenrecycling.zip
+  sha256: d38519836e52e4c5c5e1fccd9a4befa5b9a3f20a5c8fa787941a3b2773bd1ebd
+  size_bytes: 55377
+commercial:
+  annual_fee: null
+display:
+  palette_seed: lime-slate-recycle
+  art_style: systems-diagram
+  accent_priority: high
+image_path: ../image/021_aisb.t3.021_tokenrecycling.jpg

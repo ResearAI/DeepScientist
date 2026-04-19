@@ -1,0 +1,189 @@
+id: aisb.t3.056_infosam
+name: 'InfoSAM: Fine-Tuning the Segment Anything Model from An Information-Theoretic
+  Perspective'
+version: 0.1.0
+one_line: |
+  基于信息论的SAM微调方法，通过互信息蒸馏保留领域无关的关系知识，用于专业分割任务。
+task_description: |
+  InfoSAM是一种用于SAM的参数高效微调（PEFT）框架，通过信息论蒸馏保留预训练领域无关知识，从而提升专业领域的分割性能。该方法引入两个基于互信息的新目标：（1）关系压缩损失，通过最小化任务无关特征与关系模块输出之间的互信息，从预训练SAM中提取领域无关的结构模式；（2）跨模型蒸馏损失，最大化教师（预训练SAM）与学生（微调后SAM）关系表示之间的互信息。该方法使用注意力驱动的关系模块和基于Renyi熵的量化，通过Frobenius范数计算的归一化Gram矩阵。在包括自然图像、医学影像、农业（叶片病害）和遥感在内的多个领域进行了基准测试。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 1-2d
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- s_measure
+- e_measure
+- weighted_f_measure
+- infosam_checkpoint
+- segmentation_results
+launch_profiles:
+- id: train_only
+  label: 仅训练
+  description: 使用信息论蒸馏损失在指定数据集上运行InfoSAM微调。
+- id: eval_only
+  label: 仅评估
+  description: 使用S-measure、E-measure和加权F-measure评估微调后的模型。
+- id: full_pipeline
+  label: 完整流程
+  description: 包含检查点管理的完整训练和评估流程。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: github_repo
+    url: https://github.com/autogluon/autogluon/tree/master/examples/automm/Conv-LoRA
+    access: public
+    note: 数据集来源于Conv-LoRA仓库，覆盖多个分割领域
+  - kind: huggingface_model
+    url: https://huggingface.co/MuyaoYuan/InfoSAM/tree/main
+    access: public
+    note: 预训练的InfoSAM检查点，可直接使用
+  - kind: facebook_ai
+    url: https://dl.fbaipublicfiles.com/segment_anything/
+    access: public
+    note: 训练所需的预训练SAM教师模型（ViT-B、ViT-H、ViT-L）
+  notes:
+  - 当前本地快照不包含README中引用的`data/data_download.py`脚本
+  - 数据集获取需要从Conv-LoRA外部路径重建
+  - README中引用的shell脚本`config/train/InfoSAM_b_leaf.sh`和`config/eval/InfoSAM_b_leaf.sh`在快照中缺失
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 在打包材料中未检测到明确的API凭据或数据集访问令牌
+  - HuggingFace模型访问是公开的
+  - Facebook AI SAM检查点下载是公开的
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 48
+environment:
+  python: '3.8'
+  cuda: '12.1'
+  pytorch: 2.4.1
+  flash_attn: null
+  key_packages:
+  - torchvision==0.19.1
+  - transformers
+  - pillow
+  - numpy
+  - opencv-python
+  - scipy
+  notes:
+  - 测试环境：Ubuntu 20.04上的Python 3.8.20、PyTorch 2.4.1、torchvision 0.19.1、CUDA 12.1
+  - 环境规格来源于README文档；端到端执行需要恢复缺失的启动脚本
+risk_flags:
+- source_snapshot_incomplete
+- launch_scripts_missing
+- dataset_download_script_absent
+risk_notes:
+- 当前快照保留了文档（README、OPTIMIZATION.md、AGENTS.md、latex.md）但缺少可执行的训练/评估启动器树
+- 缺少数据集准备所需的`data/data_download.py`脚本
+- 缺少训练和评估所需的`config/train/InfoSAM_b_leaf.sh`和`config/eval/InfoSAM_b_leaf.sh`
+- 视为基于论文的重建目标；完整执行需要从官方仓库恢复上游脚本
+recommended_when: |
+  使用此基准来重建和审计InfoSAM PEFT方法论以实现SAM适配。适合研究信息论蒸馏用于视觉基础模型、关系知识迁移和领域无关分割的研究人员。请准备好从官方仓库恢复缺失的训练和评估脚本。
+not_recommended_when: |
+  不要用作可直接运行的本地基准。当前快照相对于官方README不完整。在基准可运行之前，需要从上游InfoSAM仓库恢复缺失的启动脚本、下载工具和配置文件。
+paper:
+  title: 'InfoSAM: Fine-Tuning the Segment Anything Model from An Information-Theoretic
+    Perspective'
+  venue: ICML 2025 Spotlight
+  year: 2025
+  url: https://proceedings.mlr.press/v267/zhang25ct.html
+  arxiv_url: https://arxiv.org/pdf/2505.21920
+  project_page: https://muyaoyuan.github.io/InfoSAM_Page
+  authors:
+  - Yuanhong Zhang
+  - Muyao Yuan
+  - Weizhan Zhang
+  - Tieliang Gong
+  - Wen Wen
+  - Jiangyong Ying
+  - Weijie Shi
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.056_infosam.zip
+  archive_type: zip
+  local_dir_name: paper-56-InfoSAM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.056_infosam.zip
+  sha256: 6339252a6968df0ec70cdac20e1eb44e1eeae9f33b3b6386513a2772d1e51ba9
+  size_bytes: 45688
+display:
+  palette_seed: gold-forest-segment
+  art_style: info-geometry
+  accent_priority: high
+  domain_tags:
+  - computer_vision
+  - segmentation
+  - foundation_models
+  - distillation
+  - parameter_efficient_finetuning
+  - information_theory
+image_path: ../../../AISB/image/056_aisb.t3.056_infosam.jpg
+capability_tags:
+- research_code_optimization
+- computer_vision
+- segmentation
+- foundation_models
+- distillation
+- parameter_efficient_finetuning
+- mutual_information
+- knowledge_distillation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+metric_contracts:
+  s_measure:
+    description: 用于前景分割质量评估的结构度量
+    origin: paper_evaluation
+    blocked_reason: 当前快照中无可执行的评估代码锚点
+  e_measure:
+    description: 用于边界和区域评估的增强对齐度量
+    origin: paper_evaluation
+    blocked_reason: 当前快照中无可执行的评估代码锚点
+  weighted_f_measure:
+    description: 结合精度和召回率并具有最优阈值选择的加权F度量
+    origin: paper_evaluation
+    blocked_reason: 当前快照中无可执行的评估代码锚点
+external_models:
+  teacher_models:
+  - model_id: sam_vit_b
+    url: https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
+    description: ViT-Base SAM模型（默认教师）
+  - model_id: sam_vit_h
+    url: https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+    description: ViT-Huge SAM模型
+  - model_id: sam_vit_l
+    url: https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth
+    description: ViT-Large SAM模型
+  pretrained_checkpoints:
+  - model_id: infosam_finetuned
+    url: https://huggingface.co/MuyaoYuan/InfoSAM/tree/main
+    description: HuggingFace上的预训练InfoSAM检查点
+    access: public
+restoration_required:
+- data/data_download.py
+- config/train/InfoSAM_b_leaf.sh
+- config/eval/InfoSAM_b_leaf.sh
+- requirements.txt
+- launcher scripts referenced in README
+restoration_notes: |
+  官方仓库包含完整的训练和评估脚本。重建工作涉及克隆上游仓库或恢复引用的shell脚本和下载工具，以实现完全可运行的基准。

@@ -1,0 +1,166 @@
+id: aisb.t3.016_mathfusion
+name: MathFusion
+version: 0.1.0
+one_line: Instruction fusion framework for enhancing mathematical reasoning in 7B-8B
+  LLMs through cross-problem synthesis.
+task_description: 'MathFusion is a novel instruction fusion framework that enhances
+  mathematical reasoning by synthesizing new training problems from pairs of existing
+  problems. It implements three fusion strategies: (1) Sequential Fusion chains related
+  problems through shared variables to model solution dependencies; (2) Parallel Fusion
+  combines analogous problems to reinforce conceptual understanding; and (3) Conditional
+  Fusion creates context-aware selective problems for reasoning flexibility.
+
+  This benchmark covers the full pipeline: training on MathFusionQA using LLaMA-Factory
+  with full-parameter SFT (DeepSpeed ZeRO-2, flash-attention FA2, bf16, cutoff 4096),
+  followed by evaluation across six mathematical reasoning benchmarks including GSM8K,
+  MATH, CollegeMath, DeepMind-Mathematics, OlympiadBench, and TheoremQA. Reported
+  training configuration uses 3 epochs with batch size 128 on 8x NVIDIA A100 GPUs.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 2-4d
+cost_band: very_high
+difficulty: hard
+data_access: public
+primary_outputs:
+- accuracy
+- finetuned_checkpoint
+- benchmark_report
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Lightweight sanity run with minimal data subsets and reduced epochs
+    to verify pipeline integrity without full resource commitment.
+
+    '
+  time_estimate: 1-2h
+  resource_estimate: 1x A100
+- id: full_train_eval
+  label: Full Train + Eval
+  description: 'Complete training run on MathFusionQA with full parameter SFT across
+    3 epochs, followed by evaluation on all six benchmark datasets. Requires 8x A100
+    GPUs for the standard configuration.
+
+    '
+  time_estimate: 2-4d
+  resource_estimate: 8x A100
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/QizhiPei/MathFusionQA
+    access: public
+    note: Primary instruction fusion dataset containing original, sequential, parallel,
+      and conditional splits
+  - kind: github_repo
+    url: https://github.com/hiyouga/LLaMA-Factory
+    access: public
+    note: Training framework (v0.9.1) - converts MathFusionQA to JSON format for training
+  - kind: github_repo
+    url: https://github.com/QwenLM/Qwen2.5-Math
+    access: public
+    note: In-domain evaluation harness (gsm8k, math, mwpbench, deepmind-mathematics,
+      olympiadbench)
+  - kind: github_repo
+    url: https://github.com/hkust-nlp/dart-math
+    access: public
+    note: Out-of-domain evaluation harness (theoremqa and others)
+  notes:
+  - MathFusionQA must be converted to LLaMA-Factory JSON format before training
+  - Evaluation requires both Qwen2.5-Math and DART-Math harnesses
+  - Six evaluation datasets: gsm8k, math, mwpbench/college-math, deepmind-mathematics,
+      olympiadbench, theoremqa
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No explicit API credentials required for public datasets and GitHub repositories
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 2
+    gpu_vram_gb: 80
+  recommended:
+    cpu_cores: 64
+    ram_gb: 256
+    disk_gb: 500
+    gpu_count: 8
+    gpu_vram_gb: 80
+  notes:
+  - Reported ACL 2025 training used 8x NVIDIA A100 80GB for 3 epochs, batch size 128
+  - Full-parameter SFT with bf16 and DeepSpeed ZeRO-2 requires substantial VRAM
+  - vLLM inference during evaluation has similar memory footprint to training
+environment:
+  python: '3.10'
+  cuda: '12.1'
+  pytorch: 2.3.1
+  flash_attn: fa2
+  key_packages:
+  - transformers==4.46.1
+  - accelerate==0.34.2
+  - deepspeed==0.15.4
+  - vllm==0.5.3.post1
+  - sympy==1.12.1
+  - antlr4-python3-runtime==4.11.1
+  - pebble
+  - word2number
+  - boto3
+  - triton==2.3.1
+  - ipython
+  notes:
+  - Install flash-attn separately: pip install flash-attn --no-build-isolation
+  - Training uses LLaMA-Factory v0.9.1 with full-parameter SFT
+  - Evaluation requires dart-math and latex2sympy packages
+risk_flags:
+- long_runtime
+- high_compute_cost
+- multi_harness_dependency
+risk_notes:
+- Full training runs take 2-4 days on 8x A100
+- Multi-stage pipeline with external evaluation dependencies
+- Requires understanding of LLaMA-Factory configuration for custom runs
+recommended_when: 'Use this benchmark for full-parameter math reasoning SFT experiments
+  with instruction fusion. Ideal for researchers exploring cross-problem synthesis,
+  data augmentation via problem fusion, or evaluating math reasoning improvements
+  across in-domain and out-of-domain benchmarks.
+
+  '
+not_recommended_when: 'Do not use if only needing inference-only prompting, PEFT/LoRA
+  methods, or if lacking infrastructure for full-parameter SFT with 80GB+ VRAM per
+  GPU.
+
+  '
+paper:
+  title: 'MathFusion: Enhancing Mathematical Problem-solving of LLM through Instruction
+    Fusion'
+  authors: Qizhi Pei, Lijun Wu, Zhuoshi Pan, Yu Li, Honglin Lin, Chenlin Ming, Xin
+    Gao, Conghui He, Rui Yan
+  venue: ACL 2025 Main
+  year: 2025
+  url: https://arxiv.org/abs/2503.16212
+  models_released:
+  - DeepSeekMath-7B-MathFusion
+  - Mistral-7B-MathFusion
+  - Llama3-8B-MathFusion
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.016_mathfusion.zip
+  archive_type: zip
+  local_dir_name: paper-16-MathFusion
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.016_mathfusion.zip
+  sha256: 105b308e4f4831e9b98e67b1c8ab5af3635c01d856307bd6adede1807856d544
+  size_bytes: 3883862
+display:
+  palette_seed: chalk-indigo-proof
+  art_style: academic-modern
+  accent_priority: high
+image_path: ../../../AISB/image/016_aisb.t3.016_mathfusion.jpg

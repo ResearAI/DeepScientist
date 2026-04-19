@@ -95,7 +95,7 @@ https://arxiv.org/abs/2602.00428
 如果 `Reusable baseline` 留空，且 `Research intensity` 选择 `Balanced`，当前前端会自动推导：
 
 - `scope = baseline_plus_direction`
-- `baseline_mode = restore_from_url`
+- `baseline_mode = auto`
 - `resource_policy = balanced`
 - `time_budget_hours = 24`
 - `git_strategy = semantic_head_plus_controlled_integration`
@@ -148,6 +148,18 @@ type StartResearchTemplate = {
 - `git_strategy`
 
 这几项已经不再由用户逐个填写，而是由 `research_intensity` 和是否选中 `baseline_id` 自动推导。
+
+现在还新增了 3 个显式启动控制项：
+
+- `baseline_source_mode`
+- `execution_start_mode`
+- `baseline_acceptance_target`
+
+它们不是替代自动推导字段，而是更强的用户侧路线偏好，用来告诉 agent：
+
+- baseline 应优先验证本地已有系统、附着可复用 baseline、从源码复现、修复已有 baseline，还是先别把 baseline 当前置主线
+- 是否应先输出一个有边界的计划并等待批准，再进入重型执行
+- baseline 至少要达到什么强度，quest 才应该进入 idea 与 experiment
 
 ### 自动推导字段
 
@@ -429,6 +441,7 @@ type StartResearchContractFields = {
 额外规则：
 
 - 如果选中了 `baseline_id`，推导得到的 `baseline_mode` 会强制变成 `existing`
+- 如果显式设置了 `baseline_source_mode`，应把它当作更强的路线偏好，而把 `baseline_mode` 视为较粗粒度的推导摘要
 
 ## Prompt 编译行为
 

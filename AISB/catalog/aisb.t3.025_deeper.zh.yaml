@@ -1,0 +1,116 @@
+id: aisb.t3.025_deeper
+name: 'DEEPER：用于动态人格建模的导向性人格优化方法'
+version: 0.1.0
+one_line: 基于优化的新型动态人格建模方法，采用离线强化学习和差异驱动的更新方向搜索，涵盖10个领域。
+task_description: '该基准测试包涵盖动态人格建模，采用一种基于优化的新范式，解决了传统再生（替换人格）和扩展（增量追加行为）方法的根本性局限。DEEPER利用预测-行为差异以结构化、奖励驱动的方式引导更新方向，实现人格的持续优化。该方法采用三目标奖励设计，平衡"历史保持"、"当前反映"和"未来推进"，通过两阶段迭代离线强化学习和DPO微调进行训练。在4800+用户和10个领域（包括4个未见领域用于跨域泛化测试）上进行评估。主要评估指标是在四轮优化过程中对未来行为预测的MAE。
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 2-4d
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- mae_round4
+- persona_refinement_model
+- evaluation_report
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: '使用eval_round4.py对DEEPER人格建模栈运行一次打包评估。评估第4轮MAE（使用经过4次DEEPER更新后的人格S4预测第5窗口评分）。通过OpenRouter API使用meta-llama/llama-3.3-70b-instruct，支持可配置的并发数。
+
+    '
+- id: full_refinement
+  label: 完整优化流程
+  description: '运行完整的人格优化工作流，包括通过LLaMA-Factory进行两阶段离线训练（迭代1和迭代2）、所有轮次的人格更新，以及包含各领域和各轮次MAE报告的下游评估。
+
+    '
+dataset_download:
+  primary_method: huggingface
+  sources:
+  - https://huggingface.co/datasets/deeper-team/DEEPER_preprocess_data
+  - https://huggingface.co/datasets/deeper-team/DEEPER_user_context_data
+  - https://huggingface.co/datasets/deeper-team/DEEPER_train_data
+  - https://huggingface.co/deeper-team/DEEPER-llama-8B
+  notes:
+  - 四个数据集组件：预处理数据、用户上下文数据、DEEPER训练数据、演化人格
+  - 预处理数据涵盖10个领域，包含按时间顺序的用户评分历史（每用户50+条记录）
+  - 用户上下文数据按迭代组织（评估用iteration_1到iteration_4，训练用iteration_1到iteration_2）
+  - 训练数据通过自采样和两轮迭代优化构建
+credential_requirements:
+  mode: api_key
+  items:
+  - openrouter_api_key
+  notes:
+  - 需要OpenRouter API密钥用于评估期间基于LLM的人格生成和行为预测
+  - API调用使用meta-llama/llama-3.3-70b-instruct模型
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 48
+    gpu_type: NVIDIA A100或等效高显存GPU
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 2
+    gpu_vram_gb: 80
+    gpu_type: 多GPU配置用于并行训练和推理
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - transformers==4.45.0
+  - vllm==0.7.3
+  - openai>=1.0.0
+  - llama-factory @ git+https://github.com/hiyouga/LLaMA-Factory.git
+  notes:
+  - LLaMA-Factory是训练流程必需的（通过git clone和pip install -e ".[torch,metrics]"安装）
+  - 强烈建议使用Conda环境进行依赖隔离
+  - 参见附带的README/requirements.txt获取完整的依赖列表
+risk_flags:
+- multi_gpu_training
+- llm_api_dependency
+- rate_limiting
+- long_runtime
+risk_notes:
+- 多GPU训练编排增加故障复杂性；建议使用检查点
+- 评估依赖OpenRouter API调用；在MAX_WORKERS=8时可能因速率限制导致超时
+- 完整优化工作流跨越多轮训练迭代和4轮评估
+- 训练迭代使用DPO微调，对超参数敏感
+recommended_when: '当您需要一个结合行为建模、偏好优化和跨域泛化测试的个性化任务时使用此基准。特别适合评估离线强化学习方法在需要迭代人格优化和显式方向搜索能力的动态用户建模场景中的表现。
+
+  '
+not_recommended_when: '如果您无法托管或访问8B级LLM、缺乏OpenRouter调用的API基础设施，或需要一个不含RL组件的快速基线任务，请勿使用此基准。不适合没有GPU能力或计算预算低于最低资源要求的环境。
+
+  '
+paper:
+  title: 'DEEPER: Directed Persona Refinement for Dynamic Persona Modeling'
+  venue: ACL 2025
+  year: 2025
+  url: https://arxiv.org/abs/2502.11078
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.025_deeper.zip
+  archive_type: zip
+  local_dir_name: paper-25-DEEPER
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.025_deeper.zip
+  sha256: 1c2f13d7dc01d3ff88b03778010e1d29b20d5bb4b687e9953a0b0b0977b0057e
+  size_bytes: 3096009
+display:
+  palette_seed: plum-sand-persona
+  art_style: human-centered
+  accent_priority: high
+image_path: ../image/025_aisb.t3.025_deeper.jpg

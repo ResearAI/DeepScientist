@@ -1,0 +1,184 @@
+schema_version: 1
+id: aisb.t3.004_decentralattn
+name: 'TeCh: Decentralized Attention Fails Centralized Signals'
+version: 0.1.0
+one_line: Train and evaluate the TeCh (CoTAR-based) medical time-series classification
+  framework across five EEG/ECG benchmark datasets under a subject-independent protocol.
+task_description: 'This benchmark evaluates the TeCh framework—a Transformer variant
+  that replaces standard quadratic self-attention with the linear-complexity CoTAR
+  (Core Token Aggregation-Redistribution) module—on medical time-series (MedTS) classification.
+  The task is to train and tune TeCh on up to five preprocessed clinical datasets
+  (3 EEG: APAVA, ADFTD, TDBrain; 2 ECG: PTB, PTB-XL) using the subject-independent
+  evaluation protocol, where train/val/test sets are split by patient so the model
+  must generalize to unseen subjects. Each dataset has a dedicated shell script under
+  ./scripts/ that launches run.py → exp/exp_classification.py with dataset-specific
+  hyperparameters (batch size, learning rate, number of temporal/channel encoder layers,
+  augmentation mix, epoch budget). The model outputs classification logits; evaluation
+  computes accuracy, precision, recall, F1, AUROC, and AUPRC. Datasets must be downloaded
+  externally from the Medformer repository and placed under ./dataset/. The TDBrain
+  dataset additionally requires institutional permission. The goal is to improve classification
+  quality (primarily accuracy and F1) by modifying architecture, training loop, or
+  hyperparameters without breaking the multi-dataset evaluation route.
+
+  '
+capability_tags:
+- research_code_optimization
+- medical_time_series
+- transformers
+- classification
+- health_ai
+- eeg
+- ecg
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: restricted
+primary_outputs:
+- accuracy
+- precision
+- recall
+- f1
+- auroc
+- auprc
+- model_checkpoint
+- training_logs
+launch_profiles:
+- id: quick_check
+  label: Quick Check (Single Dataset)
+  description: 'Run a single dataset script (e.g., bash ./scripts/APAVA.sh) with default
+    hyperparameters to verify the training loop, data loading, and metric computation
+    work end-to-end. Runs 5 iterations × 40 epochs on APAVA; expect 1–3 hours on a
+    single GPU.
+
+    '
+- id: full_eval
+  label: Full Benchmark Suite
+  description: 'Run all dataset scripts (APAVA, ADFTD, FLAAP, PTB, PTB-XL, and optionally
+    TDBrain) sequentially or in parallel. Each script runs 5 random-seed iterations.
+    Expect 6–24 hours total on a single GPU depending on dataset sizes and epoch budgets.
+
+    '
+- id: ablation
+  label: Ablation / Architecture Modification
+  description: 'Modify the TeCh architecture (e.g., number of temporal vs. channel
+    encoder layers, CoTAR core-token dimension, augmentation strategies) and re-run
+    the full suite to measure impact on all six classification metrics.
+
+    '
+dataset_download:
+  primary_method: external
+  sources:
+  - kind: github
+    url: https://github.com/DL4mHealth/Medformer
+    access: public
+    note: 'All preprocessed MedTS datasets (APAVA, ADFTD, FLAAP, PTB, PTB-XL, UCI-HAR)
+      are hosted or linked from the Medformer repository. Download and place under
+      ./dataset/.
+
+      '
+  - kind: restricted
+    url: https://github.com/DL4mHealth/Medformer
+    access: permission_required
+    note: 'The TDBrain dataset requires institutional permission before download.
+      See Medformer repo for access instructions.
+
+      '
+  notes:
+  - Shell scripts hardcode data paths like /data/gqyu/dataset/med/APAVA/; update --root_path
+    in each script to match your local layout under ./dataset/.
+  - Total disk footprint for all datasets is estimated at 5–30 GB depending on which
+    datasets are included.
+credential_requirements:
+  mode: conditional
+  items:
+  - TDBrain dataset requires institutional data access permission
+  notes:
+  - Five of the six datasets are publicly available through the Medformer repository.
+  - TDBrain requires a separate access request; the benchmark is fully functional
+    without it.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 120
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: 2.4.1
+  flash_attn: null
+  key_packages:
+  - scikit-learn
+  - psutil
+  - numpy
+  notes:
+  - See requirements.txt for the full dependency set.
+  - Code uses psutil for CPU-affinity pinning; ensure it is installed.
+  - CUDA version not explicitly specified; any version compatible with PyTorch 2.4.1
+    should work.
+risk_flags:
+- external_dataset_dependency
+- hardcoded_paths
+- restricted_data_subset
+risk_notes:
+- Datasets are not bundled in the snapshot; they must be downloaded from the Medformer
+  repository and placed under ./dataset/.
+- Shell scripts contain hardcoded absolute paths (e.g., /data/gqyu/dataset/med/APAVA/)
+  that must be edited before running.
+- The TDBrain dataset requires institutional permission; omitting it still leaves
+  five runnable benchmarks.
+- Each shell script runs 5 random-seed iterations (--itr 5), which multiplies wall-clock
+  time; reduce for quick validation.
+- num_workers defaults to 16 in run.py; reduce if fewer CPU cores are available.
+recommended_when: 'Use this benchmark when you want to test architecture or training-loop
+  modifications for medical time-series classification on clinically relevant EEG/ECG
+  data under a rigorous subject-independent evaluation protocol, with six standard
+  classification metrics computed automatically.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you cannot obtain the external
+  datasets from the Medformer repository, if you need a purely self-contained data
+  route with no external downloads, or if your research focus is time-series forecasting
+  rather than classification.
+
+  '
+paper:
+  title: 'Decentralized Attention Fails Centralized Signals: Rethinking Transformers
+    for Medical Time Series'
+  venue: ICLR 2026 (Oral)
+  year: 2026
+  url: https://openreview.net/forum?id=oZJFY2BQt2
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.004_decentralattn.zip
+  archive_type: zip
+  local_dir_name: paper-4-DecentralAttn
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.004_decentralattn.zip
+  sha256: bf0dd8489ed4694dc4c1e494d25e9f564d99813e669ded0cef9a85cb3a2ae36c
+  size_bytes: 71932
+commercial:
+  annual_fee: null
+display:
+  palette_seed: crimson-teal-clinic
+  art_style: signal-lab
+  accent_priority: high
+image_path: ../image/004_aisb.t3.004_decentralattn.jpg

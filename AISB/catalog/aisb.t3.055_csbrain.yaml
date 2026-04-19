@@ -1,0 +1,238 @@
+id: aisb.t3.055_csbrain
+name: 'CSBrain: Cross-scale Spatiotemporal Brain Foundation Model for EEG Decoding'
+version: 0.1.0
+one_line: Cross-scale EEG foundation model with CST tokenization and SSA attention
+  for generalized brain decoding across 16 datasets.
+task_description: 'CSBrain is a cross-scale spatiotemporal brain foundation model
+  for EEG decoding, introduced at NeurIPS 2025. The model addresses limitations of
+  prior EEG foundation models that adopt scale-agnostic dense modeling by introducing
+  two key components: (i) Cross-scale Spatiotemporal Tokenization (CST), which aggregates
+  multi-scale EEG features within localized temporal windows and anatomical brain
+  regions into compact scale-aware token representations; and (ii) Structured Sparse
+  Attention (SSA), which captures long-range dependencies across temporal windows
+  and brain regions while minimizing spurious correlations common in noisy EEG signals.
+  CST and SSA are alternately stacked to progressively integrate cross-scale spatiotemporal
+  dependencies. The benchmark supports both pretraining from raw EEG signals and downstream
+  fine-tuning across 16 datasets spanning 11 representative EEG tasks including emotion
+  recognition, motor imagery, seizure detection, and sleep staging. Environment setup
+  delegates to CBraMod framework; pretrained weights are available via Google Drive.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 1d+
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- balanced_accuracy
+- cohens_kappa
+- weighted_f1
+- eeg_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run evaluation on a single downstream dataset using provided fine-tuned
+    weights. Loads pretrained CSBrain checkpoint and evaluates on one of 16 supported
+    datasets (e.g., BCIC-IV-2a, CHB-MIT, TUAB, SEED-V). Fastest path to metric collection.
+
+    '
+- id: pretrain_and_finetune
+  label: Pretrain + Finetune
+  description: 'Full pipeline: pretrain CSBrain from scratch using masked autoencoding
+    on large-scale EEG data, then fine-tune on downstream datasets. Supports 16 datasets
+    including BCIC-IV-2a, Siena, HMC, TUSL, and all CBraMod benchmarks. Default training
+    uses 40 epochs, batch size 128, learning rate 5e-4.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: CBraMod benchmarks
+    type: benchmark_package
+    notes: '16 downstream datasets supported including BCIC-IV-2a, BCIC-IV-2b, CHB-MIT,
+      TUAB, TUEV, SEED-V, SEED-VIG, ISRUC-Sleep, PhysioNet, FACED, Mumtaz2016, SHU,
+      Siena, HMC, TUSL, and stress.
+
+      '
+  - name: Pretraining dataset
+    type: external
+    notes: Follow CBraMod preprocessing pipeline for pretraining data preparation.
+  - name: Google Drive pretrained weights
+    type: external
+    url: https://drive.google.com/drive/folders/1-GsVVewRM0B93H08yts5m53yU2whxYvj
+    notes: 'CSBrain.pth contains pretrained foundation model weights; pth_downtasks/
+      contains fine-tuned weights for all 16 downstream datasets. Recommended for
+      evaluation without retraining.
+
+      '
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - Google Drive access may require authentication for weight downloads.
+  - CBraMod framework access required for full dataset pipeline.
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: Single GPU sufficient for evaluation only; pretraining requires significantly
+      more resources.
+  recommended:
+    cpu_cores: 64
+    ram_gb: 256
+    disk_gb: 500
+    gpu_count: 4
+    gpu_vram_gb: 80
+    notes: 'Multi-GPU setup recommended for pretraining (supports parallel=True in
+      pretrain_main.py). Fine-tuning on individual datasets can run on single A100
+      80GB; full multi-dataset evaluation benefits from 4x80GB configuration.
+
+      '
+environment:
+  python: 3.8+
+  cuda: 11.7+
+  pytorch: 2.0+
+  flash_attn: null
+  key_packages:
+  - torch
+  - numpy
+  - scikit-learn
+  - CBraMod
+  notes:
+  - Environment setup delegates entirely to CBraMod framework per bundled README instructions.
+  - Install CBraMod dependencies first, then CSBrain-specific requirements if any.
+  - Preprocessing scripts provided in `preprocessing/` folder for Siena, HMC, and
+    TUSL datasets.
+  - No standalone requirements.txt; dependency resolution handled through CBraMod.
+risk_flags:
+- large_pretraining_cost
+- multi_dataset_evaluation_overhead
+- google_drive_access
+risk_notes:
+- Pretraining CSBrain from scratch is computationally expensive; downloading pretrained
+  weights recommended for most evaluation scenarios.
+- Running full fine-tuning across all 16 datasets requires significant disk space
+  and time (estimated 2-4 days on recommended hardware).
+- Google Drive weights may require manual authentication or VPN access depending on
+  geographic location.
+- CBraMod dependency may introduce version conflicts with other benchmarks in the
+  same environment.
+recommended_when: 'Use this benchmark when you need a brain-signal foundation model
+  benchmark with extensive EEG transfer learning evaluation. Ideal for research on
+  cross-scale representations, structured sparse attention, or generalization across
+  heterogeneous EEG datasets. Appropriate for healthcare AI research, BCI development,
+  and scientific machine learning exploration.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you require a lightweight baseline,
+  have limited GPU resources (<24GB VRAM), or cannot host multiple EEG datasets and
+  checkpoints (500GB+ recommended). Not suitable for environments lacking CBraMod
+  framework support or where Google Drive access is restricted.
+
+  '
+paper:
+  title: 'CSBrain: A Cross-scale Spatiotemporal Brain Foundation Model for EEG Decoding'
+  venue: NeurIPS 2025 Spotlight
+  year: 2025
+  authors:
+  - Yuchen Zhou
+  - Jiamin Wu
+  - Zichen Ren
+  - Zhouheng Yao
+  - Weiheng Lu
+  - Kunyu Peng
+  - Qihao Zheng
+  - Chunfeng Song
+  - Wanli Ouyang
+  - Chao Gou
+  url: https://arxiv.org/abs/2506.23075
+  github: https://github.com/yuchen2199/CSBrain
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.055_csbrain.zip
+  archive_type: zip
+  local_dir_name: paper-55-CSBrain
+  notes:
+  - Includes sh/ folder with fine-tuning scripts for all 16 datasets.
+  - Pretrained weights (CSBrain.pth) and downstream weights (pth_downtasks/) downloaded
+    separately from Google Drive.
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.055_csbrain.zip
+  sha256: 3d02943b88e62e967308b3cc9bae379cab2431139fcfef0f591fbc95fb206d4c
+  size_bytes: 123771
+display:
+  palette_seed: violet-cyan-neuro
+  art_style: brain-atlas
+  accent_priority: high
+image_path: ../image/055_aisb.t3.055_csbrain.jpg
+track_fit:
+- paper_track
+- benchmark_track
+capability_tags:
+- research_code_optimization
+- eeg_decoding
+- brain_foundation_models
+- scientific_ml
+- healthcare_ai
+aisb_direction: T3
+code_anchors:
+  evaluation:
+  - path: evaluate_bci2a_v2.py
+    description: Primary evaluation script for BCIC-IV-2a dataset
+    metrics:
+    - balanced_accuracy
+    - cohens_kappa
+    - weighted_f1
+  training:
+  - path: pretrain_main.py
+    description: Foundation model pretraining entry point
+    defaults:
+      epochs: 40
+      batch_size: 128
+      lr: 5e-4
+      weight_decay: 5e-2
+  - path: finetune_main.py
+    description: Downstream fine-tuning entry point
+  - path: sh/finetune_CSBrain_BCI2a.sh
+    description: Example fine-tuning shell script
+  models:
+  - path: models/CSBrain.py
+    description: Core CSBrain model architecture
+  - path: models/CSBrain_transformer.py
+    description: Transformer layers with CST and SSA modules
+  - path: models/model_for_bciciv2a.py
+    description: BCIC-IV-2a specific model wrapper with brain region encoding
+datasets_supported:
+- BCIC-IV-2a
+- BCIC-IV-2b
+- CHB-MIT
+- TUAB
+- TUEV
+- SEED-V
+- SEED-VIG
+- ISRUC-Sleep
+- PhysioNet
+- FACED
+- Mumtaz2016
+- SHU
+- Siena
+- HMC
+- TUSL
+- Stress
+key_innovations:
+- Cross-scale Spatiotemporal Tokenization (CST): Aggregates multi-scale features within
+    temporal windows and brain regions
+- Structured Sparse Attention (SSA): Captures long-range dependencies while eliminating
+    spurious correlations
+- Masked autoencoding pretraining for generalizable EEG representations
+- Brain region encoding (frontal, parietal, temporal, occipital, central) for spatial
+  awareness

@@ -1,0 +1,197 @@
+id: aisb.t3.064_pir
+name: 通过实例感知的后处理修正提升时间序列预测
+version: 0.1.0
+one_line: 一种模型无关的后处理框架，通过局部和全局上下文引导的修正，识别并修复有偏的时间序列预测实例。
+task_description: '本基准测试包涵盖 PIR（预测后识别与修正，Post-forecasting Identification and Revision），这是一个模型无关的框架，旨在通过处理主流模型忽视的实例级变异来增强时间序列预测。该框架分两个阶段运行：（1）失败识别，通过估计每个实例的预测准确性来检测可能有偏的输出；（2）预测修正，利用局部和全局视角的上下文信息来优化已识别的失败。局部修正利用滑动窗口内的即时协变量预测和外生信息；全局修正采用基于检索的策略从历史数据中捕捉长尾模式。修正后的预测通过加权求和与原始输出整合，使 PIR 可与任意预测骨干网络兼容，包括 PatchTST、iTransformer、SparseTSF 和 TimeMixer。实验涵盖在已有真实数据集（ETTh1、ETTm1、Weather、Electricity、Traffic）上的长期和短期预测设置。
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- mse
+- mae
+- revision_outputs
+- forecast_report
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 在单一骨干网络和数据集组合上运行一个打包的 PIR 增强预测评估流程。
+- id: full_revision_eval
+  label: 完整修正评估
+  description: 在所有支持的预测骨干网络和数据集上运行完整的后处理修正工作流。
+dataset_download:
+  primary_method: bundled
+  sources:
+  - name: ETTh1/ETTm1
+    url: https://github.com/thuml/Time-Series-Library
+    note: 来自 Time-Series-Library 的 ETT 基准数据集
+  - name: Weather
+    url: https://github.com/thuml/Time-Series-Library
+    note: 天气预测数据集
+  - name: Electricity
+    url: https://github.com/thuml/Time-Series-Library
+    note: UCI 电力消耗数据集
+  - name: Traffic
+    url: https://github.com/thuml/Time-Series-Library
+    note: PEMS-BAY 交通数据集
+  notes:
+  - 数据集通过 data_provider/data_factory.py 和 data_loader.py 管理
+  - 数据加载遵循 Time-Series-Library 规范
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.8'
+  cuda: '11.0'
+  pytorch: 1.12.0
+  flash_attn: null
+  key_packages:
+  - name: torch
+    min_version: 1.12.0
+  - name: numpy
+    note: 用于数组操作和指标计算
+  - name: pandas
+    note: 用于时间序列数据处理
+  notes:
+  - 基于 Time-Series-Library 构建（thuml/Time-Series-Library）
+  - 参见打包的 README/requirements 以获取完整依赖项
+  - 模型在 models/ 目录中实现（models/PIR.py、models/PatchTST.py 等）
+  - 核心执行通过 run.py 和 exp/exp_long_term_forecasting_pir.py
+  - 指标在 utils/metrics.py 中计算（MSE、MAE、RMSE、MAPE、MSPE）
+risk_flags:
+- long_tail_patterns
+- distribution_shift
+- instance_variation
+risk_notes:
+- 实例级变异源于分布偏移、数据缺失和长尾模式
+- 全局修正依赖于从历史上下文中检索的质量
+- 原始预测和修正预测的加权整合需要对每个骨干网络进行仔细调优
+recommended_when: '当您希望使用后处理修正能力增强现有预测骨干网络时使用此基准测试。适用于评估模型无关的预测改进、研究实例级误差模式，或在已有时间序列数据集上基准化后处理策略。
+
+  '
+not_recommended_when: '如果您需要从头开始的基础模型训练任务、需要不带骨干网络增强的预测任务，或寻求在前向传播内而非后处理中运行的方法，请勿使用此基准测试。
+
+  '
+paper:
+  title: Improving Time Series Forecasting via Instance-aware Post-hoc Revision
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://arxiv.org/abs/2505.23583
+  authors:
+  - Zhiding Liu
+  - Mingyue Cheng
+  - Guanhao Zhao
+  - Jiqian Yang
+  - Qi Liu
+  - Enhong Chen
+  affiliation: University of Science and Technology of China
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.064_pir.zip
+  archive_type: zip
+  local_dir_name: paper-64-PIR
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.064_pir.zip
+  sha256: 6908afed6d75d39e1d32ceb6504872021a9fc5bf222e115ab78a85fb402716fb
+  size_bytes: 1127481
+display:
+  palette_seed: amber-blue-revise
+  art_style: repair-notebook
+  accent_priority: medium
+image_path: ../image/064_aisb.t3.064_pir.jpg
+capability_tags:
+- research_code_optimization
+- time_series_forecasting
+- post_hoc_revision
+- forecasting
+- instance_level_modeling
+- model_agnostic
+- long_tail_patterns
+- retrieval_augmented
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+commercial:
+  annual_fee: null
+code_anchors:
+  executable:
+  - path: run.py
+    role: Entry point for training and evaluation
+  - path: exp/exp_long_term_forecasting_pir.py
+    role: PIR experiment class implementing training/evaluation loop
+  - path: utils/metrics.py
+    role: Metric functions (MSE, MAE, RMSE, MAPE, MSPE)
+  data:
+  - path: data_provider/data_factory.py
+    role: Data loader factory
+  - path: data_provider/data_loader.py
+    role: Time series data loading
+  models:
+  - path: models/PIR.py
+    role: PIR model implementation
+  - path: models/PatchTST.py
+    role: PatchTST backbone
+  - path: models/iTransformer.py
+    role: iTransformer backbone
+  - path: models/SparseTSF.py
+    role: SparseTSF backbone
+  - path: models/TimeMixer.py
+    role: TimeMixer backbone
+  scripts:
+  - path: scripts/
+    role: Shell scripts for running backbone and PIR-enhanced experiments per dataset
+metric_contract:
+  mse:
+    origin_path: utils/metrics.py
+    source_ref: MSE function
+    evaluation_protocol:
+      code_paths:
+      - exp/exp_long_term_forecasting_pir.py
+      - utils/metrics.py
+    status: code_backed
+  mae:
+    origin_path: utils/metrics.py
+    source_ref: MAE function
+    evaluation_protocol:
+      code_paths:
+      - exp/exp_long_term_forecasting_pir.py
+      - utils/metrics.py
+    status: code_backed
+  rmse:
+    origin_path: utils/metrics.py
+    source_ref: RMSE function
+    evaluation_protocol:
+      code_paths:
+      - exp/exp_long_term_forecasting_pir.py
+      - utils/metrics.py
+    status: code_backed
+notes:
+- PIR 作为后处理插件运行，无需修改基础预测器
+- 该框架同时处理长期和短期预测场景
+- 与 Time-Series-Library 的集成确保了与标准基准测试协议的兼容性
+- 静态代码审计确认所有分阶段指标的可执行锚点
+- 打包过程中未执行基准测试；建议进行运行时验证

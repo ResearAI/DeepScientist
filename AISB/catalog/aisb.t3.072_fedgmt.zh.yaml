@@ -1,0 +1,158 @@
+id: aisb.t3.072_fedgmt
+name: '一箭双雕：基于全局模型轨迹的联邦学习锐度感知最小化'
+version: 0.1.0
+one_line: 两阶段联邦学习基准，结合EMA梯度的轨迹感知锐度控制与后期SWA稳定化，在非独立同分布数据异质性条件下改善收敛性能。
+task_description: |
+  本基准套件涵盖基于轨迹感知锐度控制和后期SWA稳定化的联邦优化任务。任务目标是在非独立同分布数据分布下提升联邦泛化能力和收敛性，同时保持客户端优化稳定性。FedGMT结合基于EMA的轨迹跟踪机制与最终轮次的随机权重平均，以平滑损失曲面。实现基于PFLlib扩展，支持跨设备联邦学习场景，可配置异质性客户端数量、参与比例和数据分区策略。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- test_accuracy
+- federated_checkpoint
+- round_metrics
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 使用默认超参数和减少轮次在CIFAR-10上运行一条封装的联邦学习评估路径，用于冒烟测试。
+- id: full_federated_run
+  label: 完整联邦运行
+  description: 跨500轮运行完整的封装FedGMT联邦优化工作流，包含完整评估套件。
+dataset_download:
+  primary_method: bundled
+  sources:
+  - type: cifar10
+    partition: dirichlet
+    params:
+      concentration:
+      - 1.0
+      - 0.1
+      - 0.01
+      num_clients: 100
+      join_ratio: 0.1
+  - type: cifar100
+    partition: dirichlet
+  - type: cinic10
+    partition: dirichlet
+  notes:
+  - 数据集分区通过 dataset/generate_dataset.py 生成
+  - Dirichlet非独立同分布分区实现于 dataset/utils/
+  - 标准配置中每轮10%的活跃客户端，共100个客户端
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+    notes: CNN模型；在RTX 4090上每轮约2.72秒；每轮约0.93GB显存
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: ResNet18模型；在RTX 4090上每轮约20秒；每轮约1.86GB显存
+environment:
+  python: '3.7'
+  cuda: '11.8'
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - torch
+  - torchvision
+  - tqdm
+  - numpy
+  notes:
+  - 通过 pip install -r requirements.txt 安装
+  - 已测试Python 3.7；完整依赖集见捆绑的requirements文件
+risk_flags:
+- extended_training_time
+- multi_round_convergence
+- non_iid_data_heterogeneity
+risk_notes:
+- 完整基准需要500轮；在单GPU上估计耗时CNN约4.5小时，ResNet18约33小时
+- SWA稳定化从第400轮开始；后期收敛可能因数据异质性而有所差异
+- 在极端非独立同分布条件下（Dir-0.01）的客户端漂移需要仔细调整超参数
+recommended_when: |
+  在评估真实数据异质性下的联邦学习算法、研究轮级稳定性和客户端漂移权衡，或在具有隐私保护约束的分布式设置中对锐度感知最小化技术进行基准测试时使用本基准。
+not_recommended_when: |
+  如需单节点非联邦训练、需要个性化每客户端模型，或需要在多轮通信开销下进行快速原型开发时，不建议使用本基准。
+paper:
+  title: 'One Arrow, Two Hawks: Sharpness-aware Minimization for Federated Learning
+    via Global Model Trajectory'
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/li25bd.html
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.072_fedgmt.zip
+  archive_type: zip
+  local_dir_name: paper-72-FedGMT
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.072_fedgmt.zip
+  sha256: 469c3e18a45ac8e776a73ab672c969a944e795cf11e24c6385c37bc755a7fdcb
+  size_bytes: 84064
+display:
+  palette_seed: teal-crimson-federated
+  art_style: distributed-dashboard
+  accent_priority: high
+image_path: ../image/072_aisb.t3.072_fedgmt.jpg
+capability_tags:
+- research_code_optimization
+- federated_learning
+- sharpness_aware_minimization
+- distributed_training
+- image_classification
+- non_iid_learning
+- swa_stabilization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+hyperparameters:
+  common:
+    optimizer: SGD
+    learning_rate: 0.01
+    momentum: 0.9
+    weight_decay: 1.0e-05
+    batch_size: 50
+    local_epochs: 5
+    total_rounds: 500
+  fedgmt_specific:
+    ema_coefficient_alpha:
+    - 0.95
+    - 0.995
+    - 0.998
+    sharpness_strength_gamma:
+    - 0.5
+    - 1.0
+    - 2.0
+    penalty_coefficient: 10
+    swa_start_round: 400
+    swa_window: 100
+algorithm_family:
+- FedAvg
+- FedDyn
+- FedSAM
+- FedSpeed
+- FedSMOO
+- FedLESAM
+- FedGMT
+code_anchors:
+  main_entry: system/main.py
+  server_base: system/flcore/servers/serverbase.py
+  fedgmt_server: system/flcore/servers/servergmt.py
+  data_partition: dataset/generate_dataset.py

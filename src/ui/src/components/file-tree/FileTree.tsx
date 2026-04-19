@@ -32,6 +32,12 @@ export interface FileTreeProps {
   /** Callback when file download is requested */
   onFileDownload?: (file: FileNode) => void;
 
+  /** Callback when a node should be revealed in the full explorer */
+  onRevealInExplorer?: (node: FileNode) => void;
+
+  /** Callback when a node's parent folder should be opened in the full explorer */
+  onOpenContainingFolder?: (node: FileNode) => void;
+
   /** Additional class names */
   className?: string;
 
@@ -55,6 +61,12 @@ export interface FileTreeProps {
 
   /** Optional empty label for overridden trees. */
   emptyLabel?: string;
+
+  /** Optional explicit reveal target in the live tree. */
+  revealFileId?: string | null;
+
+  /** Token to retrigger reveal for the same file id. */
+  revealToken?: number | null;
 }
 
 function filterDotfiles(nodes: FileNode[]): FileNode[] {
@@ -98,6 +110,8 @@ export function FileTree({
   projectId,
   onFileOpen,
   onFileDownload,
+  onRevealInExplorer,
+  onOpenContainingFolder,
   className,
   height = "100%",
   rowHeight = 28,
@@ -106,6 +120,8 @@ export function FileTree({
   nodesOverride,
   loadingOverride,
   emptyLabel,
+  revealFileId = null,
+  revealToken = null,
 }: FileTreeProps) {
   const treeRef = React.useRef<TreeApi<FileNode>>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -114,6 +130,7 @@ export function FileTree({
   const {
     nodes,
     expandedIds,
+    focusedId,
     isLoading,
     error,
     loadFiles,
@@ -126,6 +143,7 @@ export function FileTree({
   } = useFileTreeStore();
 
   const highlightedFileId = useHighlightedFile();
+  const selectionTargetId = highlightedFileId || focusedId || undefined;
 
   // Context menu state
   const [contextMenu, setContextMenu] = React.useState<{
@@ -250,11 +268,53 @@ export function FileTree({
     };
   }, [clearExternalAutoExpand]);
 
+  const visibleNodes = React.useMemo(
+    () => (hideDotfiles ? filterDotfiles(nodesOverride ?? nodes) : nodesOverride ?? nodes),
+    [hideDotfiles, nodes, nodesOverride]
+  );
+  const syncedExpandedIdsRef = React.useRef<Set<string>>(new Set());
+
   // Reveal highlighted file (AI effect)
   React.useEffect(() => {
     if (!highlightedFileId || !treeRef.current) return;
     treeRef.current.scrollTo(highlightedFileId, "center");
   }, [highlightedFileId]);
+
+  React.useEffect(() => {
+    if (!revealFileId) return;
+
+    let cancelled = false;
+    let timerId: number | null = null;
+
+    const reveal = (attempt = 0) => {
+      if (cancelled) return;
+      const tree = treeRef.current;
+      if (!tree) {
+        if (attempt < 10) {
+          timerId = window.setTimeout(() => reveal(attempt + 1), 80 * (attempt + 1));
+        }
+        return;
+      }
+
+      tree.select(revealFileId, { focus: false, align: "center" });
+      tree.scrollTo(revealFileId, "center");
+      const node = tree.get(revealFileId);
+      const listReady = Boolean(tree.list.current);
+      if ((node && listReady) || attempt >= 10) {
+        return;
+      }
+      timerId = window.setTimeout(() => reveal(attempt + 1), 100 * (attempt + 1));
+    };
+
+    reveal();
+
+    return () => {
+      cancelled = true;
+      if (timerId != null) {
+        window.clearTimeout(timerId);
+      }
+    };
+  }, [revealFileId, revealToken, visibleNodes.length, dimensions.height, dimensions.width]);
 
   // Handle move (drag and drop within tree)
   const handleMove = React.useCallback(
@@ -526,11 +586,41 @@ export function FileTree({
     }
   }, [clearExternalAutoExpand]);
 
-  const visibleNodes = React.useMemo(
-    () => (hideDotfiles ? filterDotfiles(nodesOverride ?? nodes) : nodesOverride ?? nodes),
-    [hideDotfiles, nodes, nodesOverride]
-  );
-  const syncedExpandedIdsRef = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    if (!selectionTargetId) return;
+
+    let cancelled = false;
+    let timerId: number | null = null;
+
+    const reveal = (attempt = 0) => {
+      if (cancelled) return;
+      const tree = treeRef.current;
+      if (!tree) {
+        if (attempt < 8) {
+          timerId = window.setTimeout(() => reveal(attempt + 1), 60 * (attempt + 1));
+        }
+        return;
+      }
+
+      tree.select(selectionTargetId, { focus: false, align: "center" });
+      const node = tree.get(selectionTargetId);
+      const listReady = Boolean(tree.list.current);
+      if ((node && listReady) || attempt >= 8) {
+        return;
+      }
+
+      timerId = window.setTimeout(() => reveal(attempt + 1), 80 * (attempt + 1));
+    };
+
+    reveal();
+
+    return () => {
+      cancelled = true;
+      if (timerId != null) {
+        window.clearTimeout(timerId);
+      }
+    };
+  }, [selectionTargetId, visibleNodes.length, dimensions.height, dimensions.width]);
 
   React.useEffect(() => {
     if (nodesOverride) {
@@ -663,6 +753,7 @@ export function FileTree({
               <Tree
                 ref={treeRef}
                 data={visibleNodes}
+                selection={selectionTargetId}
                 idAccessor="id"
                 childrenAccessor="children"
                 openByDefault={Boolean(nodesOverride?.length)}
@@ -700,6 +791,8 @@ export function FileTree({
           onClose={() => setContextMenu(null)}
           onOpen={onFileOpen}
           onDownload={onFileDownload}
+          onRevealInExplorer={onRevealInExplorer}
+          onOpenContainingFolder={onOpenContainingFolder}
           onNewFile={(parentId) => {
             setCreateFileState({ open: true, parentId });
           }}

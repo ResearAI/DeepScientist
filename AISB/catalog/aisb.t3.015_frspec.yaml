@@ -1,0 +1,209 @@
+schema_version: 1
+id: aisb.t3.015_frspec
+name: 'FR-Spec: Accelerating Large-Vocabulary Language Models via Frequency-Ranked
+  Speculative Sampling'
+version: 0.1.0
+one_line: Benchmark frequency-ranked speculative decoding for large-vocabulary LLMs
+  by building custom C/CUDA kernels and measuring tokens/s speedup over EAGLE-2 baselines
+  on Spec-Bench, HumanEval, and GSM8K.
+task_description: 'This benchmark evaluates FR-Spec, a frequency-ranked speculative
+  sampling framework that accelerates large-vocabulary LLM inference by restricting
+  the draft model''s LM Head to a high-frequency token subset (e.g., top 25% of vocabulary),
+  reducing LM Head computation by ~75% while preserving output-distribution equivalence
+  during verification. The task requires: (1) compiling a custom C/CUDA extension
+  (llamacu) with nvcc targeting the correct GPU compute capability, (2) downloading
+  target LLM weights (e.g., Llama-3-8B-Instruct, Qwen2-7B-Instruct) and corresponding
+  EAGLE-2 draft model weights, (3) obtaining or generating token-frequency statistics
+  from SlimPajama-627B via fr/fr.py, (4) running baseline (autoregressive), EAGLE-2,
+  and FR-Spec inference on three benchmark suites (spec_bench, human_eval, gsm8k)
+  using bundled shell scripts, and (5) measuring tokens-per-second throughput and
+  optionally checking correctness on human_eval and gsm8k. The primary metrics are
+  throughput (tokens/s) across seven Spec-Bench subtasks (MT, conversation, RAG, math,
+  QA, summarization, code) plus HumanEval and GSM8K speed. The code includes a modified
+  FlashAttention with tree-attention bitmask support and preallocated memory management.
+  No external evaluation service is needed; all scoring is local.
+
+  '
+capability_tags:
+- research_code_optimization
+- large_language_models
+- speculative_decoding
+- cuda_kernels
+- inference_acceleration
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- mt_bench_tokens_per_second
+- translation_tokens_per_second
+- summarization_tokens_per_second
+- qa_tokens_per_second
+- math_reasoning_tokens_per_second
+- rag_tokens_per_second
+- task_throughput_report
+- speed_benchmark
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run a single packaged speed benchmark (e.g., spec_bench with Llama-3-8B-Instruct)
+    to verify FR-Spec throughput gains versus EAGLE-2 baseline. Requires model weights
+    already downloaded and CUDA extension compiled.
+
+    '
+- id: full_speed_suite
+  label: Full Speed Suite
+  description: 'Run all three benchmark suites (spec_bench, human_eval, gsm8k) for
+    baseline, EAGLE-2, and FR-Spec configurations. Includes speed measurement and
+    optional correctness checks for human_eval and gsm8k. Covers all seven Spec-Bench
+    subtasks.
+
+    '
+- id: freq_stats_generation
+  label: Frequency Statistics Generation
+  description: 'Generate custom token-frequency statistics from SlimPajama-627B using
+    fr/fr.py before running evaluation. Useful if pre-computed stats are unavailable
+    or a different model is targeted.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/thunlp/LLaMA3-Instruct-8B-FR-Spec
+    access: public
+    note: Pre-computed token-frequency statistics for Llama-3-8B-Instruct.
+  - kind: huggingface
+    url: https://huggingface.co/thunlp/LLaMA3.2-Instruct-1B-FR-Spec
+    access: public
+    note: Pre-computed token-frequency statistics for Llama-3.2-1B-Instruct.
+  - kind: huggingface
+    url: https://huggingface.co/thunlp/Qwen2-7B-Instruct-FR-Spec
+    access: public
+    note: Pre-computed token-frequency statistics for Qwen2-7B-Instruct.
+  - kind: huggingface
+    url: https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct
+    access: gated
+    note: Target LLM weights. Requires acceptance of Meta license on HuggingFace.
+  - kind: huggingface
+    url: https://huggingface.co/cerebras/SlimPajama-627B
+    access: public
+    note: Streaming corpus used by fr/fr.py for token-frequency stat generation. Not
+      needed if using pre-computed stats.
+  notes:
+  - EAGLE-2 draft model weights must also be downloaded; see EAGLE repository for
+    URLs.
+  - Target LLM weights are 15-30 GB depending on model; plan 50-100 GB total for models
+    + draft weights + stats.
+  - Spec-Bench evaluation datasets are bundled or fetched by the evaluation scripts.
+credential_requirements:
+  mode: optional
+  items:
+  - HuggingFace token (required only for gated model weights like Llama-3)
+  notes:
+  - If using only Qwen2 or pre-downloaded weights, no credentials are needed.
+  - OpenAI/Anthropic API keys listed in setup.py install_requires (fschat, openai,
+    anthropic) are for MT-Bench judging and may not be exercised in throughput-only
+    runs.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 48
+  notes:
+  - CUDA compilation (nvcc) requires ~8-9 GB RAM per parallel job; setup.py auto-limits
+    MAX_JOBS based on free memory.
+  - 24 GB VRAM is sufficient for Llama-3-8B in FP16; 48 GB recommended for comfortable
+    headroom and larger batch experiments.
+  - Compilation itself can take 10-30 minutes depending on core count.
+environment:
+  python: '3.11'
+  cuda: 11.8+
+  pytorch: 2.0+
+  key_packages:
+  - transformers==4.46.2
+  - accelerate==0.26.0
+  - datasets
+  - fschat
+  - human_eval
+  - pybind11
+  - psutil
+  - ninja
+  notes:
+  - Building the CUDA extension requires nvcc and correct GPU compute capability set
+    in setup.py (default arch="80" for A100; change for other GPUs).
+  - The package bundles a modified FlashAttention v2.4.2 csrc with tree-attention
+    bitmask support; external flash-attn installation is not needed.
+  - Compilation links against cublas.
+  - See setup.py install_requires for the complete dependency set.
+risk_flags:
+- custom_cuda_build
+- large_model_download
+- gated_model_access
+- compilation_complexity
+risk_notes:
+- CUDA compilation requires matching nvcc version and correct compute capability in
+  setup.py; misconfiguration causes silent wrong results or build failures.
+- Gated Llama-3 weights require HuggingFace license acceptance; this may block fully
+  automated runs.
+- EAGLE-2 draft model weights are a separate download not fully documented in the
+  snapshot; recovery may require consulting the EAGLE repository.
+- MT-Bench quality judging (as opposed to throughput measurement) may require OpenAI
+  API keys, but throughput-only evaluation does not.
+- The default arch="80" in setup.py targets A100; users on other GPUs must manually
+  edit this value.
+recommended_when: 'Use this benchmark when you want an LLM-systems optimization task
+  focused on custom C/CUDA kernel development, speculative decoding acceleration,
+  and inference throughput measurement for large-vocabulary models (128k+ tokens).
+  Well-suited for evaluating GPU kernel optimization skills and understanding the
+  interplay between vocabulary size, LM Head computation, and speculative sampling
+  acceptance rates.
+
+  '
+not_recommended_when: 'Do not use this if you lack a modern NVIDIA GPU with ≥24 GB
+  VRAM, cannot compile custom CUDA extensions, or need a task focused on model training
+  rather than inference optimization. Not appropriate if you need a pure-Python benchmark
+  without native code compilation.
+
+  '
+paper:
+  title: 'FR-Spec: Accelerating Large-Vocabulary Language Models via Frequency-Ranked
+    Speculative Sampling'
+  venue: ACL 2025 Main
+  year: 2025
+  url: https://arxiv.org/abs/2502.14856
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.015_frspec.zip
+  archive_type: zip
+  local_dir_name: paper-15-FRSpec
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.015_frspec.zip
+  sha256: bf4aaa74d5faae067f125c2df48fa0eb7d8e120988bec5fbd748666fc6e1a9e9
+  size_bytes: 974875
+commercial:
+  annual_fee: null
+display:
+  palette_seed: neon-slate-kernel
+  art_style: systems-benchmark
+  accent_priority: high
+image_path: ../image/015_aisb.t3.015_frspec.jpg

@@ -1,0 +1,189 @@
+id: aisb.t3.023_guidedembed
+name: 'GSTransform：面向指令跟随的文本嵌入引导式空间变换'
+version: 0.1.0
+one_line: 轻量级预训练文本嵌入变换，无需语料库重编码即可跟随用户指令，实现6-300倍加速。
+task_description: '本打包基准测试涵盖GSTransform，一个新颖的指令跟随文本嵌入框架。与先前需要为每条指令重编码整个语料库的方法（O(m×n)次前向传播）不同，GSTransform使用轻量级模型实时变换预计算嵌入。两阶段流程包括：（1）基于指令的标签构建，其中LLM从小规模采样语料库生成指令感知标签；（2）标签引导的嵌入变换，其中变换模型使用对比损失和重构损失将通用嵌入映射到指令对齐的语义空间。基准测试在三个指令感知任务上评估——聚类、语义文本相似度（STS）和三元组对齐——涵盖九个真实世界数据集。评估需要在data.py中配置数据集，在label_construction.py中配置指令，在util.py中配置OpenAI API密钥。
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- v_measure
+- nmi
+- sts_score
+- triplet_score
+- embedding_checkpoint
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '在已准备好的嵌入设置上运行面向聚类的评估流程。跳过标签构建和训练阶段，需要来自先前运行预计算的嵌入和带标签的分类结果。
+
+    '
+  estimated_time: 10-30m
+- id: full_pipeline
+  label: 完整流程
+  description: '使用LLM构建指令感知标签，训练GSTransform变换模型，并运行完整的打包评估流程，包括聚类、STS和三元组评估。
+
+    '
+  estimated_time: 4-12h
+  requires_api_key: true
+dataset_download:
+  primary_method: direct_archive
+  sources:
+  - url: https://deepscientist.cc/AISB/023_guidedembed
+    archive_type: zip
+  notes:
+  - 下载paper-23-GuidedEmbed压缩包
+  - 包含u ae_model/目录下的预训练UAE-Large-V1模型
+  - 运行前在data.py（第20行）配置数据集路径
+  - 在label_construction.py（第289行）配置指令
+  - 在util.py（第8行）需要OpenAI API密钥用于标签构建
+credential_requirements:
+  mode: api_key_required
+  items:
+  - name: openai_api_key
+    description: 用于LLM标签构建和分类生成的OpenAI API密钥
+    scope: label_construction.py
+  notes:
+  - API密钥仅在标签构建阶段需要
+  - LLM调用仅限于小规模标注子集（建议5000个样本）
+  - 相比完整语料库重编码方法，成本极低
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.0.0
+  flash_attn: null
+  key_packages:
+  - name: torch
+    version: '>=2.0'
+  - name: numpy
+    version: '>=1.24'
+  - name: scikit-learn
+    version: '>=1.3'
+  - name: sentence-transformers
+    version: '>=2.2'
+  - name: openai
+    version: '>=1.0'
+  notes:
+  - 完整依赖项在打包的requirements.txt中
+  - UAE-Large-V1预训练编码器打包在u ae_model/目录中
+  - 需要CUDA以支持高效的嵌入变换和评估
+risk_flags:
+- api_cost
+- disk_io_bottleneck
+risk_notes:
+- API密钥消耗仅限于标签构建阶段
+- 嵌入缓存（embeddings.pkl）可能较大，请确保有足够的磁盘空间
+- 训练使用带边缘的对比损失；可在train.py中调整MARGIN（默认1.0）以提高稳定性
+recommended_when: '当需要一个围绕指令感知嵌入的紧凑NLP训练任务时使用本基准测试，包含聚类、STS或三元组评估指标。非常适合探索Instructor或InBedder等完整语料库重编码方法的高效替代方案。
+
+  '
+not_recommended_when: '如果需要超大规模多模态基准测试、完整LLM微调工作流或完全没有API访问权限的评估场景，请勿使用本基准测试。本基准测试至少需要一个GPU和OpenAI API密钥用于标签构建流程。
+
+  '
+paper:
+  title: 'Don''t Reinvent the Wheel: Efficient Instruction-Following Text Embedding
+    based on Guided Space Transformation'
+  venue: ACL 2025 Oral
+  year: 2025
+  url: https://arxiv.org/abs/2505.24754
+  code_url: https://github.com/YingchaojieFeng/GSTransform
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.023_guidedembed.zip
+  archive_type: zip
+  local_dir_name: paper-23-GuidedEmbed
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.023_guidedembed.zip
+  sha256: 69f98b98d8db4889e5b7063ee007a61b2d823f1ac03114c784e6f02418cc7640
+  size_bytes: 1470047
+display:
+  palette_seed: sage-indigo-embed
+  art_style: semantic-minimal
+  accent_priority: medium
+image_path: ../image/023_aisb.t3.023_guidedembed.jpg
+metric_evidence:
+  v_measure:
+    origin: run_eval_pipeline.py
+    source_ref: FINAL V-MEASURE output line
+    evaluation_protocol: clustering_with_oracle_labels
+  nmi:
+    origin: evaluate_cluster.py
+    source_ref: sklearn.metrics.normalized_mutual_info_score
+    evaluation_protocol: kmeans_clustering
+  sts_score:
+    origin: evaluate_sts.py
+    source_ref: cosine_similarity_comparison
+    evaluation_protocol: semantic_textual_similarity_benchmark
+  triplet_score:
+    origin: evaluate_triplet.py
+    source_ref: triplet_accuracy_evaluation
+    evaluation_protocol: instruction_aware_triplet_alignment
+execution_notes:
+  pipeline_order:
+  - step: data.py
+    description: 加载和预处理数据集；配置DATASET_PATH
+  - step: label_construction.py
+    description: 使用LLM生成指令感知分类和标签
+  - step: train.py
+    description: 在带标签的嵌入上训练GSTransform模型
+  - step: evaluate_cluster.py
+    description: 在聚类任务上评估（主要V-measure、NMI）
+  - step: evaluate_sts.py
+    description: 在语义文本相似度任务上评估
+  - step: evaluate_triplet.py
+    description: 在三元组对齐任务上评估
+  checkpoints:
+  - path: cache/model.pth
+    description: 训练好的GSTransform变换模型
+  - path: cache/embeddings.pkl
+    description: 预计算并缓存的基础嵌入
+  - path: cache/classifications_xxx.json
+    description: LLM生成的指令感知标签
+capability_tags:
+- research_code_optimization
+- text_embeddings
+- representation_learning
+- instruction_following
+- nlp
+- efficient_inference
+- contrastive_learning
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null
+metadata:
+  base_encoder: WhereIsAI/UAE-Large-V1
+  transformation_output_dim: 128
+  training_batch_size: 512
+  default_epochs: 500
+  default_learning_rate: 0.0001
+  default_margin: 1.0
+  patience: 50
+  n_train_samples: 5000
+  datasets_evaluated: 9
+  speedup_factor: 6-300x

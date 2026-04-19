@@ -903,6 +903,7 @@ export function StudioToolCard({
   isLatest?: boolean
 }) {
   const model = React.useMemo(() => buildToolCardModel(item, questId), [item, questId])
+  const identity = React.useMemo(() => deriveMcpIdentity(item.toolName, item.mcpServer, item.mcpTool), [item.mcpServer, item.mcpTool, item.toolName])
   const [expanded, setExpanded] = React.useState(() => isLatest)
   const expandModeRef = React.useRef<'auto' | 'manual-open' | 'manual-close'>('auto')
   const StatusIcon = model.statusIcon
@@ -955,7 +956,12 @@ export function StudioToolCard({
   ])
 
   return (
-    <div className="min-w-0 overflow-hidden border-l border-black/[0.08] py-1 pl-3 dark:border-white/[0.10]">
+    <div
+      className="min-w-0 overflow-hidden border-l border-black/[0.08] py-1 pl-3 dark:border-white/[0.10]"
+      data-copilot-tool-surface="studio"
+      data-copilot-tool-server={identity.server || undefined}
+      data-copilot-tool-name={identity.tool || item.toolName || undefined}
+    >
       <button
         type="button"
         className="flex w-full min-w-0 items-start gap-2.5 py-1 text-left"

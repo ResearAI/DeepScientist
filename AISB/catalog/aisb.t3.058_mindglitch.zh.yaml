@@ -1,0 +1,145 @@
+id: aisb.t3.058_mindglitch
+name: 'Mind-the-Glitch：视觉一致性检测中的不一致区域发现'
+version: 0.1.0
+one_line: 从扩散骨干网络中解耦视觉和语义特征，以量化和定位主体驱动图像生成中的不一致区域。
+task_description: '本基准实现了NeurIPS 2025的Mind-the-Glitch框架，该框架从预训练扩散模型骨干网络中解耦视觉和语义特征，以实现视觉对应匹配。核心贡献是视觉语义匹配（VSM）指标，它能量化参考主体与生成图像之间的视觉不一致程度，同时支持不一致区域的空间定位。与基于全局特征的指标（CLIP、DINO）或基于VLM的方法不同，VSM能够捕捉与姿态、尺度或上下文无关的细粒度外观变化。该包包含预训练的MTG模型权重、推理代码，以及展示特征提取、对应计算和不一致性评分的交互式playground notebook。训练代码、训练数据集生成管道和完整基准评估代码尚未发布。
+
+'
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: partial
+support_level: advanced
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- spearman_correlation
+- pearson_correlation
+- vsm_scores
+- mtg_inference_scores
+launch_profiles:
+- id: playground
+  label: Playground
+  description: '运行交互式playground notebook，加载预训练的MTG模型，对示例图像对执行推理，可视化解耦后的语义和视觉特征，并计算VSM评分以检测不一致区域。
+
+'
+- id: inference_eval
+  label: Inference Eval
+  description: '运行打包的评估脚本（eval_run_iter10_tta.py、eval_run_iter12_weighted_tta.py），计算VSM指标与测试数据集上Oracle评判之间的Spearman和Pearson相关性。注意，此快照中尚未发布完整训练管道和基准评估代码。
+
+'
+dataset_download:
+  primary_method: git_huggingface
+  sources:
+  - type: github
+    url: https://github.com/abdo-eldesokey/mind-the-glitch
+    note: 需要递归克隆；需配置Grounded-Segment-Anything子模块
+  - type: huggingface
+    url: https://huggingface.co/mind-the-glitch
+    note: 预训练模型权重和safetensors文件
+  notes:
+  - 使用递归克隆：git clone --recursive
+  - 如有需要，克隆后初始化子模块
+  - 设置HF_HOME环境变量用于模型缓存
+  - 部分模型下载可能需要HF token
+credential_requirements:
+  mode: optional_token
+  items:
+  - huggingface_token
+  notes:
+  - 部分受控模型访问可能需要HF_TOKEN；评估脚本使用匿名token
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+    cuda_capability: '8.0'
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    cuda_capability: '8.6'
+environment:
+  python: '3.11'
+  cuda: '12.4'
+  pytorch: 2.5.1
+  flash_attn: null
+  key_packages:
+  - torch==2.5.1
+  - torchvision==0.20.1
+  - omegaconf
+  - hydra-core
+  - safetensors
+  - scipy
+  - Pillow
+  - numpy
+  - scikit-image
+  - GroundingDINO
+  - segment-anything
+  notes:
+  - 克隆后需单独安装Grounded-Segment-Anything
+  - 完整依赖列表见打包的requirements.txt
+  - 评估脚本已配置HF镜像以加快下载速度
+risk_flags:
+- inference_only
+- no_training_release
+- no_benchmark_eval_release
+risk_notes:
+- 当前快照仅提供推理功能
+- 训练代码和训练数据集生成管道尚未发布
+- 尚未包含完整基准评估框架
+- 静态代码审计确认可执行锚点存在
+- 本次打包过程中未执行运行时测试
+recommended_when: '当需要评估主体驱动图像生成中的主体一致性、比较VSM与现有指标（CLIP、DINO、LPIPS）、或利用视觉对应来定位生成主体内部的不一致区域时，可使用此基准。
+
+'
+not_recommended_when: '如果需要完整的训练管道、需要训练或微调MTG模型、或需要包含标准化测试集和Oracle对比的完整基准评估框架，则不应使用此基准。当前版本仅面向推理。
+
+'
+paper:
+  title: 'Mind-the-Glitch: Visual Correspondence for Detecting Inconsistencies in Subject-Driven Generation'
+  authors:
+  - Abdelrahman Eldesokey
+  - Aleksandar Cvejic
+  - Bernard Ghanem
+  - Peter Wonka
+  venue: NeurIPS
+  year: 2025
+  url: https://arxiv.org/abs/2509.21989
+  project_url: https://abdo-eldesokey.github.io/mind-the-glitch/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.058_mindglitch.zip
+  archive_type: zip
+  local_dir_name: paper-58-MindGlitch
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.058_mindglitch.zip
+  sha256: 26309a90f48ab6a8b73a083a10ef1e7c2d3aed96f48a9bbf1bcf1cc2cd807b89
+  size_bytes: 3505243
+display:
+  palette_seed: mauve-graphite-correspond
+  art_style: visual-consistency
+  accent_priority: high
+image_path: ../image/058_aisb.t3.058_mindglitch.jpg
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+capability_tags:
+- computer_vision
+- diffusion_models
+- visual_correspondence
+- consistency_detection
+- subject_driven_generation
+- feature_disentanglement
+- vsm_metric
+commercial:
+  annual_fee: null

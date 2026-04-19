@@ -1,0 +1,141 @@
+schema_version: 1
+id: aisb.t3.010_suitabilityfilter
+name: "适用性过滤器：真实世界部署场景下分类器评估的统计框架"
+version: 0.1.0
+one_line: "优化一个部署时的统计过滤器，使用非劣性假设检验对模型衍生的适用性信号进行测试，以判断分类器在无标签、分布偏移的用户数据上的准确率是否已退化到不可接受的阈值（基于WILDS FMoW/RxRx1/CivilComments评估）。"
+task_description: |
+  本基准测试打包了ICML 2025的适用性过滤器框架。核心任务是改进一个统计决策系统，在无法获得目标数据真实标签的情况下，判断预训练分类器在协变量偏移下是否仍然安全可部署。
+
+  过滤器的工作流程为：(1) 从带标签的测试数据和无标签的用户数据中提取适用性信号（最大softmax值、预测熵、logit统计量、损失/能量特征——共12个信号）；(2) 在带标签的保留集上训练一个轻量级的预测正确性估计器（默认使用逻辑回归，通过CalibratedClassifierCV进行校准），将信号映射到每个样本的正确概率p_c；(3) 通过单侧非劣性检验（Welch''s t检验或z检验，可配置边际m和显著性水平alpha）比较测试数据和用户数据之间的p_c分布；(4) 输出SUITABLE（拒绝H0）或INCONCLUSIVE。
+
+  打包的评估流程跨多个随机种子（0、1、2）、折数配置、特征子集（置信度/logit/损失-能量）和分类器超参数运行缓存的FMoW-WILDS特征。主要指标包括：OOD适用性得分（过滤器p值相对于真实适用性标签的ROC-AUC，跨约29k个实验）、原始p值和二元适用性决策。优化目标包括正确性估计器的正则化（C扫描）、信号子集选择、折数、校准策略，以及用于组合特征子集p值的Stouffer方法。
+
+  预提取的特征缓存和分割索引分别打包在results/features/和results/split_indices/下。仅在从头重新生成特征时才需要WILDS数据集本身（FMoW、RxRx1、CivilComments）和预训练模型权重；默认执行流程使用缓存特征，无需下载WILDS数据。
+capability_tags:
+- 研究代码优化
+- 分类器评估
+- 分布偏移
+- 统计检验
+- 可靠性
+- 假设检验
+- 部署监控
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- ood_suitability_score
+- p_value
+- suitability_decision
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: "在缓存的FMoW特征上运行打包的适用性过滤器逻辑，使用单个种子验证统计检验输出（p值、适用性决策）和基本ROC-AUC。"
+- id: shift_eval
+  label: 完整偏移评估
+  description: "跨所有种子（0、1、2）、特征子集、折数配置和分类器设置运行完整的FMoW-WILDS部署偏移评估。使用run_fmow.py，报告约29k个实验配置下的OOD适用性ROC-AUC。"
+- id: lr_tune
+  label: LR超参数扫描
+  description: "运行run_fmow_lr_tune.py，在OOD数据上扫描逻辑回归正则化C值（0.01、0.1、1.0、5.0、10.0），种子=0，以找到最优的正确性估计器配置。"
+- id: seed_search
+  label: 种子搜索
+  description: "运行run_fmow_seed_search.py变体，探索适用性过滤器决策的可重复性和种子敏感性。"
+dataset_download:
+  primary_method: bundled_cache
+  sources:
+  - kind: bundled
+    url: null
+    access: public
+    note: "预提取的特征缓存（results/features/*.pkl）和分割索引（results/split_indices/*.pkl）已包含在快照中。默认执行流程无需下载。"
+  - kind: pip_package
+    url: https://pypi.org/project/wilds/
+    access: public
+    note: "WILDS 2.0.0包用于从原始数据重新提取特征。FMoW-WILDS、RxRx1-WILDS和CivilComments-WILDS数据集通过wilds库首次使用时下载。仅FMoW约50GB；三个数据集合计可超过100GB。"
+notes:
+- 默认流程使用打包的缓存特征；仅在需要重新生成特征时才需要下载WILDS。
+- 预训练模型权重（ERM）用于特征重新生成，缓存流程无需此权重。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 任何执行流程都无需API密钥或凭据。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: 3.11.9
+  cuda: "11.7"
+  pytorch: 2.0.0
+  flash_attn: null
+  key_packages:
+  - transformers==4.41.2
+  - torch-geometric==2.5.3
+  - wilds==2.0.0
+  - scikit-learn
+  - scipy
+  - statsmodels
+  - pandas
+  - numpy
+  notes:
+  - 完整的conda环境规范请参见打包的requirements.txt。
+  - GPU用于特征提取（torch.device("cuda" if available)）；缓存特征流程仅在CPU上运行统计检验（scikit-learn、scipy）。
+  - run_fmow.py脚本设置sys.path为'/repo'——如在预期容器外运行需调整路径。
+risk_flags:
+- large_experiment_matrix
+- external_dataset_for_regeneration
+risk_notes:
+- "完整评估流程跨种子、折数、特征子集和边际运行约29k个实验配置。CPU上运行时间可达数小时。"
+- "从原始WILDS数据重新生成特征需要下载FMoW-WILDS（约50GB）和预训练ERM模型权重，但默认缓存流程无需此操作。"
+- "运行脚本硬编码sys.path为'/repo'和os.chdir('/repo')；在预期容器环境外执行可能需要调整路径。"
+- "打包过程中未执行运行时测试；指标值应通过运行基准测试进行验证。"
+recommended_when: "当您需要一个结合统计假设检验（非劣性检验）与真实WILDS部署偏移的模型监控优化任务时使用此基准测试。非常适合研究部署时安全性、分布偏移检测、无监督准确率估计和选择性预测。缓存特征流程使迭代快速，无需重新运行模型推理。"
+not_recommended_when: "如果需要一个小型的或快速迭代的玩具基准测试、无法分配32GB以上内存用于实验矩阵，或需要评估非分类任务，则不适合使用。此外，如果您需要端到端训练基础分类器——本基准测试专注于过滤器/监控层，而非上游模型训练——也不太理想。"
+paper:
+  title: "Suitability Filter: A Statistical Framework for Classifier Evaluation in Real-World Deployment Settings"
+  authors:
+  - Angéline Pouget
+  - Mohammad Yaghini
+  - Stephan Rabanser
+  - Nicolas Papernot
+  venue: ICML 2025
+  year: 2025
+  url: https://arxiv.org/abs/2505.22356
+  volume: 267
+  publisher: PMLR
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.010_suitabilityfilter.zip
+  archive_type: zip
+  local_dir_name: paper-10-SuitabilityFilter
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.010_suitabilityfilter.zip
+  sha256: 146f3477fb91d43974f51dac9013768be094e9ad355d2196c820915f062645f1
+  size_bytes: 54606221
+commercial:
+  annual_fee: null
+display:
+  palette_seed: sand-graphite-verify
+  art_style: clean-statistical
+  accent_priority: high
+image_path: ../image/010_aisb.t3.010_suitabilityfilter.jpg

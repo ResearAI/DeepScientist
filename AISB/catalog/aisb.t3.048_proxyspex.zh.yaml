@@ -1,0 +1,125 @@
+id: aisb.t3.048_proxyspex
+name: 'Proxy-SPEX: Sample-Efficient Interpretability via Sparse Feature Interactions
+  in LLMs'
+version: 0.1.0
+one_line: >-
+  基于Shapley风格的稀疏特征交互近似方法，用于识别LLM预测中紧凑且有意义的交互结构。
+task_description: >-
+  该打包基准测试涵盖使用ProxySPEX（Proxy SParse EXplainer）方法通过Shapley风格近似进行语言模型的稀疏特征交互解释。该任务通过预算限制的博弈评估来评估交互发现的质量，以识别模型行为背后紧凑且有意义的交互结构。shapiq包将Shapley值方法从特征归因扩展到任意阶Shapley交互，提供最先进的近似算法以及包含预计算博弈和真值的基准测试套件，涵盖10多个应用领域。
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- precision_at_10
+- precision_at_5
+- feature_interaction_rankings
+- mse
+- mae
+- explanation_report
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  label_zh: 快速评估
+  description: >-
+    使用ProxySPEX近似器在SOUM（集合导向效用模型）合成博弈上运行打包的稀疏交互解释流程，采用StratifiedBySize采样。针对主要评估使用budget=200和k-SII索引执行每个种子10次运行的集成。
+- id: full_benchmark
+  label: Full Benchmark Suite
+  label_zh: 完整基准测试套件
+  description: >-
+    通过eval_benchmark_results.py运行完整的shapiq基准测试套件，评估所有近似器配置在预计算博弈上的表现，包括LocalExplanation、GlobalExplanation、FeatureSelection、DataValuation、DatasetValuation和EnsembleSelection领域。
+dataset_download:
+  primary_method: archive
+  sources:
+  - url: https://deepscientist.cc/AISB/048_proxyspex
+    type: primary_archive
+  notes:
+  - 压缩包包含更广泛的shapiq包（local_dir_name: paper-48-Shapiq）
+  - ProxySPEX是shapiq包API中暴露的一种方法
+  - 预计算的博弈数据和基准测试结果包含在data/precomputed_games/中
+  - 附加数据集包括：adult_census.csv、bike.csv、california_housing.csv
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.12'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - shapiq
+  - numpy
+  - scipy
+  - pandas
+  - scikit-learn
+  - joblib
+  - tqdm
+  - sparse-transform
+  - galois
+  - matplotlib
+  - networkx
+  notes:
+  - 最小化路线完全支持CPU执行
+  - GPU加速可选但非必需；大规模LLM解释推荐使用GPU
+  - shapiq包是包含模块；ProxySPEX通过shapiq.ProxySPEX或shapiq.explainer
+    with approximator="proxyspex"访问
+  - 参见pyproject.toml和捆绑的requirements以获取完整的依赖规范
+risk_flags: []
+risk_notes:
+- 指标值有代码支持，但本次打包过程中未执行基准测试
+- 在信任定量输出之前需要运行时验证
+recommended_when: >-
+  当您需要专注于语言模型中稀疏交互发现的可解释性任务时使用此基准测试；想要根据真值Shapley交互评估近似质量时使用；或者需要一个支持任意阶交互量化的CPU友好的可解释性评估框架时使用。
+not_recommended_when: >-
+  不要将此基准测试用于纯文本生成评估、完整模型微调工作流程，或当您需要GPU加速训练时。如果无法支持具有不同预算约束的重复解释运行，则不适合使用。
+paper:
+  title: 'Proxy-SPEX: Sample-Efficient Interpretability via Sparse Feature Interactions
+    in LLMs'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=KI8qan2EA7
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.048_proxyspex.zip
+  archive_type: zip
+  local_dir_name: paper-48-Shapiq
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.048_proxyspex.zip
+  sha256: 3fea6e582a4001554d86ebcb7b95b55a4d537689f6279c561be43ba0e8302778
+  size_bytes: 135005330
+display:
+  palette_seed: umber-cyan-interact
+  art_style: interaction-map
+  accent_priority: high
+image_path: ../image/048_aisb.t3.048_proxyspex.jpg
+capability_tags:
+- research_code_optimization
+- mechanistic_interpretability
+- shapley_interactions
+- large_language_models
+- explanation_methods
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

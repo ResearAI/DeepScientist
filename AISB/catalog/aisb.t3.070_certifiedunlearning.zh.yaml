@@ -1,0 +1,171 @@
+schema_version: 1
+id: aisb.t3.070_certifiedunlearning
+name: 神经网络认证遗忘
+version: 0.1.0
+one_line: 通过噪声微调实现隐私放大进行认证机器遗忘，提供可证明的(ε,δ)保证且无需损失函数假设。
+task_description: >
+  本基准测试包实现并评估了神经网络认证机器遗忘方法（ICML 2025）。核心任务是从已训练模型中移除指定遗忘集的影响，同时在保留集上保持效用，并满足正式的(ε,δ)遗忘保证。该方法——迭代隐私放大（PABI）——将保留数据上每个带噪声的微调步骤视为随机后处理操作，逐步放大隐私性而不访问遗忘数据。该方法对损失函数不做平滑性或凸性假设，适用于任意深度网络。基准测试涵盖四种方法：PABI（梯度裁剪）、基于组隐私的DP-SGD、收缩系数（模型裁剪）和DP基线（输出扰动），以及完整重训练作为对照。实验覆盖CIFAR-10、CIFAR-100和MNIST数据集，包含四组消融实验：隐私预算曲线、收敛曲线、DP-SGD对比和ε扫描分析。主要效率指标为遗忘阶段中epochs_to_50pct_val_acc。框架使用JAX/Flax实现所有训练和遗忘逻辑；特征提取使用ResNet-18骨干网络。支持通过run_exp.py进行多GPU执行。
+
+  本打包过程未执行任何基准测试运行——在使用指标数值前需进行运行时验证。
+
+capability_tags:
+- machine_unlearning
+- certified_privacy
+- differential_privacy
+- privacy_amplification
+- neural_networks
+- research_code_optimization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- epochs_to_50pct_val_acc
+- epochs_to_45pct_val_acc
+- epochs_to_40pct_val_acc
+- epochs_to_35pct_val_acc
+- epochs_to_30pct_val_acc
+- unlearning_checkpoint
+- certification_report
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: >
+    使用单个预配置实验YAML（例如来自dp_sgd_runs/）运行一条封装的认证遗忘评估路线。生成一份认证报告和效率指标。是验证环境和指标表面的最快路径。
+
+- id: full_unlearning
+  label: 完整遗忘
+  description: >
+    跨所有四组实验套件（budget_curve_runs、convergence_curve_runs、dp_sgd_runs、eps_sweep_runs）运行完整的隐私感知遗忘训练和认证工作流。复现论文所有图表。需要通过run_exp.py进行多GPU执行。
+
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: CIFAR-10
+    notes: 由JAX/datasets管道在运行时自动下载。
+  - name: CIFAR-100
+    notes: 由JAX/datasets管道在运行时自动下载。
+  - name: MNIST
+    notes: 由JAX/datasets管道在运行时自动下载。
+  - name: ResNet-18特征缓存
+    notes: 通过在实验前运行feature_extractor.py在本地生成，用于cifar10_feature或cifar100_feature数据集配置。
+
+  notes:
+  - 所有数据集均为标准公开基准测试；除非需要离线执行，无需手动下载。
+  - 在使用迁移学习实验配置前，必须运行一次feature_extractor.py。
+credential_requirements:
+  mode: optional
+  items:
+  - name: Weights & Biases (wandb)
+    notes: experiment.py在启动时调用wandb.init()。执行前设置WANDB_API_KEY或运行`wandb login`。可通过设置WANDB_MODE=offline启用离线模式。
+
+  notes:
+  - 无需付费数据凭证。wandb是唯一的外部服务。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+    notes: 足以在MNIST或CIFAR-10上运行单实验quick_eval。
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 2
+    gpu_vram_gb: 24
+    notes: 两块GPU允许run_exp.py并行化执行实验套件。需要在6–24小时时间范围内完整复现所有四组消融图表。
+
+environment:
+  python: '3.8'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  framework: jax
+  key_packages:
+  - jax==0.5.2
+  - jaxlib==0.5.1
+  - jax-cuda12-pjrt==0.5.1
+  - jax-cuda12-plugin==0.5.1
+  - flax==0.10.4
+  - optax
+  - dp-accounting==0.4.4
+  - transformers==4.49.0
+  - datasets==2.21.0
+  - ml_collections==1.0.0
+  - wandb
+  - chex==0.1.89
+  - torch
+  - matplotlib==3.10.1
+  - jaxpruner @ git+https://github.com/google-research/jaxpruner@e7af4e4e4748782d6bc433249e359f74ffb845ba
+  notes:
+  - 本基准测试使用JAX/Flax作为主要框架，而非PyTorch。PyTorch仅在requirements.txt中用于DataLoader工具类。
+  - CUDA版本由jax-cuda12-* wheel决定；安装JAX CUDA包优先于其他依赖项。
+  - 完整固定依赖集请参见requirements.txt。
+  - 需要Python 3.8；使用的JAX版本（0.5.2）不支持3.12+。
+risk_flags:
+- jax_cuda_wheel_version_sensitivity
+- wandb_required_at_runtime
+- feature_extractor_prereq
+- no_runtime_execution_in_packaging_pass
+risk_notes:
+- JAX CUDA wheel对版本高度敏感。先安装jax-cuda12-pjrt和jax-cuda12-plugin再安装jaxlib，以避免ABI不匹配。
+
+- experiment.py无条件调用wandb.init()；无API key时设置WANDB_MODE=offline以防止硬性失败。
+
+- 使用cifar10_feature或cifar100_feature数据集配置的实验若未先运行feature_extractor.py将失败。
+
+- 本打包过程未执行任何基准测试运行。metric_contract.json中的所有指标值均为临时值，需运行时验证后方可信赖。请勿仅凭README信赖指标表面。
+
+recommended_when: >
+  在需要形式化(ε,δ)隐私保证的图像分类任务（CIFAR-10、CIFAR-100、MNIST）上评估认证机器遗忘方法时使用本基准测试。适合比较PABI、DP-SGD、收缩系数和输出扰动基线之间的遗忘效率（达到验证准确率阈值所需轮数）。最适合需要适用于非凸深度网络的无假设认证遗忘的研究人员。
+
+not_recommended_when: >
+  若仅需标准图像分类训练而无需隐私或遗忘约束，请勿使用。本基准测试不适用于需要PyTorch原生训练循环的场景——核心实现仅支持JAX/Flax。若GPU显存低于12GB或无法建立JAX CUDA环境，请勿使用。不适用于大规模语言模型遗忘或概念遗忘任务，这些任务需要不同的方法体系。
+
+paper:
+  title: Certified Unlearning for Neural Networks
+  authors:
+  - Anastasia Koloskova
+  - Youssef Allouah
+  - Animesh Jha
+  - Rachid Guerraoui
+  - Sanmi Koyejo
+  affiliations:
+  - Stanford University
+  - EPFL
+  venue: ICML 2025
+  year: 2025
+  url: https://arxiv.org/abs/2506.06985
+  bibtex_key: koloskova2025certified
+  notes: Koloskova和Allouah同等贡献。加拿大温哥华第42届国际机器学习会议论文集。PMLR 267。
+
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.070_certifiedunlearning.zip
+  archive_type: zip
+  local_dir_name: paper-70-CertifiedUnlearning
+  upstream_repo: https://github.com/stair-lab/certified-unlearning-neural-networks-icml-2025
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.070_certifiedunlearning.zip
+  sha256: 124e11876363b6ccc532c5d235697f96975e0e2883506083a5f9391b63cf1ab7
+  size_bytes: 13612960
+commercial:
+  annual_fee: null
+display:
+  palette_seed: silver-plum-unlearn
+  art_style: privacy-lab
+  accent_priority: high
+image_path: ../image/070_aisb.t3.070_certifiedunlearning.jpg

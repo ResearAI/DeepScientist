@@ -53,7 +53,7 @@ Use `ds doctor` when DeepScientist does not start cleanly after installation.
 - whether `uv` is available to manage the local Python runtime
 - whether `git` is installed and configured
 - whether required config files are valid
-- whether the current release is still using `codex` as the runnable runner
+- whether the enabled/default runner configuration is internally consistent
 - whether the Codex CLI can be found and passes a startup probe
 - whether a recent quest runtime failure already points to a known provider / protocol / retry problem
 - whether an optional local `pdflatex` runtime is available for paper PDF compilation
@@ -116,6 +116,7 @@ ds --codex /absolute/path/to/codex --codex-profile m27
 Also check:
 
 - the same shell still exports the provider API key
+- if `codex --profile <name>` works but `ds doctor` or `ds docker` still reports a missing provider environment variable, also put that key in `~/DeepScientist/config/runners.yaml` under `runners.codex.env`
 - the profile points at the provider's Coding Plan endpoint, not the generic API endpoint
 - if you are using Qwen through Alibaba Bailian, use the Bailian Coding Plan endpoint only; the generic Bailian or DashScope Qwen API is not supported here
 - `~/DeepScientist/config/runners.yaml` uses `model: inherit` if the provider expects the model to come from the profile itself
@@ -231,14 +232,23 @@ git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 ```
 
-### Claude was enabled by mistake
+### Runner switching and enablement
 
-Current open-source releases keep `claude` as a TODO/reserved slot only.
-Set it back to disabled in:
+Current releases support `codex`, `claude`, and `opencode`.
+
+If a non-default runner was enabled by mistake, check:
 
 ```text
+~/DeepScientist/config/config.yaml
 ~/DeepScientist/config/runners.yaml
 ```
+
+Then confirm:
+
+- `default_runner` points at the runner you actually want
+- the selected runner has `enabled: true`
+- disabled runners stay disabled if you are not using them
+- `ds doctor` passes for the enabled runner before you switch quests over
 
 ## Notes
 

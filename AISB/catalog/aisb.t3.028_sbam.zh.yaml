@@ -1,0 +1,166 @@
+schema_version: 1
+id: aisb.t3.028_sbam
+name: 基于分段注意力的GPT掩码技术
+version: 0.1.0
+one_line: 在Llama-3.2-1B上对分段掩码注意力(MAS)进行微调和评估，在八个常识推理数据集上比较分段感知的预填充掩码与标准因果掩码。
+task_description: '该基准测试评估分段掩码注意力(MAS)技术，该技术修改了解码器专用GPT的因果注意力掩码，使每个预填充分段（系统提示、用户提示）内的token能够双向注意力，而自回归生成阶段保留标准因果掩码。打包的任务使用LoRA适配的Llama-3.2-1B模型，并在八个常识推理数据集上进行评估：BoolQ、PIQA、SocialIQA、HellaSwag、WinoGrande、ARC-Challenge、ARC-Easy和OpenBookQA。预训练的MAS LoRA检查点已打包（trained_models_and_results/Llama-3.2-1B_epoch3_MAS），因此评估可以在不重新训练的情况下进行。评估脚本（run_eval_all.sh）在两个GPU上并行处理，并报告每个数据集的准确率及平均值。基础Llama-3.2-1B模型必须从HuggingFace下载（需要 gated 访问）。微调数据集（170k条聊天模板格式的常识推理样本）通过ft_utils.py引用，但未打包；如需重新训练需要外部获取。核心评估流程在有打包的LoRA权重和基础模型访问权限的情况下是自包含的。
+
+  '
+capability_tags:
+- research_code_optimization
+- large_language_models
+- transformers
+- prompt_engineering
+- attention_analysis
+- commonsense_reasoning
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: medium
+time_band: 6-24h
+difficulty: medium
+data_access: public
+primary_outputs:
+- average_accuracy
+- arc_c_accuracy
+- obqa_accuracy
+- boolq_accuracy
+- piqa_accuracy
+- siqa_accuracy
+- hellaswag_accuracy
+- winogrande_accuracy
+- arc_e_accuracy
+- masked_attention_report
+- prompt_variant_scores
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '使用打包的LoRA检查点在单个数据集（例如ARC-Challenge）上运行mas_eval.py，以验证评估流程在单个GPU上端到端工作。
+
+    '
+- id: full_eval
+  label: 完整评估
+  description: '运行run_eval_all.sh在两个GPU上并行评估打包的MAS LoRA检查点在所有八个常识推理数据集上的表现，生成每个数据集的准确率和平均准确率。
+
+    '
+- id: retrain_and_eval
+  label: 重新训练 + 评估
+  description: '使用MAS掩码在170k常识数据集上重新运行LoRA微调（必须从外部获取），然后进行评估。这将重现完整的论文流程。
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/meta-llama/Llama-3.2-1B
+    access: gated
+    note: '基础Llama-3.2-1B模型权重。需要HuggingFace账户和Meta许可协议接受。约2.5GB下载量。
+
+      '
+  - kind: bundled
+    url: null
+    access: local
+    note: '预训练的MAS LoRA权重打包在trained_models_and_results/Llama-3.2-1B_epoch3_MAS中。标准因果LoRA检查点在Llama-3.2-1B_epoch3中。
+
+      '
+  - kind: external
+    url: null
+    access: public
+    note: '170k常识推理训练数据集（由ft_utils.py引用）未打包。它遵循Liu等人(2024)/Hu等人(2023)的设置。仅在重新训练时需要。
+
+      '
+  - kind: external
+    url: null
+    access: public
+    note: 'BoolQ、PIQA、SocialIQA、HellaSwag、WinoGrande、ARC-Challenge、ARC-Easy、OpenBookQA的测试集通过ft_utils.py在评估时加载。这些是通常从HuggingFace数据集中心获取的公共数据集。
+
+      '
+  notes:
+  - 包含基础模型和评估数据集的总磁盘使用量约为10-20GB。
+  - 如果重新训练，170k训练样本会增加数GB。
+credential_requirements:
+  mode: api_key
+  items:
+  - 具有Meta Llama许可协议接受权限的HuggingFace令牌（用于基础模型下载）
+  notes:
+  - 评估不需要其他API密钥。
+  - 如果基础模型已在本地缓存，运行时不需要凭据。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 120
+    gpu_count: 2
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - transformers==4.47.0
+  - peft
+  - torch
+  - tqdm
+  notes:
+  - MAS实现使用eager注意力（attn_implementation="eager"），而非flash注意力。
+  - 有关完整的依赖项列表，请参阅打包的requirements.txt。
+  - 需要CUDA；代码检查torch.cuda.is_available()并默认为"cuda"。
+risk_flags:
+- gated_model_dependency
+- training_data_not_bundled
+- eager_attention_only
+risk_notes:
+- 基础Llama-3.2-1B需要gated HuggingFace访问；没有它评估无法进行。
+- 170k常识训练数据集未打包；只有带有预训练LoRA的评估流程是自包含的。
+- MAS目前仅支持使用eager注意力模式的Llama模型；flash_attn不兼容。
+- run_eval_all.sh硬编码路径（/models/Llama-3.2-1B、/repo/）；必须调整为本地布局。
+- 打包过程中未执行基准测试；指标值未预先验证。
+- run_eval_all.sh中批大小设置为1；在8个数据集上完整评估需要数小时。
+recommended_when: '当您想要对解码器专用LLM的新型注意力掩码策略在常识推理上进行可管理的单GPU评估时使用此基准测试。适合研究预填充期间分段级双向注意力如何影响下游准确率（与标准因果掩码相比），并使用轻量级LoRA微调。
+
+  '
+not_recommended_when: '如果需要数十亿参数LLM的大规模训练基准测试、非Transformer架构任务或完全打包训练数据的基准测试，请勿使用此基准测试。如果无法获得Meta Llama模型的gated访问权限，也不适用。
+
+  '
+paper:
+  title: Segment-Based Attention Masking for GPTs
+  authors:
+  - Shahar Katz
+  - Liran Ringel
+  - Yaniv Romano
+  - Lior Wolf
+  venue: arXiv preprint
+  year: 2024
+  url: https://arxiv.org/abs/2412.18487
+  doi: null
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.028_sbam.zip
+  archive_type: zip
+  local_dir_name: paper-28-SBAM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.028_sbam.zip
+  sha256: e6a4ea39b6fa60b49a9ed55f8386355bae8ed0b92188064bc351a5f71c8f9066
+  size_bytes: 104097
+commercial:
+  annual_fee: null
+display:
+  palette_seed: violet-graphite-mask
+  art_style: attention-map
+  accent_priority: medium
+image_path: ../image/028_aisb.t3.028_sbam.jpg

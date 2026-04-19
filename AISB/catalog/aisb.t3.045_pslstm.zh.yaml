@@ -1,0 +1,179 @@
+id: aisb.t3.045_pslstm
+name: P-sLSTM 长期时间序列预测
+version: 0.1.0
+one_line: >
+  通过通道独立性优化补丁化 sLSTM，在公开基准数据集上实现具有竞争力的
+  长期时间序列预测性能。
+task_description: |
+  P-sLSTM 通过两项改进将自然语言处理中的指数门控 sLSTM 架构适配到多变量时间序列预测：(1) 补丁化——将输入分割为局部时间补丁，以克服 sLSTM 的短记忆限制；以及 (2) 通道独立性——使用共享骨干网络独立处理每个变量，以防止过拟合。本基准测试评估标准公开数据集（包括 ETTh1/ETTm1、Weather、Electricity 等，来自 Time-Series-Library）的预测精度（MSE、MAE）。实验工作流使用每个数据集的 shell 脚本和集中式的 run_longExp.py 入口点。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: 高级
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- mse
+- mae
+- forecast_checkpoint
+- rse
+- corr
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: >
+    使用 scripts/EXP-LongForecasting/P_sLSTM/ 中提供的 shell 脚本，在单个准备好的公开数据集
+    （如 Weather）上运行 P-sLSTM 预测。
+- id: full_benchmark
+  label: 完整基准测试
+  description: >
+    在所有支持的数据集上运行完整的打包长期预测工作流，记录每个数据集的 MSE/MAE。
+dataset_download:
+  primary_method: external
+  sources:
+  - label: Time-Series-Library
+    url: https://github.com/thuml/Time-Series-Library
+    license: null
+  - label: iTransformer
+    url: https://github.com/thuml/iTransformer
+    license: null
+  notes:
+  - 数据集（ETTh1.csv、ETTm1.csv、weather.csv、electricity.csv 等）必须放置在 ./dataset/ 目录中。
+  - 预期结构：P-sLSTM/dataset/*.csv，并配合相应的 root_path 和 data_path 参数。
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '12.1'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - name: torch
+    version: '>=2.1.0'
+  - name: ninja
+    version: null
+  - name: matplotlib
+    version: null
+  notes:
+  - 经验证的可选方案：Python 3.12 配合 PyTorch 2.3.0，CUDA 12.1。
+  - 完整依赖列表见 requirements.txt。
+  - ninja 包需单独安装（pip install ninja）。
+risk_flags:
+- data_alignment
+- memory_bounded
+risk_notes:
+  - 确保数据集与预测范围参数（--label_len、--pred_len）对齐，以避免静默错配。
+  - GPU 显存随序列长度和通道数量增长；建议使用 24GB 显存运行完整基准测试。
+recommended_when: |
+  当您需要评估高效循环序列预测——避免 Transformer 的扩展成本，同时在长期多变量 TSF 任务上
+  获得具有竞争力的精度时，可使用此基准测试。
+not_recommended_when: |
+  如果您需要多模态输入（如视觉-语言）、超大规模语言模型预训练或非预测类序列任务，
+  请勿使用此基准测试。
+paper:
+  title: Unlocking the Power of LSTM for Long Term Time Series Forecasting
+  venue: AAAI
+  year: 2025
+  url: https://ojs.aaai.org/index.php/AAAI/article/view/33303
+  authors:
+  - Kong, Yaxuan
+  - Wang, Zepu
+  - Nie, Yuqi
+  - Zhou, Tian
+  - Zohren, Stefan
+  - Liang, Yuxuan
+  - Sun, Peng
+  - Wen, Qingsong
+  bibtex: "@inproceedings{kong2025unlocking,\n  title={Unlocking the power of lstm for long term time series forecasting},\n  author={Kong, Yaxuan and Wang, Zepu and Nie, Yuqi and Zhou, Tian and Zohren, Stefan and Liang, Yuxuan and Sun, Peng and Wen, Qingsong},\n  booktitle={Proceedings of the AAAI Conference on Artificial Intelligence},\n  volume={39},\n  number={11},\n  pages={11968--11976},\n  year={2025}\n}"
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.045_pslstm.zip
+  archive_type: zip
+  local_dir_name: paper-45-PsLSTM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.045_pslstm.zip
+  sha256: 27a81f0bd5307f83bd05c52a8332d2d71c1ff6de8eb7c3e04826a0337c201fe5
+  size_bytes: 1001820
+display:
+  palette_seed: olive-sky-lstm
+  art_style: 循环信号风格
+  accent_priority: medium
+image_path: ../image/045_aisb.t3.045_pslstm.jpg
+capability_tags:
+- 科研代码优化
+- 时间序列预测
+- 循环模型
+- 预测任务
+- 科学机器学习
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+executable_anchors:
+- path: run_longExp.py
+  role: main entry point
+  description: 解析模型、数据集和训练配置的 CLI 参数；编排 Exp_Main。
+- path: exp/exp_main.py
+  role: experiment driver
+  description: Exp_Main 类构建模型（P_sLSTM、LSTM、sLSTM、Informer、Autoformer、DLinear、Transformer），
+    加载数据，进行训练和评估。
+- path: utils/metrics.py
+  role: metric computation
+  description: 实现 MAE、MSE、RMSE、MAPE、MSPE、RSE、CORR 指标；metric() 返回 (mae, mse, rmse, mape, mspe, rse, corr)。
+code_roots:
+- data_provider/
+- exp/
+- layers/
+- models/
+- scripts/
+- utils/
+metric_contract:
+  mse:
+    origin_path: utils/metrics.py
+    function: MSE
+    source_ref: code-backed
+    status: executable
+  mae:
+    origin_path: utils/metrics.py
+    function: MAE
+    source_ref: code-backed
+    status: executable
+  rse:
+    origin_path: utils/metrics.py
+    function: RSE
+    source_ref: code-backed
+    status: executable
+  corr:
+    origin_path: utils/metrics.py
+    function: CORR
+    source_ref: code-backed
+    status: executable
+recovery_notes: |
+  静态代码审计发现所有阶段性指标都有可执行锚点。
+  未执行运行时测试；指标值尚未经过验证。在选择 origin_path、source_ref 和
+  evaluation_protocol.code_paths 时，应优先恢复现有代码文件而非仅依赖 README 的声明。
+caveat_snapshot: |
+  打包快照可通过提供的 shell 脚本运行。
+  在指标值可用于对比报告之前，需要在所有数据集上执行完整的基准测试。
+commercial:
+  annual_fee: null

@@ -1,0 +1,169 @@
+id: aisb.t3.076_aanet
+name: 'AANet: Virtual Screening under Structural Uncertainty via Alignment and Aggregation'
+version: 0.1.0
+one_line: Two-stage alignment-and-aggregation framework for uncertainty-aware pocket-based
+  virtual screening on holo, apo, and AlphaFold2-predicted protein structures.
+task_description: 'This packaged benchmark covers structure-based virtual screening
+  under structural uncertainty. AANet addresses the challenge of scoring or ranking
+  candidate binders when reliable pocket annotations are unavailable, as occurs with
+  apo or predicted protein structures. The method uses a two-phase training strategy:
+  (1) alignment via tri-modal contrastive learning that aligns ligand, holo pocket,
+  and Fpocket-detected cavity representations with hard negative mining; and (2) aggregation
+  via cross-attention adapter for dynamic weighting of candidate binding sites, enabling
+  training on pocket-agnostic activity data from ChEMBL. Evaluation benchmarks include
+  DUD-E (38 targets) with holo, AlphaFold2-predicted, and experimental apo structures,
+  plus LIT-PCBA (12 targets).
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 1-2d
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- bedroc
+- virtual_screening_scores
+- screening_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run one packaged DUD-E or LIT-PCBA evaluation route using the released
+    checkpoint. Downloads the pretrained model checkpoint from Google Drive, places
+    it in the designated savedir subdirectory, then evaluates against the appropriate
+    benchmark. Suitable for reproducing published screening scores without retraining.
+
+    '
+- id: two_phase_train
+  label: Two-Phase Train
+  description: 'Execute the full AANet training workflow: Phase 1 (alignment) via
+    fpocket_neg_10A_siglip.sh for tri-modal contrastive representation learning, followed
+    by Phase 2 (aggregation) via finetune_chembl_fpocket_neg_10A_siglip_icrossatt_mollinear_wocollision_attn_kl.sh
+    for cross-attention-based pocket aggregation training on ChEMBL activity data.
+    Requires external pretrained Uni-Mol checkpoints and dataset preparation.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: benchmark_archive
+    url: https://deepscientist.cc/AISB/076_aanet
+    type: zip_archive
+    description: Main packaged benchmark containing code, configs, and evaluation
+      scripts
+  - name: model_checkpoint
+    url: https://drive.google.com/file/d/11Hixd7vVKg6RZcZ81LEXKWoc68p61csV
+    type: google_drive
+    description: Trained AANet model checkpoint, must be placed in savedir/drugclip_fpocket_neg_10A_siglip/[timestamp]/checkpoint_best.pt
+  - name: dude_apo_dataset
+    description: 38-target DUD-E subset with holo, AlphaFold2, and experimental apo
+      structures, bundled in dataset/dude_apo/
+  - name: lit_pcba_dataset
+    description: 12-target LIT-PCBA pocket data subset, bundled in dataset/lit_pcba/
+  - name: molecule_data
+    url: https://drive.google.com/drive/folders/1zW1MGpgunynFxTKXC2Q4RgWxZmg6CInV
+    type: google_drive
+    description: Molecule embeddings from DrugCLIP, decompress into dataset/
+  - name: unimol_pretrained
+    description: Uni-Mol pretrained weights (mol_pre_no_h_220816.pt, pocket_pre_220816.pt),
+      required for training
+  - name: chembl_training_data
+    description: ChEMBL35 assay-filtered ligand similarity data (chembl35_assay2_filtered_ligsim_ge5_dedup.lmdb)
+  notes:
+  - Model checkpoint requires external Google Drive access; no auth needed
+  - DUD-E and LIT-PCBA are included in benchmark archive
+  - Molecule data and Uni-Mol pretrained weights must be obtained externally
+  - Training requires Phase 1 alignment checkpoint before Phase 2 aggregation
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - All datasets are publicly available
+  - Google Drive download requires no authentication for public sharing links
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 4
+    gpu_vram_gb: 48
+  notes:
+  - Multi-GPU (n_gpu=4) recommended for training phases; single-GPU evaluation supported
+  - Training batch_size=32, validation batch_size=128; adjust based on available VRAM
+  - Disk space accounts for datasets, pretrained models, and checkpoint saves during
+    training
+environment:
+  python: '3.9'
+  cuda: '11.3'
+  pytorch: 1.11.0
+  flash_attn: null
+  key_packages:
+  - rdkit-pypi==2022.9.3
+  - zstandard
+  - unimol
+  - unicore
+  notes:
+  - Core dependencies mirror Uni-Mol requirements; install via UniCore Docker (dptechnology/unicore:0.0.1-pytorch1.11.0-cuda11.3)
+  - Additional pip install zstandard rdkit-pypi==2022.9.3 after Docker activation
+  - Compatible conda environment: unimol
+risk_flags:
+- multi_phase_training_dependency
+- external_data_dependency
+- gpu_memory_sensitivity
+risk_notes:
+- Phase 1 alignment checkpoint (fpocket_neg_10A_siglip) must complete before Phase
+  2 aggregation (finetune_chembl_*) can start; misalignment will cause training failure
+- External dependencies on Google Drive for model checkpoint and DrugCLIP molecules
+  introduce availability and versioning risk
+- Batch sizes (32 train / 128 valid) may require adjustment for GPUs with less than
+  24GB VRAM; OOM errors common on smaller cards
+- Training with recycling=3 and dist_threshold=8.0 increases memory footprint; monitor
+  NCCL communication if using multi-GPU
+recommended_when: 'Use this benchmark when developing or evaluating structure-based
+  virtual screening methods that must handle structural uncertainty, including cases
+  where only apo or AlphaFold2-predicted protein structures are available without
+  ligand-bound pocket annotations. Ideal for testing robustness to pocket mislocalization,
+  evaluating early enrichment (EF 1%, BEDROC), or benchmarking against DUD-E/LIT-PCBA
+  in blind-apo settings.
+
+  '
+not_recommended_when: 'Do not use this benchmark if your workflow cannot handle molecular
+  3D structure preprocessing, protein pocket detection (Fpocket), or large-scale ligand
+  datasets. Not suitable for environments without GPU access or where external data
+  downloads are restricted.
+
+  '
+paper:
+  title: 'AANet: Virtual Screening under Structural Uncertainty via Alignment and
+    Aggregation'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=TUh4GDposM
+  github: https://github.com/Wiley-Z/AANet
+  license: Apache 2.0
+  model_weights_license: CC BY-NC 4.0
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.076_aanet.zip
+  archive_type: zip
+  local_dir_name: paper-76-AANet
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.076_aanet.zip
+  sha256: 821275c509de0ed669874cf74aaa284ee5623cbb15fff595b693eaeb25393e5b
+  size_bytes: 45967
+display:
+  palette_seed: emerald-bone-pocket
+  art_style: molecular-discovery
+  accent_priority: high
+image_path: ../image/076_aisb.t3.076_aanet.jpg

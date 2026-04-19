@@ -142,6 +142,19 @@ def build_session_update(
             "reply_to_interaction_id": event.get("reply_to_interaction_id"),
             "client_message_id": event.get("client_message_id"),
             "delivery_state": event.get("delivery_state"),
+            "message_id": event.get("message_id"),
+            "read_state": event.get("read_state"),
+            "read_reason": event.get("read_reason"),
+            "read_at": event.get("read_at"),
+        }
+    elif event_type == "conversation.message_state":
+        update_kind = "message_state"
+        update_payload["message_state"] = {
+            "message_id": event.get("message_id"),
+            "client_message_id": event.get("client_message_id"),
+            "read_state": event.get("read_state"),
+            "read_reason": event.get("read_reason"),
+            "read_at": event.get("read_at"),
         }
     elif event_type == "artifact.recorded":
         update_kind = "artifact"

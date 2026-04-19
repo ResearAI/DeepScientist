@@ -1,0 +1,206 @@
+schema_version: 1
+id: aisb.t3.028_sbam
+name: Segment-Based Attention Masking for GPTs
+version: 0.1.0
+one_line: Fine-tune and evaluate Masked Attention by Segment (MAS) on Llama-3.2-1B
+  across eight commonsense reasoning datasets, comparing segment-aware prefill masking
+  against standard causal masking.
+task_description: 'This benchmark evaluates the Masked Attention by Segment (MAS)
+  technique, which modifies the causal attention mask of decoder-only GPTs so that
+  tokens within each prefill segment (system prompt, user prompt) can attend bidirectionally,
+  while the autoregressive generation phase retains standard causal masking. The packaged
+  task uses a LoRA-adapted Llama-3.2-1B model and evaluates on eight commonsense reasoning
+  datasets: BoolQ, PIQA, SocialIQA, HellaSwag, WinoGrande, ARC-Challenge, ARC-Easy,
+  and OpenBookQA. A pre-trained MAS LoRA checkpoint is bundled (trained_models_and_results/Llama-3.2-1B_epoch3_MAS),
+  so evaluation can proceed without re-training. The evaluation script (run_eval_all.sh)
+  parallelizes across two GPUs and reports per-dataset accuracy plus an average. The
+  base Llama-3.2-1B model must be downloaded from HuggingFace (gated access). The
+  fine-tuning dataset (170k commonsense reasoning samples in chat-template format)
+  is referenced via ft_utils.py but is not bundled; re-training requires sourcing
+  it externally. The core evaluation route is self-contained given the bundled LoRA
+  weights and base model access.
+
+  '
+capability_tags:
+- research_code_optimization
+- large_language_models
+- transformers
+- prompt_engineering
+- attention_analysis
+- commonsense_reasoning
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: medium
+time_band: 6-24h
+difficulty: medium
+data_access: public
+primary_outputs:
+- average_accuracy
+- arc_c_accuracy
+- obqa_accuracy
+- boolq_accuracy
+- piqa_accuracy
+- siqa_accuracy
+- hellaswag_accuracy
+- winogrande_accuracy
+- arc_e_accuracy
+- masked_attention_report
+- prompt_variant_scores
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run mas_eval.py on a single dataset (e.g. ARC-Challenge) with the
+    bundled LoRA checkpoint to verify the evaluation pipeline works end-to-end on
+    one GPU.
+
+    '
+- id: full_eval
+  label: Full Eval
+  description: 'Run run_eval_all.sh to evaluate the bundled MAS LoRA checkpoint on
+    all eight commonsense reasoning datasets in parallel across two GPUs, producing
+    per-dataset and average accuracy.
+
+    '
+- id: retrain_and_eval
+  label: Retrain + Eval
+  description: 'Re-run LoRA fine-tuning with MAS masking on the 170k commonsense dataset
+    (must be sourced externally), then evaluate. This reproduces the full paper pipeline.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/meta-llama/Llama-3.2-1B
+    access: gated
+    note: 'Base Llama-3.2-1B model weights. Requires HuggingFace account and Meta
+      license acceptance. ~2.5 GB download.
+
+      '
+  - kind: bundled
+    url: null
+    access: local
+    note: 'Pre-trained MAS LoRA weights are bundled in trained_models_and_results/Llama-3.2-1B_epoch3_MAS.
+      A standard causal LoRA checkpoint is in Llama-3.2-1B_epoch3.
+
+      '
+  - kind: external
+    url: null
+    access: public
+    note: 'The 170k commonsense reasoning training dataset (referenced by ft_utils.py)
+      is not bundled. It follows the setup from Liu et al. (2024) / Hu et al. (2023).
+      Only needed if re-training.
+
+      '
+  - kind: external
+    url: null
+    access: public
+    note: 'Test splits for BoolQ, PIQA, SocialIQA, HellaSwag, WinoGrande, ARC-Challenge,
+      ARC-Easy, OpenBookQA are loaded via ft_utils.py at eval time. These are public
+      datasets typically fetched from HuggingFace datasets hub.
+
+      '
+  notes:
+  - Total disk usage with base model and evaluation datasets is approximately 10-20
+    GB.
+  - If re-training, the 170k training samples add several GB.
+credential_requirements:
+  mode: api_key
+  items:
+  - HuggingFace token with Meta Llama license acceptance (for base model download)
+  notes:
+  - No other API keys required for evaluation.
+  - If base model is pre-cached locally, no credentials are needed at runtime.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 120
+    gpu_count: 2
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - transformers==4.47.0
+  - peft
+  - torch
+  - tqdm
+  notes:
+  - MAS implementation uses eager attention (attn_implementation="eager"), not flash
+    attention.
+  - See bundled requirements.txt for full dependency set.
+  - CUDA is required; the code checks torch.cuda.is_available() and defaults to "cuda".
+risk_flags:
+- gated_model_dependency
+- training_data_not_bundled
+- eager_attention_only
+risk_notes:
+- Base Llama-3.2-1B requires gated HuggingFace access; evaluation cannot proceed without
+  it.
+- The 170k commonsense training dataset is not bundled; only the eval route with pre-trained
+  LoRA is self-contained.
+- MAS currently only supports Llama models with eager attention mode; flash_attn is
+  not compatible.
+- run_eval_all.sh hardcodes paths (/models/Llama-3.2-1B, /repo/); these must be adjusted
+  to local layout.
+- No benchmark execution was performed during the packaging pass; metric values are
+  not pre-validated.
+- Batch size is set to 1 in run_eval_all.sh; full eval on 8 datasets takes several
+  hours.
+recommended_when: 'Use this benchmark when you want a manageable, single-GPU evaluation
+  of a novel attention masking strategy for decoder-only LLMs on commonsense reasoning.
+  Good for studying how segment-level bidirectional attention during prefill affects
+  downstream accuracy compared to standard causal masking, with lightweight LoRA fine-tuning.
+
+  '
+not_recommended_when: 'Do not use this if you need a large-scale multi-billion parameter
+  LLM training benchmark, a non-transformer architecture task, or a benchmark with
+  fully bundled training data. Also not suitable if you cannot obtain gated access
+  to Meta Llama models.
+
+  '
+paper:
+  title: Segment-Based Attention Masking for GPTs
+  authors:
+  - Shahar Katz
+  - Liran Ringel
+  - Yaniv Romano
+  - Lior Wolf
+  venue: arXiv preprint
+  year: 2024
+  url: https://arxiv.org/abs/2412.18487
+  doi: null
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.028_sbam.zip
+  archive_type: zip
+  local_dir_name: paper-28-SBAM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.028_sbam.zip
+  sha256: e6a4ea39b6fa60b49a9ed55f8386355bae8ed0b92188064bc351a5f71c8f9066
+  size_bytes: 104097
+commercial:
+  annual_fee: null
+display:
+  palette_seed: violet-graphite-mask
+  art_style: attention-map
+  accent_priority: medium
+image_path: ../image/028_aisb.t3.028_sbam.jpg

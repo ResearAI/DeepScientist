@@ -1,0 +1,224 @@
+id: aisb.t3.039_calf
+name: 'CALF: Aligning LLMs for Time Series Forecasting via Cross-modal Fine-Tuning'
+version: 0.1.0
+one_line: Cross-modal fine-tuning framework that aligns time series distributions
+  with LLM textual representations for state-of-the-art multivariate forecasting.
+task_description: 'This packaged benchmark covers CALF (Cross-ModAl LLM Fine-Tuning),
+  a framework that bridges the distribution discrepancy between temporal data and
+  the textual nature of LLMs. The task involves adapting a language-model-style architecture
+  to time-series inputs through three cross-modal fine-tuning techniques: (1) Cross-Modal
+  Match Module for input distribution alignment via principal word embedding extraction
+  and cross-attention; (2) Feature Regularization Loss for intermediate layer alignment
+  and gradient guidance; (3) Output Consistency Loss for resolving representation
+  space discrepancies. Supports both long-term (ETT-small, electricity, traffic, weather)
+  and short-term (M4) forecasting tasks with seq_len/pred_len configurations.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 1d+
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- mse
+- mae
+- forecast_checkpoints
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run one packaged long-term forecasting script on a prepared dataset
+    using default ETTh2 configuration (seq_len=96, pred_len=96/192/336/720).
+- id: full_train_eval
+  label: Full Train + Eval
+  description: Run the complete CALF training and forecasting evaluation workflow
+    across all supported datasets (long-term and short-term forecasting).
+- id: few_shot_forecasting
+  label: Few-Shot Forecasting
+  description: Run few-shot forecasting evaluation to assess LLM generalization with
+    limited training data.
+- id: zero_shot_forecasting
+  label: Zero-Shot Forecasting
+  description: Run zero-shot forecasting evaluation to assess transfer capabilities.
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: Long-term datasets (Autoformer)
+    url: https://drive.google.com/drive/folders/1ZOYpTUa82_jCcxIdTmyr0LXQfvaM9vIy
+    type: google_drive
+    files:
+    - ETT-small/ETTh1.csv
+    - ETT-small/ETTh2.csv
+    - ETT-small/ETTm1.csv
+    - ETT-small/ETTm2.csv
+    - electricity/electricity.csv
+    - traffic/traffic.csv
+    - weather/weather.csv
+  - name: Short-term M4 dataset
+    url: https://drive.google.com/drive/folders/15zio96o3NK4XOoR5L88oaWcJDVOiqQo9
+    type: google_drive
+    files:
+    - m4/
+  notes:
+  - Long-term datasets must be organized under ./datasets/{dataset_name}/{filename}.csv
+  - M4 dataset should be placed under ./datasets/m4/
+  - Word token embeddings require extraction via pca.py before training (saves to
+    ./wte_pca_500.pt)
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - Google Drive links for datasets require no authentication for public access
+  - External LLM weights (GPT-2 based) downloaded automatically via transformers library
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: Single GPU sufficient for seq_len=96, pred_len up to 720; batch_size may
+      need reduction on lower VRAM
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 48
+    notes: 48GB VRAM allows batch_size=256 with all prediction lengths; higher VRAM
+      enables faster training
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - transformers==4.30.1
+  - torch>=2.1.0
+  - numpy
+  - pandas
+  - scikit-learn
+  notes:
+  - Python 3.9 explicitly required by project README
+  - Exact PyTorch/CUDA versions delegated to user environment; 2.1.0+ with CUDA 11.8
+    recommended
+  - See bundled requirements.txt for full dependency set
+  - LLM backbone based on GPT-2 architecture (downloaded via transformers)
+risk_flags:
+- high_compute_cost
+- multi_hour_training
+- large_download
+risk_notes:
+- Full evaluation across all datasets and prediction lengths requires extended training
+  time
+- Dataset downloads from Google Drive total several GB
+- GPU memory requirements scale with batch_size and prediction length
+- Training uses fixed seed (2021) for reproducibility
+recommended_when: 'Use this benchmark when evaluating cross-modal time-series alignment,
+  LLM fine-tuning for temporal data, long-horizon forecasting performance, or few-shot/zero-shot
+  generalization capabilities of language model backbones on time series tasks.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you need a lightweight CPU-first
+  time-series benchmark, cannot provision GPUs with 24GB+ VRAM, or require inference-only
+  evaluation without training infrastructure.
+
+  '
+paper:
+  title: 'CALF: Aligning LLMs for Time Series Forecasting via Cross-modal Fine-Tuning'
+  authors:
+  - Peiyuan Liu
+  - Hang Guo
+  - Tao Dai
+  - Naiqi Li
+  - Jigang Bao
+  - Xudong Ren
+  - Yong Jiang
+  - Shu-Tao Xia
+  venue: arXiv preprint
+  year: 2024
+  arxiv: '2403.07300'
+  url: https://arxiv.org/abs/2403.07300
+  code_url: https://github.com/Hank0626/CALF
+  affiliations:
+  - Tsinghua Shenzhen International Graduate School
+  - Shenzhen University
+  - Pengcheng Laboratory
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.039_calf.zip
+  archive_type: zip
+  local_dir_name: paper-39-CALF
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.039_calf.zip
+  sha256: bf50089c65f0004d0e49a6d82c6225df9b7baacceead8814a715540189a49082
+  size_bytes: 3132751
+display:
+  palette_seed: teal-amber-signal
+  art_style: forecasting-lab
+  accent_priority: high
+  tags:
+  - large_language_models
+  - cross_modal_learning
+  - time_series_forecasting
+  - multivariate_forecasting
+  - llm_finetuning
+  - transformers
+image_path: ../image/039_aisb.t3.039_calf.jpg
+execution_anchors:
+  entry_point: run.py
+  main_script: scripts/long_term_forecasting/ETTh2.sh
+  key_modules:
+  - exp/exp_long_term_forecasting.py
+  - exp/exp_short_term_forecasting.py
+  - utils/metrics.py
+  - utils/cmLoss.py
+  - data_provider/data_factory.py
+  default_args:
+    task_name: long_term_forecast
+    model: CALF
+    seq_len: 96
+    pred_len: 96
+    batch_size: 256
+    learning_rate: 0.0005
+    train_epochs: 100
+    d_model: 768
+    n_heads: 4
+    gpt_layers: 6
+  metric_implementations:
+    mse:
+      source: utils/metrics.py::MSE
+      code_backed: true
+    mae:
+      source: utils/metrics.py::MAE
+      code_backed: true
+    rmse:
+      source: utils/metrics.py::RMSE
+      code_backed: true
+    mape:
+      source: utils/metrics.py::MAPE
+      code_backed: true
+    mspe:
+      source: utils/metrics.py::MSPE
+      code_backed: true
+output_artifacts:
+  checkpoints:
+    path: ./checkpoints
+    format: pytorch_model
+  results:
+    path: ./results
+    format: npy
+  summaries:
+    path: ./results_{task_name}.txt
+    format: text
+recovery_notes: 'Post-training artifacts include checkpoints in ./checkpoints, numerical
+  results in .npy format under ./results, and performance summaries in ./results_{task_name}.txt.
+  Early stopping with patience=5 is implemented. Training uses fixed seed (2021) for
+  reproducibility.
+
+  '

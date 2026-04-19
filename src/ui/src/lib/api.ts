@@ -18,6 +18,7 @@ import type {
   MemoryCard,
   MetricsTimelinePayload,
   OpenDocumentPayload,
+  QuestChatAttachmentUploadPayload,
   QuestSearchPayload,
   QuestDocumentAssetUploadPayload,
   QuestNodeTraceDetailPayload,
@@ -33,6 +34,7 @@ import type {
   WeixinQrLoginWaitPayload,
   WorkflowPayload,
 } from '@/types'
+import { apiClient } from '@/lib/api/client'
 import {
   getDemoGitCompare,
   getDemoExplorerPayload,
@@ -61,6 +63,25 @@ type ConfigValidateInput =
 type ConfigTestInput =
   | { content: string; live?: boolean; delivery_targets?: Record<string, unknown> }
   | { structured: ConfigStructuredPayload; live?: boolean; delivery_targets?: Record<string, unknown> }
+
+type MessageQueueStateResponse = {
+  ok: boolean
+  status?: string
+  message?: string
+  message_id?: string
+  message_ids?: string[]
+  scheduled?: boolean
+  started?: boolean
+  queued?: boolean
+  reason?: string
+  current_message_state?: {
+    message_id?: string | null
+    client_message_id?: string | null
+    read_state?: string | null
+    read_reason?: string | null
+    read_at?: string | null
+  } | null
+}
 
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -558,11 +579,37 @@ export const client = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  uploadChatAttachment: (
+    questId: string,
+    payload: {
+      file_name: string
+      mime_type?: string
+      content_base64: string
+      draft_id?: string
+    },
+    options?: {
+      onUploadProgress?: (progress: number) => void
+    }
+  ) =>
+    apiClient
+      .post<QuestChatAttachmentUploadPayload>(`/api/quests/${questId}/chat/uploads`, payload, {
+        onUploadProgress: (event) => {
+          if (!options?.onUploadProgress || !event.total) return
+          const progress = Math.round((event.loaded * 100) / event.total)
+          options.onUploadProgress(progress)
+        },
+      })
+      .then((response) => response.data),
+  deleteChatAttachment: (questId: string, draftId: string) =>
+    api<Record<string, unknown>>(`/api/quests/${questId}/chat/uploads/${encodeURIComponent(draftId)}`, {
+      method: 'DELETE',
+    }),
   sendChat: (
     questId: string,
     text: string,
     replyToInteractionId?: string | null,
-    clientMessageId?: string | null
+    clientMessageId?: string | null,
+    attachmentDraftIds?: string[]
   ) =>
     api<{
       ok: boolean
@@ -574,6 +621,10 @@ export const client = {
         created_at?: string
         delivery_state?: string
         client_message_id?: string
+        read_state?: string
+        read_reason?: string
+        read_at?: string
+        attachments?: Array<Record<string, unknown>>
       }
     }>(`/api/quests/${questId}/chat`, {
       method: 'POST',
@@ -582,6 +633,23 @@ export const client = {
         source: 'web-react',
         reply_to_interaction_id: replyToInteractionId || undefined,
         client_message_id: clientMessageId || undefined,
+        attachment_draft_ids: attachmentDraftIds && attachmentDraftIds.length > 0 ? attachmentDraftIds : undefined,
+      }),
+    }),
+  readQueuedMessagesNow: (questId: string, messageId?: string | null) =>
+    api<MessageQueueStateResponse>(`/api/quests/${questId}/messages/read-now`, {
+      method: 'POST',
+      body: JSON.stringify({
+        message_id: messageId || undefined,
+        source: 'web-react',
+      }),
+    }),
+  withdrawQueuedMessage: (questId: string, messageId?: string | null) =>
+    api<MessageQueueStateResponse>(`/api/quests/${questId}/messages/withdraw`, {
+      method: 'POST',
+      body: JSON.stringify({
+        message_id: messageId || undefined,
+        source: 'web-react',
       }),
     }),
   sendCommand: (questId: string, command: string) =>
@@ -683,5 +751,18 @@ export const client = {
     api<ConfigTestPayload>('/api/config/test', {
       method: 'POST',
       body: JSON.stringify({ name, ...input }),
+    }),
+  deepxivTest: (structured: Record<string, unknown>) =>
+    api<{
+      ok: boolean
+      summary?: string
+      warnings?: string[]
+      errors?: string[]
+      details?: Record<string, unknown>
+      results?: Array<Record<string, unknown>>
+      preview?: string
+    }>('/api/config/deepxiv/test', {
+      method: 'POST',
+      body: JSON.stringify({ structured }),
     }),
 }

@@ -1,0 +1,172 @@
+schema_version: 1
+id: aisb.t3.031_circuitstability
+name: Circuit Stability Characterizes Language Model Generalization
+version: 0.1.0
+one_line: 'Extract soft circuits from language models (gemma-2-2b and others) via
+  edge-ablation attribution, measure circuit stability across arithmetic/Boolean/sports
+  subtasks, and correlate stability with generalization performance.
+
+  '
+task_description: 'This benchmark evaluates whether the internal circuits a language
+  model uses remain stable across structured subtask partitions, and whether that
+  stability predicts generalization. The workflow has three phases: (1) run baseline
+  evaluation of gemma-2-2b on arithmetic subtasks (digit-pair combinations from 1×1
+  to 8×8) using few-shot prompting, producing per-subtask exact-match accuracy; (2)
+  perform soft-circuit discovery via noisy-to-clean edge-ablation (EAP-IG) over the
+  model''s computational graph for each subtask, yielding real-valued importance scores
+  for every edge; (3) compute Spearman ρ between soft circuits of different subtasks,
+  apply α-equivalence clustering, and correlate circuit stability with accuracy fluctuations.
+  The paper extends this to Boolean expression evaluation and sports understanding.
+  The primary executable entry point is src/eval_arith_baseline.sh, which evaluates
+  four key digit combinations (1-1, 1-8, 8-1, 8-8) and computes accuracy from pickled
+  outputs. Circuit discovery is implemented in src/experiments/circuit_discovery.py
+  and explored interactively in notebooks/circuit-discovery.ipynb. The benchmark is
+  self-contained: data is generated procedurally (no external dataset download), models
+  are loaded via HuggingFace transformers/TransformerLens, and evaluation is local.
+
+  '
+capability_tags:
+- research_code_optimization
+- mechanistic_interpretability
+- large_language_models
+- circuit_analysis
+- evaluation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 1d+
+difficulty: hard
+data_access: public
+primary_outputs:
+- accuracy_11
+- accuracy_18
+- accuracy_81
+- accuracy_88
+- circuit_stability_report
+- generalization_analysis
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval (Arithmetic Baseline)
+  description: 'Run src/eval_arith_baseline.sh to evaluate gemma-2-2b on four arithmetic
+    subtask digit combinations (1-1, 1-8, 8-1, 8-8) with 1000 samples each. Requires
+    one A100 80 GB GPU. Produces per-subtask accuracy scores from pickled model outputs.
+
+    '
+- id: full_analysis
+  label: Full Circuit Stability Analysis
+  description: 'Run the complete workflow: baseline evaluation across all 64 subtask
+    pairs, soft-circuit discovery via EAP-IG for each subtask, α-equivalence clustering,
+    Spearman ρ computation, t-SNE visualization, and generalization correlation analysis.
+    Case Studies I and II need one A100 80 GB; Case Study III requires two A100 80
+    GB GPUs. Expect 12-24+ hours depending on GPU count and subtask coverage.
+
+    '
+dataset_download:
+  primary_method: procedural
+  sources: []
+  notes:
+  - All evaluation data (arithmetic, Boolean, sports) is generated procedurally at
+    runtime.
+  - No external dataset download is required.
+  - Model weights (gemma-2-2b) are fetched from HuggingFace Hub or loaded from a local
+    path via --model_path.
+credential_requirements:
+  mode: optional
+  items:
+  - HuggingFace token (only if gemma-2-2b requires gated access)
+  notes:
+  - If model weights are pre-downloaded to a local path, no credentials are needed.
+  - Set --model_path in eval scripts to use local weights.
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 80
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 2
+    gpu_vram_gb: 80
+environment:
+  python: 3.10.16
+  cuda: null
+  pytorch: 2.4.1
+  key_packages:
+  - jax==0.5.0
+  - jaxlib==0.5.0
+  - transformers==4.44.2
+  - transformer-lens==2.11.0
+  - pygraphviz==1.14
+  - accelerate==0.34.2
+  - einops==0.8.0
+  - datasets==3.0.0
+  notes:
+  - Graphviz system package is a hard prerequisite for circuit visualization (pygraphviz).
+  - Install via install.sh or manually (brew install graphviz / apt-get install graphviz).
+  - Full dependency list in environment.yml (conda) or pip fallback documented in
+    README.
+  - CUDA version is not pinned; JAX and PyTorch will select appropriate CUDA backend.
+risk_flags:
+- gpu_intensive
+- long_running
+- model_download_required
+risk_notes:
+- Case Study III (sports understanding with larger models) requires two A100 80 GB
+  GPUs; single-GPU setups cannot run it.
+- Full 64-subtask circuit discovery is computationally expensive (edge ablation over
+  the entire computational graph per subtask).
+- No benchmark execution was performed during the packaging pass; metric values are
+  code-backed but unverified at runtime.
+- The --model_path flag expects pre-downloaded weights; without it, the script attempts
+  HuggingFace Hub download which may fail for gated models.
+- pygraphviz installation can fail if Graphviz headers are not available on the system.
+recommended_when: 'Use this benchmark when you want a mechanistic-interpretability
+  task that extracts soft circuits via edge-ablation, clusters subtasks by circuit
+  similarity, and quantitatively links circuit stability to generalization. It is
+  well-suited for studying arithmetic, Boolean, or compositional reasoning in transformer
+  models and for testing whether optimization improvements preserve circuit-level
+  structure.
+
+  '
+not_recommended_when: 'Do not use this if you cannot provision at least one A100 80
+  GB GPU, if you need a lightweight fine-tuning benchmark, or if you are looking for
+  a task with externally provided static evaluation datasets rather than procedurally
+  generated inputs.
+
+  '
+paper:
+  title: Circuit Stability Characterizes Language Model Generalization
+  authors:
+  - Alan Sun
+  venue: ACL 2025
+  year: 2025
+  url: https://openreview.net/forum?id=2914j8175g
+  arxiv: https://arxiv.org/abs/2505.24731
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.031_circuitstability.zip
+  archive_type: zip
+  local_dir_name: paper-31-CircuitStability
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.031_circuitstability.zip
+  sha256: 549af47824f5e0af3f66e650ca1b91d28b02dc534b23ac71ddd4c84a70a1ee7e
+  size_bytes: 2108204
+display:
+  palette_seed: graphite-gold-circuit
+  art_style: interpretability-lab
+  accent_priority: high
+image_path: ../image/031_aisb.t3.031_circuitstability.jpg
+commercial:
+  annual_fee: null

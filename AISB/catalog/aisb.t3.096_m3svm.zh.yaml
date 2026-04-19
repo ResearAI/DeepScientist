@@ -1,0 +1,149 @@
+id: aisb.t3.096_m3svm
+name: 具有差分隐私的多类支持向量机
+version: 0.1.0
+one_line: 使用具有权重和梯度扰动方法的一体化单数据访问训练的差分私有多类 SVM。
+task_description: 该打包基准测试涵盖了差分隐私多类 SVM (PMSVM)，可解决传统 OvR 和 OvO 多类策略中的隐私预算扩展问题。与在构建多个二元分类器时重复查询每个数据样本的传统​​方法（消耗与类别数量成比例的隐私预算）不同，该方法使用一体化 SVM 训练来访问每个数据点一次。提供了两种扰动路径：(1) 权重扰动 (WP)，它将校准的高斯噪声添加到一体式 SVM 的原始权重矩阵中；(2) 梯度扰动 (GP)，它通过 Opacus 应用平滑的铰链损失近似和差分私有梯度下降。该任务保留了严格的边际保证，同时通过改进的实用程序与隐私权衡实现保护隐私的多类分类。
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- accuracy
+- accuracy_std
+- private_svm_checkpoint
+launch_profiles:
+- id: gradient_perturbation
+  label: 梯度扰动（Opacus）
+  description: 使用 Opacus 运行梯度扰动路线以实现差分私有随机梯度下降。使用带有 Adam 优化器的平滑铰链损失近似。示例： python main-opacus.py --data Cornell --optimizer adam --num_epoch 20 --lr_scale 0.1 --eps 2.0。支持具有特定于数据集的超参数的多个数据集。不需要 GPU，但建议用于较大的数据集。
+- id: weight_perturbation
+  label: 重量扰动 (Sklearn)
+  description: 使用 scikit-learn 的 LinearSVC 和差分私有权重扰动运行权重扰动 SVM 路径。示例： python main-sklearn.py --data=Cornell.完全支持仅 CPU 执行。基于梯度的方法的替代方案，具有潜在不同的效用-隐私权衡。
+dataset_download:
+  primary_method: bundled
+  sources:
+  - url: https://deepscientist.cc/AISB/096_m3svm
+    format: zip
+    local_dir: paper-96-M3SVM
+  - source: dataset/
+    format: .mat files
+    description: Preprocessed multi-class datasets (Cornell, Dermatology, Glass, HHAR, ISOLET, ORL, USPS, Vehicle)
+  notes:
+  - 数据集以 .mat 格式捆绑在 dataset/ 文件夹中
+  - 特定于数据集的超参数配置在运行笔记本和主脚本中定义
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 1
+    gpu_vram_gb: 8
+  notes:
+  - 仅 CPU 执行对于两种启动配置文件都是完全可行的
+  - GPU 加速可减少较大数据集（ISOLET、HHAR）的训练时间，但不是必需的
+environment:
+  python: '3.8'
+  cuda: null
+  pytorch: 2.0.1
+  flash_attn: null
+  key_packages:
+  - opacus==1.2.0
+  - torch>=2.0.0
+  - scikit-learn>=1.0.0
+  - scipy>=1.7.0
+  - numpy>=1.21.0
+  - pandas>=1.3.0
+  notes:
+  - 支持仅 CPU 执行，并建议采用最低配置路线
+  - 仅梯度扰动发射剖面需要 Opacus
+  - 请参阅捆绑的 requirements.txt 以获取完整的依赖项集
+  - 有关超参数调整指南，请参阅捆绑的 README/OPTIMIZATION.md
+risk_flags:
+- privacy_parameter_tuning
+- hyperparameter_sensitivity
+risk_notes:
+- 必须针对目标隐私保证适当设置隐私预算（epsilon、delta）
+- Hyperparameter sensitivity: lr_scale、纪元和 C 正则化与隐私噪声相互作用
+- 需要针对数据集进行调整；天真的默认值可能会产生较差的准确性
+- 梯度扰动可能需要仔细选择限幅阈值
+recommended_when: 当您需要具有严格差异隐私保证的隐私意识经典 ML 任务时，请使用此基准。特别适合具有严格数据隐私要求的表格多类分类，而传统的深度学习密集型基准则显得有些过分。非常适合评估传统机器学习设置中的隐私与效用权衡。
+not_recommended_when: 如果您需要大规模深度学习、多模态数据、序列建模或复杂的特征提取管道，请勿使用此基准测试。当不存在隐私要求或噪声注入的准确性权衡对于您的应用程序来说是不可接受的时，则不适合。
+paper:
+  title: Multi-Class Support Vector Machine with Differential Privacy
+  venue: NeurIPS
+  year: 2025
+  url: https://openreview.net/forum?id=Jz4PENUsRo
+  authors:
+  - Jinseong Park
+  - Yujin Choi
+  - Jaewook Lee
+  institution:
+  - Korea Institute for Advanced Study
+  - Seoul National University
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.096_m3svm.zip
+  archive_type: zip
+  local_dir_name: paper-96-M3SVM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.096_m3svm.zip
+  sha256: 320d7f75f10ec480816b2627d4fda2587da3d4455a6119e552fd92b6649e80e9
+  size_bytes: 60022973
+display:
+  palette_seed: ivory-indigo-privacy
+  art_style: classical-ml
+  accent_priority: medium
+image_path: ../image/096_aisb.t3.096_m3svm.jpg
+metric_contract:
+  accuracy:
+    origin_path: run/run_pmsvm_gp-adam.ipynb
+    source_ref: code-backed
+    evaluation_protocol:
+      code_paths:
+      - run/run_pmsvm_gp-adam.ipynb
+      - models/train.py
+      - main-opacus.py
+  accuracy_std:
+    origin_path: run/run_pmsvm_gp-adam.ipynb
+    source_ref: code-backed
+    evaluation_protocol:
+      code_paths:
+      - run/run_pmsvm_gp-adam.ipynb
+      - models/train.py
+  private_svm_checkpoint:
+    origin_path: models/model.py
+    source_ref: code-backed
+    description: 应用差分隐私的训练模型检查点
+    evaluation_protocol:
+      code_paths:
+      - models/model.py
+      - models/train.py
+capability_tags:
+- research_code_optimization
+- differential_privacy
+- support_vector_machines
+- classification
+- trustworthy_ml
+- privacy_preserving_ml
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null

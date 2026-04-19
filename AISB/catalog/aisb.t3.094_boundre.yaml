@@ -1,0 +1,147 @@
+schema_version: 1
+id: aisb.t3.094_boundre
+name: 'BounDr.E: Predicting Drug-likeness via Biomedical Knowledge Alignment and EM-like
+  One-Class Boundary Optimization'
+version: 0.1.0
+one_line: Drug-likeness boundary prediction via knowledge-graph alignment and EM-like
+  one-class optimization on molecular fingerprints.
+task_description: 'This packaged benchmark covers two-stage drug-likeness boundary
+  prediction. Step 1 performs multi-modal alignment between molecular fingerprints
+  (Morgan fingerprints) and biomedical knowledge-graph embeddings into a unified space.
+  Step 2 trains a deep one-class classifier using EM-like optimization to iteratively
+  refine a hyperspherical boundary around approved drugs, pushing out-of-boundary
+  non-drug compounds while contracting drug-like compounds toward the center. The
+  model outputs a normalized distance score where values greater than 1 indicate compounds
+  outside the drug-like boundary.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- f1
+- auroc
+- avgpr
+- drug_boundary_checkpoint
+launch_profiles:
+- id: single_score
+  label: Single Score
+  description: 'Run drug-likeness scoring on a SMILES input file using pre-trained
+    alignment and boundary models. Outputs normalized distance scores where inference
+    values > 1 indicate compounds outside the drug boundary. Usage: python score.py
+    --input_smiles test.smi --project_dir [project_dir] --device cuda:0
+
+    '
+- id: train_and_eval
+  label: Train + Eval
+  description: 'Run the full two-stage pipeline: (1) train multimodal alignment encoder
+    on knowledge-graph and fingerprint embeddings, then (2) train EM-like boundary
+    optimizer and evaluate F1, AUROC, and AVPR metrics.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - url: https://deepscientist.cc/AISB/094_boundre
+    type: archive
+  - type: internal_benchmark
+    path: benchmark/
+    description: Pre-processed drug and compound SMILES files with train/valid/test
+      splits
+  notes:
+  - Benchmark data and splits provided in benchmark/ folder
+  - Demo files available in demo/ folder with test.smi for quick validation
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.8'
+  cuda: '10.1'
+  pytorch: 1.8.1
+  flash_attn: null
+  key_packages:
+  - rdkit-pypi==2022.9.5
+  - numpy==1.24.1
+  - pandas==2.0.1
+  notes:
+  - rdkit is required for molecular fingerprint computation and SMILES parsing
+  - See bundled requirements.txt for full dependency set
+risk_flags:
+- em_iteration_convergence
+- knowledge_graph_alignment_quality
+risk_notes:
+- EM-like optimization may require careful tuning of initialization and iteration
+  count for stable boundary convergence
+- Knowledge-graph alignment quality depends on the coherence between ATC similarity
+  matrix and chemical structure
+recommended_when: 'Use this benchmark when you need a biomedical one-class boundary-learning
+  task with chemistry inputs, knowledge-graph features, and iterative boundary refinement.
+  Suitable for evaluating drug-likeness scoring pipelines, multi-modal embedding alignment,
+  and open-world compound classification.
+
+  '
+not_recommended_when: 'Do not use this if you need a lightweight non-biomedical benchmark,
+  binary classification with hard negatives, or a pre-trained model without training
+  customization.
+
+  '
+paper:
+  title: 'BounDr.E: Predicting Drug-likeness via Biomedical Knowledge Alignment and
+    EM-like One-Class Boundary Optimization'
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/bang25a.html
+  authors:
+  - Dongmin Bang
+  - Inyoung Sung
+  - Yinhua Piao
+  - Sangseon Lee
+  - Sun Kim
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.094_boundre.zip
+  archive_type: zip
+  local_dir_name: paper-94-BounDrE
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.094_boundre.zip
+  sha256: 2753a34922d6d0c3d0b021300ab177f667a76ff28dfd357b39fce26571e9bad7
+  size_bytes: 14967140
+display:
+  palette_seed: sage-crimson-boundary
+  art_style: biomedical-geometry
+  accent_priority: high
+image_path: ../image/094_aisb.t3.094_boundre.jpg
+capability_tags:
+- research_code_optimization
+- drug_discovery
+- one_class_classification
+- multimodal_learning
+- biomedical_ai
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null

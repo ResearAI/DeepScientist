@@ -2,10 +2,23 @@ import type { ConnectorAvailabilitySnapshot } from '@/types'
 
 export type ResearchScope = 'baseline_only' | 'baseline_plus_direction' | 'full_research'
 export type BaselineMode =
+  | 'auto'
   | 'existing'
   | 'restore_from_url'
   | 'allow_degraded_minimal_reproduction'
   | 'stop_if_insufficient'
+export type BaselineSourceMode =
+  | 'auto'
+  | 'verify_local_existing'
+  | 'attach_registry_baseline'
+  | 'reproduce_from_source'
+  | 'repair_existing_baseline'
+  | 'skip_until_blocking'
+export type ExecutionStartMode = 'plan_then_execute' | 'execute_immediately'
+export type BaselineAcceptanceTarget =
+  | 'comparison_ready'
+  | 'paper_repro_ready'
+  | 'registry_publishable'
 export type ResourcePolicy = 'conservative' | 'balanced' | 'aggressive'
 export type GitStrategy =
   | 'branch_per_analysis_then_paper'
@@ -37,6 +50,9 @@ export type StartResearchTemplate = {
   goal: string
   baseline_id: string
   baseline_variant_id: string
+  baseline_source_mode: BaselineSourceMode
+  execution_start_mode: ExecutionStartMode
+  baseline_acceptance_target: BaselineAcceptanceTarget
   baseline_urls: string
   paper_urls: string
   runtime_constraints: string
@@ -106,7 +122,7 @@ const START_RESEARCH_INTENSITY_PRESETS: Record<
     id: 'balanced',
     contract: {
       scope: 'baseline_plus_direction',
-      baseline_mode: 'restore_from_url',
+      baseline_mode: 'auto',
       resource_policy: 'balanced',
       time_budget_hours: '24',
       git_strategy: 'semantic_head_plus_controlled_integration',
@@ -155,9 +171,12 @@ export function defaultStartResearchTemplate(language: 'en' | 'zh'): StartResear
     title: '',
     quest_id: '',
     goal: '',
-    baseline_id: '',
-    baseline_variant_id: '',
-    baseline_urls: '',
+      baseline_id: '',
+      baseline_variant_id: '',
+      baseline_source_mode: 'auto',
+      execution_start_mode: 'execute_immediately',
+      baseline_acceptance_target: 'comparison_ready',
+      baseline_urls: '',
     paper_urls: '',
     runtime_constraints: '',
     objectives: '',
@@ -260,6 +279,9 @@ export function listReferenceStartResearchTemplates(): StartResearchTemplateEntr
     ].join('\n'),
     baseline_id: '',
     baseline_variant_id: '',
+    baseline_source_mode: 'reproduce_from_source',
+    execution_start_mode: 'plan_then_execute',
+    baseline_acceptance_target: 'paper_repro_ready',
     baseline_urls: 'https://github.com/junhongmit/P-and-B',
     paper_urls: 'https://arxiv.org/abs/2505.16122',
     runtime_constraints: [
@@ -310,6 +332,9 @@ export function listReferenceStartResearchTemplates(): StartResearchTemplateEntr
     ].join('\n'),
     baseline_id: '',
     baseline_variant_id: '',
+    baseline_source_mode: 'reproduce_from_source',
+    execution_start_mode: 'plan_then_execute',
+    baseline_acceptance_target: 'paper_repro_ready',
     baseline_urls: 'https://github.com/junhongmit/P-and-B',
     paper_urls: 'https://arxiv.org/abs/2505.16122',
     runtime_constraints: [
@@ -452,6 +477,38 @@ function sanitizeBaselineExecutionPolicy(value: unknown): BaselineExecutionPolic
   return 'auto'
 }
 
+function sanitizeBaselineSourceMode(value: unknown): BaselineSourceMode {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (
+    normalized === 'auto' ||
+    normalized === 'verify_local_existing' ||
+    normalized === 'attach_registry_baseline' ||
+    normalized === 'reproduce_from_source' ||
+    normalized === 'repair_existing_baseline' ||
+    normalized === 'skip_until_blocking'
+  ) {
+    return normalized
+  }
+  return 'auto'
+}
+
+function sanitizeExecutionStartMode(value: unknown): ExecutionStartMode {
+  const normalized = String(value || '').trim().toLowerCase()
+  return normalized === 'plan_then_execute' ? 'plan_then_execute' : 'execute_immediately'
+}
+
+function sanitizeBaselineAcceptanceTarget(value: unknown): BaselineAcceptanceTarget {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (
+    normalized === 'comparison_ready' ||
+    normalized === 'paper_repro_ready' ||
+    normalized === 'registry_publishable'
+  ) {
+    return normalized
+  }
+  return 'comparison_ready'
+}
+
 function sanitizeReviewFollowupPolicy(value: unknown): ReviewFollowupPolicy {
   const normalized = String(value || '').trim().toLowerCase()
   if (
@@ -480,11 +537,28 @@ function sanitizeLines(text: string) {
 }
 
 export function resolveStartResearchContractFields(
-  input: Pick<StartResearchTemplate, 'research_intensity' | 'baseline_id'>
+  input: Pick<StartResearchTemplate, 'research_intensity' | 'baseline_id' | 'baseline_source_mode'>
 ): StartResearchContractFields {
   const intensity = sanitizeResearchIntensity(input.research_intensity, input)
   const resolved = {
     ...START_RESEARCH_INTENSITY_PRESETS[intensity].contract,
+  }
+  const baselineSourceMode = sanitizeBaselineSourceMode(input.baseline_source_mode)
+  if (baselineSourceMode === 'verify_local_existing' || baselineSourceMode === 'attach_registry_baseline') {
+    resolved.baseline_mode = 'existing'
+    return resolved
+  }
+  if (baselineSourceMode === 'reproduce_from_source') {
+    resolved.baseline_mode = 'restore_from_url'
+    return resolved
+  }
+  if (baselineSourceMode === 'repair_existing_baseline') {
+    resolved.baseline_mode = 'allow_degraded_minimal_reproduction'
+    return resolved
+  }
+  if (baselineSourceMode === 'skip_until_blocking') {
+    resolved.baseline_mode = 'stop_if_insufficient'
+    return resolved
   }
   if (String(input.baseline_id || '').trim()) {
     resolved.baseline_mode = 'existing'
@@ -500,6 +574,9 @@ function sanitizeTemplate(input: PersistedStartResearchTemplate): StartResearchT
     goal: String(input.goal || '').trim(),
     baseline_id: String(input.baseline_id || legacyBaselineId || '').trim(),
     baseline_variant_id: String(input.baseline_variant_id || '').trim(),
+    baseline_source_mode: sanitizeBaselineSourceMode(input.baseline_source_mode),
+    execution_start_mode: sanitizeExecutionStartMode(input.execution_start_mode),
+    baseline_acceptance_target: sanitizeBaselineAcceptanceTarget(input.baseline_acceptance_target),
     baseline_urls: String(input.baseline_urls || '').trim(),
     paper_urls: String(input.paper_urls || '').trim(),
     runtime_constraints: String(input.runtime_constraints || '').trim(),
@@ -601,6 +678,43 @@ function labelBaselineExecutionPolicy(value: BaselineExecutionPolicy) {
   }
 }
 
+function labelBaselineSourceMode(value: BaselineSourceMode) {
+  switch (value) {
+    case 'verify_local_existing':
+      return 'Verify local existing: if local code or a local service is already comparison-ready, verify it first instead of reproducing from scratch.'
+    case 'attach_registry_baseline':
+      return 'Attach registry baseline: treat a reusable registered baseline as the preferred comparator route.'
+    case 'reproduce_from_source':
+      return 'Reproduce from source: restore the baseline from repositories or artifacts when no trusted local comparator already exists.'
+    case 'repair_existing_baseline':
+      return 'Repair existing baseline: fix or refresh a stale local baseline before rebuilding it from zero.'
+    case 'skip_until_blocking':
+      return 'Skip until blocking: do not front-load baseline work unless later evidence shows the missing comparator is actually blocking.'
+    default:
+      return 'Automatic: choose the lightest trustworthy comparator route from the current baseline sources and local evidence.'
+  }
+}
+
+function labelExecutionStartMode(value: ExecutionStartMode) {
+  switch (value) {
+    case 'plan_then_execute':
+      return 'Plan first: write a concrete bounded execution plan and wait for user approval before heavy reproduction or expensive setup.'
+    default:
+      return 'Execute immediately: if the route is already clear, begin the smallest useful execution step without a separate approval round.'
+  }
+}
+
+function labelBaselineAcceptanceTarget(value: BaselineAcceptanceTarget) {
+  switch (value) {
+    case 'paper_repro_ready':
+      return 'Paper-grade reproduction ready: do not treat the baseline as complete until the reproduction is strong enough to defend in a paper.'
+    case 'registry_publishable':
+      return 'Registry publishable: treat the baseline as complete only when it is clean and reusable enough to publish as a reusable baseline package.'
+    default:
+      return 'Comparison ready: accept the lightest trustworthy comparator that is sufficient for downstream idea selection and experiment comparison.'
+  }
+}
+
 function labelReviewFollowupPolicy(value: ReviewFollowupPolicy) {
   switch (value) {
     case 'auto_execute_followups':
@@ -673,11 +787,11 @@ function deliveryModeLines(needResearchPaper: boolean) {
   if (needResearchPaper) {
     return [
       '- A research paper is required for this project.',
-      '- The project should normally continue through baseline, literature-grounded idea selection, implementation, main experiments, necessary analysis, paper outline, drafting, revision, and paper bundle preparation.',
-      '- Do not stop after obtaining only one improved algorithm or one promising run.',
+      '- The default paper-facing route is baseline, idea selection, implementation, measured experiments, only the analysis that the evidence actually needs, then drafting and packaging.',
+      '- Do not stop after obtaining only one improved algorithm or one promising run unless the user explicitly narrows scope.',
       '- After each `artifact.record_main_experiment(...)`, first interpret the measured result, then decide whether to improve further, run necessary follow-up analysis, or move into writing.',
       '- The idea stage only creates or revises a candidate direction; the round is not complete until a main experiment result is recorded and routed.',
-      '- Unless the user explicitly changes scope, do not terminate the project before at least one paper-like deliverable exists.',
+      '- Treat later analysis, review, and finalize work as follow-on stages to open when the nearer gate is actually ready, not as boxes that must always be pre-completed before progress counts.',
     ]
   }
   return [
@@ -703,7 +817,8 @@ function decisionPolicyLines(value: DecisionPolicy) {
   }
   return [
     '- Autonomous decision mode is active.',
-    '- Do not hand ordinary route, branch, cost, baseline-reuse, or experiment-selection decisions back to the user.',
+    '- Do not hand ordinary route, branch, cost, baseline-reuse, or experiment-selection decisions back to the user by default.',
+    '- If the main fork is a large-cost choice such as verify/reuse versus full reproduction, one short clarification or one bounded plan is acceptable before heavy execution.',
     '- Report chosen routes through threaded progress or milestone updates, and keep moving unless you are explicitly requesting final completion approval.',
   ]
 }
@@ -753,6 +868,7 @@ function customLaunchLines(input: StartResearchTemplate) {
   if (normalized.custom_profile === 'continue_existing_state') {
     lines.push('- First action: audit and trust-rank existing baselines, results, drafts, or review assets before rerunning expensive work.')
     lines.push('- Prefer `intake-audit` first if the starting state is not already normalized.')
+    lines.push('- First goal: recover the active route and unlock the next blocker, not restart the full research graph from zero.')
   } else if (normalized.custom_profile === 'review_audit') {
     lines.push('- First action: inspect the current manuscript and run an independent skeptical audit before further drafting or finalization.')
     lines.push('- Prefer `review` first, and only route to extra experiments when the audit shows the current evidence is genuinely insufficient.')
@@ -779,11 +895,14 @@ export function compileStartResearchPrompt(input: StartResearchTemplate) {
   const baselineUrls = sanitizeLines(normalized.baseline_urls)
   const paperUrls = sanitizeLines(normalized.paper_urls)
   const baselineVariant = normalized.baseline_variant_id
+  const baselineSourceMode = sanitizeBaselineSourceMode(normalized.baseline_source_mode)
+  const executionStartMode = sanitizeExecutionStartMode(normalized.execution_start_mode)
+  const baselineAcceptanceTarget = sanitizeBaselineAcceptanceTarget(normalized.baseline_acceptance_target)
   const baselineContext = normalized.baseline_id
     ? `Runtime will attach and confirm baseline_id ${normalized.baseline_id}${baselineVariant ? ` (variant ${baselineVariant})` : ''} before the project starts. Treat it as the pre-bound baseline unless you find a concrete incompatibility, corruption, or missing-evidence problem.`
     : baselineUrls.length > 0
       ? baselineUrls.map((url) => `- ${url}`).join('\n')
-      : 'No baseline link has been attached yet. The first obligation is to discover, repair, or reconstruct a reusable baseline.'
+      : 'No baseline link has been attached yet. First establish the lightest trustworthy comparator for this quest instead of assuming a full source reproduction is automatically required.'
   const questRepo = normalized.quest_id || 'auto-assigned-sequential-on-create'
   const objectiveLines = normalized.objectives
     ? sanitizeLines(normalized.objectives).map((line) => `- ${line}`).join('\n')
@@ -803,6 +922,15 @@ export function compileStartResearchPrompt(input: StartResearchTemplate) {
     '',
     'Baseline Context',
     baselineContext,
+    '',
+    'Baseline Source Preference',
+    `- ${labelBaselineSourceMode(baselineSourceMode)}`,
+    '',
+    'Execution Start Mode',
+    `- ${labelExecutionStartMode(executionStartMode)}`,
+    '',
+    'Baseline Acceptance Target',
+    `- ${labelBaselineAcceptanceTarget(baselineAcceptanceTarget)}`,
     '',
     'Reference Papers / Repositories / Local Paths',
     paperUrls.length > 0 ? paperUrls.map((url) => `- ${url}`).join('\n') : '- None provided',
@@ -827,6 +955,9 @@ export function compileStartResearchPrompt(input: StartResearchTemplate) {
     `- Research paper required: ${normalized.need_research_paper ? 'Yes' : 'No; optimize for the strongest justified algorithmic result.'}`,
     `- Scope: ${labelScope(derivedContract.scope)}`,
     `- Baseline policy: ${labelBaselineMode(derivedContract.baseline_mode)}`,
+    `- Baseline source preference: ${labelBaselineSourceMode(baselineSourceMode)}`,
+    `- Execution start mode: ${labelExecutionStartMode(executionStartMode)}`,
+    `- Baseline acceptance target: ${labelBaselineAcceptanceTarget(baselineAcceptanceTarget)}`,
     `- Review follow-up policy: ${normalized.custom_profile === 'review_audit' ? labelReviewFollowupPolicy(normalized.review_followup_policy) : 'Not applicable outside the Review custom task type.'}`,
     `- Baseline execution policy: ${normalized.launch_mode === 'custom' ? labelBaselineExecutionPolicy(normalized.baseline_execution_policy) : 'Standard baseline handling from the ordinary research loop.'}`,
     `- Manuscript edit mode: ${normalized.custom_profile === 'review_audit' || normalized.custom_profile === 'revision_rebuttal' ? labelManuscriptEditMode(normalized.manuscript_edit_mode) : 'No manuscript-facing custom edit contract requested.'}`,
@@ -834,22 +965,41 @@ export function compileStartResearchPrompt(input: StartResearchTemplate) {
     `- Git strategy: ${labelGitStrategy(derivedContract.git_strategy)}`,
     `- Time budget per research round: ${derivedContract.time_budget_hours} hour(s)`,
     '',
-    'Mandatory Working Rules',
+    'Default Working Rules',
     '- Keep all durable files inside the project root.',
-    '- Reuse existing baseline artifacts whenever possible before rebuilding them.',
+    '- Prefer reusing existing baseline artifacts before rebuilding them from scratch.',
+    baselineSourceMode === 'verify_local_existing'
+      ? '- Baseline source mode is local-existing-first: if the user already has local runnable code or a local service with a clear metric path, verify it as the comparator before planning a from-scratch reproduction.'
+      : baselineSourceMode === 'attach_registry_baseline'
+        ? '- Baseline source mode is registry-first: if a reusable baseline entry exists, attach and verify it before considering full reproduction.'
+        : baselineSourceMode === 'reproduce_from_source'
+          ? '- Baseline source mode is source-reproduction-first: plan around restoring the comparator from source repos or artifacts unless a stronger local existing route becomes obvious.'
+          : baselineSourceMode === 'repair_existing_baseline'
+            ? '- Baseline source mode is repair-first: prefer repairing the stale local baseline over restarting from a clean slate.'
+            : baselineSourceMode === 'skip_until_blocking'
+              ? '- Baseline source mode is skip-until-blocking: do not front-load baseline reproduction unless the missing comparator is actually blocking the next scientific step.'
+              : '- Baseline source mode is automatic: choose the lightest trustworthy comparator route from the currently provided baseline sources and local evidence.',
+    executionStartMode === 'plan_then_execute'
+      ? '- Execution start mode is plan-first: for heavy baseline reproduction, expensive setup, or broad code changes, first produce a bounded step-by-step plan and wait for explicit user approval.'
+      : '- Execution start mode is execute-immediately: if the route is already concrete, begin with the smallest useful validating action rather than pausing for a separate approval round.',
+    baselineAcceptanceTarget === 'comparison_ready'
+      ? '- Baseline acceptance target is comparison-ready: once the comparator is trustworthy enough to unlock the next scientific step, move forward instead of polishing the baseline indefinitely.'
+      : baselineAcceptanceTarget === 'paper_repro_ready'
+        ? '- Baseline acceptance target is paper-grade reproduction: baseline work may remain primary until the comparator is strong enough to defend in paper-facing writing.'
+        : '- Baseline acceptance target is registry-publishable: treat the baseline as incomplete until it is reusable and clean enough to publish as a durable baseline package.',
     normalized.launch_mode === 'custom'
       ? '- Custom launch mode is authoritative here: do not restart from scratch unless the existing state is unusable or misleading.'
       : normalized.standard_profile === 'optimization_task'
         ? '- Standard optimization entry is authoritative here: do not drift into paper writing or default analysis-campaign work unless the user later changes scope.'
         : '- Standard launch mode is active here: use the canonical research graph unless later durable evidence justifies a different entry path.',
     '- Emit explicit milestone updates after each meaningful step.',
-    '- Every decision must include reasons, evidence, and the next recommended action.',
+    '- Every consequential decision should include reasons, evidence, and the next recommended action.',
     '- If the startup contract already fixes the delivery mode and baseline policy, follow it without asking the user again unless cost, safety, or scope changes materially.',
     normalized.manuscript_edit_mode === 'latex_required'
       ? '- If manuscript edits are required, prefer the provided LaTeX tree as the writing surface; if LaTeX source is unavailable, produce LaTeX-ready replacement text and state the blocker explicitly.'
       : '- If manuscript edits are required, make the section-level deltas explicit and keep the replacement wording copy-ready.',
     normalized.decision_policy === 'autonomous'
-      ? '- Autonomous mode is the default contract here: decide the route yourself and continue unless you are requesting explicit completion approval.'
+      ? '- Autonomous mode is the default contract here: decide the route yourself and continue unless you are requesting explicit completion approval or the cost fork genuinely deserves one short clarification.'
       : '- User-gated mode is enabled here: if local evidence is insufficient for a safe route decision, ask the user with one blocking decision request.',
   ].join('\n')
 }

@@ -1,0 +1,201 @@
+id: aisb.t3.075_treeslicedentropy
+name: Tree-Sliced Entropy Partial Transport
+version: 0.1.0
+one_line: GPU-accelerated unbalanced partial transport via tree-sliced entropy for
+  point clouds, image generation, and image-to-image translation.
+task_description: 'This packaged benchmark covers PartialTSW (Partial Tree-Sliced
+  Wasserstein), an extension of Tree-Sliced Wasserstein distances to unbalanced/partial
+  transport settings with closed-form formulations suitable for dynamic-support distributions
+  in generative modeling. The task requires selecting a concrete experiment family
+  (point cloud gradient flow, image generation with JAX/diffusers, or image-to-image
+  translation) and running the corresponding transport objective or ablation sweep.
+  Evaluation focuses on convergence quality (relative_bias_pct), runtime performance
+  (mean_time_s), and stability (coefficient_of_variation) rather than internal optimizer
+  accuracy targets. The benchmark is code-backed by three executable anchors: convergence
+  analysis (`analysis/convergence/simple_convergence.py`), runtime benchmarking varying
+  sample count (`analysis/runtime_plot/runtime_plot_compare_n_partial.py`), and runtime
+  benchmarking varying dimensionality (`analysis/runtime_plot/runtime_plot_compare_d_partial.py`).
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 2-4d
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- relative_bias_pct
+- mean_time_s
+- coefficient_of_variation
+launch_profiles:
+- id: convergence_eval
+  label: Convergence Evaluation
+  description: 'Run `analysis/convergence/simple_convergence.py` to assess estimator
+    bias and stability across varying tree counts (L) and lines per tree (k). Uses
+    PyTorch with GPU acceleration. Outputs relative bias percentage and coefficient
+    of variation per configuration.
+
+    '
+- id: runtime_n_scaling
+  label: Runtime Scaling (Sample Count)
+  description: 'Run `analysis/runtime_plot/runtime_plot_compare_n_partial.py` to benchmark
+    runtime and GPU memory across sample sizes N ∈ [10², 10⁵]. Compares PartialTSW
+    against UOT baselines (sopt, spot, pawl, sliced_unbalanced_ot). Includes warm-up
+    runs for stable timing.
+
+    '
+- id: runtime_d_scaling
+  label: Runtime Scaling (Dimension)
+  description: 'Run `analysis/runtime_plot/runtime_plot_compare_d_partial.py` to benchmark
+    runtime and GPU memory across dimensions d ∈ [1, 2048] with fixed N=10⁴. Compares
+    PartialTSW against UOT baselines. Includes warm-up runs for stable timing.
+
+    '
+- id: experiment_family
+  label: Experiment Family Workflow
+  description: 'Select and execute one packaged experiment family: point_cloud (gradient
+    flow), image_gen (JAX/diffusers ablation sweep across multiple GPUs), or img2img
+    (image-to-image translation with class imbalance handling). Each family has distinct
+    data requirements and runtime profiles.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - torchvision (auto-download for MNIST-based experiments)
+  - manual (pretrained checkpoints for image generation, assets for img2img)
+  notes:
+  - Convergence and runtime eval scripts use synthetic Gaussian data and require no
+    external datasets.
+  - Image generation experiments may auto-download simple datasets through torchvision.
+  - Image-to-image translation and some ablation routes require manual asset preparation
+    or pretrained checkpoints before evaluation.
+  - Treat dataset setup as experiment-family specific; there is no universal dataset
+    route.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No explicit API or dataset credential variables were detected in the shipped source
+    snapshot.
+  - Image generation sweep uses explicit GPU slot scheduling (not cloud credential-based).
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: GPU required for meaningful runtime benchmarks; CPU-only execution is impractical
+      for N≥10⁴ or d≥64 configurations.
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 1
+    gpu_vram_gb: 48
+    notes: '48 GB VRAM accommodates full dimension sweep (up to d=2048) and larger
+      sample counts. Image generation ablation grid benefits from additional GPU slots
+      if available.
+
+      '
+environment:
+  python: '3.11'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - jax==0.4.23
+  - jaxlib==0.4.23
+  - transformers==4.51.3
+  - diffusers==0.33.1
+  - torch>=2.1.0
+  - ot (POT library for baseline comparisons)
+  - tqdm
+  - matplotlib
+  - pandas
+  - numpy
+  notes:
+  - The packaged repository mixes PyTorch (analysis scripts), JAX/jaxlib (image generation),
+    and diffusion-style experiment routes rather than one narrow runtime profile.
+  - Analysis scripts default to CUDA with `torch.device('cuda' if torch.cuda.is_available()
+    else 'cpu')`.
+  - Image generation sweep script (`experiments/image_gen/exp.sh`) schedules 72 jobs
+    round-robin across allocated GPU slots; wall-clock time scales with GPU count.
+  - Baseline comparisons in runtime benchmarks import sopt, spot, pawl, sliced_unbalanced_ot,
+    and unbalanced_sliced_ot from the bundled baselines module.
+risk_flags:
+- route_caveat
+- multi_route_experiment_family
+- mixed_runtime_environment
+- multi_gpu_scheduling_dependent
+risk_notes:
+- The packaged repository is structurally complete, but the optimizer target is not
+  one root command; point-cloud, image-generation, image-to-image, and analysis routes
+  differ materially in setup and execution.
+- The packaged `experiments/image_gen/exp.sh` schedules 72 jobs round-robin across
+  the listed GPUs, so a full ablation sweep on one GPU is naturally multi-day.
+- The runtime environment mixes PyTorch (convergence, runtime analysis), JAX/jaxlib
+  (image generation), and diffusion libraries; ensure both CUDA toolchains are compatible.
+- Some subroutes can auto-download simple datasets such as MNIST, while others require
+  manual assets or pretrained checkpoints before evaluation.
+- Convergence eval uses synthetic Gaussian data only; generative downstream quality
+  must be evaluated separately via experiment family routes.
+recommended_when: 'Use this benchmark when you need a geometry-heavy optimal transport
+  benchmark with support for unbalanced measures, are prepared to explicitly select
+  one experiment family, and have GPU infrastructure suitable for multi-day ablation
+  sweeps. Ideal for comparing partial transport solvers on convergence bias, runtime
+  scaling, or generative applications with class imbalance.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you require a single one-command
+  execution, a CPU-first workflow, a single compact dataset with no experiment branching,
+  or pre-computed metrics without execution. Not suitable for environments without
+  CUDA-capable GPUs.
+
+  '
+paper:
+  title: Tree-Sliced Entropy Partial Transport
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=41ZbysfW4h
+  authors:
+  - Viet-Hoang Tran (National University of Singapore)
+  - Thanh Tran (VinUniversity)
+  - Thanh Chu (National University of Singapore)
+  - Tam Le (Institute of Statistical Mathematics)
+  - Tan M. Nguyen (National University of Singapore)
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.075_treeslicedentropy.zip
+  archive_type: zip
+  local_dir_name: paper-75-TreeSlicedEntropy
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.075_treeslicedentropy.zip
+  sha256: c73a8da6a3b04ef4a24eb1345993f985e84234db16636906626f07cb762fa33c
+  size_bytes: 774639
+display:
+  palette_seed: jade-bone-transport
+  art_style: geometric-minimal
+  accent_priority: high
+image_path: ../../../AISB/image/075_aisb.t3.075_treeslicedentropy.jpg
+capability_tags:
+- optimal_transport
+- tree_sliced_wasserstein
+- partial_transport
+- unbalanced_measures
+- generative_modeling
+- probabilistic_geometry
+- scientific_ml
+- research_code_optimization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null

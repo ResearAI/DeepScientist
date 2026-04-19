@@ -1,0 +1,148 @@
+id: aisb.t3.048_proxyspex
+name: 'Proxy-SPEX: Sample-Efficient Interpretability via Sparse Feature Interactions
+  in LLMs'
+version: 0.1.0
+one_line: Shapley-style sparse feature-interaction approximations for identifying
+  compact, meaningful interaction structure in LLM predictions.
+task_description: 'This packaged benchmark covers sparse feature-interaction explanations
+  for language models using Shapley-style approximation via the ProxySPEX (Proxy SParse
+  EXplainer) method exposed within the shapiq Python package. The task evaluates the
+  quality of interaction discovery using budget-limited game evaluations to identify
+  compact, meaningful interaction structure behind model behavior. The shapiq package
+  extends Shapley value methodology beyond feature attributions to any-order Shapley
+  interactions, providing state-of-the-art approximation algorithms and a benchmarking
+  suite with pre-computed games and ground-truth values across 10+ application domains.
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- precision_at_10
+- precision_at_5
+- feature_interaction_rankings
+- mse
+- mae
+- explanation_report
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run the packaged sparse interaction explanation route on a single
+    target setup using the ProxySPEX approximator with StratifiedBySize sampling on
+    the SOUM (Set- Oriented Utility Model) synthetic game. Executes ensemble of 10
+    runs per seed with budget=200 and k-SII index for primary evaluation.
+
+    '
+- id: full_benchmark
+  label: Full Benchmark Suite
+  description: 'Run the complete shapiq benchmarking suite via eval_benchmark_results.py,
+    evaluating all approximator configurations across pre-computed games including
+    LocalExplanation, GlobalExplanation, FeatureSelection, DataValuation, DatasetValuation,
+    and EnsembleSelection domains.
+
+    '
+dataset_download:
+  primary_method: archive
+  sources:
+  - url: https://deepscientist.cc/AISB/048_proxyspex
+    type: primary_archive
+  notes:
+  - Archive contains the broader shapiq package (local_dir_name: paper-48-Shapiq)
+  - ProxySPEX is one method exposed within the shapiq package API
+  - Pre-computed game data and benchmark results included in data/precomputed_games/
+  - Additional datasets included: adult_census.csv, bike.csv, california_housing.csv
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.12'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - shapiq
+  - numpy
+  - scipy
+  - pandas
+  - scikit-learn
+  - joblib
+  - tqdm
+  - sparse-transform
+  - galois
+  - matplotlib
+  - networkx
+  notes:
+  - CPU-only execution is fully supported for the minimum route
+  - GPU acceleration optional but not required; recommended for large-scale LLM explanations
+  - The shapiq package is the containing module; ProxySPEX is accessed via shapiq.ProxySPEX
+    or shapiq.explainer with approximator="proxyspex"
+  - See pyproject.toml and bundled requirements for full dependency specification
+risk_flags: []
+risk_notes:
+- Metric values are code-backed but no benchmark execution was performed in this packaging
+  pass
+- Runtime validation required before trusting quantitative outputs
+recommended_when: 'Use this benchmark when you need interpretability tasks focused
+  on sparse interaction discovery in language models, want to evaluate approximation
+  quality against ground-truth Shapley interactions, or need a CPU-friendly explainability
+  evaluation framework with support for any-order interaction quantification.
+
+  '
+not_recommended_when: 'Do not use this benchmark for pure text generation evaluation,
+  full model fine-tuning workflows, or when you require GPU-accelerated training.
+  Not suitable when you cannot support repeated explanation runs with varying budget
+  constraints.
+
+  '
+paper:
+  title: 'Proxy-SPEX: Sample-Efficient Interpretability via Sparse Feature Interactions
+    in LLMs'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=KI8qan2EA7
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.048_proxyspex.zip
+  archive_type: zip
+  local_dir_name: paper-48-Shapiq
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.048_proxyspex.zip
+  sha256: 3fea6e582a4001554d86ebcb7b95b55a4d537689f6279c561be43ba0e8302778
+  size_bytes: 135005330
+display:
+  palette_seed: umber-cyan-interact
+  art_style: interaction-map
+  accent_priority: high
+image_path: ../image/048_aisb.t3.048_proxyspex.jpg
+capability_tags:
+- research_code_optimization
+- mechanistic_interpretability
+- shapley_interactions
+- large_language_models
+- explanation_methods
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

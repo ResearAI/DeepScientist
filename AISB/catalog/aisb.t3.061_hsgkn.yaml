@@ -1,0 +1,136 @@
+schema_version: 1
+id: aisb.t3.061_hsgkn
+name: Hierarchical Shortest-Path Graph Kernel Network
+version: 0.1.0
+one_line: Optimize a graph-kernel network that fuses shortest-path structure with
+  learnable graph representations for graph classification.
+task_description: 'This packaged benchmark covers the Hierarchical Shortest-Path Graph
+  Kernel Network (HSP-GKN), a kernel-based graph learning framework that integrates
+  graph similarity estimation with downstream tasks within a unified optimization
+  framework. The approach designs a hierarchical shortest-path graph kernel that efficiently
+  preserves both semantic and structural information by transforming graphs into hierarchical
+  features. These features are matched against learnable hidden graph features to
+  produce a similarity vector serving as the graph embedding for end-to-end MLP training.
+  Unlike traditional graph kernel methods that isolate representation learning from
+  objective optimization, HSP-GKN enables task-specific representation learning with
+  computational complexity of O(n² log n) compared to O(n⁴) for standard SP kernels.
+
+  '
+capability_tags:
+- research_code_optimization
+- graph_learning
+- graph_kernels
+- classification
+- explainable_ml
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- imdb_binary_accuracy
+- graph_kernel_checkpoint
+- optuna_results
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run the packaged graph-classification benchmark route directly from
+    main.py. Uses default or provided dataset with GPU acceleration. Default dataset
+    is MUTAG. Example: python main.py --dataset MUTAG --device cuda:0
+
+    '
+- id: tune_and_eval
+  label: Tune + Eval
+  description: 'Run the packaged HSGKN training flow together with Optuna hyperparameter
+    search. Execute optuna_main.py to perform automated hyperparameter optimization
+    across learning rate, weight decay, hidden path count, normalization, cutoff,
+    dropout, and attribute normalization parameters.
+
+    '
+dataset_download:
+  primary_method: bundled
+  sources: []
+  notes:
+  - Graph datasets are automatically downloaded via DGL's TUDataset interface
+  - Supported datasets: PROTEINS, PROTEINS_full, ENZYMES, SYNTHETIC, BZR, COX2, NCI1,
+      MUTAG, IMDB-BINARY, IMDB-MULTI, COLLAB, DD, REDDIT-BINARY, REDDID-MULTI-5K,
+      REDDIT-MULTI-12K, PTC_MR, reddit_threads, SYNTHETICnew
+  - Cached datasets stored in cache/ directory after first download
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 30
+    gpu_count: 1
+    gpu_vram_gb: 8
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.2.1
+  flash_attn: null
+  key_packages:
+  - dgl==1.1.3
+  - optuna
+  - scikit-learn
+  - numpy
+  - torch
+  notes:
+  - Install dependencies via bundled requirements.txt before execution
+  - DGL (Deep Graph Library) required for graph data handling and TUDataset access
+  - Optuna used for hyperparameter optimization in tune_and_eval profile
+risk_flags: []
+risk_notes: []
+recommended_when: 'Use this benchmark when you need a graph-classification task that
+  combines kernel-style structural priors with trainable neural components. Particularly
+  suitable for researchers exploring the integration of explicit graph kernels with
+  end-to-end learning frameworks, or those benchmarking against traditional kernel
+  methods on TU graph datasets.
+
+  '
+not_recommended_when: 'Do not use this if you need a giant multimodal or LLM benchmark,
+  or if your dataset consists primarily of large-scale graphs where the O(n² log n)
+  kernel computation may become a bottleneck.
+
+  '
+paper:
+  title: Hierarchical Shortest-Path Graph Kernel Network
+  venue: NeurIPS 2025 Spotlight
+  year: 2025
+  url: https://openreview.net/forum?id=721bDIvjen
+  code_url: https://github.com/JXWANG-GRAPH/HSP-GKN
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.061_hsgkn.zip
+  archive_type: zip
+  local_dir_name: paper-61-HSGKN
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.061_hsgkn.zip
+  sha256: ce45c434498873e02198eeda9b546b4ac85920213e0c65e013302a6bac0a5f90
+  size_bytes: 109708
+display:
+  palette_seed: stone-cyan-kernel
+  art_style: graph-kernel
+  accent_priority: medium
+commercial:
+  annual_fee: null
+image_path: ../image/061_aisb.t3.061_hsgkn.jpg

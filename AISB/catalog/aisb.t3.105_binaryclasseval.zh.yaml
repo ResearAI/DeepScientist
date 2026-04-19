@@ -1,0 +1,130 @@
+id: aisb.t3.105_binaryclasseval
+name: 使评估与临床优先事项保持一致
+version: 0.1.0
+one_line: 在标签偏移、校准不匹配和不对称临床误差成本下使用有界 DCA 对数评分的子组感知二元分类器评估框架。
+task_description: 该打包基准测试实施了 NeurIPS 2025 论文“将评估与临床优先级相匹配：校准、标签移位和错误成本”中的评估方法。它使用准确性与患病率曲线和建议的有界 DCA 对数评分指标来评估人口统计亚组的二元临床分类器（APACHE IV 死亡率预测器）。该框架通过明确考虑类别患病率不确定性、不对称决策成本和校准质量来解决准确性和 AUC-ROC 的局限性。无需模型训练；该基准测试基于来自 eICU 协作研究数据库的预先计算的 APACHE IV 预测。
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: advanced
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- dca_overall_african_american
+- dca_calibration_only_african_american
+- subgroup_accuracy_curves
+- clinical_figure_batch
+launch_profiles:
+- id: demo_curves
+  label: 演示曲线
+  description: 使用演示数据子集运行子组准确性与患病率曲线图。需要在执行之前在 data/demo 下暂存本地演示 eICU CSV。
+- id: paper_figure_batch
+  label: 纸图批量
+  description: 通过 generate_figures.sh 或 eval_all.py 复制所有纸质数字和表格。需要在 data/full 下本地暂存完整的 eICU 表（patient.csv、apachePatientResult.csv）。
+dataset_download:
+  primary_method: manual_external
+  sources:
+  - kind: external_registration
+    url: https://eicu-crd.mit.edu/
+    access: permission_required
+    note: MIT eICU Collaborative Research Database requires data use agreement registration before download.
+  - kind: repository_archive
+    url: https://deepscientist.cc/AISB/105_binaryclasseval
+    archive_type: zip
+    local_dir_name: paper-105-BinaryClassEval
+    note: Contains evaluation code only; eICU CSV files must be staged separately.
+  notes:
+  - 该快照不捆绑 etl/eicu.py 使用的 eICU CSV 文件。
+  - Required tables: 运行前必须将patient.csv、apachePatientResult.csv放在data/demo或data/full目录下。
+  - 分阶段评估脚本读取本地 CSV 文件而不是下载数据。
+  - 公共 eICU 子集足以进行演示和纸图复制。
+credential_requirements:
+  mode: external_registration
+  items:
+  - eICU data use agreement (MIT)
+  notes:
+  - 快照中未检测到显式 API 凭据。
+  - 数据访问需要完成 MIT eICU 协作研究数据库注册和数据使用协议。
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.9'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - scikit-learn
+  notes:
+  - 整个过程仅由 CPU 执行；任何路线都不需要 GPU。
+  - 该存储库仅执行评估；不进行模型训练。
+  - requirements.txt 中的完整依赖项列表。
+  - 执行时间随子组计数和置信区间设置而变化。
+risk_flags:
+- route_caveat
+- data_caveat
+risk_notes:
+- 评估代码完好无损，但快照未捆绑 etl/eicu.py 使用的预期 eICU CSV 文件（数据/演示或数据/完整）。
+- 复制纸质图形需要在运行 plot.py、eval_all.py 或 generate_figures.sh 之前在本地暂存 patient.csv 和 apachePatientResult.csv。
+- 打包过程中没有进行基准测试；在信任指标值之前需要运行时验证。
+recommended_when: 使用此基准对二元分类器进行基于临床的亚组感知评估，无需重新训练。特别适合评估 APACHE 式死亡率预测器或类似的临床评分函数，其中校准、标签偏移稳健性和不对称误差成本相关。
+not_recommended_when: 如果目标是模型训练或超参数优化，请勿使用此基准。该基准测试不训练预测器；它假设预先计算的分数可用。
+paper:
+  title: 'Aligning Evaluation with Clinical Priorities: Calibration, Label Shift, and Error Costs'
+  venue: NeurIPS 2025
+  year: 2025
+  authors:
+  - Gerardo A. Flores
+  - Alyssa H. Smith
+  - Julia A. Fukuyama
+  - Ashia C. Wilson
+  url: https://arxiv.org/abs/2506.14540
+  affiliation:
+  - MIT
+  - Northeastern University
+  - Indiana University
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.105_binaryclasseval.zip
+  archive_type: zip
+  local_dir_name: paper-105-BinaryClassEval
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.105_binaryclasseval.zip
+  sha256: a681ab2633779256a0ae5e31156a439fee7967caf91981d14bc80e3693114db9
+  size_bytes: 108008
+display:
+  palette_seed: rose-slate-clinical
+  art_style: clinical-evaluation
+  accent_priority: medium
+image_path: ../image/105_aisb.t3.105_binaryclasseval.jpg
+capability_tags:
+- clinical_ai
+- evaluation
+- calibration
+- label_shift
+- subgroup_analysis
+- decision_analysis
+- research_code_optimization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

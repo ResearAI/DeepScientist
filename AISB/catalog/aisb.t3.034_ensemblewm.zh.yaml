@@ -1,0 +1,146 @@
+id: aisb.t3.034_ensemblewm
+name: 大语言模型集成水印技术
+version: 0.1.0
+one_line: 结合红绿水印、藏头诗和感觉运动规范的多特征水印检测，用于鲁棒的LLM输出验证。
+task_description: '该基准测试用于评估大语言模型输出的集成水印检测方法。集成方法结合三种不同的水印特征：红绿水印（令牌级logit操作）、藏头诗嵌入（句子首字母编码）和感觉运动规范（感知/动作类别选择）。任务涉及通过logit修改生成带水印文本，并检测清洁和改写后的输出中的水印。评估涵盖检测率、水印分数分布，以及使用基于T5的攻击管道对改写攻击的鲁棒性。统一检测函数可在所有集成配置下应用，无需修改。
+
+'
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- detection_rate
+- watermark_scores
+- benchmark_report
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 在生成的输出上运行一个打包的水印检测评估路线。使用单一模型配置和预定义测试提示来测量基线检测率，无需攻击模拟。
+- id: full_eval
+  label: 完整评估
+  description: 执行完整的多特征水印检测工作流程，包括生成、软改写攻击（基于T5的可配置百分比单词替换）以及所有特征组合的评估。生成检测率矩阵和水印分数分布。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - url: https://deepscientist.cc/AISB/034_ensemblewm
+    type: archive
+    format: zip
+  - url: https://huggingface.co/datasets/know-center/Lancaster_sensorimotor_norms
+    type: external
+    format: csv
+    description: Lancaster感觉运动规范数据集，包含39,707个词，覆盖11个感知维度和5个动作维度
+  notes:
+  - Lancaster感觉运动规范CSV已打包在压缩包中
+  - 测试提示来源于标准LLM评估数据集
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 无需外部API密钥
+  - 本地LLM权重需另行获取（例如通过HuggingFace获取Llama-3.1-8B）
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 支持量化模型（GPTQ 4位）以降低显存需求
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 48
+    notes: 生成实验建议使用全精度；内存受限场景可使用4位量化
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: 2.x
+  key_packages:
+  - transformers
+  - torch
+  - numpy
+  - pandas
+  - spacy
+  - datasets
+  - tqdm
+  - bitsandbytes
+  - auto-gptq
+  notes:
+  - 需要spacy en_core_web_sm模型：python -m spacy download en_core_web_sm
+  - T5改写攻击模型通过transformers加载（T5-small或T5-base）
+  - Llama模型通过AutoModelForCausalLM加载，可选BitsAndBytesConfig实现4位量化
+  - 完整依赖规范请参阅打包的requirements.txt
+risk_flags:
+- high_vram
+- extended_runtime
+risk_notes:
+- 生成实验需要大量GPU显存用于LLM推理
+- 包含攻击模拟的完整评估可能需要数小时，具体取决于数据集大小
+- 软攻击（改写）的batch_size参数会影响显存使用
+recommended_when: '当您需要一个专注于水印检测质量的LLM安全评估管道、想要评估集成检测对改写的鲁棒性，或需要比较单特征与多特征水印方案时，使用此基准测试。适用于评估纯检测方法，无需模型微调。
+
+'
+not_recommended_when: '如果您无法在本地托管开放LLM检查点、缺乏足够显存的GPU资源，或需要一个不包含生成和检测循环的基准测试，请勿使用此基准测试。不适用于评估文本分类或困惑度-based检测方法。
+
+'
+paper:
+  title: Ensemble Watermarks for Large Language Models
+  authors:
+  - Georg Niess
+  - Roman Kern
+  venue: arXiv preprint
+  year: 2024
+  url: https://arxiv.org/abs/2411.19563
+  code_url: https://github.com/
+  abstract: '随着大语言模型达到类似人类的流畅度，可靠地区分AI生成的文本与人类撰写的内容变得越来越困难。我们提出了一种多特征水印生成方法，将藏头诗和感觉运动规范与已建立的红绿水印相结合，实现了98%的检测率。经过改写攻击后，性能保持在95%的检测率，而红绿水印单独仅有49%。
+
+'
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.034_ensemblewm.zip
+  archive_type: zip
+  local_dir_name: aisb-t3-034-ensemblewm
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.034_ensemblewm.zip
+  sha256: 8eae0196937e9b32feade1727d417158061f0741b7b0b80a9f154bdd6aaba079
+  size_bytes: 25404700
+display:
+  palette_seed: aqua-ink-watermark
+  art_style: verification-grid
+  accent_priority: high
+  tags:
+  - watermarking
+  - detection
+  - llm-safety
+  - robustness
+  - ensemble-methods
+image_path: ../image/034_aisb.t3.034_ensemblewm.jpg
+metric_contract:
+  primary_metric: detection_rate
+  origin_path: detection_notebook.ipynb
+  source_ref: detection_rate
+  evaluation_protocol:
+    code_paths:
+    - batch_run/run_experiments_soft.py
+    - batch_run/run_attack_soft.py
+    - detection_notebook.ipynb
+    - modules/text_generation.py
+  metrics_summary: []
+  execution_status: pending
+  execution_notes: '静态代码审计确认所有分阶段指标的代码可执行锚点。本打包过程中未执行基准测试。指标值应视为暂定，需等待可信运行时输出。
+
+'
+executive_summary: '该基准测试为LLM输出中的集成水印检测提供了一个全面的评估框架。该方法结合令牌级（红绿）、句子级（藏头诗）和语义级（感觉运动）水印特征，以在改写攻击后仍能实现鲁棒检测。统一检测函数可在所有特征组合上运行，支持不同安全-鲁棒性权衡的灵活配置。
+
+'

@@ -1,0 +1,145 @@
+id: aisb.t3.016_mathfusion
+name: 数学融合
+version: 0.1.0
+one_line: 用于通过跨问题综合增强 7B-8B LLM 数学推理能力的指令融合框架。
+task_description: 'MathFusion 是一个创新的指令融合框架，通过从现有问题对中综合新的训练问题来增强数学推理能力。它实现了三种融合策略：(1) 顺序融合通过共享变量链接相关问题，以建模解题依赖关系；(2) 并行融合结合类似问题以强化概念理解；(3) 条件融合创建情境感知的可选问题以增强推理灵活性。
+
+  本基准测试涵盖完整流程：使用 LLaMA-Factory 进行全参数 SFT 训练（DeepSpeed ZeRO-2、flash-attention FA2、bf16、cutoff 4096），随后在六个数学推理基准上评估，包括 GSM8K、MATH、CollegeMath、DeepMind-Mathematics、OlympiadBench 和 TheoremQA。报告的训练配置使用 3 个 epoch、batch size 128，在 8x NVIDIA A100 GPU 上运行。
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 2-4d
+cost_band: very_high
+difficulty: hard
+data_access: public
+primary_outputs:
+- accuracy
+- finetuned_checkpoint
+- benchmark_report
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '使用最小数据子集和减少的 epoch 数进行轻量级完整性检查，以验证流程完整性而不需要完整资源投入。
+
+    '
+  time_estimate: 1-2h
+  resource_estimate: 1x A100
+- id: full_train_eval
+  label: 完整训练 + 评估
+  description: '在 MathFusionQA 上进行完整训练，使用全参数 SFT 跨越 3 个 epoch，随后在所有六个基准数据集上进行评估。标准配置需要 8x A100 GPU。
+
+    '
+  time_estimate: 2-4d
+  resource_estimate: 8x A100
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/QizhiPei/MathFusionQA
+    access: public
+    note: 主要指令融合数据集，包含原始、顺序、并行和条件分割
+  - kind: github_repo
+    url: https://github.com/hiyouga/LLaMA-Factory
+    access: public
+    note: 训练框架（v0.9.1）— 将 MathFusionQA 转换为 JSON 格式用于训练
+  - kind: github_repo
+    url: https://github.com/QwenLM/Qwen2.5-Math
+    access: public
+    note: 域内评估工具（gsm8k、math、mwpbench、deepmind-mathematics、olympiadbench）
+  - kind: github_repo
+    url: https://github.com/hkust-nlp/dart-math
+    access: public
+    note: 域外评估工具（theoremqa 等）
+  notes:
+  - MathFusionQA 必须在训练前转换为 LLaMA-Factory JSON 格式
+  - 评估需要 Qwen2.5-Math 和 DART-Math 两个工具
+  - 六个评估数据集：gsm8k、math、mwpbench/college-math、deepmind-mathematics、olympiadbench、theoremqa
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 公共数据集和 GitHub 仓库不需要明确的 API 凭证
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 2
+    gpu_vram_gb: 80
+  recommended:
+    cpu_cores: 64
+    ram_gb: 256
+    disk_gb: 500
+    gpu_count: 8
+    gpu_vram_gb: 80
+  notes:
+  - 报告的 ACL 2025 训练使用 8x NVIDIA A100 80GB，3 个 epoch，batch size 128
+  - 使用 bf16 和 DeepSpeed ZeRO-2 的全参数 SFT 需要大量显存
+  - 评估期间 vLLM 推理的内存占用与训练相似
+environment:
+  python: '3.10'
+  cuda: '12.1'
+  pytorch: 2.3.1
+  flash_attn: fa2
+  key_packages:
+  - transformers==4.46.1
+  - accelerate==0.34.2
+  - deepspeed==0.15.4
+  - vllm==0.5.3.post1
+  - sympy==1.12.1
+  - antlr4-python3-runtime==4.11.1
+  - pebble
+  - word2number
+  - boto3
+  - triton==2.3.1
+  - ipython
+  notes:
+  - 需要单独安装 flash-attn：pip install flash-attn --no-build-isolation
+  - 训练使用 LLaMA-Factory v0.9.1 和全参数 SFT
+  - 评估需要 dart-math 和 latex2sympy 包
+risk_flags:
+- long_runtime
+- high_compute_cost
+- multi_harness_dependency
+risk_notes:
+- 完整训练在 8x A100 上需要 2-4 天
+- 具有外部评估依赖关系的多阶段流程
+- 自定义运行需要了解 LLaMA-Factory 配置
+recommended_when: '在指令融合下进行全参数数学推理 SFT 实验时使用此基准。非常适合探索跨问题综合、通过问题融合进行数据增强，或在域内和域外基准上评估数学推理改进的研究人员。
+
+  '
+not_recommended_when: '如果仅需要推理仅提示、PEFT/LoRA 方法，或缺乏每个 GPU 80GB+ 显存的基础设施来进行全参数 SFT，则不要使用。
+
+  '
+paper:
+  title: 'MathFusion: Enhancing Mathematical Problem-solving of LLM through Instruction
+    Fusion'
+  authors: Qizhi Pei, Lijun Wu, Zhuoshi Pan, Yu Li, Honglin Lin, Chenlin Ming, Xin
+    Gao, Conghui He, Rui Yan
+  venue: ACL 2025 Main
+  year: 2025
+  url: https://arxiv.org/abs/2503.16212
+  models_released:
+  - DeepSeekMath-7B-MathFusion
+  - Mistral-7B-MathFusion
+  - Llama3-8B-MathFusion
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.016_mathfusion.zip
+  archive_type: zip
+  local_dir_name: paper-16-MathFusion
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.016_mathfusion.zip
+  sha256: 105b308e4f4831e9b98e67b1c8ab5af3635c01d856307bd6adede1807856d544
+  size_bytes: 3883862
+display:
+  palette_seed: chalk-indigo-proof
+  art_style: academic-modern
+  accent_priority: high
+image_path: ../../../AISB/image/016_aisb.t3.016_mathfusion.jpg

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { BookOpen, GraduationCap, Languages, Settings2 } from 'lucide-react'
+import { BookOpen, GraduationCap, Languages, Settings2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SystemUpdateButton } from '@/components/system-update/SystemUpdateButton'
 import { BRAND_LOGO_SMALL_SRC } from '@/lib/constants/assets'
@@ -10,7 +10,9 @@ import { useOnboardingStore } from '@/lib/stores/onboarding'
 import { cn } from '@/lib/utils'
 import { LocalAuthTokenButton } from './LocalAuthTokenButton'
 
-export default function HeroNav() {
+export default function HeroNav(props: {
+  onOpenBenchStore?: () => void
+}) {
   const { locale, toggleLocale, t } = useI18n()
   const restartTutorial = useOnboardingStore((state) => state.restartTutorial)
   const openChooser = useOnboardingStore((state) => state.openChooser)
@@ -81,6 +83,17 @@ export default function HeroNav() {
               {t('navDocs')}
             </Link>
           </Button>
+          {props.onOpenBenchStore ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="hidden h-9 rounded-full border-black/10 bg-white/60 text-[#2D2A26] hover:bg-white/90 lg:inline-flex"
+              onClick={props.onOpenBenchStore}
+            >
+              <Sparkles className="mr-2 h-4 w-4" />
+              BenchStore
+            </Button>
+          ) : null}
           <Button
             size="sm"
             className="h-9 rounded-full bg-[#C7AD96] text-[#2D2A26] hover:bg-[#D7C6AE]"

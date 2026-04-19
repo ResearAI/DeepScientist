@@ -95,7 +95,7 @@ This snippet is a tutorial reference only, not a DeepScientist default endpoint 
 If you leave `Reusable baseline` empty and choose `Balanced`, the current frontend derives:
 
 - `scope = baseline_plus_direction`
-- `baseline_mode = restore_from_url`
+- `baseline_mode = auto`
 - `resource_policy = balanced`
 - `time_budget_hours = 24`
 - `git_strategy = semantic_head_plus_controlled_integration`
@@ -140,6 +140,18 @@ type StartResearchTemplate = {
 ```
 
 Important point: `scope`, `baseline_mode`, `resource_policy`, `time_budget_hours`, and `git_strategy` are no longer edited directly in the form. They are derived from `research_intensity` plus whether a reusable baseline is selected.
+
+New explicit launch-time controls also exist:
+
+- `baseline_source_mode`
+- `execution_start_mode`
+- `baseline_acceptance_target`
+
+These are not replacements for the derived contract. They are stronger user-facing route preferences that tell the agent:
+
+- whether to verify a local existing system, attach a reusable baseline, reproduce from source, repair a stale baseline, or defer baseline work until it is actually blocking
+- whether to stop after a bounded plan for approval before heavy execution
+- how strong the baseline must be before the quest should move into idea selection and experiments
 
 ### Derived contract fields
 
@@ -418,6 +430,7 @@ Current preset mapping:
 Override rule:
 
 - if `baseline_id` is selected, derived `baseline_mode` becomes `existing`
+- if `baseline_source_mode` is explicitly set, treat it as the stronger route preference and use `baseline_mode` only as the compact derived summary
 
 ## Prompt compilation behavior
 

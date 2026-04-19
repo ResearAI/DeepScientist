@@ -1,62 +1,49 @@
-# Analysis Campaign Checklist Template
+# Analysis Evidence Gate Checklist
 
-Use this as the living execution checklist for the campaign.
-For `analysis-lite`, the launch, first slice, and closeout sections are usually enough.
+Use this as a compact acceptance-boundary checklist when it helps.
+It is optional; the hard requirement is that launched slices, evidence boundaries, blockers, and next routes are durable and unambiguous.
 
 ## Identity
 
-- parent_map_node:
-- loop_id:
+- parent object:
+- parent claim or gap:
+- route:
 - campaign id:
-- parent run / idea:
 
-## In Progress
+## Current Frontier
 
-- [ ] one concrete campaign frontier item is actively in progress
+- [ ] next slice, aggregation, blocker, or route decision is explicit
+- [ ] active uncertainty is written as a concrete question
+- [ ] next route is known if this gate clears or fails
 
-## Next
+## Evidence Gate
 
-- [ ] next slice or aggregation step is explicit
-- [ ] next map transition is explicit
-- [ ] next reporting checkpoint is explicit
+- [ ] parent claim, paper gap, reviewer item, or decision being tested is explicit
+- [ ] each launched slice has a durable outcome or active monitoring path
+- [ ] evidence-bearing slices record question, intervention or inspection target, fixed conditions, metric or observable, and evidence path
+- [ ] claim update and comparability verdict are explicit
+- [ ] null, negative, partial, failed, blocked, or contradictory findings are visible
+- [ ] campaign-level interpretation is backed by per-slice evidence
 
-## Later
+## Comparability Gate
 
-- [ ] deferred but still relevant slices or aggregation work live here
+- [ ] baseline or main comparison contract is preserved, or deviation is recorded
+- [ ] new dataset / split / metric / protocol changes are labeled as generalization, stress-test, boundary, or non-comparable
+- [ ] additional comparators do not overwrite the canonical quest baseline gate
 
-## Blocked
+## Paper / Review Gate
 
-- [ ] blockers or missing comparators are recorded here
+- [ ] paper-ready slices map to outline, paper matrix, evidence ledger, section, claim, table, reviewer item, or rebuttal item
+- [ ] if a paper-facing slice is complete, the write-back target is updated or the stale contract is recorded as a blocker
 
-## Launch
+## Blocked Boundary
 
-- [ ] claim under test is explicit
-- [ ] selected outline is present when writing-facing
-- [ ] slices prioritized by decision value
-
-## Assets And Comparators
-
-- [ ] required quest-local assets confirmed
-- [ ] extra baselines or comparators identified
-
-## Slice Execution
-
-- [ ] first claim-critical slice launched
-- [ ] smoke checks passed for long slices
-- [ ] monitoring is active when slices are long enough to need it
-- [ ] each finished slice recorded durably
-
-## Aggregation
-
-- [ ] stable support vs contradiction vs ambiguity classified
-- [ ] highest-impact slices summarized first
-- [ ] campaign report written
-
-## Done
-
-- [ ] completed frontier items are moved here instead of staying mixed into `Next`
+- [ ] if blocked, the failure class is explicit
+- [ ] if blocked, tried steps and evidence paths are recorded
+- [ ] if blocked, next best move is continue, redesign, return to experiment, return to idea, write, decision, stop, or reset
 
 ## Closeout
 
-- [ ] campaign outcome summarized in `1-2` sentences
+- [ ] strongest evidence boundary is summarized
+- [ ] main claim is classified as strengthened, weakened, narrowed, abandoned, or still ambiguous
 - [ ] next route recorded explicitly

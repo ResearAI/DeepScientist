@@ -1,0 +1,124 @@
+schema_version: 1
+id: aisb.t3.047_timepfn
+name: TimePFN
+version: 0.1.0
+one_line: 基于PFN风格的多变量时间序列预测基准，采用合成数据预训练和调度敏感的微调策略。
+task_description: '该打包基准测试涵盖完整的TimePFN工作流程：通过高斯过程核组合和线性协同区域化方法（LMC-Synth）生成合成多变量时间序列数据，在合成数据集上进行Transformer预训练，并在标准下游预测基准（如ETT、Weather、Exchange）上进行微调和评估。任务是将PFN风格的上下文贝叶斯泛化能力迁移到公共基准数据集上的实际零样本和少样本预测质量。主要指标为MSE和MAE，均通过run.py和utils/metrics.py提供代码支持。目前尚无可信执行输出；需要运行时执行后才能将指标值视为已验证。
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- mse
+- mae
+- pfn_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: '使用提供的模型检查点和pfn_scripts/test/下的测试脚本运行一个下游TimePFN预测评估流程。无需预训练。
+
+    '
+- id: pretrain_and_eval
+  label: 预训练 + 评估
+  description: '运行完整的打包工作流程：通过LMC-Synth生成合成MTS数据，在合成数据上预训练TimePFN transformer，在下游基准数据集上微调，然后评估MSE和MAE。
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - label: 下游基准数据集（ETT、Weather、Exchange等）
+    url: https://drive.google.com/file/d/1l51QsKvQPcqILT3DwfjCgx8Dsg2rpjot/view?usp=sharing
+    format: zip
+    local_path: ./datasets
+    notes: 通过iTransformer的datasets.zip Google Drive链接提供。在运行评估脚本前下载并解压到./datasets目录。
+  - label: 合成预训练数据
+    url: null
+    format: generated
+    local_path: ./synthetic_data_generation
+    notes: 通过LMC-Synth.py和kernel-synth.py本地生成。运行前请阅读bash脚本中的注释和指令。
+  - label: 预训练模型检查点
+    url: https://deepscientist.cc/AISB/047_timepfn
+    format: zip
+    local_path: paper-47-TimePFN
+    notes: 官方AISB归档下载。包含检查点、训练、微调和pfn_scripts/下的测试脚本。
+  notes:
+  - 在调用任何评估脚本前，必须将下游基准数据集放置在./datasets目录下。
+  - 如果使用提供的预训练检查点进行快速评估，合成数据生成是可选的。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 用于datasets.zip的Google Drive下载不需要身份验证，但如果自动获取受限，可能需要手动下载。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: 2.2.1
+  flash_attn: null
+  key_packages:
+  - transformers==4.41.1
+  - pynvml
+  - numpy
+  notes:
+  - 完整的依赖列表在requirements.txt中。建议按照README中的建议使用conda虚拟环境。
+  - run.py使用pynvml进行GPU内存轮询；必须安装pynvml且NVML必须可访问。
+  - 源代码中未固定CUDA版本；请验证其与PyTorch 2.2.1及您的驱动的兼容性。
+risk_flags:
+- dataset_manual_download
+- no_trusted_execution_output
+risk_notes:
+- 下游基准数据集需要手动从Google Drive下载；自动化流程可能需要变通方案。
+- 打包过程中未执行基准测试。metric_contract.json中的指标值为临时值，需待运行时执行确认。
+- 合成数据生成量（百万级样本）可能耗时且占用大量磁盘空间；启动前请仔细阅读bash脚本指令。
+recommended_when: '在评估基于合成数据预训练的基础模型风格多变量时间序列预测时使用此基准，或在标准公共预测基准（ETT、Weather、Exchange）上研究零样本和少样本泛化时使用此基准。在与基于PFN或Chronos风格的预测基线进行比较时也适用。
+
+  '
+not_recommended_when: '如果需要简单或基础的时间序列预测基线、如果GPU训练不可用、如果自动化数据集下载是硬性要求、或者在信任指标值之前需要已验证的执行输出（必须先完成运行时执行），请勿使用此基准。
+
+  '
+paper:
+  title: 'TimePFN: Effective Multivariate Time Series Forecasting with Synthetic Data'
+  venue: AAAI 2025
+  year: 2025
+  url: https://arxiv.org/abs/2502.16294
+  authors:
+  - Ege Onur Taga
+  - M. Emrullah Ildiz
+  - Samet Oymak
+  affiliation: University of Michigan, Ann Arbor
+  citation_key: taga2025timepfn
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.047_timepfn.zip
+  archive_type: zip
+  local_dir_name: paper-47-TimePFN
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.047_timepfn.zip
+  sha256: b295b1371d836aeeec199601aa42427fcd6cbbf1f73349b5ebdbfd3a5977ab18
+  size_bytes: 73341
+display:
+  palette_seed: jade-navy-pfn
+  art_style: foundation-signal
+  accent_priority: high
+image_path: ../image/047_aisb.t3.047_timepfn.jpg

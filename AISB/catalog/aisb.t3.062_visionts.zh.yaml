@@ -1,0 +1,216 @@
+id: aisb.t3.062_visionts
+name: 'VisionTS: 视觉掩码自编码器是免费的零样本时间序列预测器'
+version: 0.1.0
+one_line: 通过将ImageNet预训练的视觉掩码自编码器重新用于时间序列预测，将时间序列预测重构为图像重建任务
+task_description: '该基准测试评估VisionTS，这是一种基于在ImageNet上预训练的视觉掩码自编码器（MAE）构建的时间序列预测基础模型。其核心思想是：自然图像中的像素变化与时间序列具有内在相似性——两者都来自真实世界物理系统的连续信号，与离散的文本不同。VisionTS将时间序列预测任务重构为_patch级别的图像重建问题：将一维时间序列数据进行分段并渲染为二维矩阵，将回溯窗口映射到可见_patch，将预测范围映射到掩码_patch。这使得无需任何时间序列适配即可进行零样本预测。在2024年11月的GIFT-Eval零样本点预测（MASE）排行榜上获得第一名的成绩，超越了Moirai、TimesFM、chronos及其他基础模型。
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- avg_mse
+- avg_mae
+- zeroshot_forecast_report
+launch_profiles:
+- id: quick_demo
+  label: 快速演示
+  description: '运行打包好的VisionTS演示笔记本或在预处理数据集上执行单个零样本脚本。适用于验证流程或可视化图像重建。
+
+    '
+- id: full_zeroshot_eval
+  label: 完整零样本评估
+  description: '在所有支持的数据集上运行完整的打包零样本预测基准测试，包括长期时间序列预测基准、单变量时间序列基准和概率预测测试。
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: 长期时间序列预测数据集
+    method: manual
+    instructions: 按照Time-Series-Library的说明下载到long_term_tsf/dataset
+    url: https://github.com/thuml/Time-Series-Library
+  - name: Monash基准
+    method: automatic
+    notes: 在执行eval_gluonts/run_monash.sh时自动下载
+  - name: Walmart销售数据
+    method: manual
+    url: https://www.kaggle.com/competitions/walmart-recruiting-store-sales-forecasting/overview
+    local_path: long_term_tsf/dataset/walmart-recruiting-store-sales-forecasting/train.csv
+  - name: 伊斯坦布尔交通指数
+    method: manual
+    url: https://www.kaggle.com/datasets/leonardo00/istanbul-traffic-index
+    local_path: long_term_tsf/dataset/istanbul-traffic-index/istanbul_traffic.csv
+  - name: 土耳其电力数据
+    method: manual
+    url: https://www.kaggle.com/datasets/dharanikra/electrical-power-demand-in-turkey
+    local_path: long_term_tsf/dataset/electrical-power-demand-in-turkey/power Generation
+      and consumption.csv
+  notes:
+  - 长期时间序列预测数据集（ETTh1、ETTh2、ETTm1、ETTm2、Weather、Electricity、Traffic、ILI）需要通过Time-Series-Library手动下载
+  - 三个Kaggle数据集需要单独注册账户
+  - Monash基准在执行期间自动下载
+credential_requirements:
+  mode: kaggle_api
+  items:
+  - 用于Walmart、伊斯坦布尔交通、土耳其电力数据集的Kaggle账户
+  notes:
+  - Kaggle API令牌（kaggle.json）用于自动数据集下载
+environment:
+  python: 3.8.18
+  cuda: '11.8'
+  pytorch: 1.7.1
+  torchvision: 0.8.2
+  flash_attn: null
+  key_packages:
+  - timm==0.3.2
+  - einops
+  - numpy
+  - pandas
+  - gluonts
+  notes:
+  - 结果基于python==3.8.18、torch==1.7.1、torchvision==0.8.2、timm==0.3.2进行评估
+  - 不同版本的软件包可能导致性能略有差异
+  - 通过pip install visionts或从GitHub克隆安装
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: MAE推理需要GPU；仅使用CPU会显著变慢
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 建议使用A100或同等算力以在24小时内完成完整基准测试
+risk_flags:
+- kaggle_download_required
+- long_runtime_full_eval
+risk_notes:
+- 三个数据集需要在完整评估前手动从Kaggle下载
+- 完整零样本评估可能需要6-12小时，具体取决于数据集数量和GPU配置
+- Monash基准在执行期间自动下载约29个数据集
+recommended_when: '当您需要具有强零样本泛化能力的跨模态预测任务时、当您想评估视觉到时间序列的迁移学习时、或当您需要一个可用于各种时间序列领域而不需要领域特定微调的基础模型时，请使用此基准测试。
+
+  '
+not_recommended_when: '当您需要纯文本原生基础模型评估时、当您在单一数据集上需要最先进的监督预测精度时、或当您缺乏GPU资源以获得合理运行时间时，请勿使用此基准测试。
+
+  '
+paper:
+  title: 'VisionTS: Visual Masked Autoencoders Are Free-Lunch Zero-Shot Time Series
+    Forecasters'
+  authors:
+  - Mouxiang Chen (Zhejiang University)
+  - Lefei Shen (Zhejiang University)
+  - Zhuo Li (State Street Technology)
+  - Xiaoyun Joy Wang (State Street Technology)
+  - Jianling Sun (Zhejiang University)
+  - Chenghao Liu (Salesforce Research Asia)
+  venue: ICML 2025
+  year: 2025
+  arxiv: '2408.17253'
+  github: https://github.com/Keytoyze/VisionTS
+  pypi: visionts
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.062_visionts.zip
+  archive_type: zip
+  local_dir_name: paper-62-VisionTS
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.062_visionts.zip
+  sha256: 42f1ae7f94f9ba4a1ed78ce0c20d77af5f53bbf59d1395a443b273e40fb1f17b
+  size_bytes: 3065717
+display:
+  palette_seed: ivory-emerald-vision
+  art_style: image-to-signal
+  accent_priority: high
+  tags:
+  - visual-MAE
+  - zero-shot
+  - foundation-model
+  - cross-modality
+  - time-series
+image_path: ../image/062_aisb.t3.062_visionts.jpg
+evaluation_datasets:
+  long_term_tsf:
+    count: 8
+    names:
+    - ETTH1
+    - ETTH2
+    - ETTM1
+    - ETTM2
+    - Weather
+    - Electricity
+    - Traffic
+    - ILI
+    horizon_lengths:
+    - 96
+    - 192
+    - 336
+    - 720
+  monash:
+    count: 29
+    note: Auto-downloaded during execution
+  gift_eval:
+    count: 23
+    note: Used for MASE evaluation in zero-shot setting
+  probabilistic:
+    datasets:
+    - Walmart
+    - Istanbul Traffic
+    - Turkey Power
+    note: Requires separate Kaggle downloads
+metric_contracts:
+  origin_path: long_term_tsf/run.py
+  source_ref: Exp_Long_Term_Forecast
+  metrics_summary:
+    avg_mse:
+      status: code-backed
+      aggregation: mean across all datasets and horizons
+    avg_mae:
+      status: code-backed
+      aggregation: mean across all datasets and horizons
+    mse_96:
+      status: code-backed
+      horizon: 96
+    mse_192:
+      status: code-backed
+      horizon: 192
+    mse_336:
+      status: code-backed
+      horizon: 336
+    mse_720:
+      status: code-backed
+      horizon: 720
+  caveat: 'Static code audit confirmed executable anchors for all staged metrics.
+    No benchmark execution performed in packaging pass; runtime validation required.
+
+    '
+executables:
+- path: long_term_tsf/run.py
+  type: main_evaluation
+  dependencies:
+  - exp/exp_long_term_forecasting.py
+  - requirements.txt
+- path: eval_gluonts/run.py
+  type: gluonts_evaluation
+  dependencies:
+  - eval_gluonts/dataset.py
+  - visionts/model.py
+  - visionts/models_mae.py
+- path: eval_gluonts/run_monash.sh
+  type: monash_evaluation_script
+- path: eval_gluonts/run_pf.sh
+  type: probabilistic_forecast_script

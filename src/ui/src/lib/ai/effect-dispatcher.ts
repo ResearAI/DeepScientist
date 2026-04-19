@@ -1,4 +1,5 @@
 import { useFileTreeStore } from '@/lib/stores/file-tree'
+import { useAdminIssueDraftStore } from '@/lib/stores/admin-issue-draft'
 import { useTabsStore } from '@/lib/stores/tabs'
 import type { FileNode } from '@/lib/types/file'
 import type { TabContext } from '@/lib/types/tab'
@@ -11,6 +12,8 @@ import type {
   FileJumpEffectData,
   PdfAnnotationEffectData,
   PdfJumpEffectData,
+  RouteNavigateEffectData,
+  StartSetupPatchEffectData,
 } from '@/lib/types/ui-effects'
 import { queueFileJumpEffect } from '@/lib/ai/file-jump-queue'
 import { queuePdfEffect } from '@/lib/ai/pdf-effect-queue'
@@ -34,6 +37,8 @@ export type PdfToolPreview = PdfFileReference & {
 const PDF_QUEUE_EVENT = 'ds:pdf:queue'
 const FILE_QUEUE_EVENT = 'ds:file:queue'
 const FILE_JUMP_EVENT = 'ds:file:jump'
+const ROUTE_NAVIGATE_EVENT = 'ds:route:navigate'
+const START_SETUP_PATCH_EVENT = 'ds:start-setup:patch'
 
 function dispatchCustomEvent(name: string, detail: unknown) {
   if (typeof window === 'undefined') return
@@ -549,6 +554,41 @@ export function previewPdfToolEffect(preview: PdfToolPreview) {
   ensurePdfFileOpen(preview)
 }
 
+function handleRouteNavigate(data: RouteNavigateEffectData) {
+  const target = typeof data.to === 'string' ? data.to.trim() : ''
+  if (data.issueDraft && typeof data.issueDraft === 'object') {
+    const draft = data.issueDraft
+    const title = typeof draft.title === 'string' ? draft.title : ''
+    const bodyMarkdown = typeof draft.body_markdown === 'string' ? draft.body_markdown : ''
+    const issueUrlBase = typeof draft.issue_url_base === 'string' ? draft.issue_url_base : ''
+    const repoUrl = typeof draft.repo_url === 'string' ? draft.repo_url : ''
+    if (title && bodyMarkdown && issueUrlBase && repoUrl) {
+      useAdminIssueDraftStore.getState().setDraft({
+        ok: draft.ok !== false,
+        title,
+        body_markdown: bodyMarkdown,
+        issue_url_base: issueUrlBase,
+        repo_url: repoUrl,
+        ...(typeof draft.generated_at === 'string' ? { generated_at: draft.generated_at } : {}),
+      })
+    }
+  }
+  if (!target) return
+  dispatchCustomEvent(ROUTE_NAVIGATE_EVENT, {
+    to: target,
+    replace: Boolean(data.replace),
+  })
+}
+
+function handleStartSetupPatch(data: StartSetupPatchEffectData) {
+  const patch = data.patch && typeof data.patch === 'object' && !Array.isArray(data.patch) ? data.patch : null
+  if (!patch) return
+  dispatchCustomEvent(START_SETUP_PATCH_EVENT, {
+    patch,
+    message: typeof data.message === 'string' ? data.message : undefined,
+  })
+}
+
 export function openCitationTarget(citation: NormalizedCitation) {
   if (!citation) return
   const fileRef = {
@@ -612,6 +652,12 @@ export function handleUIEffect(effect: Effect, context?: UIEffectContext) {
     case 'notebook:focus':
     case 'notebook:block_inserted':
       dispatchCustomEvent(name, data)
+      return
+    case 'route:navigate':
+      handleRouteNavigate(data as RouteNavigateEffectData)
+      return
+    case 'start_setup:patch':
+      handleStartSetupPatch(data as StartSetupPatchEffectData)
       return
     default:
       if (process.env.NODE_ENV !== 'production') {

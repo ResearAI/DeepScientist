@@ -5,11 +5,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from '@/App'
 import { ToastProvider } from '@/components/ui/toast'
 import { initializeBuiltinPlugins, scheduleCommonPluginPreload } from '@/lib/plugin/init'
+import { installAdminFrontendLogCapture } from '@/lib/adminFrontendLogs'
 import { useThemeStore } from '@/lib/stores/theme'
 import '@/index.css'
 
 useThemeStore.getState().initTheme()
 initializeBuiltinPlugins()
+installAdminFrontendLogCapture()
 if (typeof window !== 'undefined') {
   queueMicrotask(() => {
     scheduleCommonPluginPreload()

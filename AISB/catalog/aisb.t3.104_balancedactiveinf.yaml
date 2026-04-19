@@ -1,0 +1,137 @@
+id: aisb.t3.104_balancedactiveinf
+name: Balanced Active Inference
+version: 0.1.0
+one_line: Active inference for regression with cube-method balanced sampling, calibrated
+  uncertainty, and asymptotically efficient population mean estimation.
+task_description: 'This packaged benchmark implements balanced active inference combining
+  the cube method for balanced sampling with active inference to address variance
+  inflation in label-scarce regression settings. The framework trains two XGBoost
+  models: a label predictor and an uncertainty estimator. Sampling probabilities use
+  a τ-mixed rule (τ=0.5 default), followed by cube-method balancing via constrained
+  optimization. The population mean is estimated using a Generalized Difference estimator.
+  Evaluated against classical simple random sampling, uniform active inference, and
+  traditional Poisson-based active inference baselines. Supports synthetic (Linear,
+  Nonlinear, Friedman) and real-world regression datasets (Bike, Communities, Concrete,
+  Energy, Life, Superconductor).
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- ci_width_cube_active
+- coverage_cube_active
+- prediction_rmse
+- comparison_figure
+launch_profiles:
+- id: demo_notebook
+  label: Demo Notebook
+  description: 'Run the bundled demo.ipynb to generate Friedman synthetic data, train
+    dual XGBoost models, perform sampling budget sweeps, and produce publication-quality
+    comparison figures.
+
+    '
+- id: full_budget_sweep
+  label: Full Budget Sweep
+  description: 'Execute the complete simulation experiment with T=10,000 Monte Carlo
+    repetitions across budgets 0.03–0.45, exporting CSV metrics and PDF comparison
+    plots.
+
+    '
+dataset_download:
+  primary_method: procedural
+  sources: []
+  notes:
+  - Benchmark generates Friedman-style synthetic regression data procedurally inside
+    src/data_generation.py.
+  - Formula: Y = 10*sin(π*X₁*X₂) + 20*(X₃-0.5)² + 10*X₄ + 5*X₅ + ε, with ε~N(0, 0.09).
+  - Features X₁–X₅ are informative; X₆–X₁₀ are noise variables.
+  - No external dataset download required; real-world datasets are optional extensions.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No API credentials required; purely CPU-bound procedural computation.
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.8'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - xgboost==1.5.0
+  - rpy2==3.4.0
+  - numpy>=1.21.0
+  - pandas>=1.3.0
+  - scikit-learn>=1.0.0
+  - scipy>=1.7.0
+  - matplotlib>=3.4.0
+  - seaborn>=0.11.0
+  - joblib>=1.1.0
+  notes:
+  - CPU-only execution; no GPU required.
+  - R runtime required for BalancedSampling package: install via R console with install.packages("BalancedSampling").
+  - Python+R interoperability via rpy2; verify R installation before executing.
+risk_flags:
+- route_caveat
+risk_notes:
+- Execution depends on Python + R interoperability through rpy2 and the BalancedSampling
+  R package.
+- Ensure R is installed and rpy2 can load the BalancedSampling library before running.
+- Synthetic-data-driven route; no external dataset download or network access needed.
+- Parallel execution via joblib (n_jobs parameter) requires sufficient RAM.
+- Full budget sweep (T=10,000 trials) is computationally intensive; consider reducing
+  n_trials for quick validation.
+recommended_when: 'Use this benchmark for CPU-friendly active learning research with
+  variance estimation, uncertainty calibration, or statistical efficiency comparisons.
+  Ideal for regression tasks with limited labeling budgets where reliable confidence
+  intervals and RMSE reduction are primary metrics.
+
+  '
+not_recommended_when: 'Do not use this if you require large-scale multimodal benchmarks,
+  deep learning pipelines, or GPU-accelerated training. Not suited for tasks needing
+  external dataset downloads or real-time API access.
+
+  '
+paper:
+  title: Balanced Active Inference
+  authors: Boyu Chen, Zhixiang Zhou, Liuhua Peng, Zhonglei Wang
+  institution: Xiamen University, Shanghai Innovation Institute, The University of
+    Melbourne
+  venue: NeurIPS
+  year: 2025
+  url: https://neurips.cc/virtual/2025/poster/117263
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.104_balancedactiveinf.zip
+  archive_type: zip
+  local_dir_name: paper-104-BalancedActiveInf
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.104_balancedactiveinf.zip
+  sha256: d1c5e0c466d3f1bdd4fdfe96fa9161ea425e88dbf0d0b2ab9f6c2a3992d8c338
+  size_bytes: 35848
+display:
+  palette_seed: lemon-slate-balance
+  art_style: active-estimation
+  accent_priority: medium
+image_path: ../image/104_aisb.t3.104_balancedactiveinf.jpg

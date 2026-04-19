@@ -19,6 +19,7 @@ class McpContext:
     worker_id: str | None
     worktree_root: Path | None
     team_mode: str | None
+    custom_profile: str | None = None
 
     @classmethod
     def from_env(cls) -> "McpContext":
@@ -38,6 +39,7 @@ class McpContext:
             worker_id=os.environ.get("DS_WORKER_ID") or None,
             worktree_root=_path("DS_WORKTREE_ROOT"),
             team_mode=os.environ.get("DS_TEAM_MODE") or None,
+            custom_profile=os.environ.get("DS_CUSTOM_PROFILE") or None,
         )
 
     def require_quest_root(self) -> Path:

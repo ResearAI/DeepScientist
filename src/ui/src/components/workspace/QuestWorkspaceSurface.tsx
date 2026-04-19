@@ -86,6 +86,7 @@ type QuestWorkspaceSurfaceInnerProps = {
   safePaddingRight: number
   view?: QuestWorkspaceView
   stageSelection?: QuestStageSelection | null
+  settingsFocusTarget?: string | null
   onViewChange?: (view: QuestWorkspaceView, stageSelection?: QuestStageSelection | null) => void
   workspace: QuestWorkspaceState
 }
@@ -4626,6 +4627,7 @@ export function QuestWorkspaceSurfaceInner({
   safePaddingRight,
   view: controlledView,
   stageSelection,
+  settingsFocusTarget,
   onViewChange,
   workspace,
 }: QuestWorkspaceSurfaceInnerProps) {
@@ -4758,7 +4760,7 @@ export function QuestWorkspaceSurfaceInner({
     detailLikeView
   ) {
     return (
-      <div className="panel center-panel morandi-glow ds-stage" style={{ flex: 1 }}>
+      <div className="panel center-panel morandi-glow ds-stage h-full min-h-0" style={{ flex: 1 }}>
         <div
           className="ds-stage-safe flex h-full items-center justify-center"
           style={{ paddingLeft: safePaddingLeft, paddingRight: safePaddingRight }}
@@ -4784,7 +4786,7 @@ export function QuestWorkspaceSurfaceInner({
   }
 
   return (
-    <div className="panel center-panel morandi-glow ds-stage" style={{ flex: 1 }}>
+    <div className="panel center-panel morandi-glow ds-stage h-full min-h-0" style={{ flex: 1 }}>
       <div
         className="ds-stage-safe h-full min-h-0 overflow-hidden"
         style={{ paddingLeft: safePaddingLeft, paddingRight: safePaddingRight }}
@@ -4850,6 +4852,7 @@ export function QuestWorkspaceSurfaceInner({
                 questId={questId}
                 snapshot={snapshot}
                 onRefresh={refreshWorkspace}
+                focusTarget={settingsFocusTarget}
               />
             </div>
           ) : null}

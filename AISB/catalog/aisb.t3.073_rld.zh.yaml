@@ -1,0 +1,129 @@
+id: aisb.t3.073_rld
+name: 组合优化的正则化朗之万动力学
+version: 0.1.0
+one_line: 通过Hamming距离正则化的正则化朗之万动力学优化组合问题，用于模拟退火和神经求解器。
+task_description: >-
+  本基准测试包涵盖基于正则化朗之万动力学（RLD）的组合优化问题。RLD通过在采样解和当前解之间施加期望Hamming距离约束来逃离离散域中的局部最优。该基准测试包含两个求解器：基于梯度引导MCMC采样的RLSA（正则化朗之万模拟退火），以及支持可微分损失（erdoes）和完全黑盒损失（reinforce）的RLNN（正则化朗之万神经网络）。问题涵盖Erdős–Rényi、修订模型B和Barabási–Albert随机图上的最大独立集（MIS）、最大团（MCL）和最大割（MCut）。RLSA在仅需SOTA SA基线20%运行时间的情况下达到相当或更优的性能。RLNN通过局部目标高效训练，无需标注数据或长时域回报估计。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- rlsa_size
+- rlsa_time
+- optimization_trace
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: >-
+    在支持的组合问题上运行一个封装的RLSA评估脚本。使用accelerate，支持可配置精度（fp16/无）。设置num_processes=1以获得精确计时。在小型图实例（RB-[200-300]、ER-[700-800]、BA-[200-300]）上测试，包含500-1000个测试样本。
+- id: full_train_eval
+  label: 完整训练+评估
+  description: >-
+    运行完整的封装正则化朗之万动力学和神经基线工作流程。包括使用erdoes损失（可微分）或reinforce损失（黑盒）训练RLNN，然后在小型和大型图问题实例上进行评估。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - type: huggingface
+    url: https://huggingface.co/datasets/shengyuf/RLD4CO
+    description: 预生成的测试图，包括ER-[9000-11000]用于规模化评估
+  - type: generator
+    description: data/文件夹中包含的随机图生成器（er_generator.py、rb_generator.py、ba_generator.py）
+  notes:
+  - ER测试图来自DIMES仓库
+  - RB和BA图使用DIffUCO代码生成
+  - ER-[9000-11000]无训练数据；直接在ER-[700-800]上训练的求解器进行评估
+  - 每个问题1000个实例（2组500大小的测试集）
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.8'
+  cuda: '12.4'
+  pytorch: 2.4.1
+  flash_attn: null
+  key_packages:
+  - accelerate
+  - torch
+  - torch_geometric
+  - torch_scatter
+  - scipy
+  - numpy
+  - tqdm
+  notes:
+  - 通过conda environment.yml安装依赖：conda env create -f environment.yml && conda activate
+    RLD4CO
+  - 基于accelerate构建的分布式评估框架
+  - 使用--mixed_precision fp16加速推理
+risk_flags:
+- gpu_memory_bound
+- disk_io_bound
+- reproducibility_requires_seed
+risk_notes:
+- RLSA计时需要num_processes=1；多GPU并行化会影响实际运行时间测量
+- 大型图评估（ER-[9000-11000]）需要大量GPU内存；使用混合精度
+- 使用reinforce损失的RLNN训练由于完全黑盒梯度估计而计算密集
+- 使用多进程（num_processes参数）进行随机图生成会影响可重复性
+recommended_when: >-
+  当您需要一个具有可控采样和神经基线的随机组合优化任务时使用本基准测试；需要评估随机图上的模拟退火变体时；需要无监督或黑盒优化能力时；或者想要与ICML 2025 SOTA SA和基于NN的CO求解器进行基准对比时。
+not_recommended_when: >-
+  如果您需要一个纯监督学习基准测试时不要使用；需要精确/最优解作为真值时不要使用；处理结构化真实世界图数据集而非随机生成器时不要使用；或者需要一个没有种子控制的确定性可重复基线时不要使用。
+paper:
+  title: Regularized Langevin Dynamics for Combinatorial Optimization
+  venue: ICML 2025
+  year: 2025
+  url: https://arxiv.org/abs/2502.00277
+  authors:
+  - Shengyu Feng
+  - Yiming Yang
+  affiliation: Carnegie Mellon University
+  contact: shengyuf@cs.cmu.edu
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.073_rld.zip
+  archive_type: zip
+  local_dir_name: paper-73-RLD
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.073_rld.zip
+  sha256: 0cbaa2a2ca423ac065c17e38dc60fed2d00bf4a92a39cd1eab7c0a6decb7a2b9
+  size_bytes: 53784
+display:
+  palette_seed: brass-midnight-langevin
+  art_style: optimization-physics
+  accent_priority: high
+image_path: ../image/073_aisb.t3.073_rld.jpg
+capability_tags:
+- research_code_optimization
+- combinatorial_optimization
+- langevin_dynamics
+- graph_optimization
+- sampling
+- simulated_annealing
+- neural_heuristics
+- unsupervised_learning
+- black_box_optimization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

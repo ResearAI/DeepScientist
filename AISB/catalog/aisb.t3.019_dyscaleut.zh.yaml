@@ -1,0 +1,148 @@
+schema_version: 1
+id: aisb.t3.019_dyscaleut
+name: 面向代码奖励建模的单元测试动态缩放
+version: 0.1.0
+one_line: '将LLM生成的单元测试作为奖励信号进行动态缩放，用于最佳-of-N代码解决方案选择，在HumanEval Plus、MBPP Plus和LiveCodeBench上通过pass@1进行评估。
+
+  '
+task_description: '本基准测试复现了CodeRM流程，通过缩放单元测试奖励建模来改进代码生成。核心工作流程为：(1) 策略LLM为每个编程问题生成N个候选代码解决方案，(2) 奖励LLM（或微调后的CodeRM-8B单元测试生成器）为每个问题生成M个单元测试，(3) 在Docker沙箱内对解决方案执行单元测试，(4) 通过执行结果的方差加权多数投票选择最佳解决方案。动态缩放机制使用训练好的难度分类器为更难的问题分配更多单元测试。主要指标为pass@1（最佳-of-N准确率），通过evaluation/calculate_result.py计算。本地快照包含评估/执行代码、打包的基准数据、预计算的推理结果，以及用于沙箱代码执行的Docker镜像规格。推理和预处理步骤（从头开始使用策略/奖励LLM生成新的解决方案/单元测试）需要外部模型访问，已由打包脚本部分覆盖，但可能需要适配。可用Google Drive上的预计算output.tar.gz替代推理+执行步骤。
+
+  '
+capability_tags:
+- research_code_optimization
+- code_generation
+- reward_modeling
+- unit_test_generation
+- evaluation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: partial
+support_level: advanced
+cost_band: high
+time_band: 1d+
+difficulty: hard
+data_access: public
+primary_outputs:
+- pass_at_1
+- scaled_unit_tests
+- reward_scores
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '在打包或下载的预计算执行结果上运行evaluation/calculate_result.py，验证单一基准/模型组合的pass@1。无需GPU或Docker。
+
+    '
+- id: code_reward_eval
+  label: 代码奖励评估
+  description: '拉取Docker沙箱镜像，使用evaluation/evaluate.py对候选解决方案执行单元测试，然后通过evaluation/calculate_result.py计算pass@1。需要Docker和中等算力。使用打包的基准数据和预生成的解决方案/单元测试，无需LLM推理。
+
+    '
+- id: full_pipeline
+  label: 全流程（推理+评估）
+  description: '端到端运行：多进程LLM推理生成解决方案和单元测试、预处理/合并、基于Docker的执行，以及最终pass@1计算。需要GPU访问（用于LLM推理，CodeRM-8B或更大模型）和Docker执行环境。
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/KAKA22/CodeRM-UnitTest
+    access: public
+    note: 用于训练CodeRM-8B的60k个合成Python单元测试。
+  - kind: huggingface
+    url: https://huggingface.co/KAKA22/CodeRM-8B
+    access: public
+    note: 微调后的8B单元测试生成器模型权重。
+  - kind: google_drive
+    url: https://drive.google.com/drive/folders/1-wUvy9Ox49V5CY38TMjCr5RlLysapyyj?usp=sharing
+    access: public
+    note: 预计算的执行输出（output.tar.gz），可替代管道的第1-3步。
+
+  - kind: bundled
+    url: null
+    access: local
+    note: 基准数据（HumanEval Plus、MBPP Plus、LiveCodeBench）和预生成的推理结果包含在快照的data/benchmark/和data/result/目录下。
+  notes:
+  - 训练数据集约60k样本；模型权重约16GB；预计算输出因基准不同而异。
+  - 基准测试本身（HumanEval Plus、MBPP Plus、LiveCodeBench）是公开的。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 使用打包数据和CodeRM-8B进行推理无需API密钥。
+  - 若需复现GPT-4o-mini或GPT-3.5的策略/奖励实验，则需要OpenAI API密钥。
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 2
+    gpu_vram_gb: 48
+environment:
+  python: null
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - vllm
+  - transformers
+  - docker
+  notes:
+  - 快照包含专用Docker执行环境（kaka0605/exec_unit_test:24.12.30），用于沙箱化大规模代码执行生成的单元测试。
+  - 沙箱依赖见docker_source/Dockerfile和docker_source/requirements.txt。
+  - 主机端依赖集见打包的README和requirements。
+  - 推理使用多进程Python（inference/inference_mp.py），可能需要vLLM或类似工具实现高效服务。
+risk_flags:
+- docker_required
+- partial_snapshot
+- external_model_for_full_replication
+- code_execution_sandbox
+risk_notes:
+  - 在运行evaluation/evaluate.py之前必须本地拉取或构建Docker沙箱镜像（kaka0605/exec_unit_test:24.12.30）。没有Docker时，只能在预计算输出上运行最后的calculate_result.py步骤。
+  - 预处理脚本（preprocess/）存在，但完整推理管道需要服务策略LLM和奖励LLM，快照中未完全自动化。
+  - exec_main.py通过signal.SIGALRM超时机制执行任意生成的Python代码；应仅在提供的Docker沙箱或等效隔离环境中运行。
+  - 打包过程中未执行基准测试；指标值尚未验证。
+recommended_when: 当您想研究缩放LLM生成的单元测试如何改进代码奖励信号质量和最佳-of-N代码选择时，或当您需要一个在评估循环中包含真实单元测试执行的代码生成任务时使用此基准。也可用于评估轻量级单元测试生成器与更大教师模型的性能。
+not_recommended_when: 当您无法提供基于Docker的容器化代码执行时不要使用；当您需要一个没有代码执行的纯文本奖励模型基准时不要使用；或者当您缺乏LLM推理的GPU资源且仅需快速指标检查时不要使用（改用预计算输出的quick_check配置文件）。
+paper:
+  title: Dynamic Scaling of Unit Tests for Code Reward Modeling
+  authors:
+  - Zeyao Ma
+  - Xiaokang Zhang
+  - Jing Zhang
+  - Jifan Yu
+  - Sijia Luo
+  - Jie Tang
+  venue: ACL 2025
+  year: 2025
+  url: https://arxiv.org/abs/2501.01054
+  homepage: https://code-reward-model.github.io/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.019_dyscaleut.zip
+  archive_type: zip
+  local_dir_name: paper-19-DyScaleUT
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.019_dyscaleut.zip
+  sha256: 2eee5573353ade5e13c254f7372a3294b71459ee7c668205f27f2852347c141f
+  size_bytes: 60766
+commercial:
+  annual_fee: null
+display:
+  palette_seed: olive-ink-runtime
+  art_style: code-lab
+  accent_priority: high
+image_path: ../image/019_aisb.t3.019_dyscaleut.jpg

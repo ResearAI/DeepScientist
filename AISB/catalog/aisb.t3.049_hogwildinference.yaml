@@ -1,0 +1,183 @@
+schema_version: 1
+id: aisb.t3.049_hogwildinference
+name: 'Hogwild! Inference: Parallel LLM Generation via Concurrent Attention'
+version: 0.1.0
+one_line: 'Benchmark and optimize parallel LLM inference where multiple workers share
+  a concurrent KV cache, measuring tokens-per-second throughput and custom CUDA kernel
+  latency on L40-class GPUs.
+
+  '
+task_description: 'This benchmark evaluates a parallel LLM generation system called
+  Hogwild! Inference, where multiple LLM "workers" run concurrently with a shared
+  Key-Value attention cache, allowing instant cross-attention between workers via
+  RoPE position re-rotation. The optimization task is to maximize multi-worker inference
+  throughput (tokens_per_second) without breaking correctness or stability of the
+  concurrent cache mechanism.
+
+  The package provides two execution routes: (1) Jupyter notebooks (basic_example,
+  full_example, hogwild_with_fast_kernels) that run 2-agent parallel inference on
+  open-source reasoning LLMs (e.g. QwQ, DeepSeek-R1) using the Python `shared_cache`
+  library and `generation.py`, and (2) a standalone C++/CUDA kernel benchmark (`inference_lib/src/benchmark.cpp`)
+  that measures raw attention-kernel latency in microseconds for the custom Flash-Decoding-inspired
+  paged attention with per-block query rotation.
+
+  The fast kernels require compilation via CMake with nvcc (CUDA architectures 80/86/89)
+  and were tuned for L40 GPUs. The primary metric `tokens_per_second` is route-backed
+  through the kernel benchmark executable but has not been verified end-to-end in
+  this packaging pass; runtime execution is required before trusting reported values.
+  Model weights (e.g. Llama-3.2-3B for Colab, or larger reasoning models like QwQ-32B)
+  must be downloaded from HuggingFace at inference time. No training is involved—this
+  is purely an inference-time systems benchmark.
+
+  '
+capability_tags:
+- research_code_optimization
+- large_language_models
+- parallel_inference
+- systems_efficiency
+- cuda_kernels
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: partial
+support_level: advanced
+time_band: 1-2d
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- tokens_per_second
+- kernel_latency_us
+- benchmark_logs
+launch_profiles:
+- id: notebook_inference
+  label: Notebook Inference
+  description: 'Run the bundled Jupyter notebooks (basic_example, full_example, hogwild_with_fast_kernels)
+    to perform 2-agent parallel LLM inference with a shared KV cache. Requires a GPU
+    with sufficient VRAM for the chosen model. Outputs generation traces and informal
+    throughput.
+
+    '
+- id: kernel_benchmark
+  label: CUDA Kernel Benchmark
+  description: 'Build the C++ benchmark executable from inference_lib via CMake +
+    nvcc, then run it to measure raw attention kernel latency. Produces microsecond-level
+    timing for the custom paged-attention kernel with query rotation. Throughput conversion
+    to tokens_per_second must be verified manually against end-to-end generation.
+
+    '
+dataset_download:
+  primary_method: huggingface
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/models
+    access: public
+    note: 'Model weights (e.g. Llama-3.2-3B, QwQ-32B, DeepSeek-R1) are downloaded
+      at inference time via HuggingFace transformers. No separate dataset download
+      is required; the benchmark operates on prompted reasoning tasks defined in the
+      notebooks.
+
+      '
+  notes:
+  - No large offline dataset is needed. Storage is dominated by model weights (7–65
+    GB depending on model choice).
+  - The evals/ directory contains evaluation scripts for LIMO, LiveCodeBench, and
+    OlympiadBench but these are auxiliary.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - A HuggingFace token may be needed for gated models like Llama-3.2 but is not required
+    for all model choices.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 48
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.6.0
+  key_packages:
+  - transformers==4.51.3
+  - numpy
+  - CLI11 (C++ dep, fetched by CMake)
+  notes:
+  - The fast inference kernels require nvcc in PATH (or CUDACXX set). CMake >= 3.22
+    is needed.
+  - CUDA architectures 80, 86, 89 are targeted (A100, L40, RTX 4090 class).
+  - Kernels were specifically optimized for L40 and similar GPUs; performance on other
+    architectures may differ.
+  - The Colab notebook demonstrates a minimal route with Llama-3.2-3B and limited
+    collaboration.
+  - pip install -e . inside inference_lib/ builds the Python-bound CUDA extension.
+risk_flags:
+- metric_not_verified_e2e
+- requires_cuda_compilation
+- model_download_at_runtime
+risk_notes:
+- 'The primary metric tokens_per_second is route-backed via the C++ kernel benchmark
+  but no end-to-end benchmark execution was performed during packaging. Runtime verification
+  is required before trusting metric values.
+
+  '
+- 'Building the fast kernels requires a working nvcc toolchain and compatible GPU
+  architecture. Compilation failures are possible on non-standard CUDA setups.
+
+  '
+- 'Larger reasoning models (QwQ-32B, DeepSeek-R1) require 48+ GB VRAM; the minimum
+  24 GB spec only supports smaller models like Llama-3.2-3B with limited collaboration
+  quality.
+
+  '
+- 'The evals/ directory references external evaluation suites (LIMO, LiveCodeBench,
+  OlympiadBench) that may require additional setup not fully documented in the snapshot.
+
+  '
+recommended_when: 'Use this benchmark when you want an LLM-systems optimization task
+  focused on parallel inference throughput, concurrent KV cache design, and custom
+  CUDA kernel performance. Suitable for researchers working on inference-time parallelism,
+  attention kernel optimization, or multi-agent LLM coordination at the systems level.
+
+  '
+not_recommended_when: 'Do not use this if you lack access to a modern CUDA GPU (Ampere
+  or newer), if you need a training-oriented benchmark, or if you are looking for
+  a self-contained accuracy evaluation with automated scoring. The metric surface
+  requires manual verification and the kernel build adds significant setup complexity.
+
+  '
+paper:
+  title: 'Hogwild! Inference: Parallel LLM Generation via Concurrent Attention'
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2504.06261
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.049_hogwildinference.zip
+  archive_type: zip
+  local_dir_name: paper-49-HogwildInference
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.049_hogwildinference.zip
+  sha256: b5cc4e8d0a697683307a664b948af23324ca548c6ce7b8380035fe7410dabcdd
+  size_bytes: 226660
+commercial:
+  annual_fee: null
+display:
+  palette_seed: orange-slate-cache
+  art_style: concurrent-systems
+  accent_priority: high
+image_path: ../image/049_aisb.t3.049_hogwildinference.jpg

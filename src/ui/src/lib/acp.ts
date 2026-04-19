@@ -4,6 +4,7 @@ import { refreshAccessToken } from '@/lib/api/auth'
 import { client } from '@/lib/api'
 import { extractArtifactComment, extractOperationComment, extractOperationMonitorFields } from '@/lib/agentComment'
 import { authHeaders, handleUnauthorizedAuth, readRequestAuthContext } from '@/lib/auth'
+import type { QuestMessageAttachmentDraft } from '@/lib/hooks/useQuestMessageAttachments'
 import { countActiveRenderedOperations } from '@/lib/feedOperations'
 import { deriveMcpIdentity } from '@/lib/mcpIdentity'
 import { buildToolOperationContent, extractToolSubject } from '@/lib/toolOperations'
@@ -124,6 +125,15 @@ function normalizeMetadata(value: unknown) {
   return value as Record<string, unknown>
 }
 
+function normalizeMessageAttachments(value: unknown) {
+  if (!Array.isArray(value)) return undefined
+  const items = value.filter(
+    (item): item is Record<string, unknown> =>
+      Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+  )
+  return items.length > 0 ? items : undefined
+}
+
 function normalizeUpdate(raw: Record<string, unknown>): FeedItem {
   const eventType = String(raw.event_type ?? '')
   const data = (raw.data ?? {}) as Record<string, unknown>
@@ -216,6 +226,32 @@ function normalizeUpdate(raw: Record<string, unknown>): FeedItem {
       eventType: eventType || null,
       clientMessageId: message.client_message_id ? String(message.client_message_id) : null,
       deliveryState: message.delivery_state ? String(message.delivery_state) : null,
+      readState: message.read_state ? String(message.read_state) : null,
+      readReason: message.read_reason ? String(message.read_reason) : null,
+      readAt: message.read_at ? String(message.read_at) : null,
+      attachments: normalizeMessageAttachments(message.attachments),
+    }
+  }
+
+  if (kind === 'message_state') {
+    const messageState = (raw.message_state ?? {}) as Record<string, unknown>
+    return {
+      id: buildId('message-state', String(raw.event_id ?? raw.created_at ?? safeRandomUUID())),
+      type: 'message_state',
+      messageId:
+        typeof messageState.message_id === 'string'
+          ? String(messageState.message_id)
+          : typeof raw.message_id === 'string'
+            ? String(raw.message_id)
+            : null,
+      clientMessageId:
+        typeof messageState.client_message_id === 'string'
+          ? String(messageState.client_message_id)
+          : null,
+      readState: messageState.read_state ? String(messageState.read_state) : null,
+      readReason: messageState.read_reason ? String(messageState.read_reason) : null,
+      readAt: messageState.read_at ? String(messageState.read_at) : null,
+      createdAt: String(raw.created_at ?? ''),
     }
   }
 
@@ -273,6 +309,7 @@ function normalizeUpdate(raw: Record<string, unknown>): FeedItem {
 }
 
 type MessageFeedItem = Extract<FeedItem, { type: 'message' }>
+type MessageStateFeedItem = Extract<FeedItem, { type: 'message_state' }>
 
 type FeedState = {
   history: FeedItem[]
@@ -419,15 +456,21 @@ function prependHistoryItems(history: FeedItem[], incoming: FeedItem[]): FeedIte
     return history
   }
   const existingIds = new Set(history.map((item) => item.id))
-  const prefix: FeedItem[] = []
+  let nextHistory = [...history]
+  let prefix: FeedItem[] = []
   for (const item of incoming) {
+    if (item.type === 'message_state') {
+      nextHistory = applyMessageStatePatch(nextHistory, item)
+      prefix = applyMessageStatePatch(prefix, item)
+      continue
+    }
     if (existingIds.has(item.id)) {
       continue
     }
     existingIds.add(item.id)
     prefix.push(item)
   }
-  return prefix.length > 0 ? [...prefix, ...history] : history
+  return prefix.length > 0 ? [...prefix, ...nextHistory] : nextHistory
 }
 
 function parseCursorValue(value: unknown): number | null {
@@ -457,6 +500,41 @@ function mergeAssistantMessageContent(left: string, right: string) {
     }
   }
   return `${base}${next}`
+}
+
+function messageMatchesStatePatch(
+  candidate: Extract<FeedItem, { type: 'message' }>,
+  patch: MessageStateFeedItem
+) {
+  if (candidate.role !== 'user') {
+    return false
+  }
+  const patchMessageId = String(patch.messageId || '').trim()
+  if (patchMessageId && String(candidate.messageId || '').trim() === patchMessageId) {
+    return true
+  }
+  const patchClientMessageId = String(patch.clientMessageId || '').trim()
+  return Boolean(
+    patchClientMessageId &&
+      String(candidate.clientMessageId || '').trim() === patchClientMessageId
+  )
+}
+
+function applyMessageStatePatch(items: FeedItem[], patch: MessageStateFeedItem): FeedItem[] {
+  let changed = false
+  const next = items.map((candidate) => {
+    if (candidate.type !== 'message' || !messageMatchesStatePatch(candidate, patch)) {
+      return candidate
+    }
+    changed = true
+    return {
+      ...candidate,
+      readState: patch.readState ?? candidate.readState ?? null,
+      readReason: patch.readReason ?? candidate.readReason ?? null,
+      readAt: patch.readAt ?? candidate.readAt ?? null,
+    }
+  })
+  return changed ? next : items
 }
 
 function removeMatchingLocalPendingUser(pending: FeedItem[], item: MessageFeedItem): FeedItem[] {
@@ -618,6 +696,11 @@ function applyIncomingFeedUpdates(state: FeedState, incoming: FeedItem[]): FeedS
   let nextHistory = [...state.history]
   let nextPending = [...state.pending]
   for (const item of incoming) {
+    if (item.type === 'message_state') {
+      nextHistory = applyMessageStatePatch(nextHistory, item)
+      nextPending = applyMessageStatePatch(nextPending, item)
+      continue
+    }
     if (item.type === 'message' && item.reasoning) {
       nextHistory = appendHistoryItem(nextHistory, item)
       continue
@@ -649,7 +732,28 @@ function applyIncomingFeedUpdates(state: FeedState, incoming: FeedItem[]): FeedS
   }
 }
 
-function createLocalUserFeedItem(content: string, clientMessageId: string): FeedItem {
+function draftAttachmentToFeedRecord(attachment: QuestMessageAttachmentDraft): Record<string, unknown> {
+  return {
+    kind: attachment.kind || (String(attachment.contentType || '').startsWith('image/') ? 'image' : 'path'),
+    name: attachment.name,
+    file_name: attachment.name,
+    content_type: attachment.contentType ?? null,
+    size_bytes: attachment.sizeBytes,
+    asset_url: attachment.assetUrl ?? null,
+    quest_relative_path: attachment.questRelativePath ?? null,
+    path: attachment.path ?? null,
+    extracted_text_path: attachment.extractedTextPath ?? null,
+    preview_url: attachment.previewUrl ?? null,
+    draft_id: attachment.draftId,
+    status: attachment.status,
+  }
+}
+
+function createLocalUserFeedItem(
+  content: string,
+  clientMessageId: string,
+  attachments: QuestMessageAttachmentDraft[] = []
+): FeedItem {
   return {
     id: buildId('local-user', `${Date.now()}-${safeRandomUUID()}`),
     type: 'message',
@@ -659,6 +763,9 @@ function createLocalUserFeedItem(content: string, clientMessageId: string): Feed
     createdAt: new Date().toISOString(),
     clientMessageId,
     deliveryState: 'sending',
+    readState: 'unread',
+    readReason: 'queued',
+    attachments: attachments.map(draftAttachmentToFeedRecord),
   }
 }
 
@@ -750,6 +857,15 @@ function snapshotIndicatesLiveRun(snapshot?: QuestSummary | null) {
     .toLowerCase()
   const latestBashId = String((latestBashSession as Record<string, unknown> | null)?.bash_id ?? '')
     .trim()
+  const latestActivityRaw = String(snapshot.last_tool_activity_at ?? snapshot.updated_at ?? '')
+    .trim()
+  const latestActivityMs = latestActivityRaw ? Date.parse(latestActivityRaw) : Number.NaN
+  const staleRunningWithoutSignals =
+    runtimeStatus === 'running' &&
+    !activeRunId &&
+    bashRunningCount === 0 &&
+    Number.isFinite(latestActivityMs) &&
+    Date.now() - latestActivityMs > 90_000
 
   const isParkedCopilot =
     workspaceMode === 'copilot' &&
@@ -761,6 +877,7 @@ function snapshotIndicatesLiveRun(snapshot?: QuestSummary | null) {
         latestBashKind === 'terminal' &&
         (latestBashId === '' || latestBashId === 'terminal-main')))
   if (isParkedCopilot) return false
+  if (staleRunningWithoutSignals) return false
   if (activeRunId) return true
   if (runtimeStatus === 'running') return true
   return bashRunningCount > 0
@@ -1404,14 +1521,53 @@ export function useQuestWorkspace(questId: string | null) {
     }
   }, [hasOlderHistory, loadingOlderHistory, questId, updateFeedState, updateHistoryWindow])
 
+  const patchQueuedMessageState = useCallback(
+    (args: {
+      messageId?: string | null
+      clientMessageId?: string | null
+      readState?: string | null
+      readReason?: string | null
+      readAt?: string | null
+    }) => {
+      const normalizedMessageId = String(args.messageId || '').trim()
+      const normalizedClientMessageId = String(args.clientMessageId || '').trim()
+      if (!normalizedMessageId && !normalizedClientMessageId) {
+        return
+      }
+      const patchItem = (item: FeedItem) => {
+        if (item.type !== 'message' || item.role !== 'user') {
+          return item
+        }
+        const matches =
+          (normalizedMessageId && String(item.messageId || '').trim() === normalizedMessageId) ||
+          (normalizedClientMessageId && String(item.clientMessageId || '').trim() === normalizedClientMessageId)
+        if (!matches) {
+          return item
+        }
+        return {
+          ...item,
+          readState: args.readState ?? item.readState ?? null,
+          readReason: args.readReason ?? item.readReason ?? null,
+          readAt: args.readAt ?? item.readAt ?? null,
+        }
+      }
+      updateFeedState({
+        history: historyRef.current.map(patchItem),
+        pending: pendingFeedRef.current.map(patchItem),
+      })
+    },
+    [updateFeedState]
+  )
+
   const submit = useCallback(
-    async (value: string) => {
+    async (value: string, attachments: QuestMessageAttachmentDraft[] = []) => {
       const trimmed = value.trim()
-      if (!trimmed || !questId) {
+      const successfulAttachments = attachments.filter((item) => item.status === 'success')
+      if ((!trimmed && successfulAttachments.length === 0) || !questId) {
         return
       }
       setError(null)
-      if (trimmed.startsWith('/')) {
+      if (trimmed.startsWith('/') && successfulAttachments.length === 0) {
         await client.sendCommand(questId, trimmed)
         await bootstrap(false)
         return
@@ -1419,7 +1575,7 @@ export function useQuestWorkspace(questId: string | null) {
 
       const clientMessageId = safeRandomUUID()
       const cursorBeforeSend = cursorRef.current
-      const localUserItem = createLocalUserFeedItem(trimmed, clientMessageId)
+      const localUserItem = createLocalUserFeedItem(trimmed, clientMessageId, successfulAttachments)
       updateFeedState({
         history: historyRef.current,
         pending: [...pendingFeedRef.current, localUserItem].slice(-MAX_PENDING_ITEMS),
@@ -1427,14 +1583,25 @@ export function useQuestWorkspace(questId: string | null) {
       clearPendingStreamCleanup()
 
       try {
-        const response = await client.sendChat(questId, trimmed, replyTargetId, clientMessageId)
+        const response = await client.sendChat(
+          questId,
+          trimmed,
+          replyTargetId,
+          clientMessageId,
+          successfulAttachments.map((item) => item.draftId)
+        )
         const nextDeliveryState =
           response?.message?.delivery_state ? String(response.message.delivery_state) : 'sent'
         updateFeedState({
           history: historyRef.current,
           pending: pendingFeedRef.current.map((item) =>
             item.id === localUserItem.id && item.type === 'message'
-              ? { ...item, deliveryState: nextDeliveryState }
+              ? {
+                  ...item,
+                  deliveryState: nextDeliveryState,
+                  attachments:
+                    normalizeMessageAttachments(response?.message?.attachments) || item.attachments,
+                }
               : item
           ),
         })
@@ -1469,6 +1636,97 @@ export function useQuestWorkspace(questId: string | null) {
       replyTargetId,
       updateFeedState,
     ]
+  )
+
+  const readNow = useCallback(
+    async (messageId: string) => {
+      const normalizedMessageId = messageId.trim()
+      if (!normalizedMessageId || !questId) {
+        return
+      }
+      setError(null)
+      const response = await client.readQueuedMessagesNow(questId, normalizedMessageId)
+      const currentMessageState = response?.current_message_state
+      if (currentMessageState) {
+        patchQueuedMessageState({
+          messageId: currentMessageState.message_id,
+          clientMessageId: currentMessageState.client_message_id,
+          readState: currentMessageState.read_state,
+          readReason: currentMessageState.read_reason,
+          readAt: currentMessageState.read_at,
+        })
+      }
+      const resolvedMessageIds = new Set(
+        (response.message_ids || []).map((item) => String(item || '').trim()).filter(Boolean)
+      )
+      if (resolvedMessageIds.size > 0) {
+        const patchMessage = (item: FeedItem) => {
+          if (
+            item.type === 'message' &&
+            item.role === 'user' &&
+            resolvedMessageIds.has(String(item.messageId || '').trim())
+          ) {
+            return {
+              ...item,
+              readState: 'read' as const,
+              readReason:
+                String(response?.status || '').trim() === 'already_read'
+                  ? (currentMessageState?.read_reason || item.readReason || 'accepted_by_run')
+                  : 'immediate_read',
+              readAt: new Date().toISOString(),
+            }
+          }
+          return item
+        }
+        updateFeedState({
+          history: historyRef.current.map(patchMessage),
+          pending: pendingFeedRef.current.map(patchMessage),
+        })
+      }
+      if (!response?.ok) {
+        return response
+      }
+      queueSessionRefresh(questId, 300)
+      window.setTimeout(() => {
+        if (questIdRef.current !== questId) return
+        void bootstrap(false)
+      }, 1200)
+      return response
+    },
+    [bootstrap, patchQueuedMessageState, questId, queueSessionRefresh, updateFeedState]
+  )
+
+  const withdraw = useCallback(
+    async (messageId: string) => {
+      const normalizedMessageId = messageId.trim()
+      if (!normalizedMessageId || !questId) {
+        return
+      }
+      setError(null)
+      const response = await client.withdrawQueuedMessage(questId, normalizedMessageId)
+      const currentMessageState = response?.current_message_state
+      if (currentMessageState) {
+        patchQueuedMessageState({
+          messageId: currentMessageState.message_id,
+          clientMessageId: currentMessageState.client_message_id,
+          readState: currentMessageState.read_state,
+          readReason: currentMessageState.read_reason,
+          readAt: currentMessageState.read_at,
+        })
+      } else if (response?.ok && response.status === 'withdrawn') {
+        patchQueuedMessageState({
+          messageId: response.message_id || normalizedMessageId,
+          readState: 'read',
+          readReason: 'withdrawn_by_user',
+          readAt: new Date().toISOString(),
+        })
+      }
+      if (response?.ok) {
+        queueSessionRefresh(questId, 300)
+      }
+      return response
+    },
+    [patchQueuedMessageState, questId, queueSessionRefresh]
   )
 
   const stopRun = useCallback(async () => {
@@ -1723,6 +1981,8 @@ export function useQuestWorkspace(questId: string | null) {
     loadOlderHistory,
     loadFullHistory: loadOlderHistory,
     submit,
+    readNow,
+    withdraw,
     stopRun,
   }
 }

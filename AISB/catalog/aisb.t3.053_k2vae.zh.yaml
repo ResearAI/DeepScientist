@@ -1,0 +1,132 @@
+schema_version: 1
+id: aisb.t3.053_k2vae
+name: 'K2VAE：一种用于概率时序预测的Koopman-Kalman增强变分自编码器'
+version: 0.1.0
+one_line: 在17个公开数据集上训练和评估Koopman-Kalman VAE模型进行概率时间序列预测，衡量CRPS和NLL指标。
+task_description: |
+  本基准测试训练和评估K2VAE，这是一种基于VAE的生成模型，使用KoopmanNet将非线性时间序列线性化为潜在动态系统，
+  并使用KalmanNet通过学习卡尔曼增益来迭代细化预测和建模过程不确定性。该任务涵盖短期预测（8个数据集：
+  exchange_rate_nips、electricity_nips、traffic_nips、solar_nips、etth1/2、ettm1/2，预测长度≤30）
+  和长期预测（9个数据集：etth1/2、ettm1/2、traffic_ltsf、electricity_ltsf、exchange_ltsf、illness_ltsf、
+  weather_ltsf，预测长度最长可达720）。训练由run.py驱动，每个数据集使用config/stsf/和config/ltsf/下的
+  YAML配置文件，采用PyTorch Lightning框架。主要指标为CRPS（连续排名概率得分）和NLL（负对数似然）。
+  数据集需从Google Drive或百度云手动下载并放置于./datasets目录下。典型完整运行需在单GPU上
+  对每个数据集-预测长度组合训练50个epoch。所有评估均在代码库内完成，无需外部评估工具包。
+capability_tags:
+- research_code_optimization
+- time_series_forecasting
+- variational_autoencoders
+- probabilistic_forecasting
+- uncertainty_estimation
+- koopman_theory
+- kalman_filtering
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- crps
+- nll
+- forecast_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: 快速评估（单数据集）
+  description: |
+    在单个数据集（如solar_nips或exchange_ltsf）上运行一次短期或长期K2VAE训练和评估，
+    仅针对一个预测长度。根据数据集大小，预期在单GPU上耗时1-3小时。
+- id: full_train_eval
+  label: 完整训练+评估（全部数据集）
+  description: |
+    在论文中报告的全部17个数据集和多个预测长度上运行完整的K2VAE训练和评估工作流。
+    这将复现完整的实验网格（每个配置50个epoch）。预期在单GPU上耗时12-24小时以上。
+dataset_download:
+  primary_method: manual_download
+  sources:
+  - kind: google_drive
+    url: https://drive.google.com/drive/folders/1l0c4H57xYKKQQ5Tm7kd4C8M2nCepky-y?usp=sharing
+    access: public
+    note: 预处理的时间序列数据集（ETT、交通、电力、汇率、太阳能、天气、疾病）。将内容放置于./datasets目录下。
+  - kind: baidu_cloud
+    url: https://pan.baidu.com/s/1eyJvwnPx595nlJzYIzLAJA?pwd=0525
+    access: public
+    note: 相同数据集在百度云的镜像（密码0525）。
+  notes:
+  - 数据集总大小未记录；根据标准ETT/交通/电力/天气基准数据集，预计解压后为几GB。
+  - 下载可能较慢；README提醒请耐心等待。
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: 2.4.1
+  flash_attn: null
+  key_packages:
+  - gluonts==0.15.1
+  - lightning
+  notes:
+  - 从仓库根目录执行'pip install .'进行安装（使用pyproject.toml）。
+  - README建议安装后可选执行'pip uninstall -y k2vae'以避免根包冲突。
+  - 完整的依赖列表请参阅附带的README和pyproject.toml。
+risk_flags:
+- manual_dataset_download
+- multi_dataset_grid
+risk_notes:
+  - 数据集必须在任何运行前从Google Drive或百度云手动下载；没有自动下载脚本。
+  - 完整实验网格（17个数据集×多个预测长度×50个epoch）耗时较长；请做好串行或并行调度的规划。
+  - 未明确指定CUDA版本；PyTorch 2.4.1支持CUDA 11.8和12.x。请验证GPU驱动兼容性。
+  - 代码库将torch float32矩阵乘法精度设置为'high'，这可能影响不同硬件间的数值可复现性。
+recommended_when: |
+  当你需要具有明确不确定性校准指标（CRPS、NLL）的概率预测任务、需要涵盖短期和长期预测范围的多个公开时间序列数据集，
+  且需要一个仅需单GPU即可完成的自包含训练和评估循环时，可使用此基准测试。适合探索基于Koopman的潜在动态建模
+  或卡尔曼滤波启发的不确定性建模方法。
+not_recommended_when: |
+  如果你只需要确定性点预测而不需要不确定性量化，或者无法从Google Drive/百度云手动下载数据集，请勿使用此基准测试。
+  如果你需要可在1小时内完成的基准测试以实现快速迭代，此基准测试也不理想。
+paper:
+  title: 'K2VAE: A Koopman-Kalman Enhanced Variational AutoEncoder for Probabilistic
+    Time Series Forecasting'
+  venue: ICML 2025 Spotlight
+  year: 2025
+  url: https://arxiv.org/abs/2505.23017
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.053_k2vae.zip
+  archive_type: zip
+  local_dir_name: paper-53-K2VAE
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.053_k2vae.zip
+  sha256: 1542a525136c41bdb95128583254d2a8251b57d0a5f161aa92c76a1c0f9ed6e1
+  size_bytes: 10134476
+commercial:
+  annual_fee: null
+display:
+  palette_seed: turquoise-slate-kalman
+  art_style: probabilistic-lab
+  accent_priority: high
+image_path: ../image/053_aisb.t3.053_k2vae.jpg

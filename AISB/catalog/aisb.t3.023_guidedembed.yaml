@@ -1,0 +1,211 @@
+id: aisb.t3.023_guidedembed
+name: 'GSTransform: Guided Space Transformation for Instruction-Following Text Embeddings'
+version: 0.1.0
+one_line: Lightweight transformation of pretrained text embeddings to follow user
+  instructions without corpus re-encoding, achieving 6-300x speedup.
+task_description: 'This packaged benchmark covers GSTransform, a novel instruction-following
+  text embedding framework. Unlike prior approaches that require re-encoding the entire
+  corpus for each instruction (O(m×n) forward passes), GSTransform transforms pre-computed
+  embeddings in real time using a lightweight model. The two-stage pipeline consists
+  of: (1) Instruction-based Label Construction where an LLM generates instruction-aware
+  labels from a small sampled corpus, and (2) Label-guided Embedding Transformation
+  where a transformation model maps generic embeddings to an instruction-aligned semantic
+  space using contrastive and reconstruction losses. The benchmark evaluates on three
+  instruction-awareness tasks—clustering, semantic textual similarity (STS), and triplet
+  alignment—across nine real-world datasets. Evaluation requires configuring the dataset
+  in data.py, the instruction in label_construction.py, and an OpenAI API key in util.py.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- v_measure
+- nmi
+- sts_score
+- triplet_score
+- embedding_checkpoint
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run the clustering-oriented evaluation route on a prepared embedding
+    setup. Skips label construction and training; requires pre-computed embeddings
+    and labeled classification results from prior runs.
+
+    '
+  estimated_time: 10-30m
+- id: full_pipeline
+  label: Full Pipeline
+  description: 'Construct instruction-aware labels using an LLM, train the GSTransform
+    transformation model, and run the full packaged evaluation pipeline including
+    clustering, STS, and triplet evaluations.
+
+    '
+  estimated_time: 4-12h
+  requires_api_key: true
+dataset_download:
+  primary_method: direct_archive
+  sources:
+  - url: https://deepscientist.cc/AISB/023_guidedembed
+    archive_type: zip
+  notes:
+  - Download the paper-23-GuidedEmbed archive
+  - Contains pretrained UAE-Large-V1 model under uae_model/
+  - Configure dataset path in data.py (line 20) before running
+  - Configure instruction in label_construction.py (line 289)
+  - Requires OpenAI API key in util.py (line 8) for label construction
+credential_requirements:
+  mode: api_key_required
+  items:
+  - name: openai_api_key
+    description: OpenAI API key for LLM-based label construction and taxonomy generation
+    scope: label_construction.py
+  notes:
+  - API key only needed during label_construction stage
+  - LLM calls are limited to a small annotated subset (5000 samples recommended)
+  - Cost is minimal compared to full corpus re-encoding approaches
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.0.0
+  flash_attn: null
+  key_packages:
+  - name: torch
+    version: '>=2.0'
+  - name: numpy
+    version: '>=1.24'
+  - name: scikit-learn
+    version: '>=1.3'
+  - name: sentence-transformers
+    version: '>=2.2'
+  - name: openai
+    version: '>=1.0'
+  notes:
+  - Full dependency set in bundled requirements.txt
+  - UAE-Large-V1 pretrained encoder bundled in uae_model/ directory
+  - CUDA required for efficient embedding transformation and evaluation
+risk_flags:
+- api_cost
+- disk_io_bottleneck
+risk_notes:
+- API key consumption limited to label construction phase only
+- Embedding cache (embeddings.pkl) can be large; ensure adequate disk space
+- Training uses contrastive loss with margin; adjust MARGIN (default 1.0) in train.py
+  for stability
+recommended_when: 'Use this benchmark when you need a compact NLP training task around
+  instruction-aware embeddings with clustering, STS, or triplet evaluation metrics.
+  Ideal for exploring efficient alternatives to full corpus re-encoding methods like
+  Instructor or InBedder.
+
+  '
+not_recommended_when: 'Do not use this if you need a very large multimodal benchmark,
+  full LLM finetuning workflows, or evaluation scenarios without any API access. This
+  benchmark requires at least one GPU and an OpenAI API key for the label construction
+  pipeline.
+
+  '
+paper:
+  title: 'Don''t Reinvent the Wheel: Efficient Instruction-Following Text Embedding
+    based on Guided Space Transformation'
+  venue: ACL 2025 Oral
+  year: 2025
+  url: https://arxiv.org/abs/2505.24754
+  code_url: https://github.com/YingchaojieFeng/GSTransform
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.023_guidedembed.zip
+  archive_type: zip
+  local_dir_name: paper-23-GuidedEmbed
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.023_guidedembed.zip
+  sha256: 69f98b98d8db4889e5b7063ee007a61b2d823f1ac03114c784e6f02418cc7640
+  size_bytes: 1470047
+display:
+  palette_seed: sage-indigo-embed
+  art_style: semantic-minimal
+  accent_priority: medium
+image_path: ../image/023_aisb.t3.023_guidedembed.jpg
+metric_evidence:
+  v_measure:
+    origin: run_eval_pipeline.py
+    source_ref: FINAL V-MEASURE output line
+    evaluation_protocol: clustering_with_oracle_labels
+  nmi:
+    origin: evaluate_cluster.py
+    source_ref: sklearn.metrics.normalized_mutual_info_score
+    evaluation_protocol: kmeans_clustering
+  sts_score:
+    origin: evaluate_sts.py
+    source_ref: cosine_similarity_comparison
+    evaluation_protocol: semantic_textual_similarity_benchmark
+  triplet_score:
+    origin: evaluate_triplet.py
+    source_ref: triplet_accuracy_evaluation
+    evaluation_protocol: instruction_aware_triplet_alignment
+execution_notes:
+  pipeline_order:
+  - step: data.py
+    description: Load and preprocess dataset; configure DATASET_PATH
+  - step: label_construction.py
+    description: Generate instruction-aware taxonomy and labels using LLM
+  - step: train.py
+    description: Train GSTransform model on labeled embeddings
+  - step: evaluate_cluster.py
+    description: Evaluate on clustering task (primary V-measure, NMI)
+  - step: evaluate_sts.py
+    description: Evaluate on semantic textual similarity task
+  - step: evaluate_triplet.py
+    description: Evaluate on triplet alignment task
+  checkpoints:
+  - path: cache/model.pth
+    description: Trained GSTransform transformation model
+  - path: cache/embeddings.pkl
+    description: Pre-computed and cached base embeddings
+  - path: cache/classifications_xxx.json
+    description: LLM-generated instruction-aware labels
+capability_tags:
+- research_code_optimization
+- text_embeddings
+- representation_learning
+- instruction_following
+- nlp
+- efficient_inference
+- contrastive_learning
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null
+metadata:
+  base_encoder: WhereIsAI/UAE-Large-V1
+  transformation_output_dim: 128
+  training_batch_size: 512
+  default_epochs: 500
+  default_learning_rate: 0.0001
+  default_margin: 1.0
+  patience: 50
+  n_train_samples: 5000
+  datasets_evaluated: 9
+  speedup_factor: 6-300x

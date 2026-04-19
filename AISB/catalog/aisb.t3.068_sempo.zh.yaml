@@ -1,0 +1,148 @@
+id: aisb.t3.068_sempo
+name: 'SEMPO: 轻量级时序预测基础模型'
+version: 0.1.0
+one_line: 6.5M参数轻量级时序基础模型，配备能量感知频谱分解与提示混合专家模块，可在单块GPU上预训练。
+task_description: |
+  本基准测试套件涵盖SEMPO，一种创新的轻量级时序基础模型，在大幅降低模型规模和预训练规模的同时，实现了强大的零样本和少样本预测泛化能力。SEMPO包含两个关键模块：(1) 能量感知频谱分解(EASD)，该模块同时建模高频能量和低频能量信号——解决了先前方法忽略低能量但具有信息价值的频谱成分这一偏差问题；(2) 基于提示混合的Transformer(MoPFormer)，通过小型数据集特定提示学习异构时序模式，并自适应地将时序token路由到基于提示的专家模块，实现参数高效适配。仅用6.5M参数在83M时间点上预训练，SEMPO便超越了具有数亿参数、在数十亿时间点上预训练的最先进时序基础模型，在零样本和少样本场景下分别实现了平均12%和22%的预测误差降低。该基准测试支持单GPU预训练、微调和零样本评估，覆盖16个数据集。
+capability_tags:
+- time_series_forecasting
+- foundation_models
+- lightweight_models
+- spectral_decomposition
+- mixture_of_experts
+- prompt_mixture_models
+- zero_shot_learning
+- few_shot_learning
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- mse
+- mae
+- rmse
+- mape
+- mspe
+- mse_96
+- mse_192
+- mse_336
+- mse_720
+- forecast_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: |
+    在一个打包的基准测试路线（如ETTh1、weather、electricity）上运行零样本评估。使用参数 --is_pretraining 0 --is_training 0 --is_zeroshot 1。从 ./checkpoints/ 下载并评估预训练checkpoint。
+  hardware_notes: |
+    至少需要16GB显存的单块GPU；建议24GB显存以获得舒适的执行体验。
+- id: pretrain_and_eval
+  label: 预训练 + 评估
+  description: |
+    运行完整的轻量级基础模型工作流：通过 sempo_utsd.sh 在UTSD数据上进行预训练，然后使用零样本或少样本脚本进行评估。
+  hardware_notes: |
+    支持单节点单GPU和多GPU执行。由于紧凑的6.5M参数模型规模，单GPU预训练是可行的。也可通过torch.distributed支持多节点分布式训练。
+- id: few_shot_eval
+  label: 少样本 + 评估
+  description: |
+    使用5%或10%的数据集比例通过少样本脚本进行微调。使用参数 --is_pretraining 0 --is_training 1 --is_zeroshot 0。
+  hardware_notes: |
+    由于MoPFormer的参数高效提示适配机制，微调过程较为轻量。
+dataset_download:
+  primary_method: manual
+  sources:
+  - name: UTSD numpy格式
+    url: https://cloud.tsinghua.edu.cn/f/93868e3a9fb144fe9719/
+    note: 主要预训练数据集格式
+  - name: Google Drive
+    url: https://drive.google.com/drive/my-drive?dmr=1&ec=wgc-drive-hero-goto
+    note: UTSD内容下载位置
+  notes:
+  - 将下载内容放置于 ./dataset 目录下
+  - PEMS04和PEMS07使用与其他UTSD数据集不同的单独格式
+  - 预训练checkpoint已打包在 ./checkpoints/ 中，无需重新训练即可进行评估
+credential_requirements:
+  mode: optional
+  items:
+  - huggingface_api
+  notes:
+  - 仅在评估Chronos-Bolt对比基线时需要
+  - Chronos预训练权重需从 https://huggingface.co/collections/amazon/chronos-models-65f1791d630a8d57cb718444 手动下载
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+    gpu_arch: any_cuda_11x
+    notes: 由于6.5M参数紧凑架构，单GPU足以进行预训练
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+    gpu_arch: any_cuda_11x
+    notes: 24GB显存为更大的批量大小和未来实验提供了充足的空间
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.2
+  flash_attn: null
+  key_packages:
+  - transformers==4.40.1
+  notes:
+  - 通过 pip install -r requirements.txt 安装
+  - 需要PyTorch 2.1.2+cu118
+  - 完整的依赖项列表请参阅附带的README/requirements.txt
+risk_flags:
+- single_point_of_failure
+- reproducibility_variance
+risk_notes:
+- 为保证可重复性，run.py中的随机种子固定为2021
+- 评估脚本支持多个基准数据集；结果可能因领域不同而有所差异
+- Chronos-Bolt评估需要从HuggingFace手动下载权重
+recommended_when: |
+  当您希望实验一种紧凑的基础模型预测方法时使用此基准测试，该方法支持单GPU预训练，并展现出向能源、交通、天气和交通等多样化时序领域的强大零样本/少样本迁移能力。
+not_recommended_when: |
+  如果您的研究需要将大规模集群预训练规模作为主要难度驱动因素，或者您需要具有数亿参数的模型，请勿使用此基准测试。
+paper:
+  title: 'SEMPO: Lightweight Foundation Models for Time Series Forecasting'
+  venue: NeurIPS 2025 Poster
+  year: 2025
+  url: https://arxiv.org/abs/2510.19710
+  code_url: https://github.com/mala-lab/SEMPO
+  authors:
+  - Hui He
+  - Kun Yi
+  - Yuanchi Ma
+  - Qi Zhang
+  - Zhendong Niu
+  - Guansong Pang
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.068_sempo.zip
+  archive_type: zip
+  local_dir_name: paper-68-SEMPO
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.068_sempo.zip
+  sha256: efc7e945bebd2a61b437030d21ca2767951a4620edd5f923cbe73d7f7c457073
+  size_bytes: 485364
+display:
+  palette_seed: ivory-lime-spectrum
+  art_style: lightweight-foundation
+  accent_priority: medium
+commercial:
+  annual_fee: null
+image_path: ../image/068_aisb.t3.068_sempo.jpg

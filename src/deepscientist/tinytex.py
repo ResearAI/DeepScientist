@@ -9,7 +9,7 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from .shared import which
+from .shared import utf8_text_subprocess_kwargs, which
 
 _TINYTEX_DOC_URL = "https://yihui.org/tinytex/"
 _TINYTEX_CHINESE_DOC_URL = "https://yihui.org/tinytex/cn/"
@@ -228,7 +228,7 @@ def install_tinytex(home: Path | None = None) -> dict[str, Any]:
 
     installer_path = Path(installer_path_or_error)
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        result = subprocess.run(command, capture_output=True, check=False, **utf8_text_subprocess_kwargs())
     finally:
         installer_path.unlink(missing_ok=True)
     refreshed = inspect_latex_runtime(home)

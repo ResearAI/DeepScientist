@@ -552,7 +552,7 @@ def test_turn_skill_for_rejects_experiment_without_durable_idea_in_paper_mode() 
 def test_turn_skill_for_copilot_direct_question_does_not_default_to_decision() -> None:
     snapshot = {
         "workspace_mode": "copilot",
-        "active_anchor": "baseline",
+        "active_anchor": "scout",
         "continuation_anchor": "decision",
         "baseline_gate": "pending",
         "startup_contract": {
@@ -572,14 +572,14 @@ def test_turn_skill_for_copilot_direct_question_does_not_default_to_decision() -
             turn_reason="user_message",
             turn_mode="answering",
         )
-        == "baseline"
+        == "scout"
     )
 
 
 def test_turn_skill_for_copilot_direct_command_does_not_default_to_decision() -> None:
     snapshot = {
         "workspace_mode": "copilot",
-        "active_anchor": "baseline",
+        "active_anchor": "scout",
         "continuation_anchor": "decision",
         "baseline_gate": "pending",
         "startup_contract": {
@@ -598,6 +598,61 @@ def test_turn_skill_for_copilot_direct_command_does_not_default_to_decision() ->
             latest_user_message,
             turn_reason="user_message",
             turn_mode="command_execution",
+        )
+        == "scout"
+    )
+
+
+def test_turn_skill_for_legacy_copilot_baseline_anchor_falls_back_to_scout_without_explicit_baseline_context() -> None:
+    snapshot = {
+        "workspace_mode": "copilot",
+        "active_anchor": "baseline",
+        "continuation_anchor": "decision",
+        "baseline_gate": "pending",
+        "startup_contract": {
+            "workspace_mode": "copilot",
+        },
+    }
+    latest_user_message = {
+        "role": "user",
+        "content": "Please inspect this setup agent session.",
+        "source": "web-react",
+    }
+
+    assert (
+        DaemonApp._turn_skill_for(
+            snapshot,
+            latest_user_message,
+            turn_reason="user_message",
+            turn_mode="answering",
+        )
+        == "scout"
+    )
+
+
+def test_turn_skill_for_copilot_explicit_baseline_context_still_allows_baseline() -> None:
+    snapshot = {
+        "workspace_mode": "copilot",
+        "active_anchor": "baseline",
+        "continuation_anchor": "decision",
+        "baseline_gate": "pending",
+        "requested_baseline_ref": {"baseline_id": "baseline-001"},
+        "startup_contract": {
+            "workspace_mode": "copilot",
+        },
+    }
+    latest_user_message = {
+        "role": "user",
+        "content": "Please help me inspect the imported baseline before branching.",
+        "source": "web-react",
+    }
+
+    assert (
+        DaemonApp._turn_skill_for(
+            snapshot,
+            latest_user_message,
+            turn_reason="user_message",
+            turn_mode="answering",
         )
         == "baseline"
     )
@@ -723,11 +778,11 @@ def test_user_turn_prompt_flow_e2e_keeps_warm_style_first_guidance(temp_home: Pa
 
     top_block = "\n".join(prompt.splitlines()[:50])
     assert turn_mode == "answering"
-    assert skill_id == "baseline"
-    assert "都搞定啦！" in top_block
-    assert "路线切换" in top_block
+    assert skill_id == "scout"
+    assert "# DeepScientist Copilot System Prompt" in top_block
+    assert "request-scoped help" in top_block
     assert "turn_self_routing_rule" in prompt
-    assert "研究搭子" in prompt
+    assert "micro_task_stop_rule" in prompt
 
 
 def _wait_for_json(url: str, *, timeout: float = 10.0) -> dict | list:
@@ -3987,6 +4042,235 @@ def test_quest_events_stream_large_jsonl_without_full_cache(
     assert cache_key not in app.quest_service._jsonl_cache
 
 
+def test_start_setup_session_turn_finish_settles_snapshot_and_session_even_without_form_patch(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create(
+        "setup session finish quest",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "freeform",
+            "start_setup_session": {
+                "source": "benchstore",
+                "locale": "zh",
+                "suggested_form": {
+                    "title": "Setup draft title",
+                    "goal": "Prepare the launch form.",
+                },
+            },
+        },
+    )
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+
+    class FakeRunner:
+        binary = ""
+
+        def run(self, request):
+            history_root = ensure_dir(request.quest_root / ".ds" / "codex_history" / request.run_id)
+            run_root = ensure_dir(request.quest_root / ".ds" / "runs" / request.run_id)
+            append_jsonl(
+                request.quest_root / ".ds" / "events.jsonl",
+                {
+                    "event_id": generate_id("evt"),
+                    "type": "runner.agent_message",
+                    "quest_id": request.quest_id,
+                    "run_id": request.run_id,
+                    "source": "codex",
+                    "skill_id": request.skill_id,
+                    "text": "已经判断完毕：当前信息足够，但这次不再提交新的表单 patch。",
+                    "created_at": utc_now(),
+                },
+            )
+            append_jsonl(
+                request.quest_root / ".ds" / "events.jsonl",
+                {
+                    "event_id": generate_id("evt"),
+                    "type": "runner.turn_finish",
+                    "quest_id": request.quest_id,
+                    "run_id": request.run_id,
+                    "source": "codex",
+                    "skill_id": request.skill_id,
+                    "model": request.model,
+                    "exit_code": 0,
+                    "summary": "SetupAgent finished without emitting a new form patch.",
+                    "created_at": utc_now(),
+                },
+            )
+            return RunResult(
+                ok=True,
+                run_id=request.run_id,
+                model=request.model,
+                output_text="SetupAgent finished without emitting a new form patch.",
+                exit_code=0,
+                history_root=history_root,
+                run_root=run_root,
+                stderr_text="",
+            )
+
+    app.runners["codex"] = FakeRunner()
+
+    payload = app.handlers.chat(
+        quest_id,
+        {
+            "text": "请继续整理 setup，必要时可以只回答，不用提交新的 patch。",
+            "source": "web-react",
+        },
+    )
+
+    assert payload["ok"] is True
+    assert payload["started"] is True
+
+    deadline = time.time() + 3
+    while time.time() < deadline:
+        snapshot = app.quest_service.snapshot(quest_id)
+        if snapshot["status"] == "active" and snapshot["active_run_id"] is None:
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError("setup session did not settle back to active after finishing")
+
+    events = app.handlers.quest_events(
+        quest_id,
+        path=f"/api/quests/{quest_id}/events?format=acp&session_id=session:test",
+    )
+    updates = [item["params"]["update"] for item in events["acp_updates"]]
+    assert any(
+        update["kind"] == "event" and (update.get("data") or {}).get("label") == "run_finished"
+        for update in updates
+    )
+
+    session = app.handlers.quest_session(quest_id)
+    assert session["snapshot"]["active_run_id"] is None
+    assert session["snapshot"]["runtime_status"] == "active"
+    assert session["snapshot"]["status"] == "active"
+
+    quest_yaml = read_yaml(quest_root / "quest.yaml", {})
+    assert quest_yaml.get("active_run_id") is None
+    runtime_state = read_json(quest_root / ".ds" / "runtime_state.json", {})
+    assert runtime_state["active_run_id"] is None
+    assert runtime_state["status"] == "active"
+
+
+def test_start_setup_session_http_session_and_events_expose_finish_without_form_patch(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home, browser_auth_enabled=False)
+    app._start_background_connectors = lambda: None  # type: ignore[method-assign]
+    app._stop_background_connectors = lambda: None  # type: ignore[method-assign]
+    app._start_terminal_attach_server = lambda host, port: None  # type: ignore[method-assign]
+    app._stop_terminal_attach_server = lambda: None  # type: ignore[method-assign]
+    quest = app.quest_service.create(
+        "setup session http finish quest",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "freeform",
+            "start_setup_session": {
+                "source": "benchstore",
+                "locale": "zh",
+                "suggested_form": {
+                    "title": "HTTP setup draft title",
+                    "goal": "Prepare the launch form over HTTP.",
+                },
+            },
+        },
+    )
+    quest_id = quest["quest_id"]
+
+    class FakeRunner:
+        binary = ""
+
+        def run(self, request):
+            history_root = ensure_dir(request.quest_root / ".ds" / "codex_history" / request.run_id)
+            run_root = ensure_dir(request.quest_root / ".ds" / "runs" / request.run_id)
+            append_jsonl(
+                request.quest_root / ".ds" / "events.jsonl",
+                {
+                    "event_id": generate_id("evt"),
+                    "type": "runner.agent_message",
+                    "quest_id": request.quest_id,
+                    "run_id": request.run_id,
+                    "source": "codex",
+                    "skill_id": request.skill_id,
+                    "text": "HTTP setup agent concluded without emitting a new form patch.",
+                    "created_at": utc_now(),
+                },
+            )
+            append_jsonl(
+                request.quest_root / ".ds" / "events.jsonl",
+                {
+                    "event_id": generate_id("evt"),
+                    "type": "runner.turn_finish",
+                    "quest_id": request.quest_id,
+                    "run_id": request.run_id,
+                    "source": "codex",
+                    "skill_id": request.skill_id,
+                    "model": request.model,
+                    "exit_code": 0,
+                    "summary": "HTTP setup turn finished without form patch.",
+                    "created_at": utc_now(),
+                },
+            )
+            return RunResult(
+                ok=True,
+                run_id=request.run_id,
+                model=request.model,
+                output_text="HTTP setup turn finished without form patch.",
+                exit_code=0,
+                history_root=history_root,
+                run_root=run_root,
+                stderr_text="",
+            )
+
+    app.runners["codex"] = FakeRunner()
+
+    port = _pick_free_port()
+    base_url = f"http://127.0.0.1:{port}"
+    server_thread = threading.Thread(target=app.serve, args=("127.0.0.1", port), daemon=True)
+    server_thread.start()
+    try:
+        _wait_for_http_ready(f"{base_url}/api/health")
+        chat_request = Request(
+            f"{base_url}/api/quests/{quest_id}/chat",
+            data=json.dumps(
+                {
+                    "text": "请继续整理 setup，可以只回答不用补 patch。",
+                    "source": "web-react",
+                }
+            ).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        chat_payload = json.loads(urlopen(chat_request).read().decode("utf-8"))  # noqa: S310
+        assert chat_payload["ok"] is True
+        assert chat_payload["started"] is True
+
+        deadline = time.time() + 3
+        session_payload = None
+        while time.time() < deadline:
+            candidate = _get_json(f"{base_url}/api/quests/{quest_id}/session")
+            if candidate["snapshot"]["status"] == "active" and candidate["snapshot"]["active_run_id"] is None:
+                session_payload = candidate
+                break
+            time.sleep(0.05)
+        assert session_payload is not None
+        assert session_payload["snapshot"]["runtime_status"] == "active"
+        assert session_payload["snapshot"]["active_run_id"] is None
+
+        events_payload = _get_json(f"{base_url}/api/quests/{quest_id}/events?format=acp&session_id=quest:{quest_id}")
+        updates = [item["params"]["update"] for item in events_payload["acp_updates"]]
+        assert any(
+            update["kind"] == "event" and (update.get("data") or {}).get("label") == "run_finished"
+            for update in updates
+        )
+    finally:
+        app.request_shutdown(source="test-start-setup-http-finish")
+        server_thread.join(timeout=10)
+
+
 def test_quest_create_with_requested_baseline_attaches_materializes_and_confirms(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
@@ -4406,6 +4690,378 @@ def test_chat_endpoint_persists_client_message_delivery_state(temp_home: Path) -
     assert event["client_message_id"] == "client-msg-001"
     assert event["delivery_state"] == "sent"
 
+    enriched = app.quest_service.enrich_conversation_message_event(quest_id, event)
+    assert enriched["read_state"] == "unread"
+    assert enriched["read_reason"] == "queued"
+
+    acp_events = app.handlers.quest_events(quest_id, f"/api/quests/{quest_id}/events?format=acp")
+    message_update = next(
+        item["params"]["update"]
+        for item in acp_events["acp_updates"]
+        if (item["params"]["update"].get("event_type") or "") == "conversation.message"
+        and ((item["params"]["update"].get("message") or {}).get("content") or "") == "Track this message."
+    )
+    assert message_update["message"]["read_state"] == "unread"
+    assert message_update["message"]["read_reason"] == "queued"
+
+
+def test_chat_upload_and_send_materializes_web_attachment_into_userfiles(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create("web attachment quest")
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+
+    uploaded = app.handlers.chat_upload_create(
+        quest_id,
+        {
+            "draft_id": "draft-web-001",
+            "file_name": "figure.png",
+            "mime_type": "image/png",
+            "content_base64": base64.b64encode(b"\x89PNG\r\n\x1a\nquest-chat-upload").decode("ascii"),
+        },
+    )
+
+    assert uploaded["ok"] is True
+    assert uploaded["draft_id"] == "draft-web-001"
+    assert uploaded["quest_relative_path"].startswith("userfiles/web/_staging/")
+    staged_path = Path(uploaded["path"])
+    assert staged_path.exists()
+
+    payload = app.handlers.chat(
+        quest_id,
+        {
+            "text": "Please inspect this uploaded figure.",
+            "source": "web-react",
+            "client_message_id": "client-msg-attach-001",
+            "attachment_draft_ids": ["draft-web-001"],
+        },
+    )
+
+    assert payload["ok"] is True
+    message = payload["message"]
+    attachments = list(message.get("attachments") or [])
+    assert len(attachments) == 1
+    attachment = dict(attachments[0])
+    assert attachment["name"] == "figure.png"
+    assert str(attachment["quest_relative_path"]).startswith("userfiles/web/client-msg-attach-001/")
+    final_path = Path(str(attachment["path"]))
+    assert final_path.exists()
+    assert not staged_path.exists()
+    assert (final_path.parent / "manifest.json").exists()
+
+    history = app.quest_service.history(quest_id)
+    record = next(item for item in history if item.get("client_message_id") == "client-msg-attach-001")
+    assert len(record.get("attachments") or []) == 1
+    assert str((record.get("attachments") or [])[0].get("path") or "") == str(final_path)
+
+    queue_payload = read_json(quest_root / ".ds" / "user_message_queue.json", {})
+    pending = list(queue_payload.get("pending") or [])
+    assert len(pending) == 1
+    assert str((pending[0].get("attachments") or [])[0].get("path") or "") == str(final_path)
+
+
+def test_read_now_endpoint_consumes_unread_queue_and_restarts_quiet_turn(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+    config = manager.load_named("config")
+    config["default_locale"] = "en-US"
+    write_yaml(manager.path_for("config"), config)
+
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create("immediate read quest")
+    quest_id = quest["quest_id"]
+
+    class ImmediateReadRunner:
+        binary = ""
+
+        def __init__(self) -> None:
+            self.requests: list[dict[str, str]] = []
+            self.started = threading.Event()
+            self.interrupted = threading.Event()
+
+        def run(self, request):
+            self.requests.append(
+                {
+                    "message": request.message,
+                    "turn_reason": request.turn_reason,
+                }
+            )
+            history_root = ensure_dir(request.quest_root / ".ds" / "codex_history" / request.run_id)
+            run_root = ensure_dir(request.quest_root / ".ds" / "runs" / request.run_id)
+            if request.message == "Run the long task first.":
+                self.started.set()
+                while not self.interrupted.is_set():
+                    time.sleep(0.05)
+                return RunResult(
+                    ok=False,
+                    run_id=request.run_id,
+                    model=request.model,
+                    output_text="Interrupted.",
+                    exit_code=130,
+                    history_root=history_root,
+                    run_root=run_root,
+                    stderr_text="stopped by immediate read",
+                )
+            return RunResult(
+                ok=True,
+                run_id=request.run_id,
+                model=request.model,
+                output_text="Immediate read handled.",
+                exit_code=0,
+                history_root=history_root,
+                run_root=run_root,
+                stderr_text="",
+            )
+
+        def interrupt(self, target_quest_id: str) -> bool:
+            self.interrupted.set()
+            return True
+
+    runner = ImmediateReadRunner()
+    app.runners["codex"] = runner
+
+    start_payload = app.handlers.chat(
+        quest_id,
+        {"text": "Run the long task first.", "source": "tui-ink"},
+    )
+    assert start_payload["ok"] is True
+    assert runner.started.wait(timeout=3)
+
+    first = app.quest_service.append_message(
+        quest_id,
+        role="user",
+        content="Please inspect config first.",
+        source="web-react",
+        client_message_id="msg-read-now-001",
+    )
+    second = app.quest_service.append_message(
+        quest_id,
+        role="user",
+        content="Then verify the entrypoint.",
+        source="qq:group:e2e",
+        client_message_id="msg-read-now-002",
+    )
+
+    payload = app.handlers.quest_message_read_now(
+        quest_id,
+        {
+            "message_id": second["id"],
+            "source": "web-react",
+        },
+    )
+
+    assert payload["ok"] is True
+    assert payload["interrupted"] is True
+    assert payload["reason"] == "immediate_read"
+    assert payload["message_ids"] == [first["id"], second["id"]]
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if len(runner.requests) >= 2:
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError("Immediate read did not restart the agent turn.")
+
+    assert runner.requests[1]["turn_reason"] == "immediate_read"
+    assert "Please inspect config first." in runner.requests[1]["message"]
+    assert "Then verify the entrypoint." in runner.requests[1]["message"]
+    assert "Immediately send one substantive follow-up artifact.interact" in runner.requests[1]["message"]
+
+    snapshot = app.quest_service.snapshot(quest_id)
+    assert snapshot["pending_user_message_count"] == 0
+
+    queue_payload = read_json(Path(snapshot["paths"]["user_message_queue"]), {})
+    first_state = queue_payload["message_states"][first["id"]]
+    second_state = queue_payload["message_states"][second["id"]]
+    assert first_state["read_state"] == "read"
+    assert first_state["read_reason"] == "immediate_read"
+    assert second_state["read_state"] == "read"
+    assert second_state["read_reason"] == "immediate_read"
+
+    events = read_jsonl(Path(snapshot["quest_root"]) / ".ds" / "events.jsonl")
+    assert not any(str(item.get("type") or "") == "quest.control" for item in events)
+    state_events = [item for item in events if str(item.get("type") or "") == "conversation.message_state"]
+    assert {item.get("message_id") for item in state_events[-2:]} == {first["id"], second["id"]}
+
+
+def test_read_now_endpoint_reports_success_when_message_was_already_read(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create("already read immediate read quest")
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+
+    message = app.quest_service.append_message(
+        quest_id,
+        role="user",
+        content="Please inspect the config.",
+        source="web-react",
+        client_message_id="already-read-001",
+    )
+    app.quest_service.consume_pending_user_messages(
+        quest_root,
+        interaction_id="interaction-read-001",
+        delivery_reason="artifact_mailbox",
+    )
+
+    payload = app.handlers.quest_message_read_now(
+        quest_id,
+        {
+            "message_id": message["id"],
+            "source": "web-react",
+        },
+    )
+
+    assert payload["ok"] is True
+    assert payload["status"] == "already_read"
+
+
+def test_read_now_endpoint_surfaces_interrupt_failure_details(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create("immediate read interrupt failure quest")
+    quest_id = quest["quest_id"]
+
+    class StuckImmediateReadRunner:
+        binary = ""
+
+        def __init__(self) -> None:
+            self.started = threading.Event()
+
+        def run(self, request):
+            history_root = ensure_dir(request.quest_root / ".ds" / "codex_history" / request.run_id)
+            run_root = ensure_dir(request.quest_root / ".ds" / "runs" / request.run_id)
+            self.started.set()
+            time.sleep(6.0)
+            return RunResult(
+                ok=False,
+                run_id=request.run_id,
+                model=request.model,
+                output_text="Still running.",
+                exit_code=130,
+                history_root=history_root,
+                run_root=run_root,
+                stderr_text="stuck worker",
+            )
+
+        def interrupt(self, target_quest_id: str) -> bool:
+            return False
+
+    runner = StuckImmediateReadRunner()
+    app.runners["codex"] = runner
+
+    start_payload = app.handlers.chat(
+        quest_id,
+        {"text": "Start the stuck task.", "source": "tui-ink"},
+    )
+    assert start_payload["ok"] is True
+    assert runner.started.wait(timeout=3)
+
+    queued = app.quest_service.append_message(
+        quest_id,
+        role="user",
+        content="Please read now.",
+        source="web-react",
+        client_message_id="msg-read-now-stuck-001",
+    )
+
+    payload = app.handlers.quest_message_read_now(
+        quest_id,
+        {
+            "message_id": queued["id"],
+            "source": "web-react",
+        },
+    )
+
+    assert payload["ok"] is False
+    assert payload["status"] == "interrupt_failed"
+    assert "interrupt_returned=False" in payload["message"]
+    assert "reason=runner_interrupt_returned_false" in payload["message"]
+    assert payload["message_ids"] == [queued["id"]]
+
+
+def test_withdraw_endpoint_removes_unread_message_from_queue(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create("withdraw unread quest")
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+
+    message = app.quest_service.append_message(
+        quest_id,
+        role="user",
+        content="Please withdraw this queued note.",
+        source="web-react",
+        client_message_id="withdraw-001",
+    )
+
+    payload = app.handlers.quest_message_withdraw(
+        quest_id,
+        {
+            "message_id": message["id"],
+            "source": "web-react",
+        },
+    )
+
+    assert payload["ok"] is True
+    assert payload["status"] == "withdrawn"
+    assert payload["current_message_state"]["read_reason"] == "withdrawn_by_user"
+    assert payload["snapshot"]["pending_user_message_count"] == 0
+
+    queue_payload = read_json(quest_root / ".ds" / "user_message_queue.json", {})
+    assert queue_payload["pending"] == []
+    assert queue_payload["message_states"][message["id"]]["read_reason"] == "withdrawn_by_user"
+    assert any(
+        str(item.get("status") or "") == "withdrawn_by_user"
+        and str(item.get("message_id") or "") == message["id"]
+        for item in queue_payload["completed"]
+    )
+    requirements_text = (quest_root / "memory" / "knowledge" / "active-user-requirements.md").read_text(encoding="utf-8")
+    assert "Please withdraw this queued note." not in requirements_text
+
+
+def test_withdraw_endpoint_fails_when_message_was_already_read(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create("withdraw read quest")
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+
+    message = app.quest_service.append_message(
+        quest_id,
+        role="user",
+        content="This message will be read first.",
+        source="web-react",
+        client_message_id="withdraw-read-001",
+    )
+    app.quest_service.consume_pending_user_messages(
+        quest_root,
+        interaction_id="interaction-read-002",
+        delivery_reason="artifact_mailbox",
+    )
+
+    payload = app.handlers.quest_message_withdraw(
+        quest_id,
+        {
+            "message_id": message["id"],
+            "source": "web-react",
+        },
+    )
+
+    assert payload["ok"] is False
+    assert payload["status"] == "already_read"
+    assert payload["current_message_state"]["read_reason"] == "artifact_mailbox"
+
 
 def test_quest_events_acp_message_updates_preserve_stream_identity(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
@@ -4542,28 +5198,277 @@ def test_quest_control_resume_marks_quest_active(temp_home: Path) -> None:
     )
 
 
-def test_quest_control_resume_preserves_external_progress_policy_in_copilot(temp_home: Path) -> None:
+def test_quest_control_resume_schedules_new_turn_without_new_user_message(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
     app = DaemonApp(temp_home)
-    quest = app.quest_service.create("resume external progress quest", startup_contract={"workspace_mode": "copilot"})
+    quest = app.quest_service.create("resume schedules turn quest")
     quest_id = quest["quest_id"]
-    quest_root = Path(quest["quest_root"])
 
-    app.quest_service.update_research_state(quest_root, workspace_mode="copilot")
-    app.quest_service.update_runtime_state(
-        quest_root=quest_root,
-        status="stopped",
-        continuation_policy="when_external_progress",
-        continuation_reason="background_external_progress_active",
-    )
+    class ResumeRunner:
+        binary = ""
+
+        def __init__(self) -> None:
+            self.requests: list[dict[str, str]] = []
+
+        def run(self, request):
+            self.requests.append(
+                {
+                    "message": request.message,
+                    "turn_reason": request.turn_reason,
+                    "skill_id": request.skill_id,
+                }
+            )
+            history_root = ensure_dir(request.quest_root / ".ds" / "codex_history" / request.run_id)
+            run_root = ensure_dir(request.quest_root / ".ds" / "runs" / request.run_id)
+            return RunResult(
+                ok=True,
+                run_id=request.run_id,
+                model=request.model,
+                output_text="resumed auto-continue turn",
+                exit_code=0,
+                history_root=history_root,
+                run_root=run_root,
+                stderr_text="",
+            )
+
+    runner = ResumeRunner()
+    app.runners["codex"] = runner
+    app.quest_service.set_status(quest_id, "stopped")
 
     payload = app.handlers.quest_control(quest_id, {"action": "resume", "source": "tui-ink"})
 
     assert payload["ok"] is True
-    snapshot = app.quest_service.snapshot(quest_id)
-    assert snapshot["continuation_policy"] == "when_external_progress"
-    assert snapshot["continuation_reason"] == "background_external_progress_active"
+    assert payload["action"] == "resume"
+    assert payload["snapshot"]["status"] == "active"
+    assert payload["scheduled"] is True
+    assert str((payload.get("resume_trigger_message") or {}).get("content") or "") == "Continue"
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if runner.requests:
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError("resume did not schedule a new runner turn")
+
+    assert runner.requests[0]["turn_reason"] == "user_message"
+    assert runner.requests[0]["message"] == "Continue"
+
+    history = app.quest_service.history(quest_id)
+    assert any(item.get("role") == "user" and item.get("content") == "Continue" for item in history)
+
+
+def test_quest_control_resume_consumes_queued_user_messages_after_stop(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create("resume queued mailbox quest")
+    quest_id = quest["quest_id"]
+
+    class InterruptibleResumeRunner:
+        binary = ""
+
+        def __init__(self) -> None:
+            self.requests: list[dict[str, str]] = []
+            self.started = threading.Event()
+            self.interrupted = threading.Event()
+
+        def run(self, request):
+            self.requests.append(
+                {
+                    "message": request.message,
+                    "turn_reason": request.turn_reason,
+                }
+            )
+            history_root = ensure_dir(request.quest_root / ".ds" / "codex_history" / request.run_id)
+            run_root = ensure_dir(request.quest_root / ".ds" / "runs" / request.run_id)
+            if request.message == "Run the primary task.":
+                self.started.set()
+                while not self.interrupted.is_set():
+                    time.sleep(0.05)
+                return RunResult(
+                    ok=False,
+                    run_id=request.run_id,
+                    model=request.model,
+                    output_text="Interrupted.",
+                    exit_code=130,
+                    history_root=history_root,
+                    run_root=run_root,
+                    stderr_text="stopped by user",
+                )
+            return RunResult(
+                ok=True,
+                run_id=request.run_id,
+                model=request.model,
+                output_text=f"Echo: {request.message}",
+                exit_code=0,
+                history_root=history_root,
+                run_root=run_root,
+                stderr_text="",
+            )
+
+        def interrupt(self, target_quest_id: str) -> bool:
+            self.interrupted.set()
+            return True
+
+    runner = InterruptibleResumeRunner()
+    app.runners["codex"] = runner
+
+    initial_payload = app.handlers.chat(quest_id, {"text": "Run the primary task.", "source": "tui-ink"})
+    assert initial_payload["ok"] is True
+    assert runner.started.wait(timeout=2)
+
+    queued_payload = app.handlers.chat(
+        quest_id,
+        {"text": "Please also inspect config.", "source": "web-react"},
+    )
+    assert queued_payload["ok"] is True
+    assert queued_payload["queued"] is True
+
+    stop_payload = app.handlers.quest_control(quest_id, {"action": "stop", "source": "tui-ink"})
+    assert stop_payload["ok"] is True
+    assert stop_payload["snapshot"]["status"] == "stopped"
+    assert stop_payload["snapshot"]["pending_user_message_count"] == 1
+
+    resume_payload = app.handlers.quest_control(quest_id, {"action": "resume", "source": "tui-ink"})
+    assert resume_payload["ok"] is True
+    assert resume_payload["snapshot"]["status"] == "active"
+    assert resume_payload["scheduled"] is True
+    assert resume_payload["reason"] == "queued_user_messages"
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if len(runner.requests) >= 2:
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError("resume did not restart the queued user message turn")
+
+    assert runner.requests[1]["turn_reason"] == "queued_user_messages"
+    assert runner.requests[1]["message"] == "Please also inspect config."
+
+    deadline = time.time() + 3
+    while time.time() < deadline:
+        snapshot = app.quest_service.snapshot(quest_id)
+        if snapshot["pending_user_message_count"] == 0:
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError("queued user message was not consumed after resume")
+
+    queue_payload = read_json(Path(snapshot["paths"]["user_message_queue"]), {})
+    state_records = list((queue_payload.get("message_states") or {}).values())
+    assert any(
+        str(item.get("read_state") or "") == "read"
+        and str(item.get("read_reason") or "") == "accepted_by_run"
+        for item in state_records
+    )
+
+
+def test_resume_queued_messages_uses_latest_pending_message_after_withdraw(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create("resume skips withdrawn queued message quest")
+    quest_id = quest["quest_id"]
+
+    class InterruptibleResumeRunner:
+        binary = ""
+
+        def __init__(self) -> None:
+            self.requests: list[dict[str, str]] = []
+            self.started = threading.Event()
+            self.interrupted = threading.Event()
+
+        def run(self, request):
+            self.requests.append(
+                {
+                    "message": request.message,
+                    "turn_reason": request.turn_reason,
+                }
+            )
+            history_root = ensure_dir(request.quest_root / ".ds" / "codex_history" / request.run_id)
+            run_root = ensure_dir(request.quest_root / ".ds" / "runs" / request.run_id)
+            if request.message == "Run the primary task.":
+                self.started.set()
+                while not self.interrupted.is_set():
+                    time.sleep(0.05)
+                return RunResult(
+                    ok=False,
+                    run_id=request.run_id,
+                    model=request.model,
+                    output_text="Interrupted.",
+                    exit_code=130,
+                    history_root=history_root,
+                    run_root=run_root,
+                    stderr_text="stopped by user",
+                )
+            return RunResult(
+                ok=True,
+                run_id=request.run_id,
+                model=request.model,
+                output_text=f"Echo: {request.message}",
+                exit_code=0,
+                history_root=history_root,
+                run_root=run_root,
+                stderr_text="",
+            )
+
+        def interrupt(self, target_quest_id: str) -> bool:
+            self.interrupted.set()
+            return True
+
+    runner = InterruptibleResumeRunner()
+    app.runners["codex"] = runner
+
+    initial_payload = app.handlers.chat(quest_id, {"text": "Run the primary task.", "source": "tui-ink"})
+    assert initial_payload["ok"] is True
+    assert runner.started.wait(timeout=2)
+
+    first = app.handlers.chat(
+        quest_id,
+        {"text": "Inspect config first.", "source": "web-react"},
+    )
+    assert first["ok"] is True
+    assert first["queued"] is True
+
+    second = app.handlers.chat(
+        quest_id,
+        {"text": "Inspect the entrypoint second.", "source": "web-react"},
+    )
+    assert second["ok"] is True
+    assert second["queued"] is True
+
+    withdrawn_message_id = str((second.get("message") or {}).get("id") or "")
+    withdraw_payload = app.handlers.quest_message_withdraw(
+        quest_id,
+        {
+            "message_id": withdrawn_message_id,
+            "source": "web-react",
+        },
+    )
+    assert withdraw_payload["ok"] is True
+    assert withdraw_payload["status"] == "withdrawn"
+
+    stop_payload = app.handlers.quest_control(quest_id, {"action": "stop", "source": "tui-ink"})
+    assert stop_payload["ok"] is True
+    assert stop_payload["snapshot"]["pending_user_message_count"] == 1
+
+    resume_payload = app.handlers.quest_control(quest_id, {"action": "resume", "source": "tui-ink"})
+    assert resume_payload["ok"] is True
+    assert resume_payload["reason"] == "queued_user_messages"
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if len(runner.requests) >= 2:
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError("resume did not restart the queued user message turn")
+
+    assert runner.requests[1]["turn_reason"] == "queued_user_messages"
+    assert runner.requests[1]["message"] == "Inspect config first."
 
 
 def test_quest_control_pause_marks_quest_paused_and_interrupts_runner(temp_home: Path) -> None:
@@ -6142,7 +7047,7 @@ def test_daemon_retry_policy_upgrades_legacy_codex_backoff_profile(temp_home: Pa
         },
     )
 
-    assert policy["max_attempts"] == 5
+    assert policy["max_attempts"] == 7
     assert policy["initial_backoff_sec"] == 10.0
     assert policy["backoff_multiplier"] == 6.0
     assert policy["max_backoff_sec"] == 1800.0
@@ -6150,6 +7055,30 @@ def test_daemon_retry_policy_upgrades_legacy_codex_backoff_profile(temp_home: Pa
     assert app._retry_delay_seconds(policy, attempt_index=3) == 60.0
     assert app._retry_delay_seconds(policy, attempt_index=4) == 360.0
     assert app._retry_delay_seconds(policy, attempt_index=5) == 1800.0
+    assert app._retry_delay_seconds(policy, attempt_index=6) == 1800.0
+    assert app._retry_delay_seconds(policy, attempt_index=7) == 1800.0
+
+
+def test_daemon_retry_policy_upgrades_previous_default_codex_attempt_limit(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+
+    policy = app._runner_retry_policy(
+        "codex",
+        {
+            "retry_on_failure": True,
+            "retry_max_attempts": 5,
+            "retry_initial_backoff_sec": 10,
+            "retry_backoff_multiplier": 6,
+            "retry_max_backoff_sec": 1800,
+        },
+    )
+
+    assert policy["max_attempts"] == 7
+    assert policy["initial_backoff_sec"] == 10.0
+    assert policy["backoff_multiplier"] == 6.0
+    assert policy["max_backoff_sec"] == 1800.0
 
 
 def test_daemon_retry_policy_preserves_custom_codex_backoff_profile(temp_home: Path) -> None:
@@ -6314,6 +7243,75 @@ def test_daemon_skips_retry_for_non_retryable_minimax_protocol_error(temp_home: 
     assert not any(item.get("type") == "runner.turn_retry_scheduled" for item in events)
     assert turn_errors
     assert turn_errors[-1].get("diagnosis_code") == "minimax_tool_result_sequence_error"
+
+
+def test_daemon_skips_retry_for_unknown_binary_attachment_extension_error(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    app.runners_config["codex"].update(
+        {
+            "retry_on_failure": True,
+            "retry_max_attempts": 5,
+            "retry_initial_backoff_sec": 0,
+            "retry_backoff_multiplier": 2,
+            "retry_max_backoff_sec": 0,
+        }
+    )
+    quest = app.quest_service.create("non retryable binary attachment extension quest")
+    quest_id = quest["quest_id"]
+
+    class DeterministicBinaryExtensionRunner:
+        binary = ""
+
+        def __init__(self) -> None:
+            self.requests = []
+
+        def run(self, request):
+            self.requests.append(request)
+            history_root = ensure_dir(request.quest_root / ".ds" / "codex_history" / request.run_id)
+            run_root = ensure_dir(request.quest_root / ".ds" / "runs" / request.run_id)
+            return RunResult(
+                ok=False,
+                run_id=request.run_id,
+                model=request.model,
+                output_text="",
+                exit_code=1,
+                history_root=history_root,
+                run_root=run_root,
+                stderr_text="unknown file extension: .png",
+            )
+
+    runner = DeterministicBinaryExtensionRunner()
+    app.runners["codex"] = runner
+
+    payload = app.handlers.chat(quest_id, {"text": "Please continue.", "source": "tui-ink"})
+    assert payload["ok"] is True
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        snapshot = app.quest_service.snapshot(quest_id)
+        events = read_jsonl(Path(quest["quest_root"]) / ".ds" / "events.jsonl")
+        if any(item.get("type") == "runner.turn_error" for item in events):
+            if snapshot.get("retry_state") is None and str(snapshot.get("display_status") or "").strip() == "error":
+                break
+        time.sleep(0.05)
+    else:
+        raise AssertionError("binary attachment extension failure did not settle into an immediate error state")
+
+    snapshot = app.quest_service.snapshot(quest_id)
+    events = read_jsonl(Path(quest["quest_root"]) / ".ds" / "events.jsonl")
+    turn_errors = [item for item in events if item.get("type") == "runner.turn_error"]
+
+    assert len(runner.requests) == 1
+    assert snapshot["retry_state"] is None
+    assert snapshot["continuation_policy"] == "wait_for_user_or_resume"
+    assert snapshot["continuation_reason"] == "non_retryable_runner_error"
+    assert snapshot["status"] == "error"
+    assert snapshot["display_status"] == "error"
+    assert not any(item.get("type") == "runner.turn_retry_scheduled" for item in events)
+    assert turn_errors
+    assert turn_errors[-1].get("diagnosis_code") == "runner_binary_attachment_path_unsupported"
 
 
 def test_chat_reply_auto_links_interaction_and_resumes_with_decision_skill(temp_home: Path) -> None:
@@ -7107,3 +8105,71 @@ def test_delete_generic_connector_profile_keeps_other_profiles_and_cleans_bindin
     assert app.list_connector_bindings("telegram") == []
     assert app.quest_service.binding_sources(quest["quest_id"]) == ["local:default"]
     assert not profile_root.exists()
+
+
+
+def test_run_create_falls_back_to_enabled_default_runner_when_snapshot_runner_disabled(temp_home: Path, monkeypatch) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+
+    config = manager.load_named('config')
+    config['default_runner'] = 'claude'
+    write_yaml(manager.path_for('config'), config)
+
+    runners = manager.load_named('runners')
+    runners['codex']['enabled'] = False
+    runners['claude']['enabled'] = True
+    write_yaml(manager.path_for('runners'), runners)
+
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create('runner fallback quest', runner='codex')
+    quest_id = quest['quest_id']
+
+    captured: dict[str, object] = {}
+
+    class _StubRunner:
+        def run(self, request):
+            captured['model'] = request.model
+            captured['message'] = request.message
+            return type('Result', (), {
+                'ok': True,
+                'run_id': request.run_id,
+                'model': request.model,
+                'exit_code': 0,
+                'history_root': temp_home,
+                'run_root': temp_home,
+                'output_text': 'HELLO',
+                'stderr_text': '',
+            })()
+
+    monkeypatch.setattr(app, 'get_runner', lambda name: captured.setdefault('runner_name', name) or _StubRunner())
+
+    payload = app.handlers.run_create(
+        quest_id,
+        {
+            'message': 'Reply with exactly HELLO.',
+            'skill_id': 'decision',
+        },
+    )
+
+    assert payload['ok'] is True
+    assert payload['runner'] == 'claude'
+    assert captured['runner_name'] == 'claude'
+
+
+
+def test_create_quest_uses_current_global_default_runner(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+    config = manager.load_named('config')
+    config['default_runner'] = 'claude'
+    write_yaml(manager.path_for('config'), config)
+
+    app = DaemonApp(temp_home)
+    snapshot = app.create_quest(goal='create quest runner check', source='web')
+
+    assert snapshot['runner'] == 'claude'
+    quest_yaml = read_yaml(temp_home / 'quests' / snapshot['quest_id'] / 'quest.yaml', {})
+    assert quest_yaml['default_runner'] == 'claude'

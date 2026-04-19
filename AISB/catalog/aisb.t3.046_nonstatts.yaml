@@ -1,0 +1,208 @@
+id: aisb.t3.046_nonstatts
+name: TAFAS
+version: 0.1.0
+one_line: Test-time adaptation framework for non-stationary time series forecasting
+  using periodicity-aware scheduling and gated calibration modules.
+task_description: 'This packaged benchmark implements TAFAS (Test-time Adaptive ForecAsting
+  for non-stationary time Series), a pioneering test-time adaptation framework for
+  time series forecasting. The core problem addressed is that pre-trained forecasters
+  degrade under non-stationary test distributions where temporal dynamics evolve continuously.
+  Unlike traditional test-time adaptation in vision (which assumes unlabeled IID inputs),
+  TSF-TTA exploits the sequential nature of time series where partially-observed ground
+  truth becomes available during inference. TAFAS consists of two technical components:
+  (1) PAAS (Periodicity-Aware Adaptation Scheduling) that adaptively selects sufficient
+  partial ground truth windows to capture meaningful periodic patterns, and (2) GCM
+  (Gated Calibration Module) that calibrates test-time inputs to distributions the
+  source forecaster handles, with gating controlling the degree of calibration based
+  on global distribution shifts. The source forecaster remains frozen during adaptation
+  to preserve pre-trained semantic knowledge. The benchmark supports multiple base
+  forecaster architectures and benchmarks on ETTh1, ETTm1, ETTh2, ETTm2, exchange_rate,
+  and weather datasets. Particularly effective for long-term forecasting scenarios
+  with pronounced distribution shifts.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- test_mse
+- test_mae
+- adaptation_report
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run a single model-dataset pair through the TTA workflow with prediction
+    length 720. Executes scripts/{model}/{dataset}_720/run.sh. Suitable for validating
+    one adaptation scenario.
+
+    '
+- id: full_adaptation
+  label: Full Adaptation
+  description: 'Run the complete test-time adaptation workflow across all supported
+    model-dataset combinations. Evaluates PatchTST, DLinear, OLS, and FreTS on ETTh1,
+    ETTm1, ETTh2, ETTm2, exchange_rate, and weather datasets at various prediction
+    lengths.
+
+    '
+dataset_download:
+  primary_method: external
+  sources:
+  - name: Time-Series-Library
+    url: https://github.com/thuml/Time-Series-Library
+    type: dataset_repository
+    notes: Benchmark datasets sourced from the Time-Series-Library repository
+  - name: Google Drive
+    url: https://drive.google.com/drive/folders/16UdpRYf3BLRfem2LXLspN78dW4MOJkbn
+    type: model_checkpoints
+    notes: 'Pre-trained checkpoints provided for pred_len=720 only. Models: PatchTST,
+      DLinear, OLS, FreTS. Datasets: ETTh1, ETTm1, ETTh2, ETTm2, exchange_rate, weather.
+
+      '
+  - name: DeepScientist Archive
+    url: https://deepscientist.cc/AISB/046_nonstatts
+    type: packaged_code
+    archive_type: zip
+  placement:
+    datasets: data/{dataset}/{dataset}.csv
+    checkpoints: checkpoints/{model}/{dataset}_{pred_len}/checkpoint_best.pth
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - Public access only; no authentication required
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+    notes: Single GPU sufficient for evaluation; training requires longer time
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: '24GB VRAM recommended for batch_size 256 with longer sequence lengths.
+      Multi-GPU support available via NUM_GPUS config (tested up to 8).
+
+      '
+environment:
+  python: '3.8'
+  cuda: '11.8'
+  pytorch: 2.0.0
+  flash_attn: null
+  key_packages:
+  - wandb
+  - yacs
+  - pandas
+  - numpy
+  - torch
+  - tqdm
+  notes:
+  - See bundled requirements.txt or README for full dependency set
+  - Core model implementations reference the Time-Series-Library
+  - GCM adaptation uses PyTorch autograd; no special CUDA extensions required
+risk_flags:
+- no_runtime_execution_verified
+- checkpoint_availability_limited
+risk_notes:
+- Static code audit confirmed executable anchors for all staged metrics
+- No benchmark execution performed during packaging pass
+- Pre-trained checkpoints only available for pred_len=720; other lengths require training
+- Training can be enabled by setting TRAIN.ENABLE=True in run.sh
+recommended_when: '- Evaluating forecasting models under distribution-shifted test
+  conditions - Studying test-time adaptation techniques for sequential data - Benchmarking
+  long-term forecasting with non-stationary patterns - Comparing pre-training-only
+  approaches against adaptive methods - Researching model-agnostic adaptation for
+  time series foundation models
+
+  '
+not_recommended_when: '- Only needing static in-distribution forecasting baselines
+  - Requiring pre-trained checkpoints for prediction lengths other than 720 - Working
+  with datasets not in the supported benchmark set - Needing immediate production
+  deployment without adaptation tuning
+
+  '
+paper:
+  title: Battling the Non-stationarity in Time Series Forecasting via Test-time Adaptation
+  venue: AAAI 2025
+  year: 2025
+  authors:
+  - HyunGi Kim
+  - Siwon Kim
+  - Jisoo Mok
+  - Sungroh Yoon
+  institution: Seoul National University
+  url: https://arxiv.org/abs/2501.04970
+  github: https://github.com/kimanki/TAFAS
+  bibtex: '@article{kim2025battling, title={Battling the Non-stationarity in Time
+    Series Forecasting via Test-time Adaptation}, author={Kim, HyunGi and Kim, Siwon
+    and Mok, Jisoo and Yoon, Sungroh}, journal={arXiv preprint arXiv:2501.04970},
+    year={2025}}'
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.046_nonstatts.zip
+  archive_type: zip
+  local_dir_name: paper-46-NonStatTS
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.046_nonstatts.zip
+  sha256: 58816149c85cd2e8433b166dec9b2336ec49f0cc1a9c4fb24b986022663d3dee
+  size_bytes: 341067
+display:
+  palette_seed: blue-sand-adapt
+  art_style: adaptive-signal
+  accent_priority: medium
+  tags:
+  - time-series-forecasting
+  - test-time-adaptation
+  - distribution-shift
+  - non-stationarity
+  - tta
+  - tsf-tta
+image_path: ../image/046_aisb.t3.046_nonstatts.jpg
+execution_notes:
+  entry_point: main.py
+  config_file: config.py
+  predictor_file: predictor.py
+  script_pattern: scripts/{model}/{dataset}_{pred_len}/run.sh
+  supported_models:
+  - PatchTST
+  - DLinear
+  - OLS
+  - FreTS
+  - Informer
+  - Autoformer
+  - FEDformer
+  - ETSformer
+  - MICN
+  - Koopa
+  - TimesNet
+  - iTransformer
+  supported_datasets:
+  - ETTh1
+  - ETTm1
+  - ETTh2
+  - ETTm2
+  - exchange_rate
+  - weather
+  prediction_lengths:
+  - 96
+  - 192
+  - 336
+  - 720
+  code_structure:
+    layers: Transformer and convolution layer implementations
+    models: Forecaster architectures including TAFAS components
+    tta: tafas.py contains PAAS and GCM implementations
+    scripts: Model-specific evaluation and training scripts
+    utils: Logging, parsing, masking, and meter utilities

@@ -1,0 +1,130 @@
+id: aisb.t3.102_stochasticff
+name: 通过表征维度压缩进行随机前向学习
+version: 0.1.0
+one_line: 通过有效的维度优度函数进行非 BP 训练，该函数压缩类内表示并利用随机性作为计算资源。
+task_description: 该基准测试通过从神经响应的有效维度 (ED) 派生的新颖的“维度压缩”优度函数来实现随机前向学习 (FF)。与需要手工制作负样本并使用平方和激活作为优点的标准 FF 不同，该方法通过非中心协方差矩阵的特征值谱利用二阶统计结构。训练目标最小化单个输入的噪声同系物的 ED，同时最大化整个样本分布的 ED，从而消除显式负样本生成的需要。该方法在 CIFAR-10、CIFAR-100 和 MNIST 上实现了与其他非反向传播方法相比的竞争精度，并且固有地支持均方输出的基于能量的推理。包括用于估计单个神经元和协同神经元组合中的互信息的信息分解分析工具。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- cifar10_val_accuracy
+- cifar100_val_accuracy
+- mnist_val_accuracy
+- best_model_checkpoint
+- training_log
+- representation_analysis
+launch_profiles:
+- id: quick_cifar10
+  label: 快速 CIFAR-10
+  description: 使用默认超参数执行 CIFAR-10 训练路线。通过torchvision下载数据集，将ZCA统计数据缓存在./data/下，将检查点保存到./checkpoint/，并报告最终验证准确性。单 GPU 上的典型运行时间为 2-4 小时。
+  hardware_notes: 默认配置使用 3 个 epoch，批量大小 128，学习率 0.001，并进行余弦退火。
+- id: full_suite_analysis
+  label: 全套+分析
+  description: 跨 CIFAR-10、CIFAR-100 和 MNIST 运行多数据集训练工作流程，然后调用捆绑分析路径来生成信息分解图（图 4c/5c 等效项）。需要根据 training.py 注释手动调用特定的实验函数。
+  hardware_notes: 全套分析功能可按比例延长运行时间。第 2 阶段训练使用 60 个 epoch。
+dataset_download:
+  primary_method: torchvision
+  sources:
+  - name: CIFAR-10
+    path: torchvision.datasets.CIFAR10
+  - name: CIFAR-100
+    path: torchvision.datasets.CIFAR100
+  - name: MNIST
+    path: torchvision.datasets.MNIST
+  notes:
+  - 数据集在首次运行时自动下载并缓存在本地 ./data/ 下
+  - ZCA 白化统计数据是预先计算的，并缓存在 ./data/ 下的每个数据集
+  - 引用的 fast_mnist 片段通知帮助程序的实现；这不是数据集获取途径
+  - torchvision 提供的数据集不需要外部 API 凭据
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 在捆绑源中未检测到显式数据集或 API 凭据
+  - GitHub 存储库位于 https://github.com/ZhichaoZhu/StochasticForwardForward
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 30
+    gpu_count: 1
+    gpu_vram_gb: 8
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - torch>=2.0
+  - torchvision
+  - numpy
+  - scipy
+  - scikit-learn
+  - pandas
+  - tqdm
+  notes:
+  - 请参阅捆绑的 requirements.txt 了解固定版本
+  - 请参阅捆绑的自述文件/要求以获取完整的依赖项集
+risk_flags:
+- experimental_algorithm
+- nonstandard_training_paradigm
+risk_notes:
+- FF学习不如反向传播成熟；结果可能因随机种子而异
+- 该算法系列不存在标准的微调方法
+- Hyperparameter sensitivity: ED损耗平衡系数、采样长度、投影尺寸需要调整
+recommended_when: '- 探索反向传播的替代训练范式 - 研究生物学上合理的学习算法 - 研究以随机性为资源的神经形态计算应用 - 研究二阶统计结构的表示学习 - 神经网络表示的信息论分析'
+not_recommended_when: '- 需要传统的大型模型微调工作流程 - 需要具有广泛工具的生产级训练管道 - 需要快速迭代而无需算法特定专业知识的任务'
+paper:
+  title: Stochastic Forward-Forward Learning through Representational Dimensionality Compression
+  authors:
+  - Zhu, Zhichao
+  - Qi, Yang
+  - Ma, Hengyuan
+  - Lu, Wenlian
+  - Feng, Jianfeng
+  venue: NeurIPS
+  year: 2025
+  url: https://arxiv.org/abs/2505.16649
+  github: https://github.com/ZhichaoZhu/StochasticForwardForward
+  citation: "@article{zhu2025stochastic,\n  title={Stochastic Forward-Forward Learning through Representational Dimensionality Compression},\n  author={Zhu, Zhichao and Qi, Yang and Ma, Hengyuan and Lu, Wenlian and Feng, Jianfeng},\n  journal={arXiv preprint arXiv:2505.16649},\n  year={2025}\n}\n"
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.102_stochasticff.zip
+  archive_type: zip
+  local_dir_name: paper-102-StochasticFF
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.102_stochasticff.zip
+  sha256: 4eab3f39d4cc098ee47e9d4a31c8485f3b09752123b134a05292f5bfababe41e
+  size_bytes: 65412
+display:
+  palette_seed: amber-indigo-forward
+  art_style: learning-dynamics
+  accent_priority: medium
+image_path: ../image/102_aisb.t3.102_stochasticff.jpg
+capability_tags:
+- forward_forward_learning
+- representation_learning
+- non_backpropagation
+- effective_dimensionality
+- image_classification
+- efficient_training
+- biologically_plausible_learning
+- information_breakdown_analysis
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3

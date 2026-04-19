@@ -1,0 +1,127 @@
+schema_version: 1
+id: aisb.t3.026_gartkg
+name: DGAR – 用于时序知识图谱推理的深度生成式自适应回放
+version: 0.1.0
+one_line: 持续性时序知识图谱推理基准：通过自适应回放训练扩散引导模型(DGAR)，在ICEWS14s风格的时间知识图谱快照上完成链接预测任务，在顺序任务到达场景下评估MRR和Hits@1/3/10指标，同时实现灾难性遗忘缓解。
+task_description: 本基准测试封装了DGAR方法用于持续性时序知识图谱推理(TKGR)。智能体需要完成以下工作：(1)从历史知识图谱快照构建上下文提示，(2)预训练扩散模型以生成历史实体分布，(3)在时间知识图谱快照流上运行持续学习，使用自适应回放机制缓解灾难性遗忘，(4)在每个时间步骤的保留测试集上评估链接预测质量(MRR, Hits@1, Hits@3, Hits@10)。核心入口为 `src/main.py --gpu 0 --dataset ICEWS14s`。模型结合了RE-GCN图推理、基于Transformer的DDPM用于实体分布生成，以及逐层深度自适应回放机制。超参数范围定义在 `src/hyperparameter_range.py` 中。主指标(`accuracy`/MRR)通过 `diffusion/difffu_21.py` 实现代码验证。打包过程中未执行基准测试；智能体必须在运行时执行并验证所有指标。
+capability_tags:
+- research_code_optimization
+- temporal_kg_reasoning
+- graph_learning
+- continual_learning
+- generative_replay
+- diffusion_models
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable_not_verified
+support_level: advanced
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- mrr_filter
+- hits_at_1
+- hits_at_3
+- hits_at_10
+- temporal_kg_checkpoint
+- reasoning_report
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: 使用默认超参数在单个数据集(如ICEWS14s)上运行 `src/main.py`，对持续任务流执行一次完整遍历。验证训练循环、扩散生成和评估管道的端到端执行。预计耗时：单GPU 1-3小时。
+- id: full_train_eval
+  label: 完整训练+评估
+  description: 运行完整的持续训练和评估工作流，包括对n_hidden、n_layers和dropout的超参数搜索(见 `src/hyperparameter_range.py`)。覆盖所有时间知识图谱快照任务，包含自适应回放、扩散增强生成和深度自适应回放。预计耗时：6-24小时，取决于数据集大小和GPU配置。
+- id: hp_sweep
+  label: 超参数搜索
+  description: 对 `src/hyperparameter_range.py` 中的范围进行系统性网格搜索：n_hidden ∈ {100,200,300,400}, n_layers ∈ {1,2}, dropout ∈ {0.2,0.4}, n_bases=100。生成不同配置下MRR和Hits@k的对比表。
+dataset_download:
+  primary_method: bundled
+  sources:
+  - kind: local
+    url: null
+    access: public
+    note: 数据集文件(如ICEWS14s)预期随快照打包提供，或可通过代码内置的数据读取工具加载(见 `rgcn/knowledge_graph.py`)。README指示使用 `--dataset ICEWS14s` 运行。
+  notes:
+  - 数据集规模较小(ICEWS14s仅数十MB)。无需下载大型外部文件。
+  - 如数据集未打包，请查阅原始ICEWS14s公开数据源。
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - dgl
+  - fitlog
+  - umap-learn
+  - scikit-learn
+  - scipy
+  - tqdm
+  - matplotlib
+  notes:
+  - 详见打包的requirements文件以获取精确的版本锁定。
+  - 代码依赖dgl、fitlog、umap、sklearn、scipy——全部必须安装。
+  - 扩散模块使用基于Transformer的架构；不引用外部预训练权重。
+risk_flags:
+- unverified_execution
+- implicit_dataset_assumption
+- fitlog_dependency
+risk_notes:
+- 打包过程中未执行基准测试。所有指标值必须由智能体在运行时生成并验证。
+- README入口点存在格式问题(`--dataset ICEWS14s# DGAR`)；实际参数可能是 `--dataset ICEWS14s`。智能体应验证正确的数据集名称。
+- fitlog用于实验追踪；如果未安装或未配置可能导致导入错误。
+- 代码依赖dgl(深度图库)，它有针对CUDA版本特定构建的版本。请确保dgl版本与已安装的CUDA工具包匹配。
+- 扩散模型预训练和知识图谱推理训练在持续学习循环中交错进行；在扩散生成+梯度引导步骤(论文中的公式8-10)期间GPU显存可能达到峰值。
+recommended_when: 当你需要结合持续学习和生成式回放的图学习任务，用于时间知识图谱推理时使用此基准。适用于评估需要处理多组件ML流程(GNN + 扩散 + 回放)且在持续学习协议下进行超参数优化的智能体。
+not_recommended_when: 如果你需要轻量级纯文本任务、无法提供≥16GB GPU显存来支持图+扩散组件组合，或需要一个预验证基准指标值的基准测试，则不适合使用。同样，如果你需要多GPU分布式训练支持(代码似乎仅支持单GPU)，也不理想。
+paper:
+  title: A Generative Adaptive Replay Continual Learning Model for Temporal Knowledge Graph Reasoning
+  authors:
+  - Zhiyu Zhang
+  - Wei Chen
+  - Youfang Lin
+  - Huaiyu Wan
+  venue: ACL 2025
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.537/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.026_gartkg.zip
+  archive_type: zip
+  local_dir_name: paper-26-GARTKG
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.026_gartkg.zip
+  sha256: 010bac738fef854266a59273862289b34ebafc7890602fd29f73613783e594f2
+  size_bytes: 81352
+commercial:
+  annual_fee: null
+display:
+  palette_seed: forest-copper-temporal
+  art_style: graph-science
+  accent_priority: high
+image_path: ../image/026_aisb.t3.026_gartkg.jpg

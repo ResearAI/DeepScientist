@@ -117,12 +117,10 @@ export function EntryCoachDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[10010] flex items-center justify-center bg-[rgba(12,14,18,0.48)] p-4 backdrop-blur-md"
-      onClick={onClose}
+      className="pointer-events-none fixed inset-0 z-[10010] flex items-center justify-center bg-[rgba(12,14,18,0.48)] p-4 backdrop-blur-md"
     >
       <div
-        className="relative w-full max-w-[980px] overflow-hidden rounded-[32px] border border-white/10 bg-[rgba(252,248,242,0.98)] shadow-[0_40px_120px_-52px_rgba(15,23,42,0.62)]"
-        onClick={(event) => event.stopPropagation()}
+        className="pointer-events-auto relative w-full max-w-[980px] overflow-hidden rounded-[32px] border border-white/10 bg-[rgba(252,248,242,0.98)] shadow-[0_40px_120px_-52px_rgba(15,23,42,0.62)]"
       >
         <div className="flex items-start justify-between gap-4 border-b border-black/[0.06] px-6 py-5">
           <div className="min-w-0">

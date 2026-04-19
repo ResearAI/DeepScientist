@@ -1,0 +1,134 @@
+schema_version: 1
+id: aisb.t3.031_circuitstability
+name: 电路稳定性刻画语言模型泛化能力
+version: 0.1.0
+one_line: '从语言模型（gemma-2-2b及其他）中通过边消融归因提取软电路，测量算术/布尔/体育子任务的电路稳定性，并将稳定性与泛化性能相关联。
+
+  '
+task_description: '该基准测试评估语言模型内部电路在结构化子任务划分下是否保持稳定，以及该稳定性是否可预测泛化能力。工作流程分为三个阶段：（1）对算术子任务（1×1到8×8的数字对组合）运行gemma-2-2b基线评估，使用少样本提示，产生每个子任务的精确匹配准确率；（2）通过噪声到清晰的边消融（EAP-IG）对每个子任务在模型的计算图上进行软电路发现，为每条边产生实值重要性分数；（3）计算不同子任务软电路之间的Spearman ρ，应用α等价聚类，并将电路稳定性与准确率波动进行相关性分析。该论文将此方法扩展到布尔表达式评估和体育理解。主要可执行入口是src/eval_arith_baseline.sh，评估四个关键数字组合（1-1、1-8、8-1、8-8）并从pickle输出中计算准确率。电路发现在src/experiments/circuit_discovery.py中实现，并在notebooks/circuit-discovery.ipynb中进行交互式探索。该基准测试是自包含的：数据在运行时程序化生成（无需外部数据集下载），模型通过HuggingFace transformers/TransformerLens加载，评估在本地进行。
+
+  '
+capability_tags:
+- research_code_optimization
+- mechanistic_interpretability
+- large_language_models
+- circuit_analysis
+- evaluation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 1d+
+difficulty: hard
+data_access: public
+primary_outputs:
+- accuracy_11
+- accuracy_18
+- accuracy_81
+- accuracy_88
+- circuit_stability_report
+- generalization_analysis
+launch_profiles:
+- id: quick_eval
+  label: 快速评估（算术基线）
+  description: '运行src/eval_arith_baseline.sh对四个算术子任务数字组合（1-1、1-8、8-1、8-8）评估gemma-2-2b，每个组合1000个样本。需要一块A100 80 GB GPU。从pickle模型输出中产生每个子任务的准确率分数。
+
+    '
+- id: full_analysis
+  label: 完整电路稳定性分析
+  description: '运行完整工作流程：所有64个子任务对的基线评估、每个子任务的EAP-IG软电路发现、α等价聚类、Spearman ρ计算、t-SNE可视化和泛化相关性分析。案例研究I和II需要一块A100 80 GB；案例研究III需要两块A100 80 GB GPU。根据GPU数量和子任务覆盖范围预计需要12-24小时以上。
+
+    '
+dataset_download:
+  primary_method: procedural
+  sources: []
+  notes:
+  - 所有评估数据（算术、布尔、体育）在运行时程序化生成。
+  - 无需外部数据集下载。
+  - 模型权重（gemma-2-2b）从HuggingFace Hub获取，或通过--model_path从本地路径加载。
+credential_requirements:
+  mode: optional
+  items:
+  - HuggingFace令牌（仅当gemma-2-2b需要门控访问时）
+  notes:
+  - 如果模型权重已预下载到本地路径，则无需凭据。
+  - 在评估脚本中设置--model_path以使用本地权重。
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 80
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 2
+    gpu_vram_gb: 80
+environment:
+  python: 3.10.16
+  cuda: null
+  pytorch: 2.4.1
+  key_packages:
+  - jax==0.5.0
+  - jaxlib==0.5.0
+  - transformers==4.44.2
+  - transformer-lens==2.11.0
+  - pygraphviz==1.14
+  - accelerate==0.34.2
+  - einops==0.8.0
+  - datasets==3.0.0
+  notes:
+  - Graphviz系统包是电路可视化的硬性前提条件（pygraphviz）。
+  - 通过install.sh或手动安装（brew install graphviz / apt-get install graphviz）。
+  - 完整依赖列表在environment.yml（conda）或README中记录的pip备选方案中。
+  - CUDA版本未固定；JAX和PyTorch将选择合适的CUDA后端。
+risk_flags:
+- gpu_intensive
+- long_running
+- model_download_required
+risk_notes:
+- 案例研究III（使用更大模型的体育理解）需要两块A100 80 GB GPU；单GPU设置无法运行。
+- 完整的64子任务电路发现计算成本高昂（每个子任务在完整计算图上进行边消融）。
+- 打包过程中未执行基准测试；指标值有代码支持但未在运行时验证。
+- --model_path标志期望预下载的权重；没有该标志时，脚本尝试从HuggingFace Hub下载，可能对门控模型失败。
+- 如果系统上缺少Graphviz头文件，pygraphviz安装可能失败。
+recommended_when: '当您需要进行机械可解释性任务，通过边消融提取软电路、按电路相似性对子任务进行聚类，并定量地将电路稳定性与泛化能力关联时，使用此基准测试。它非常适合研究Transformer模型中的算术、布尔或组合推理，以及测试优化改进是否保留电路级结构。
+
+  '
+not_recommended_when: '如果无法配置至少一块A100 80 GB GPU、需要轻量级微调基准测试，或正在寻找具有外部提供的静态评估数据集而非程序化生成输入的任务，请勿使用此基准测试。
+
+  '
+paper:
+  title: Circuit Stability Characterizes Language Model Generalization
+  authors:
+  - Alan Sun
+  venue: ACL 2025
+  year: 2025
+  url: https://openreview.net/forum?id=2914j8175g
+  arxiv: https://arxiv.org/abs/2505.24731
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.031_circuitstability.zip
+  archive_type: zip
+  local_dir_name: paper-31-CircuitStability
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.031_circuitstability.zip
+  sha256: 549af47824f5e0af3f66e650ca1b91d28b02dc534b23ac71ddd4c84a70a1ee7e
+  size_bytes: 2108204
+display:
+  palette_seed: graphite-gold-circuit
+  art_style: interpretability-lab
+  accent_priority: high
+image_path: ../image/031_aisb.t3.031_circuitstability.jpg
+commercial:
+  annual_fee: null

@@ -1,0 +1,164 @@
+id: aisb.t3.101_acia
+name: Measure-Theoretic Anti-Causal Representation Learning
+version: 0.1.0
+one_line: Two-level causal representation learning via measure-theoretic intervention
+  kernels for anti-causal OOD generalization across multi-environment settings.
+task_description: 'This packaged benchmark implements ACIA (Anti-Causal Invariant
+  Abstractions), a measure-theoretic framework for learning causally invariant representations
+  in the anti-causal setting where labels Y cause observations X. The method employs
+  a two-level architecture: low-level representations (phi_L) capture how labels generate
+  observable features including spurious environment-specific correlations, while
+  high-level representations (phi_H) distill environment-invariant causal patterns.
+  ACIA handles both perfect and imperfect interventions via interventional kernels
+  without requiring explicit structural causal models. Training optimizes a composite
+  loss combining standard cross-entropy with R1 (environment independence) and R2
+  (intervention invariance) regularizers, with optional R3 (feature suppression) for
+  color-removal scenarios. Evaluation includes accuracy on held-out environments,
+  environment_invariance metrics measuring representation stability across domains,
+  low_level_invariance tracking phi_L robustness, and intervention_robustness measuring
+  performance under do(X) and do(Y) interventions.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- accuracy
+- environment_invariance
+- low_level_invariance
+- intervention_robustness
+launch_profiles:
+- id: quick_cmnist
+  label: Quick CMNIST
+  description: 'Run the optimized fast CMNIST route using vectorized dataset construction.
+    Downloads MNIST via torchvision and automatically recolors into e1/e2 variants.
+    Reports accuracy and invariance metrics in a single training run (~10 epochs).
+    Suitable for rapid validation and hyperparameter tuning.
+
+    '
+- id: paper_cmnist
+  label: Paper CMNIST
+  description: 'Execute the full paper-style perfect-intervention training route matching
+    Table 1 evaluation conditions. Includes both environment training loops, comprehensive
+    metric logging, and intervention robustness testing. Matches the 97.7% CMNIST
+    accuracy reported in the paper.
+
+    '
+dataset_download:
+  primary_method: torchvision
+  sources:
+  - name: MNIST
+    url: torchvision.datasets.MNIST
+    auto_download: true
+    notes: 'MNIST downloads automatically via torchvision when dataset is first instantiated.
+      Recoloring into ColoredMNIST environment variants (e1: even→red, e2: even→green)
+      happens locally in-memory. No manual staging required.
+
+      '
+  notes:
+  - CMNIST synthetic benchmark requires no external data staging beyond torchvision
+    MNIST.
+  - Real-world datasets (Camelyon17) require additional download steps documented
+    in examples/04_camelyon17.py.
+  - Paper reports 84.40% on Camelyon17 with 19% improvement over LECI baseline.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No external API credentials, dataset accounts, or HPC allocations required for
+    CMNIST path.
+  - The packaged CMNIST route uses only locally cached MNIST data.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 30
+    gpu_count: 1
+    gpu_vram_gb: 8
+    notes: 'GPU required for reasonable training throughput; CPU-only training feasible
+      but significantly slower (~5-10x). Single GPU suffices due to CMNIST scale.
+
+      '
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: '16GB VRAM accommodates full batch sizes (128) for CMNIST without memory
+      pressure. Additional RAM supports larger custom datasets if extending beyond
+      packaged benchmarks.
+
+      '
+environment:
+  python: '3.8'
+  cuda: '11.3'
+  pytorch: 1.12.0
+  flash_attn: null
+  key_packages:
+  - torch>=1.12.0
+  - torchvision>=0.13.0
+  - numpy
+  notes:
+  - Python 3.8+ required; tested with 1.12.0 but compatible with newer PyTorch versions.
+  - CUDA 11.3+ recommended for GPU training; CPU fallback supported for debugging.
+  - Full dependency set in requirements.txt; run pip install -e . for editable install
+    with all extras.
+risk_flags: []
+risk_notes:
+- No runtime file I/O to external storage beyond local MNIST cache.
+- No network calls during training; MNIST cached after first download.
+- Training is deterministic with fixed seeds (42) in packaged scripts.
+recommended_when: 'Use this benchmark when you need to evaluate causal invariance
+  in multi-environment settings with explicit environment labels. Ideal for benchmarking
+  anti-causal learning methods, testing intervention robustness, or comparing representation
+  learning approaches on structured synthetic data with known ground-truth causal
+  structure.
+
+  '
+not_recommended_when: 'Do not use this benchmark for large-scale multimodal tasks,
+  generative modeling, or benchmarks requiring multi-GPU training. Not suitable when
+  explicit SCM/DAG knowledge is available and preferred—ACIA specifically avoids SCM
+  requirements.
+
+  '
+paper:
+  title: Measure-Theoretic Anti-Causal Representation Learning
+  venue: NeurIPS
+  year: 2025
+  url: https://openreview.net/forum?id=lp6XOoQ4VL
+  authors:
+  - Arman Behnam
+  - Binghui Wang
+  institution: Illinois Institute of Technology
+  notes: 'Paper introduces ACIA framework with theoretical bounds on OOD generalization.
+    Claims 97.7% CMNIST accuracy and 84.40% on Camelyon17 with 19% improvement over
+    LECI. Static audit confirms executable anchors for all reported metrics.
+
+    '
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.101_acia.zip
+  archive_type: zip
+  local_dir_name: paper-101-ACIA
+  notes: 'Download contains full source with acia/ package, examples/, run_*.py scripts,
+    and json/metric_contract.json for metric specification.
+
+    '
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.101_acia.zip
+  sha256: 12590ff23562c80d2cf91dc224d44ba1909950585248f0717624a9914a2fb89a
+  size_bytes: 3127466
+display:
+  palette_seed: violet-sand-invariant
+  art_style: causal-abstraction
+  accent_priority: medium
+image_path: ../image/101_aisb.t3.101_acia.jpg

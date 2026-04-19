@@ -1,0 +1,140 @@
+id: aisb.t3.083_starformer
+name: STaRFormer
+version: 0.1.0
+one_line: 面向非平稳与不规则采样序列数据的 Transformer 框架，结合动态注意力区域掩码与半监督对比学习。
+task_description: STaRFormer 是一个用于真实场景序列表征学习的 Transformer 框架，针对“非平稳+非规则采样”条件设计。其采用仅编码器 Transformer 主干，并结合动态注意力区域掩码（DAReM），对输入序列中任务相关区域进行操作，构造统计性质变化并模拟不同采样频率。训练中引入新的半监督对比学习：同时最大化批内正样本对（同一样本掩码/未掩码嵌入）与类内正样本对（同类样本掩码/未掩码嵌入）的一致性，得到相关潜在表示以提升下游性能。评测覆盖分类、异常检测与回归多类基准。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: restricted
+primary_outputs:
+- pam_accuracy
+- latent_representations
+- dare_m_masks
+- ablation_reports
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: Review preserved sequential representation benchmark metadata, paper content, and metric definitions.
+- id: restore_first
+  label: Restore First
+  description: Restore the missing STaRFormer implementation (transformer backbone, DAReM module, semi-supervised CL loss) before attempting benchmark execution.
+- id: full_benchmark
+  label: Full Benchmark
+  description: Execute complete evaluation pipeline including classification, anomaly detection, and regression benchmarks with ablation studies.
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: DKT (Digital Key Trajectory)
+    type: custom_restricted
+    description: BMW proprietary trajectory dataset from Digital Key use case
+  - name: Microsoft spatiotemporal
+    type: public
+    description: Public real-world dataset from Microsoft for non-stationary sequential data
+  - name: Irregularly-sampled benchmark
+    type: public
+    description: Collection of 3 public datasets with irregular sampling patterns
+  - name: UEA time series
+    type: public
+    description: University of East Anglia benchmark with 30 public datasets for regular time series classification
+  - name: Anomaly detection benchmark
+    type: public
+    description: Public benchmark with 2 datasets for anomaly detection evaluation
+  - name: Regression benchmark
+    type: public
+    description: Public benchmark with 19 datasets for regression evaluation
+  notes:
+  - The current local package does not preserve an executable benchmark route; treat dataset setup as part of upstream restoration rather than a bundled run path.
+  - DKT dataset is proprietary BMW data requiring appropriate access credentials.
+  - Public datasets should be downloaded from respective original sources during restoration phase.
+credential_requirements:
+  mode: restricted
+  items:
+  - BMW internal data access for DKT dataset
+  notes:
+  - DKT (Digital Key Trajectory) data is proprietary to BMW Group and requires internal access authorization.
+  - Public benchmark datasets are freely accessible but must be sourced during restoration.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: 3.10.14
+  cuda: '11.8'
+  pytorch: 2.4.0
+  flash_attn: null
+  key_packages:
+  - transformers==4.50.3
+  notes:
+  - The current local package does not preserve executable setup files or runnable source code; environment hints here should be treated as provisional until upstream restoration.
+  - DAReM module requires attention weight extraction per transformer layer for regional mask computation.
+  - Semi-supervised CL loss includes hyperparameter lambda_CL for balancing contrastive and task losses.
+  - See the bundled README/requirements for the full dependency set.
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- blocked_no_code
+risk_notes:
+- Current snapshot preserves paper and metadata only; no executable model code is available.
+- Blocked-no-code status: no benchmark execution was performed in the packaging pass.
+- Restoration of transformer backbone, DAReM implementation, and CL training loop required before execution.
+- DKT dataset access requires BMW Group authorization.
+recommended_when: 当你需要基于论文进行方法规划、恢复 STaRFormer 序列表征代码路线，或分析 DAReM 在非平稳序列中的作用时可使用本条目。
+not_recommended_when: 不要将当前本地包作为可直接运行基准；当前快照未保留可执行模型代码。未完成上游恢复前无法得到有效评估输出。
+paper:
+  title: 'STaRFormer: Semi-Supervised Task-Informed Representation Learning via Dynamic Attention-Based Regional Masking for Sequential Data'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://neurips.cc/virtual/2025/poster/116860
+  authors:
+  - Maximilian Forstenhäusler (BMW Group, University of Glasgow)
+  - Daniel Külzer (BMW Group)
+  - Christos Anagnostopoulos (University of Glasgow)
+  - Shameem Puthiya Parambath (University of Glasgow)
+  - Natascha Weber (BMW Group)
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.083_starformer.zip
+  archive_type: zip
+  local_dir_name: paper-83-STaRFormer
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.083_starformer.zip
+  sha256: 062e8be9653c9079088c40fde448d1ee016e45b85e622708798feff990ccff68
+  size_bytes: 8551
+display:
+  palette_seed: mint-violet-mask
+  art_style: sequential-masking
+  accent_priority: high
+image_path: ../image/083_aisb.t3.083_starformer.jpg
+capability_tags:
+- research_code_optimization
+- sequential_data
+- semi_supervised_learning
+- transformers
+- representation_learning
+- time_series
+- contrastive_learning
+- attention_mechanisms
+- non_stationary_analysis
+- anomaly_detection
+- regression
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

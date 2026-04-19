@@ -1,0 +1,204 @@
+schema_version: 1
+id: aisb.t3.022_chainofreasoning
+name: Chain-of-Reasoning (CoR)
+version: 0.1.0
+one_line: 'Train and evaluate CoR-Math-7B, a multi-paradigm mathematical reasoning
+  model that chains Natural Language, Algorithmic (Python), and Symbolic (Lean 4)
+  reasoning to solve arithmetic and theorem-proving benchmarks (GSM8K, MATH, miniF2F,
+  AMC 2023, AIME 2024).
+
+  '
+task_description: 'This benchmark covers the full Chain-of-Reasoning (CoR) pipeline:
+  (1) constructing the Multi-Paradigm Mathematical (MPM) dataset (~167k reasoning
+  paths) by extending Lean-Workbook and NuminaMath-TIR with GPT-4o-generated cross-paradigm
+  solutions and Lean 4 proof verification; (2) Progressive Paradigm Training (PPT)
+  over three stages—NLR-only, NLR+AR, NLR+AR+SR—using DeepSpeed ZeRO Stage 3 SFT on
+  a 7B base model; and (3) evaluating the resulting CoR-Math-7B on five math benchmarks
+  (GSM8K, MATH, miniF2F, AMC 2023, AIME 2024) via vLLM-based inference with Sequential
+  Multi-Paradigm Sampling (SMPS). The evaluation script (evaluation/eval_CoR.py) computes
+  accuracy, collects reasoning traces, and optionally verifies Lean 4 proofs via a
+  bundled Lean server scheduler. The dataset construction step requires an OpenAI
+  API key and calls GPT-4o; the training and eval steps are self-contained once data
+  is prepared.
+
+  '
+capability_tags:
+- research_code_optimization
+- mathematical_reasoning
+- formal_methods
+- large_language_models
+- theorem_proving
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 1d+
+difficulty: hard
+data_access: public
+primary_outputs:
+- accuracy
+- reasoning_traces
+- lean_artifacts
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run evaluation only on one benchmark (e.g. MATH or GSM8K) using a
+    pre-trained checkpoint and the bundled eval_CoR.py script with vLLM inference.
+    Skips dataset construction and training entirely. Requires a model checkpoint
+    and 1–8 GPUs.
+
+    '
+- id: full_train_eval
+  label: Full Train + Eval
+  description: 'Build the MPM dataset from Lean-Workbook and NuminaMath-TIR (requires
+    OpenAI API key for GPT-4o augmentation), run 3-stage Progressive Paradigm Training
+    with DeepSpeed ZeRO-3, then evaluate on all five benchmarks (GSM8K, MATH, miniF2F,
+    AMC 2023, AIME 2024). This is the paper-faithful route and requires multi-GPU
+    infrastructure and Lean 4/Mathlib build.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/internlm/Lean-Workbook
+    access: public
+    note: 'lean_workbook.json — seed data for symbolic reasoning paradigm. Used in
+      utils/generate_informalproof.py to create informal proofs.
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/datasets/AI-MO/NuminaMath-TIR
+    access: public
+    note: 'train-00000-of-00001.parquet — seed data for algorithmic reasoning paradigm.
+      Must be converted to JSON for utils/generate_lean4.py.
+
+      '
+  notes:
+  - 'The MPM dataset (~167k paths from ~83k problems) is constructed by the user at
+    runtime via GPT-4o augmentation scripts; it is not directly downloadable.
+
+    '
+  - 'Raw seed datasets are modest in size (tens of GB); the synthesized MPM dataset
+    and model checkpoints will require additional storage.
+
+    '
+credential_requirements:
+  mode: optional
+  items:
+  - OpenAI API key (required only for MPM dataset construction via GPT-4o)
+  - Weights & Biases API key (optional, for training logging)
+  notes:
+  - 'The OpenAI API key is used in script/leanwb_informalproof.sh and script/numinatir_lean4.sh
+    to call GPT-4o for generating cross-paradigm reasoning paths. If you use a pre-built
+    MPM dataset or a pre-trained checkpoint, no API key is needed.
+
+    '
+  - 'WandB credentials are set in script/train_CoR.sh but can be set to offline mode.
+
+    '
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 250
+    gpu_count: 1
+    gpu_vram_gb: 48
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 500
+    gpu_count: 8
+    gpu_vram_gb: 80
+environment:
+  python: '3.10'
+  cuda: '12.1'
+  pytorch: 2.5.1
+  flash_attn: 2.7.0.post2
+  key_packages:
+  - flash-attn==2.7.0.post2
+  - deepspeed==0.15.4
+  - vllm==0.6.4.post1
+  - transformers==4.46.3
+  - accelerate
+  - datasets
+  notes:
+  - See requirements.txt for the full dependency set.
+  - 'Lean 4 must be installed separately via elan (leanprover-community.github.io).
+    Mathlib4 must be built locally with `lake build` before running theorem proving
+    evaluation or MPM dataset construction.
+
+    '
+  - 'CUDA version is not explicitly pinned in the repo; 12.1 is recommended based
+    on vLLM and flash-attn compatibility. 11.8 may also work.
+
+    '
+risk_flags:
+- external_api_dependency
+- lean_toolchain_setup
+- large_training_pipeline
+- openai_cost
+risk_notes:
+- 'MPM dataset construction calls the OpenAI API (GPT-4o) extensively across ~285k
+  samples, which can incur significant API costs. Budget several hundred dollars for
+  full construction.
+
+  '
+- 'Lean 4 and Mathlib4 must be compiled locally. The Mathlib build alone can take
+  1–2 hours and requires substantial RAM. Build failures are common on misconfigured
+  systems.
+
+  '
+- 'Training uses DeepSpeed ZeRO Stage 3 across up to 8 GPUs with 4 epochs. The training
+  script has placeholder paths that must be edited before launch.
+
+  '
+- 'The evaluation script uses vLLM with gpu_memory_utilization=0.95, which may OOM
+  on GPUs with less than 48 GB VRAM depending on batch size.
+
+  '
+recommended_when: 'Use this benchmark when you want a heavyweight, multi-stage math-reasoning
+  task that combines LLM fine-tuning, Lean 4 formal verification, Python code execution,
+  and natural language chain-of-thought. Ideal for exploring how multi-paradigm cooperation
+  improves mathematical reasoning across both arithmetic computation (GSM8K, MATH,
+  AIME) and theorem proving (miniF2F).
+
+  '
+not_recommended_when: 'Do not use this if you cannot provision multi-GPU infrastructure
+  (≥48 GB VRAM), cannot install and build Lean 4 + Mathlib4, or want to avoid OpenAI
+  API costs for dataset construction. Also not suitable if you need a quick, self-contained
+  eval-only benchmark—the full pipeline requires significant setup and compute time.
+
+  '
+paper:
+  title: 'Chain-of-Reasoning: Towards Unified Mathematical Reasoning in Large Language
+    Models via a Multi-Paradigm Perspective
+
+    '
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2501.11110
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.022_chainofreasoning.zip
+  archive_type: zip
+  local_dir_name: paper-22-ChainOfReasoning
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.022_chainofreasoning.zip
+  sha256: 10a4cef8d810a0806780f11b2059b970a3ac4152b614f97a1e9e47294629764b
+  size_bytes: 986391
+commercial:
+  annual_fee: null
+display:
+  palette_seed: cobalt-ivory-proof
+  art_style: formal-reasoning
+  accent_priority: high
+image_path: ../image/022_aisb.t3.022_chainofreasoning.jpg

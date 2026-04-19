@@ -49,15 +49,61 @@
 }
 
 :root {
-  --font-sans: 'DS-SourceSans3', 'DS-Inter', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-reading: 'DS-Inter', 'DS-SourceSans3', 'Inter', 'Noto Sans', sans-serif;
+  --font-sans:
+    'DS-SourceSans3',
+    'DS-Inter',
+    'Inter',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Noto Sans CJK SC',
+    'Source Han Sans SC',
+    'Noto Sans',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  --font-reading:
+    'DS-Inter',
+    'DS-SourceSans3',
+    'Inter',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Noto Sans CJK SC',
+    'Source Han Sans SC',
+    'Noto Sans',
+    sans-serif;
   --font-title: 'DS-Project', 'DS-Satoshi', 'DS-Inter', 'Inter', serif;
   --font-soft: 'DS-NunitoSans', 'DS-SourceSans3', 'DS-Inter', sans-serif;
 }
 
 .font-project {
-  --font-sans: 'DS-SourceSans3', 'DS-Inter', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-reading: 'DS-Inter', 'DS-SourceSans3', 'Inter', 'Noto Sans', sans-serif;
+  --font-sans:
+    'DS-SourceSans3',
+    'DS-Inter',
+    'Inter',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Noto Sans CJK SC',
+    'Source Han Sans SC',
+    'Noto Sans',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  --font-reading:
+    'DS-Inter',
+    'DS-SourceSans3',
+    'Inter',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Noto Sans CJK SC',
+    'Source Han Sans SC',
+    'Noto Sans',
+    sans-serif;
   --font-title: 'DS-Project', 'DS-Satoshi', 'DS-Inter', 'Inter', serif;
   --font-soft: 'DS-NunitoSans', 'DS-SourceSans3', 'DS-Inter', sans-serif;
   --ds-font-family: var(--font-sans);

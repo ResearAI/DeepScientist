@@ -14,10 +14,14 @@ DeepScientist is released under the Apache License 2.0.
 The full license text is in the repository root:
 
 - [LICENSE](../../LICENSE)
+- [TRADEMARK.md](../../TRADEMARK.md)
+- [26 Citation And Attribution](./26_CITATION_AND_ATTRIBUTION.md)
 
 The practical meaning is:
 
 - DeepScientist is distributed under Apache 2.0
+- the software license does not grant trademark rights in the DeepScientist name or logo
+- citation guidance is a separate academic attribution request, not an extra software license condition
 - DeepScientist is provided on an "AS IS" basis, without warranties
 - the project authors and maintainers are not responsible for any direct or indirect consequence caused by using, deploying, modifying, redistributing, or exposing DeepScientist
 - you are responsible for runtime environment control, permission boundaries, public exposure, third-party account binding, output review, data handling, and compliance

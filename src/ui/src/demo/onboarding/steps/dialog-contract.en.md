@@ -1,8 +1,12 @@
-This block defines how aggressive and autonomous the first research round should be.
+This block controls **how bold the first round should be**.
 
-What you choose here changes the shape of the first round in a very real way. The system will use these settings to decide whether it should stay conservative, how often it can pause for you, and how far it should push before reporting back.
+If the labels feel abstract, read them like this:
 
-- **Launch mode** decides how the project should enter the workflow.
-- **Research intensity** controls how much the first round should attempt.
-- **Decision policy** decides whether the system keeps moving or can block on you.
-- **Runtime constraints** define the hard boundaries it must respect.
+- **Launch mode** = what path the project enters with
+- **Research intensity** = how hard the first round pushes
+- **Decision policy** = how often the system may stop and wait for you
+- **Runtime constraints** = hard limits it must obey
+
+**Safe beginner reading rule**
+
+Stay moderate, give clear runtime limits, and avoid over-optimizing this block on your very first run.

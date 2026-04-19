@@ -377,6 +377,9 @@ export function QuestBashExecOperation({
 
   return (
     <article
+      data-copilot-tool-kind="bash_exec"
+      data-copilot-tool-server="bash_exec"
+      data-copilot-tool-name="bash_exec"
       className={cn(
         'min-w-0 overflow-hidden border-l border-black/[0.08] py-1 pl-3 dark:border-white/[0.10]',
         isRunning && 'border-[#9b8352]/60'

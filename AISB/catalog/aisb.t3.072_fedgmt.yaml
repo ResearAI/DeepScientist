@@ -1,0 +1,181 @@
+id: aisb.t3.072_fedgmt
+name: 'One Arrow, Two Hawks: Sharpness-aware Minimization for Federated Learning via
+  Global Model Trajectory'
+version: 0.1.0
+one_line: Two-stage federated learning benchmark combining trajectory-aware sharpness
+  control via EMA gradients and late-stage SWA stabilization for improved convergence
+  under non-IID data heterogeneity.
+task_description: 'This packaged benchmark covers federated optimization with trajectory-aware
+  sharpness control and late-stage SWA stabilization. The task is to improve federated
+  generalization and convergence under non-IID data distributions while maintaining
+  client optimization stability. FedGMT combines an EMA-based trajectory tracking
+  mechanism with Stochastic Weight Averaging in the final rounds to smooth the loss
+  landscape. The implementation extends PFLlib and supports cross-device FL scenarios
+  with configurable numbers of heterogeneous clients, participation ratios, and data
+  partitioning strategies.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- test_accuracy
+- federated_checkpoint
+- round_metrics
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run one packaged federated-learning evaluation route on CIFAR-10 with
+    default hyperparameters and reduced rounds for smoke testing.
+- id: full_federated_run
+  label: Full Federated Run
+  description: Run the full packaged FedGMT federated optimization workflow across
+    500 rounds with full evaluation suite.
+dataset_download:
+  primary_method: bundled
+  sources:
+  - type: cifar10
+    partition: dirichlet
+    params:
+      concentration:
+      - 1.0
+      - 0.1
+      - 0.01
+      num_clients: 100
+      join_ratio: 0.1
+  - type: cifar100
+    partition: dirichlet
+  - type: cinic10
+    partition: dirichlet
+  notes:
+  - Dataset partitions generated via dataset/generate_dataset.py
+  - Dirichlet non-IID partitioning implemented in dataset/utils/
+  - 10% active clients per round across 100 total clients in standard config
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+    notes: CNN model; ~2.72s per round on RTX 4090; ~0.93GB VRAM per round
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: ResNet18 model; ~20s per round on RTX 4090; ~1.86GB VRAM per round
+environment:
+  python: '3.7'
+  cuda: '11.8'
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - torch
+  - torchvision
+  - tqdm
+  - numpy
+  notes:
+  - Install via pip install -r requirements.txt
+  - Python 3.7 tested; see bundled requirements for full dependency set
+risk_flags:
+- extended_training_time
+- multi_round_convergence
+- non_iid_data_heterogeneity
+risk_notes:
+- Full benchmark requires 500 rounds; estimated 4.5h (CNN) to 33h (ResNet18) on single
+  GPU
+- SWA stabilization begins at round 400; late-stage convergence may vary with data
+  heterogeneity
+- Client drift under extreme non-IID conditions (Dir-0.01) requires careful hyperparameter
+  tuning
+recommended_when: 'Use this benchmark when evaluating federated learning algorithms
+  under realistic data heterogeneity, studying round-level stability and client drift
+  tradeoffs, or benchmarking sharpness-aware minimization techniques in distributed
+  settings with privacy-preserving constraints.
+
+  '
+not_recommended_when: 'Do not use this if you need single-node non-federated training,
+  require personalized per-client models, or need rapid prototyping without multi-round
+  communication overhead.
+
+  '
+paper:
+  title: 'One Arrow, Two Hawks: Sharpness-aware Minimization for Federated Learning
+    via Global Model Trajectory'
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/li25bd.html
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.072_fedgmt.zip
+  archive_type: zip
+  local_dir_name: paper-72-FedGMT
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.072_fedgmt.zip
+  sha256: 469c3e18a45ac8e776a73ab672c969a944e795cf11e24c6385c37bc755a7fdcb
+  size_bytes: 84064
+display:
+  palette_seed: teal-crimson-federated
+  art_style: distributed-dashboard
+  accent_priority: high
+image_path: ../image/072_aisb.t3.072_fedgmt.jpg
+capability_tags:
+- research_code_optimization
+- federated_learning
+- sharpness_aware_minimization
+- distributed_training
+- image_classification
+- non_iid_learning
+- swa_stabilization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+hyperparameters:
+  common:
+    optimizer: SGD
+    learning_rate: 0.01
+    momentum: 0.9
+    weight_decay: 1.0e-05
+    batch_size: 50
+    local_epochs: 5
+    total_rounds: 500
+  fedgmt_specific:
+    ema_coefficient_alpha:
+    - 0.95
+    - 0.995
+    - 0.998
+    sharpness_strength_gamma:
+    - 0.5
+    - 1.0
+    - 2.0
+    penalty_coefficient: 10
+    swa_start_round: 400
+    swa_window: 100
+algorithm_family:
+- FedAvg
+- FedDyn
+- FedSAM
+- FedSpeed
+- FedSMOO
+- FedLESAM
+- FedGMT
+code_anchors:
+  main_entry: system/main.py
+  server_base: system/flcore/servers/serverbase.py
+  fedgmt_server: system/flcore/servers/servergmt.py
+  data_partition: dataset/generate_dataset.py

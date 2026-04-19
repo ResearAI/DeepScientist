@@ -1,0 +1,121 @@
+id: aisb.t3.001_savvy
+name: 'SAVVY: Spatial Awareness via Audio-Visual LLMs through Seeing and Hearing'
+version: 0.1.0
+one_line: 无需训练的两阶段空间推理流程，用于AV-LLM的SAVVY-Bench评估，涵盖3D自我中心和非自我中心视听问答
+task_description: 'SAVVY（通过视觉和听觉实现音频-视觉大语言模型的空间感知）是一个综合基准测试，将无需训练的推理流程与SAVVY-Bench评估框架相结合，用于动态3D视听问答。该流程分两个阶段运行：（1）自我中心空间轨迹估计，利用AV-LLM和视听方法，通过视觉和空间音频线索跟踪物体轨迹；（2）动态全局地图构建，将多模态物体轨迹聚合到统一的全局3D地图中，以实现精确的自我中心和非自我中心空间推理。SAVVY-Bench在数千个问答对上评估AV-LLM，探索静态和移动物体之间的方向和距离关系，需要精细的时间定位、一致的3D定位和多模态标注。支持的AV-LLM包括VideoLLaMA2、MiniCPM-o2.6、Video-SALMONN、Gemini 2.5 Flash/Pro、Ola、EgoGPT和Longvale。主要分阶段指标跟踪整体基准测试准确率、空间AVQA分数以及多个阈值下的平均相对准确率。
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 1-2d
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- overall_accuracy
+- spatial_avqa_score
+- mra_0.5_0.95_0.05
+- predavmap_json
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 使用支持的AV-LLM在预处理后的基准测试资产上运行打包的SAVVY-Bench评估流程。
+- id: full_pipeline
+  label: 完整流程
+  description: 从原始多模态输入执行完整的无需训练的SAVVY推理流程，包括轨迹估计和全局地图构建，然后进行基准测试评估。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/uwneuroai/SAVVY-Bench
+    access: public
+    note: 主要基准测试数据集，包含问答对和标注。通过Hugging Face Hub或Data Studio预览下载。
+  - kind: github_repo
+    url: https://github.com/shlizee/savvy/tree/main/SAVVY
+    access: public
+    note: SAVVY算法仓库，包含data_utils/下的数据预处理脚本、基准测试数据和标注。
+  - kind: github_repo
+    url: https://github.com/shlizee/savvy/tree/main/SAVVY-Bench
+    access: public
+    note: SAVVY-Bench评估仓库，包含多模型基准测试框架和评估脚本。
+  notes:
+  - 公共Hugging Face SAVVY-Bench路线涵盖基准测试评估，但原始预处理路线需要Project Aria授权数据。
+  - SAVVY算法和SAVVY-Bench评估分别位于不同仓库；完整设置可能需要克隆两个仓库以及外部模型环境。
+  - 完整流程需要数百GB的多模态资产；磁盘估算包括视频、音频、轨迹和中间输出。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 在打包的快照中未检测到明确的数据集或API凭据。
+  - 完整流程可能需要Gemini API访问权限用于快照描述符组件。
+  - Project Aria数据访问需要为原始预处理路线单独签署许可协议。
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 250
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 基本评估的最低单GPU配置；流程执行可能在内存上受限。
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 500
+    gpu_count: 2
+    gpu_vram_gb: 48
+    notes: 推荐使用多GPU配置进行并行轨迹估计，缩短完整流程运行时的挂钟时间。
+environment:
+  python: '3.12'
+  cuda: '11.8'
+  pytorch: 2.8.0
+  flash_attn: null
+  key_packages:
+  - transformers==4.57.0
+  - torch==2.8.0
+  - open3d==0.19.0
+  - google-generativeai
+  - clipseg
+  - opencv-python
+  - numpy
+  - tqdm
+  notes:
+  - SAVVY安装脚本创建Python 3.12环境，并分别克隆ZoeDepth和EfficientViT辅助仓库。
+  - SAVVY-Bench建议每个AV-LLM评估器使用独立的conda/venv环境，因为依赖栈存在分歧。
+  - 外部依赖包括用于深度估计的ZoeDepth、用于分割的EfficientViT、用于文本引导分割的CLIPSeg和SAM2。
+risk_flags:
+- multi_env_benchmark
+- licensed_data_route
+- external_api_dependency
+- large_storage_requirement
+risk_notes:
+- SAVVY算法无需训练，但忠实于论文的完整路线横跨独立的SAVVY和SAVVY-Bench仓库以及每个模型的评估环境。
+- 公共HuggingFace SAVVY-Bench支持基准测试评估；原始预处理路线引用Project Aria授权数据和数百GB的多模态资产。
+- 流程依赖于第三方模型和工具（ZoeDepth、EfficientViT、CLIPSeg、SAM2），以及可选的Gemini API用于快照描述符。
+- 磁盘需求量大（250-500GB），用于视频、空间音频、轨迹、3D地图和中间处理输出。
+recommended_when: 当需要进行无需训练但系统密集型的视听大语言模型空间推理评估时使用此基准测试，尤其适用于具有移动物体和多通道空间音频的动态3D场景。
+not_recommended_when: 避免在需要单一环境设置、本地存储有限（<250GB）、无外部模型API依赖或无需完整推理流程的轻量级评估时使用。
+paper:
+  title: 'SAVVY: Spatial Awareness via Audio-Visual LLMs through Seeing and Hearing'
+  venue: NeurIPS 2025 Oral
+  year: 2025
+  url: https://arxiv.org/abs/2506.05414
+  project_url: https://zijuncui02.github.io/SAVVY/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.001_savvy.zip
+  archive_type: zip
+  local_dir_name: paper-1-SAVVY
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.001_savvy.zip
+  sha256: 2edb91c0816c40fa8734e871271e582ae21ecb66d25eb3f6437cc422534a6028
+  size_bytes: 2025393
+display:
+  palette_seed: ember-cyan-signal
+  art_style: cinematic-technical
+  accent_priority: high
+image_path: ../../../AISB/image/001_aisb.t3.001_savvy.jpg

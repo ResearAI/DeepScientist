@@ -1,0 +1,167 @@
+id: aisb.t3.067_kanad
+name: 'KAN-AD：基于Kolmogorov-Arnold网络的时间序列异常检测'
+version: 0.1.0
+one_line: 基于KAN的轻量级时间序列异常检测，采用傅里叶基函数，F1提升15%，推理速度比标准KAN快50%。
+task_description: '该基准测试包涵盖使用Kolmogorov-Arnold网络（KAN）和重新设计的单变量函数进行时间序列异常检测（TSAD）。核心创新是用截断傅里叶展开替换B样条基函数（标准KAN使用），解决了KAN对时间序列数据局部扰动的敏感性。该方法将TSAD重新表述为用平滑单变量函数逼近时间序列，利用正常序列比异常具有更强局部平滑性这一洞察。该方法结合了差分以隔离趋势效应，以及基于索引的单变量函数以捕捉细粒度周期性模式。目前本地快照仅保留元数据和审计材料，而非可运行代码；基准测试执行前需要上游恢复可执行源文件。
+
+  '
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 2-6h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- f1
+launch_profiles:
+- id: analysis_only
+  label: 仅分析
+  description: 审查保存的基准测试元数据、论文资料和TSAD任务框架。
+- id: restore_first
+  label: 先恢复
+  description: 在将此作为可运行基准测试之前，从公共GitHub仓库（github.com/CSTCloudOps/KAN-AD）恢复缺失的源代码树。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - type: github
+    url: https://github.com/CSTCloudOps/KAN-AD
+    description: KAN-AD实现的公共代码仓库
+  - type: benchmark
+    description: 论文中引用的四个公开可用的TSAD基准测试数据集
+  notes:
+  - 当前本地包未保留可执行的基准测试路径；数据集设置是上游恢复的一部分
+  - 论文评估使用了四个流行的TSAD基准测试
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes: CPU-only execution is plausible for the minimum analysis route
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 8
+    notes: GPU recommended for full evaluation with restored source
+environment:
+  python: null
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages: []
+  notes:
+  - 当前本地快照未保留可执行的设置文件或可运行源代码
+  - 此处的环境提示为临时性质，等待从公共仓库进行上游恢复
+  - 最小分析路径支持纯CPU执行
+  - 打包的本地文件夹不包含README或requirements文件
+  - 从github.com/CSTCloudOps/KAN-AD恢复环境详情
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- blocked_no_code
+risk_notes:
+- 由于未保存可执行代码文件，当前快照被阻止
+- 本次打包过程中未执行基准测试
+- 在源代码恢复或获得更完整的本地快照之前，视为临时版本
+recommended_when: '在开展基于论文的规划、上游恢复或分析KAN-based异常检测方法时使用此条目。适用于审查TSAD任务框架、检查论文方法论（用傅里叶基函数替换B样条），或规划从公共GitHub仓库恢复代码。
+
+  '
+not_recommended_when: '不要将本地包视为可立即运行的异常检测基准测试。暂存快照中未保存可执行代码。在未首先从公共仓库恢复源代码树的情况下，不要尝试执行基准测试。
+
+  '
+paper:
+  title: 'KAN-AD: Time Series Anomaly Detection with Kolmogorov-Arnold Networks'
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/zhou25u.html
+  github_url: https://github.com/CSTCloudOps/KAN-AD
+  authors:
+  - Quan Zhou
+  - Changhua Pei
+  - Fei Sun
+  - Jing Han
+  - Zhengwei Gao
+  - Haiming Zhang
+  - Gaogang Xie
+  - Dan Pei
+  - Jianhui Li
+  affiliations:
+  - Computer Network Information Center, Chinese Academy of Sciences
+  - University of Chinese Academy of Sciences
+  - Hangzhou Institute for Advanced Study
+  - Institute of Computing Technology, Chinese Academy of Sciences
+  - ZTE
+  - Department of Computer Science, Tsinghua University
+  - School of Frontier Sciences, Nanjing University
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.067_kanad.zip
+  archive_type: zip
+  local_dir_name: paper-67-KAN-AD
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.067_kanad.zip
+  sha256: 39c46b0ec921cd9342fdeda7a58471f5b5bff4e1f0747f9629424822710e8a96
+  size_bytes: 27708
+display:
+  palette_seed: peach-slate-anomaly
+  art_style: lightweight-analytics
+  accent_priority: medium
+image_path: ../image/067_aisb.t3.067_kanad.jpg
+capability_tags:
+- research_code_optimization
+- anomaly_detection
+- time_series
+- kolmogorov_arnold_networks
+- scientific_ml
+- univariate_tsad
+- fourier_basis
+- lightweight_models
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null
+metric_evidence:
+  primary_metric: f1
+  f1_status: blocked-no-code
+  f1_claim: '论文报告在四个TSAD基准测试上相比最先进方法平均F1提升15%
+
+    '
+  performance_notes:
+  - 相比基线峰值提升超过27%
+  - 相比原始KAN推理速度快50%
+  - 可训练参数少于1000个
+  - 注意：这些声明需要通过恢复执行进行验证
+technical_summary:
+  problem_domain: 单变量时间序列异常检测（UTS-TSAD）
+  input_format: 带异常标签的单变量时间序列 x = [x_0, x_1, ..., x_t]
+  core_methodology:
+  - 基于Kolmogorov-Arnold网络骨干和重新设计的单变量函数
+  - 用截断傅里叶展开替换B样条
+  - 基于索引的单变量函数用于细粒度周期性
+  - 结合差分以隔离趋势效应
+  key_insight: 正常序列比异常具有更强的局部平滑性；将TSAD重新表述为平滑函数逼近可减轻对局部扰动的过拟合
+  three_stage_pipeline:
+  - mapping: 将输入时间窗口分解为多个单变量函数
+  - reducing: 通过学习系数组合函数以重构正常模式
+  - projection: 用于异常评分
+  evaluation_datasets:
+  - 四个公开可用的TSAD基准测试数据集（快照中未保留具体名称）
+  baselines_compared:
+  - TimesNet
+  - Vanilla KAN
+  - 其他基于预测的TSAD方法
+  - 基于VAE的方法（FCVAE）

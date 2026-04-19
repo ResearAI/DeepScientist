@@ -1,0 +1,169 @@
+id: aisb.t3.097_wassersteintl
+name: Wasserstein 迁移学习
+version: 0.1.0
+one_line: 使用 Wasserstein 空间中的 Fréchet 回归优化基于 Wasserstein 的迁移估计器，以实现源群体和目标群体之间的分布式学习。
+task_description: 该打包基准涵盖 Wasserstein 迁移学习 (WaTL)，这是一种用于回归模型的新型迁移学习框架，其输出是位于 Wasserstein 空间中的概率分布。该方法通过内在地结合 Wasserstein 度量，利用来自多个源域的知识来改进目标域中的预测。该三阶段算法包括：(1) 对已知信息源子集使用全局 Fréchet 回归的加权辅助估计器，(2) 通过交叉验证正则化的梯度下降进行偏差校正，以及 (3) 通过 OSQP 求解器投影到 Wasserstein 空间以强制单调性。评估目标是死亡率和身体活动数据集的 RMSPR（均方根预测风险），每个测试点的时间作为次要指标。
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 2-6h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- rmspr
+- time_ms_per_test_point
+- transfer_learning_report
+launch_profiles:
+- id: simulation
+  label: 模拟路线
+  description: 运行打包的模拟实验（论文第 5 节）以验证 WaTL 渐近属性。将全局 Fréchet 回归与合成分布数据结合使用。
+  command: Rscript Simulation/Simulation.R <M> <n_t> <seed> <setting> <tau>
+  arguments:
+  - name: M
+    description: 分位数函数的网格大小
+    example: '100'
+  - name: n_t
+    description: 目标样本量
+    example: 200-800
+  - name: seed
+    description: 用于再现性的随机种子
+    example: '42'
+  - name: setting
+    description: 数据生成设置（1或2）
+    example: '1'
+  - name: tau
+    description: 源样本乘数
+    example: 100 or 200
+- id: real_data
+  label: 真实数据路由
+  description: 使用死亡率或体力活动数据执行现实世界的应用程序。使用带有 OSQP 单调性投影的局部 Fréchet 回归。具有多个源群体的目标域分析。
+  command: Rscript RealData/RealData.R <seed> <race> <M> <rate> <gender>
+  arguments:
+  - name: seed
+    description: 用于再现性的随机种子
+    example: '42'
+  - name: race
+    description: 目标人群的种族指数（1=黑人，2=白人）
+    example: '1'
+  - name: M
+    description: 分位数函数的网格大小
+    example: '100'
+  - name: rate
+    description: 源数据采样率（0-1）
+    example: '1.0'
+  - name: gender
+    description: 分层性别（0=女性，1=男性）
+    example: '0'
+- id: mortality_experiment
+  label: 死亡率实验 (RMSPR)
+  description: 使用联合国 2015 年世界人口展望数据的 RMSPR 指标的主要端到端复制路径。目标：发达国家（45）。资料来源：发展中国家（156）。计算每个测试点的时序。
+  command: Rscript mortality_experiment2.R
+  notes: 使用 wpp2015 R 包获取人口统计数据。需要互联网来安装软件包。重现表 1（附录 A）。
+dataset_download:
+  primary_method: r_package
+  sources:
+  - name: wpp2015
+    description: UN World Population Prospects 2015 mortality data
+    package: wpp2015
+  - name: NHANES
+    description: National Health and Nutrition Examination Survey physical activity data
+    package: NHANES
+  notes:
+  - wpp2015 软件包首次使用时加载联合国人口统计数据
+  - NHANES 身体活动强度数据通过 RealDataFunc.R 加载
+  - 这两个数据集均可从 NIH 公开获得
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - R包数据源无需身份验证
+  - 软件包安装和数据下载需要互联网连接
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: null
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - name: wpp2015
+    description: UN World Population Prospects demographic data
+  - name: osqp
+    description: Quadratic programming solver for monotonicity projection
+  - name: Matrix
+    description: Sparse and dense matrix operations
+  - name: pracma
+    description: Practical numerical mathematics
+  - name: parallel
+    description: Parallel computation support
+  - name: NHANES
+    description: NHANES data retrieval
+  notes:
+  - 仅 CPU 执行足以满足所有路由的需要
+  - 不需要 GPU；工作量主要是统计计算
+  - 以 R 为中心的工作流程；没有 Python 或 PyTorch 依赖项
+  - OSQP 求解器在真实数据路径中用于分位数函数单调性约束
+risk_flags:
+- no_gpu_required
+- cpu_bound
+- r_only
+risk_notes:
+- Benchmark 没有 GPU 要求；资源成本极低
+- 执行时间与网格大小 M 和样本大小相关
+- OSQP 求解器收敛可能随数据维度而变化
+recommended_when: 当您需要对 Wasserstein 空间中的分布数据进行操作的统计量大的迁移学习任务时，请使用此基准。适用于评估使用最佳传输几何从协变量预测概率分布的方法。非常适合处理死亡率曲线、体力活动分布或其他分布响应数据，其中源领域知识可以改进目标预测。基于 R 的执行使其无需 GPU 基础设施即可访问。
+not_recommended_when: 如果您需要基于神经网络的基准测试、深度学习工作流程或 CUDA 密集型训练，请勿使用此基准测试。不适合需要 GPU 加速或基于 PyTorch 的实现的任务。如果您的研究重点是标量/向量响应而不是非欧几里得空间中的分布输出，请避免使用。
+paper:
+  title: Wasserstein Transfer Learning
+  authors:
+  - Kaicheng Zhang (Zhejiang University)
+  - Sinian Zhang (University of Minnesota)
+  - Doudou Zhou (National University of Singapore)
+  - Yidong Zhou (UC Davis)
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2505.17404
+  github: https://github.com/h7nian/WaTL
+display:
+  palette_seed: teal-stone-wasserstein
+  art_style: statistical-transport
+  accent_priority: medium
+image_path: ../image/097_aisb.t3.097_wassersteintl.jpg
+capability_tags:
+- transfer_learning
+- wasserstein_geometry
+- distributional_learning
+- statistical_modeling
+- optimal_transport
+- frechet_regression
+- non_euclidean_output
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null
+download:
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.097_wassersteintl.zip
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.097_wassersteintl.zip
+  archive_type: zip
+  sha256: 7878e684e20e96ca4ea5aa2ea5f33a4772d22a14b5bf6ab275a68664de302887
+  size_bytes: 104086

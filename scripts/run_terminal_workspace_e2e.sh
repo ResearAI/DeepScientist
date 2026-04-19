@@ -10,6 +10,7 @@ CONNECT_HOST="${E2E_CONNECT_HOST:-${E2E_HOST:-127.0.0.1}}"
 PORT="${E2E_PORT:-32999}"
 BASE_URL="http://${CONNECT_HOST}:${PORT}"
 DAEMON_LOG="$RUNTIME_DIR/daemon.log"
+PLAYWRIGHT_PROJECT="${E2E_PLAYWRIGHT_PROJECT:-chromium}"
 
 export PYTHONPATH="$ROOT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
 
@@ -59,5 +60,6 @@ E2E_BASE_URL="$BASE_URL" \
 E2E_FIXTURE_JSON="$FIXTURE_JSON" \
 npm --prefix "$ROOT_DIR/src/ui" exec playwright test \
   --config "$ROOT_DIR/src/ui/playwright.config.ts" \
+  --project "$PLAYWRIGHT_PROJECT" \
   "$ROOT_DIR/src/ui/e2e/terminal-workspace.spec.ts" \
   --reporter=list

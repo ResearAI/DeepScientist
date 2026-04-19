@@ -1,0 +1,194 @@
+id: aisb.t3.039_calf
+name: 'CALF：通过跨模态微调实现大语言模型时间序列预测对齐'
+version: 0.1.0
+one_line: 跨模态微调框架，通过大语言模型文本表示对齐时间序列分布，实现最先进的多元预测。
+task_description: |-
+  本打包基准测试涵盖 CALF（跨模态大语言模型微调），这是一个弥合时间数据与 LLM 文本性质之间分布差异的框架。该任务涉及通过三种跨模态微调技术将类语言模型架构适配于时间序列输入：（1）跨模态匹配模块，通过主词嵌入提取和交叉注意力实现输入分布对齐；（2）特征正则化损失，用于中间层对齐和梯度引导；（3）输出一致性损失，用于解决表示空间差异。支持长期（ETT-small、electricity、traffic、weather）和短期（M4）预测任务，配置 seq_len/pred_len。
+
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 1d+
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- mse
+- mae
+- forecast_checkpoints
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 使用默认 ETTh2 配置（seq_len=96，pred_len=96/192/336/720）在准备好的数据集上运行一个打包的长期预测脚本。
+- id: full_train_eval
+  label: 完整训练 + 评估
+  description: 在所有支持的数据集（长期和短期预测）上运行完整的 CALF 训练和预测评估工作流程。
+- id: few_shot_forecasting
+  label: 小样本预测
+  description: 运行小样本预测评估以评估 LLM 在有限训练数据下的泛化能力。
+- id: zero_shot_forecasting
+  label: 零样本预测
+  description: 运行零样本预测评估以评估迁移能力。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: 长期数据集（Autoformer）
+    url: https://drive.google.com/drive/folders/1ZOYpTUa82_jCcxIdTmyr0LXQfvaM9vIy
+    type: google_drive
+    files:
+    - ETT-small/ETTh1.csv
+    - ETT-small/ETTh2.csv
+    - ETT-small/ETTm1.csv
+    - ETT-small/ETTm2.csv
+    - electricity/electricity.csv
+    - traffic/traffic.csv
+    - weather/weather.csv
+  - name: 短期 M4 数据集
+    url: https://drive.google.com/drive/folders/15zio96o3NK4XOoR5L88oaWcJDVOiqQo9
+    type: google_drive
+    files:
+    - m4/
+  notes:
+  - 长期数据集必须按 ./datasets/{dataset_name}/{filename}.csv 组织
+  - M4 数据集应放置在 ./datasets/m4/ 下
+  - 词标记嵌入需要通过 pca.py 在训练前提取（保存至 ./wte_pca_500.pt）
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 数据集的 Google Drive 链接无需认证即可公开访问
+  - 外部 LLM 权重（基于 GPT-2）通过 transformers 库自动下载
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 单 GPU 足以支持 seq_len=96，pred_len 最高 720；显存较低时可能需要减小 batch_size
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 48
+    notes: 48GB 显存允许 batch_size=256 搭配所有预测长度；更高显存可加快训练速度
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - transformers==4.30.1
+  - torch>=2.1.0
+  - numpy
+  - pandas
+  - scikit-learn
+  notes:
+  - 项目 README 明确要求 Python 3.9
+  - 精确的 PyTorch/CUDA 版本由用户环境决定；推荐 2.1.0+ 搭配 CUDA 11.8
+  - 完整依赖项请参阅打包的 requirements.txt
+  - LLM 主干基于 GPT-2 架构（通过 transformers 下载）
+risk_flags:
+- high_compute_cost
+- multi_hour_training
+- large_download
+risk_notes:
+- 在所有数据集和预测长度上进行完整评估需要较长的训练时间
+- 从 Google Drive 下载数据集总计数 GB
+- GPU 显存需求随 batch_size 和预测长度增加而增加
+- 训练使用固定随机种子（2021）以确保可重复性
+recommended_when: 在评估跨模态时间序列对齐、时序数据 LLM 微调、长期预测性能，或语言模型主干在时间序列任务上的小样本/零样本泛化能力时使用此基准测试。
+not_recommended_when: 如果需要轻量级 CPU 优先的时间序列基准测试、无法提供 24GB+ 显存的 GPU，或需要无训练基础设施的纯推理评估，请勿使用此基准测试。
+paper:
+  title: 'CALF: Aligning LLMs for Time Series Forecasting via Cross-modal Fine-Tuning'
+  authors:
+  - Peiyuan Liu
+  - Hang Guo
+  - Tao Dai
+  - Naiqi Li
+  - Jigang Bao
+  - Xudong Ren
+  - Yong Jiang
+  - Shu-Tao Xia
+  venue: arXiv preprint
+  year: 2024
+  arxiv: '2403.07300'
+  url: https://arxiv.org/abs/2403.07300
+  code_url: https://github.com/Hank0626/CALF
+  affiliations:
+  - Tsinghua Shenzhen International Graduate School
+  - Shenzhen University
+  - Pengcheng Laboratory
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.039_calf.zip
+  archive_type: zip
+  local_dir_name: paper-39-CALF
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.039_calf.zip
+  sha256: bf50089c65f0004d0e49a6d82c6225df9b7baacceead8814a715540189a49082
+  size_bytes: 3132751
+display:
+  palette_seed: teal-amber-signal
+  art_style: forecasting-lab
+  accent_priority: high
+  tags:
+  - large_language_models
+  - cross_modal_learning
+  - time_series_forecasting
+  - multivariate_forecasting
+  - llm_finetuning
+  - transformers
+image_path: ../image/039_aisb.t3.039_calf.jpg
+execution_anchors:
+  entry_point: run.py
+  main_script: scripts/long_term_forecasting/ETTh2.sh
+  key_modules:
+  - exp/exp_long_term_forecasting.py
+  - exp/exp_short_term_forecasting.py
+  - utils/metrics.py
+  - utils/cmLoss.py
+  - data_provider/data_factory.py
+  default_args:
+    task_name: long_term_forecast
+    model: CALF
+    seq_len: 96
+    pred_len: 96
+    batch_size: 256
+    learning_rate: 0.0005
+    train_epochs: 100
+    d_model: 768
+    n_heads: 4
+    gpt_layers: 6
+  metric_implementations:
+    mse:
+      source: utils/metrics.py::MSE
+      code_backed: true
+    mae:
+      source: utils/metrics.py::MAE
+      code_backed: true
+    rmse:
+      source: utils/metrics.py::RMSE
+      code_backed: true
+    mape:
+      source: utils/metrics.py::MAPE
+      code_backed: true
+    mspe:
+      source: utils/metrics.py::MSPE
+      code_backed: true
+output_artifacts:
+  checkpoints:
+    path: ./checkpoints
+    format: pytorch_model
+  results:
+    path: ./results
+    format: npy
+  summaries:
+    path: ./results_{task_name}.txt
+    format: text
+recovery_notes: 训练后的产物包括 ./checkpoints 中的检查点、./results 下 .npy 格式的数值结果，以及 ./results_{task_name}.txt 中的性能摘要。已实现早停机制（patience=5）。训练使用固定随机种子（2021）以确保可重复性。

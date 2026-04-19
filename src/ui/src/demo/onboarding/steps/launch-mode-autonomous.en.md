@@ -1,3 +1,10 @@
-For this walkthrough, continue with **Autonomous**.
+For this tutorial, continue with **Autonomous**.
 
-That path now focuses on a smaller essentials-first form, then hides the deeper configuration behind advanced options.
+This is the normal “start the mission” path:
+
+- fill the essential fields
+- check the generated launch prompt
+- create the workspace
+- let DeepScientist begin from there
+
+The form stays beginner-friendly because deeper options are pushed behind advanced sections.

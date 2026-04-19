@@ -1,0 +1,179 @@
+schema_version: 1
+id: aisb.t3.009_scoremissing
+name: Score Matching with Missing Data
+version: 0.1.0
+one_line: 'Learn full score functions from partially observed tabular data using importance-weighting
+  and variational marginal score matching, evaluated on simulated GGM/ICA/normal-estimation
+  tasks and real-world S&P 100 and yeast graphical model recovery.
+
+  '
+task_description: 'This benchmark packages the full experimental pipeline from the
+  ICML 2025 Spotlight paper "Score Matching with Missing Data". The core task is to
+  estimate the score (gradient of the log-density) of a multivariate distribution
+  when training samples have missing coordinates under a Missing Completely At Random
+  (MCAR) mechanism. Two complementary methods are provided: (1) marginal importance-weighting
+  (IW) score matching, which excels in lower-dimensional and small-sample settings,
+  and (2) marginal variational score matching, which is stronger in high-dimensional
+  problems such as Gaussian Graphical Model (GGM) estimation.
+
+  The experiment suite spans five sub-tasks run from Python scripts in HPC/: GGM structure
+  recovery (simulated), ICA parameter estimation, truncated/untruncated normal parameter
+  estimation, S&P 100 GGM estimation, and yeast GGM estimation. Each script accepts
+  a repeat count and a parameter-grid index as CLI arguments. Metrics (AUC, accuracy,
+  TPR, FPR) are computed inside the scripts via MSM/utils/data.py helper functions
+  and aggregated in Jupyter notebooks under plotcode/. Real-world data (yeast tensor,
+  S&P 100 CSV) is bundled in real_world_experiments/RealData/. No external evaluation
+  service or API credentials are needed; the benchmark is fully self-contained.
+
+  '
+capability_tags:
+- research_code_optimization
+- missing_data
+- probabilistic_modeling
+- score_matching
+- tabular_ml
+- graphical_model_estimation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- auc
+- accuracy
+- tpr
+- fpr
+- structure_recovery_report
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run a single yeast or GGM experiment script with nrep=1 and one parameter-grid
+    index to verify the environment and produce a small set of AUC/accuracy values.
+    Expected wall-time ~10–30 minutes on CPU.
+
+    '
+- id: full_experiments
+  label: Full Experiments
+  description: 'Sweep all HPC experiment scripts (GGM, ICA, NormalEstimation, snp100,
+    yeast) across the full parameter grids using the bash scripts in HPC/bashscripts/.
+    Each script runs 10 000 training epochs per configuration. Expect 6–24 hours on
+    a 16-core CPU or faster with a single GPU.
+
+    '
+- id: plot_reproduction
+  label: Plot Reproduction
+  description: 'After full experiments, run the Jupyter notebooks in plotcode/ to
+    regenerate all paper figures and metric summaries from saved results.
+
+    '
+dataset_download:
+  primary_method: bundled
+  sources:
+  - kind: archive
+    url: https://deepscientist.cc/AISB/009_scoremissing
+    access: public
+    note: 'Full snapshot including real-world data tensors (yeast, S&P 100) in real_world_experiments/RealData/.
+      Simulated data is generated on-the-fly by the experiment scripts. Archive is
+      a zip file.
+
+      '
+  notes:
+  - All datasets are either bundled or generated programmatically; no additional downloads
+    required.
+  - Total disk footprint after extraction is modest (well under 10 GB including results).
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: 1.12.1
+  flash_attn: null
+  key_packages:
+  - jax==0.3.25
+  - jaxlib==0.3.25
+  - tensorflow==2.11.0
+  - scikit-learn
+  - tqdm
+  notes:
+  - CPU-only execution is plausible for the minimum route; GPU accelerates PyTorch
+    training loops.
+  - The MSM package is PyTorch-based; JAX/TensorFlow dependencies support specific
+    experiment variants.
+  - An environment.yml is bundled in the snapshot for conda-based setup.
+  - See the bundled README and requirements for the full dependency set.
+risk_flags:
+- mixed_framework_dependencies
+- long_sweep_walltime
+risk_notes:
+- 'The project mixes PyTorch, JAX, and TensorFlow dependencies. Resolving compatible
+  versions in one environment may require careful pinning or separate conda environments.
+
+  '
+- 'Full experiment sweeps (all five sub-tasks × all parameter-grid indices × multiple
+  repeats) can take many hours. Plan for at least 6 hours wall-time on recommended
+  hardware.
+
+  '
+- 'No benchmark execution was performed during the packaging pass; metrics are code-backed
+  but not yet runtime-verified.
+
+  '
+recommended_when: 'Use this benchmark when you want a self-contained probabilistic
+  missing-data task combining theoretical score-matching methods with both synthetic
+  and real-world graphical model evaluation. Good fit for agents that can navigate
+  multi-script experiment pipelines, handle CLI-parameterised sweeps, and interpret
+  structure-recovery metrics (AUC, TPR, FPR).
+
+  '
+not_recommended_when: 'Avoid if you need a lightweight single-script benchmark, a
+  task centred on large pretrained foundation models, or a benchmark with GPU-intensive
+  deep learning. Also not suitable if you cannot install mixed PyTorch/JAX/TensorFlow
+  environments.
+
+  '
+paper:
+  title: Score Matching with Missing Data
+  venue: ICML 2025 Spotlight
+  year: 2025
+  url: https://arxiv.org/abs/2506.00557
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.009_scoremissing.zip
+  archive_type: zip
+  local_dir_name: paper-9-ScoreMissing
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.009_scoremissing.zip
+  sha256: bed639544fdb6e317d4a5b2c2663c8765aa508e39566551817d1586541cccb27
+  size_bytes: 27750054
+commercial:
+  annual_fee: null
+display:
+  palette_seed: moss-indigo-density
+  art_style: statistical-notebook
+  accent_priority: medium
+image_path: ../image/009_aisb.t3.009_scoremissing.jpg

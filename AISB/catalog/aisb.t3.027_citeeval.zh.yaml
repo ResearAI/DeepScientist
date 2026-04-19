@@ -1,0 +1,135 @@
+schema_version: 1
+id: aisb.t3.027_citeeval
+name: 'CiteEval: 基于原则驱动的引用评估用于来源归属'
+version: 0.1.0
+one_line: '在CiteBench基准上使用CiteEval-Auto（一个原则驱动的框架）评估和优化引用质量指标，该框架根据完整检索上下文、用户查询和生成文本对引用进行评估——衡量语句级皮尔逊相关系数与人工判断的一致性。
+
+  '
+task_description: '该打包基准测试涵盖用于检索增强生成（RAG）系统的原则驱动引用评估。核心任务是在CiteBench数据集上运行CiteEval-Auto指标套件——包括上下文归因（CA）、引用编辑（CE）和引用评分（CR，通过IterCoE和EditDist）模块。该数据集包含多领域查询（ASQA、ELI5、MS MARCO、LFRQA），带有引用质量的语句级人工标注（1-5李克特量表）。主要指标是预测引用评分与人工引用评分之间的语句级皮尔逊相关系数。该评估超越了简单的基于NLI的支持度考量，考虑了完整检索来源、用户上下文、响应上下文和参数知识。基准测试支持两种评估场景："完整"（所有可引用语句，未引用者受罚）和"已引用"（仅评估已引用的语句）。执行需要LLM API（OpenAI或DeepSeek）来运行CiteEval-Auto模块，这些模块使用提示的LLM调用进行上下文归因和引用评分。CiteBench数据集需从Google Drive单独下载。基线（AutoAIS、LQAC、AttriScore）的预计算指标输出已捆绑在快照中。
+
+  '
+capability_tags:
+- research_code_optimization
+- citation_evaluation
+- retrieval_augmented_generation
+- source_attribution
+- evaluation
+- meta_evaluation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: medium
+time_band: 2-6h
+difficulty: medium
+data_access: public
+primary_outputs:
+- statement_level_pearson
+- context_attribution_correlation
+- citation_rating_correlation
+- citation_eval_report
+- principle_judgments
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '在小样本批次或预计算指标输出上运行打包的CiteEval-Auto评估，以验证流程并复现基线相关系数。
+
+    '
+- id: full_eval
+  label: 完整指标评估
+  description: '使用LLM API从头开始对CiteBench指标测试集运行完整的CiteEval-Auto流程（CA、CE、CR模块），然后根据语句级和响应级人工标注计算与人工的相关性指标。
+
+    '
+- id: system_eval
+  label: 系统评估
+  description: '使用CiteEval-Auto评估自定义RAG系统输出的引用质量。需要将系统输出转换为.citeeval格式，运行指标套件，并使用run_system_eval.sh打印结果。支持--cited和完整场景。
+
+    '
+dataset_download:
+  primary_method: manual
+  sources:
+  - kind: google_drive
+    url: https://drive.google.com/drive/folders/12Evj0f92wKz_7OGuuwq3KShTdSM8eu4v?usp=drive_link
+    access: public
+    note: 'CiteBench数据集，包含metric_dev、metric_test、full dev和full test划分。必须手动下载并放置在项目根目录下的data/中。
+
+      '
+  notes:
+  - 基线指标（AutoAIS、LQAC、AttriScore）的预计算指标输出已捆绑在data/metric_eval_outputs/中。
+  - 数据集大小适中（数千个带标注的查询）；确切下载大小未记录，但预计在1GB以下。
+credential_requirements:
+  mode: api_key
+  items:
+  - OPENAI_API_KEY（用于基于GPT-4o的CiteEval-Auto运行，或使用DeepSeek API替代）
+  notes:
+  - run_citeeval.sh中的默认配置使用model=deepseek-chat；run_system_eval.sh引用gpt-4o。
+  - API成本取决于评估的语句数量和所选模型。指标测试集约有1000个响应。
+  - 评估脚本可以在仅CPU模式下执行，但仍需要LLM API来运行CiteEval-Auto模块。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.10'
+  cuda: '11.7'
+  pytorch: 1.13.0
+  key_packages:
+  - openai==1.16.2
+  - transformers==4.38.2
+  notes:
+  - 最低规格路线可以仅用CPU执行；仅在运行本地NLI模型进行基线评估时才需要GPU。
+  - requirements.txt文件在README中有拼写错误（requirments.txt）——请使用快照中的实际文件。
+  - 必须按README中的说明设置CITEEVAL_ROOT和PYTHONPATH环境变量。
+risk_flags:
+- api_dependency
+- external_dataset_download
+- api_cost_variable
+risk_notes:
+- CiteEval-Auto模块需要实时LLM API调用（OpenAI或DeepSeek）。如果没有API密钥，只能评估预计算的指标输出。
+- CiteBench数据必须从Google Drive手动下载；未捆绑在快照中。
+- API成本随评估的语句数量和使用的LLM模型而增加。指标测试集约有1000个响应，每个响应包含多个语句。
+- run_citeeval.sh中的默认模型是deepseek-chat，而非论文主要结果中使用的GPT-4o。复现论文数据需要GPT-4o。
+- 打包过程中未执行基准测试；指标值应在运行时验证。
+recommended_when: '当您需要一个评估完整检索上下文、用户查询和生成文本的引用质量指标任务，而非简单的基于NLI的支持度代理时，使用此基准测试。非常适合研究改进RAG引用质量、开发更好的自动引用指标，或根据人工判断基准测试新RAG系统的引用质量。
+
+  '
+not_recommended_when: '如果您需要一个完全自包含、无外部API调用的基准测试，或者您无法访问OpenAI或DeepSeek API，或者您的任务不涉及检索段落和来源归属，请勿使用此基准测试。如果您需要一个可以完全离线运行、没有任何LLM API依赖的基准测试，则不适合。
+
+  '
+paper:
+  title: 'CiteEval: Principle-Driven Citation Evaluation for Source Attribution'
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2506.01829
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.027_citeeval.zip
+  archive_type: zip
+  local_dir_name: paper-27-CiteEval
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.027_citeeval.zip
+  sha256: 5eb48e11b91ec4856d18461899c236f658b110dc49ff29487205908230ac8d0b
+  size_bytes: 83173
+commercial:
+  annual_fee: null
+display:
+  palette_seed: cream-navy-citation
+  art_style: reference-audit
+  accent_priority: high
+image_path: ../image/027_aisb.t3.027_citeeval.jpg

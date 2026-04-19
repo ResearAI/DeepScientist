@@ -1,0 +1,167 @@
+schema_version: 1
+id: aisb.t3.065_proteinbinding
+name: StaB-ddG — 通过折叠能量预测蛋白质结合的突变效应
+version: 0.1.0
+one_line: 基于稳定性到结合参数化的蛋白质-蛋白质结合 ΔΔG 预测迁移学习基准，使用 ProteinMPNN 和两阶段微调。
+task_description: |
+  本基准包涵盖完整的 StaB-ddG 工作流程，用于预测突变对蛋白质-蛋白质结合自由能的影响（ΔΔG，kcal/mol）。其核心思想是热力学恒等式 ΔG_bind(A:B) = ΔG_fold(A:B) − ΔG_fold(A) − ΔG_fold(B)，它将结合能预测简化为折叠能预测，并实现了从大量稳定性数据到稀缺结合数据的迁移。
+
+  基准测试分为两个微调阶段：
+
+  第一阶段 — 稳定性微调：ProteinMPNN 在 Megascale 高通量折叠稳定性数据集上进行微调（Tsuboyama 2023，约 35 万个测量值，AlphaFold PDB 结构，从 Zenodo 记录 7992926 下载）。
+
+  第二阶段 — 结合微调：将在第一阶段微调后的模型在 SKEMPI v2 数据库中蛋白质-蛋白质结合 ΔΔG 测量的质量过滤子集上进一步微调，使用界面同源聚类划分来防止数据泄露。
+
+  评估复现了 ICML 2025 论文中报告的 SKEMPI 基准结果，计算每个界面的 Pearson 和 Spearman 相关系数、总体相关系数、RMSE 和 ROC-AUC。基准比较包含 FoldX 和 Flex ddG，在打包的 baselines/ 目录中提供。StaB-ddG 是首个被报道能够匹配 FoldX 精度的深度学习预测器，同时提供超过 1000 倍的加速。
+
+  输入：PDB 结构文件（野生型复合物）、链规格和突变字符串。输出：每个突变的 ΔΔG 预测值（kcal/mol）、每个界面的相关性指标以及完整的评估 CSV。
+capability_tags:
+- protein_modeling
+- binding_energy_prediction
+- structural_biology
+- scientific_ml
+- transfer_learning
+- research_code_optimization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- per_interface_pearson
+- per_interface_spearman
+- overall_pearson
+- overall_spearman
+- roc_auc
+- ddg_predictions
+- binding_report
+launch_profiles:
+- id: single_prediction
+  label: 单次预测
+  description: |
+    使用 run_stabddg.py 对单个复合物进行单点突变或多点突变 ΔΔG 预测。需要提供 PDB 文件、链规格（如 ABC_DE）和突变字符串（如 EA63Q,QD30V,KA66A）。使用预训练的 stabddg.pt 检查点。输出包含 pred_1 列的 output.csv。无需下载训练数据。
+- id: eval_only
+  label: 仅评估
+  description: |
+    通过 skempi_eval.py 使用预训练的 stabddg.pt 检查点复现 SKEMPI 基准数值。需要从 life.bsc.es 下载 SKEMPI2_PDBs。生成 cache/eval.csv 和每个界面的相关性指标。是获得论文数值的最快途径。
+- id: train_and_eval
+  label: 完整训练 + 评估
+  description: |
+    运行完整的两阶段微调和评估流程：（1）通过 stability_finetune.py 在 Megascale 上进行稳定性微调，然后（2）通过 skempi_finetune.py 进行 SKEMPI 结合微调，然后（3）通过 skempi_eval.py 进行评估。需要同时下载 Megascale 和 SKEMPI 数据。可通过 --wandb 标志启用可选的 Wandb 跟踪。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: Megascale Folding Stability Dataset (Stage 1)
+    url: https://zenodo.org/records/7992926
+    files:
+    - Tsuboyama2023_Dataset2_Dataset3_20230416.csv
+    - AlphaFold_model_PDBs.zip
+    - Processed_K50_dG_datasets.zip
+    notes: |
+      通过 wget 从 Zenodo 记录 7992926 下载。运行 stability_finetune.py 前请解压两个压缩包。下载需要几分钟。仅第一阶段需要。
+  - name: SKEMPI v2 Binding Energy Dataset (Stage 2 and Eval)
+    url: https://life.bsc.es/pid/skempi2/database/download/SKEMPI2_PDBs.tgz
+    files:
+    - SKEMPI2_PDBs.tgz
+    notes: |
+      通过 wget 从 life.bsc.es 下载并使用 tar -xvzf 解压。质量过滤后的 SKEMPI CSV 和界面同源聚类训练/测试划分已预装在 data/SKEMPI/ 中。原始 PDB 结构需要单独下载。第二阶段微调和仅评估模式需要此数据。
+  - name: Benchmark Package Archive
+    url: https://deepscientist.cc/AISB/065_proteinbinding
+    archive_type: zip
+    local_dir_name: paper-65-ProteinBinding
+    notes: |
+      包含预训练模型检查点（model_ckpts/stabddg.pt、model_ckpts/stability_finetuned.pt、model_ckpts/proteinmpnn.pt）、打包的 SKEMPI 划分、基线预测 CSV 和示例输入。
+  notes:
+  - 基准包中包含预训练检查点；完整训练需要下载两个外部数据集。
+  - 即使是仅评估模式也需要下载 SKEMPI PDB；过滤后的 CSV 已预装。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 所有数据源均可公开访问，无需认证。
+  - 仅在使用 --wandb 训练标志时才需要可选的 Wandb 账户。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: |
+      使用预训练检查点进行单次预测和仅评估模式时足够。稳定性微调需要 torch.device='cuda'，在 16 GB 以下显存会 OOM。
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: |
+      推荐用于完整训练+评估模式。额外的磁盘空间用于容纳 Megascale AlphaFold PDB（解压后约 50 GB）和 SKEMPI PDB 结构以及检查点。
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: 2.6.0
+  flash_attn: null
+  key_packages:
+  - biopython==1.85
+  - scipy
+  - tqdm
+  - wandb
+  - pandas
+  setup_method: conda
+  setup_file: environment.yaml
+  notes: |
+    使用 conda env create -f environment.yaml && conda activate stabddg 创建环境。或者，使用 pip install tqdm scipy wandb pandas biopython 安装到现有 PyTorch 环境中。可选的 editable 安装：pip install -e . 有关完整的固定依赖集，请参阅 environment.yaml。训练阶段需要 CUDA（torch.device='cuda'）；推理可以在 CPU 上运行，但速度会显著变慢。
+paper:
+  title: Predicting mutational effects on protein binding from folding energy
+  authors:
+  - Arthur Deng
+  - Karsten Householder
+  - Fang Wu
+  - Sebastian Thrun
+  - K. Christopher Garcia
+  - Brian Trippe
+  affiliation: Stanford University
+  venue: Proceedings of the 42nd International Conference on Machine Learning (ICML
+    2025)
+  year: 2025
+  url: https://arxiv.org/abs/2507.05502
+  code: https://github.com/LDeng0205/StaB-ddG
+  notes: |
+    最初作为 arXiv 预印本（2507.05502）发布，并被 ICML 2025（PMLR 267）接收。介绍了 StaB-ddG 作为首个在 SKEMPI 上匹配 FoldX 精度的深度学习预测器，同时比基于 Rosetta 的 Flex ddG 提供超过 1000 倍的加速。
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.065_proteinbinding.zip
+  archive_type: zip
+  local_dir_name: paper-65-ProteinBinding
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.065_proteinbinding.zip
+  sha256: 07ea82db652e56e0bd609f637362cd91f74d76f1356d3b7cd3d9c14d82fda319
+  size_bytes: 2277469
+commercial:
+  annual_fee: null
+display:
+  palette_seed: sage-bone-protein
+  art_style: molecular-atlas
+  accent_priority: high
+image_path: ../image/065_aisb.t3.065_proteinbinding.jpg
+recommended_when: |
+  在评估涉及 PDB 输入、突变列表和 ΔΔG 回归或排序指标的结构生物学任务模型时使用此基准。当目标是评估从稳定性到结合的迁移学习、与 FoldX 或 Flex ddG 基线进行比较、或复现 ICML 2025 SKEMPI 基准结果时尤为理想。也适用于只需预训练检查点的单复合物推理工作流。
+not_recommended_when: |
+  如果需要纯文本或纯序列任务且没有结构输入，请勿使用此基准。如果您的环境无法提供野生型界面的 PDB 结构文件或无法满足训练的 GPU 内存要求，请避免使用。不适合需要快速迭代周期的基准测试，因为完整的训练+评估流程最多需要 24 小时，且需要下载大型外部数据集。
+risk_flags:
+- external_data_download_required
+- gpu_required_for_training
+- no_execution_verified_in_packaging_pass
+risk_notes: |
+  metric_contract.json 中的指标值有代码支持，但尚未通过实际执行验证；仅在基准测试成功运行生成 cache/eval.csv 后才可信。Megascale AlphaFold PDB 下载（解压后约 50 GB）在低带宽连接上可能较慢或中断；通过 wget -c 支持断点续传。SKEMPI PDB 结构必须从 life.bsc.es 单独下载；过滤后的 CSV 和划分已预装，但原始 PDB 除外。蒙特卡洛方差缩减在推理时默认使用 ensemble=20 个样本；减少此值会加快推理但会增加预测方差。

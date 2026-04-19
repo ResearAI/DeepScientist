@@ -1,0 +1,161 @@
+id: aisb.t3.073_rld
+name: Regularized Langevin Dynamics for Combinatorial Optimization
+version: 0.1.0
+one_line: Optimize combinatorial optimization via regularized Langevin dynamics with
+  Hamming-distance regularization for simulated annealing and neural solvers.
+task_description: 'This packaged benchmark covers combinatorial optimization via Regularized
+  Langevin Dynamics (RLD), which enforces an expected Hamming distance between sampled
+  and current solutions to escape local optima in discrete domains. The benchmark
+  includes two solvers: RLSA (Regularized Langevin Simulated Annealing) based on gradient-guided
+  MCMC sampling, and RLNN (Regularized Langevin Neural Network) supporting both differentiable
+  (erdoes) and fully black-box (reinforce) training losses. Problems include Maximum
+  Independent Set (MIS), Maximum Clique (MCL), and Maximum Cut (MCut) on Erdős–Rényi,
+  Revised Model B, and Barabási–Albert random graphs. RLSA achieves comparable or
+  superior performance to SOTA SA baselines at 20% of their runtime. RLNN trains efficiently
+  via local objectives without requiring labeled data or long-horizon return estimation.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- rlsa_size
+- rlsa_time
+- optimization_trace
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run one packaged RLSA evaluation script on a supported combinatorial
+    problem. Uses accelerate with configurable precision (fp16/no). Set num_processes=1
+    for accurate timing. Tests on small graph instances (RB-[200-300], ER-[700-800],
+    BA-[200-300]) with 500-1000 test samples.
+
+    '
+- id: full_train_eval
+  label: Full Train + Eval
+  description: 'Run the full packaged regularized Langevin dynamics and neural baseline
+    workflow. Includes RLNN training with erdoes loss (differentiable) or reinforce
+    loss (black-box), followed by evaluation across small and large graph problem
+    instances.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - type: huggingface
+    url: https://huggingface.co/datasets/shengyuf/RLD4CO
+    description: Pre-generated test graphs including ER-[9000-11000] for scale evaluation
+  - type: generator
+    description: Random graph generators included in data/ folder (er_generator.py,
+      rb_generator.py, ba_generator.py)
+  notes:
+  - ER test graphs are from DIMES repository
+  - RB and BA graphs generated using DIffUCO code
+  - ER-[9000-11000] has no training data; evaluate solvers trained on ER-[700-800]
+    directly
+  - 1000 instances per problem (2 groups of 500-size test sets)
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.8'
+  cuda: '12.4'
+  pytorch: 2.4.1
+  flash_attn: null
+  key_packages:
+  - accelerate
+  - torch
+  - torch_geometric
+  - torch_scatter
+  - scipy
+  - numpy
+  - tqdm
+  notes:
+  - Install dependencies via conda environment.yml: conda env create -f environment.yml
+      && conda activate RLD4CO
+  - Framework built on accelerate for distributed evaluation
+  - Use --mixed_precision fp16 for faster inference
+risk_flags:
+- gpu_memory_bound
+- disk_io_bound
+- reproducibility_requires_seed
+risk_notes:
+- RLSA timing requires num_processes=1; multi-GPU parallelization affects wall-clock
+  measurements
+- Large graph evaluation (ER-[9000-11000]) requires significant GPU memory; use mixed
+  precision
+- RLNN training with reinforce loss is computationally intensive due to full black-box
+  gradient estimation
+- Random graph generation with multiprocessing (num_processes parameter) affects reproducibility
+recommended_when: 'Use this benchmark when you want a stochastic combinatorial-optimization
+  task with controllable sampling and neural baselines, need to evaluate simulated
+  annealing variants on random graphs, require unsupervised or black-box optimization
+  capability, or want to benchmark against ICML 2025 SOTA SA and NN-based CO solvers.
+
+  '
+not_recommended_when: 'Do not use this if you need a pure supervised-learning benchmark,
+  require exact/optimal solutions as ground truth, work with structured real-world
+  graph datasets rather than random generators, or need a deterministic reproducible
+  baseline without seed control.
+
+  '
+paper:
+  title: Regularized Langevin Dynamics for Combinatorial Optimization
+  venue: ICML 2025
+  year: 2025
+  url: https://arxiv.org/abs/2502.00277
+  authors:
+  - Shengyu Feng
+  - Yiming Yang
+  affiliation: Carnegie Mellon University
+  contact: shengyuf@cs.cmu.edu
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.073_rld.zip
+  archive_type: zip
+  local_dir_name: paper-73-RLD
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.073_rld.zip
+  sha256: 0cbaa2a2ca423ac065c17e38dc60fed2d00bf4a92a39cd1eab7c0a6decb7a2b9
+  size_bytes: 53784
+display:
+  palette_seed: brass-midnight-langevin
+  art_style: optimization-physics
+  accent_priority: high
+image_path: ../image/073_aisb.t3.073_rld.jpg
+capability_tags:
+- research_code_optimization
+- combinatorial_optimization
+- langevin_dynamics
+- graph_optimization
+- sampling
+- simulated_annealing
+- neural_heuristics
+- unsupervised_learning
+- black_box_optimization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

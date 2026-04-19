@@ -1,0 +1,224 @@
+schema_version: 1
+id: aisb.t3.029_cdqgeoembed
+name: Conditional Dichotomy Quantification via Geometric Embedding
+version: 0.1.0
+one_line: 'Train and evaluate opposite-aware complex-valued embeddings (DoGE) that
+  quantify conditional dichotomy between context-conditioned text pairs across debate,
+  defeasible NLI, and causal reasoning scenarios, measured by DCF and Oppo-Angle metrics.
+
+  '
+task_description: 'This benchmark covers the Conditional Dichotomy Quantification
+  (ConDQ) task introduced at ACL 2025. The goal is to learn embeddings that capture
+  whether two text outputs conditioned on the same context are genuinely oppositional
+  (e.g., pro vs. con arguments in debate, strengtheners vs. weakeners in defeasible
+  NLI, supporters vs. defeaters in causal reasoning). The paper''s DoGE framework
+  uses complex-valued embeddings with a dichotomous objective to geometrically position
+  positive, negative, and neutral arguments. Evaluation uses two metrics: Dichotomy
+  Consistency Frequency (DCF), which checks relational ordering among argument types,
+  and Oppo-Angle, which measures angular separation between opposing arguments. The
+  current local snapshot does NOT contain executable training or evaluation code —
+  only metadata, the paper, catalog files, and a checkpoint directory stub. The upstream
+  repository (https://github.com/cui-shaobo/conditional-dichotomy-quantification)
+  and the published PyPI package `opposite-score` provide the runnable code. Restoring
+  the executable route requires cloning the upstream repo and installing the opposite-score
+  package, then loading one of the three pretrained HuggingFace models for inference
+  or retraining on the three scenario datasets (Debate ~95K, Defeasible NLI ~441K,
+  Causal Reasoning ~48K quadruples).
+
+  '
+capability_tags:
+- research_code_optimization
+- text_embeddings
+- contrastive_nlp
+- evaluation
+- classification
+- complex_valued_representations
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- avg_dcf
+- debate_dcf
+- nli_dcf
+- causal_dcf
+- debate_oppo_angle
+- nli_oppo_angle
+- causal_oppo_angle
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: 'Review the preserved metadata, paper, metric contract, and catalog
+    files. No executable code is run; useful for understanding the task formulation
+    and evaluation protocol.
+
+    '
+- id: restore_first
+  label: Restore First
+  description: 'Clone the upstream GitHub repository, install opposite-score from
+    PyPI, download pretrained HuggingFace checkpoints, and reconstruct the full training
+    and evaluation pipeline before running benchmarks.
+
+    '
+- id: inference_only
+  label: Inference Only (after restore)
+  description: 'After restoring code, load a pretrained opposite-score model from
+    HuggingFace and compute DCF and Oppo-Angle on the test splits of the three scenarios
+    without retraining.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/shaobocui/opposite-score-debate-bert
+    access: public
+    note: Pretrained opposite-score model for debate scenario (BERT backbone).
+  - kind: huggingface
+    url: https://huggingface.co/shaobocui/opposite-score-defeasibleNLI-bert
+    access: public
+    note: Pretrained opposite-score model for defeasible NLI scenario (BERT backbone).
+  - kind: huggingface
+    url: https://huggingface.co/shaobocui/opposite-score-causal-reasoning-bert
+    access: public
+    note: Pretrained opposite-score model for causal reasoning scenario (BERT backbone).
+  - kind: github
+    url: https://github.com/cui-shaobo/conditional-dichotomy-quantification
+    access: public
+    note: Upstream source repository with training/evaluation code and dataset construction
+      scripts.
+  - kind: pypi
+    url: https://pypi.org/project/opposite-score/
+    access: public
+    note: Published Python package (opposite-score==0.0.1) providing DichotomyE model
+      and scoring API.
+  notes:
+  - 'The three scenario datasets (PERSPECTRUM for debate, δ-NLI for defeasible NLI,
+    δ-CAUSAL for causal reasoning) total ~583K quadruples. Disk footprint for datasets
+    is modest (text-only); pretrained model checkpoints are BERT-scale (~400MB each).
+
+    '
+  - 'Neutral arguments in the datasets were generated using GPT-4o and human-verified
+    by two annotators; the generation pipeline requires spaCy and GPT-4o API access
+    if reproducing from scratch.
+
+    '
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 'No credentials required for using pretrained models or published datasets. Reproducing
+    neutral argument generation from scratch would require OpenAI API access for GPT-4o.
+
+    '
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 1
+    gpu_vram_gb: 8
+  recommended:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - opposite-score==0.0.1
+  - transformers
+  - spacy
+  notes:
+  - 'The current local snapshot does not contain executable setup files or runnable
+    source code. Environment specifications are derived from the README and PyPI package
+    metadata.
+
+    '
+  - 'The opposite-score package auto-downloads pretrained models on first use; a CUDA-capable
+    GPU is needed for the .cuda() call shown in usage examples.
+
+    '
+  - 'For full training replication, additional dependencies from the upstream repo''s
+    requirements files will be needed.
+
+    '
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- upstream_dependency
+risk_notes:
+- 'The local snapshot contains no executable Python files — only metadata, AGENTS,
+  catalog YAML, metric contract JSON, a checkpoint directory stub, and an angles_data.csv
+  file.
+
+  '
+- 'All training and evaluation code must be restored from the upstream GitHub repository
+  or reconstructed from the paper and the opposite-score PyPI package.
+
+  '
+- 'No benchmark execution was performed during the packaging pass; all metric values
+  in the metric contract are provisional/blocked.
+
+  '
+- 'Reproducing neutral argument generation requires GPT-4o API access and associated
+  costs.
+
+  '
+recommended_when: 'Use this entry when you want to study or reproduce the ConDQ task
+  — quantifying how oppositional two text outputs are given shared context — or when
+  planning upstream code restoration for the DoGE geometric embedding framework. Also
+  suitable for evaluating existing sentence embedding methods on the three ConDQ scenario
+  datasets using DCF and Oppo-Angle metrics.
+
+  '
+not_recommended_when: 'Do not treat this local snapshot as a ready-to-run benchmark.
+  The executable training and evaluation code is absent. If you need an immediately
+  runnable text embedding benchmark without upstream restoration, choose a different
+  entry. Also not suitable if you lack GPU access, as the opposite-score models require
+  CUDA for standard usage.
+
+  '
+paper:
+  title: Conditional Dichotomy Quantification via Geometric Embedding
+  authors:
+  - Shaobo Cui
+  - Wenqing Liu
+  - Yiyang Feng
+  - Jiawei Zhou
+  - Boi Faltings
+  venue: ACL 2025 (Oral)
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.383/
+  doi: 10.18653/v1/2025.acl-long.383
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.029_cdqgeoembed.zip
+  archive_type: zip
+  local_dir_name: paper-29-CDQGeoEmbed
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.029_cdqgeoembed.zip
+  sha256: 298b5f93116ff0797ce46bde8d3a2f35857b7b31a7e1b701cc8126148ff6d6b1
+  size_bytes: 236643
+commercial:
+  annual_fee: null
+display:
+  palette_seed: cedar-blue-opposition
+  art_style: semantic-cartography
+  accent_priority: high
+image_path: ../image/029_aisb.t3.029_cdqgeoembed.jpg

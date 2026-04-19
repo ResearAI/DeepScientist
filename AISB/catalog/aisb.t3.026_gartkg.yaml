@@ -1,0 +1,195 @@
+schema_version: 1
+id: aisb.t3.026_gartkg
+name: DGAR – Deep Generative Adaptive Replay for Temporal Knowledge Graph Reasoning
+version: 0.1.0
+one_line: 'Continual temporal knowledge-graph reasoning benchmark: train a diffusion-guided
+  adaptive replay model (DGAR) on ICEWS14s-style TKG snapshots and measure link-prediction
+  accuracy (MRR, Hits@1/3/10) under sequential task arrival with catastrophic-forgetting
+  mitigation.
+
+  '
+task_description: 'This benchmark packages the DGAR method for continual Temporal
+  Knowledge Graph Reasoning (TKGR). The agent must (1) build Historical Context Prompts
+  from past KG snapshots, (2) pre-train a diffusion model that generates historical
+  entity distributions, (3) run continual learning over a stream of TKG snapshots
+  using adaptive replay to mitigate catastrophic forgetting, and (4) evaluate link-prediction
+  quality (MRR, Hits@1, Hits@3, Hits@10) on held-out test splits at each time step.
+  The core entry point is `src/main.py --gpu 0 --dataset ICEWS14s`. The model combines
+  RE-GCN graph reasoning with a Transformer-based DDPM for entity-distribution generation
+  and a layer-by-layer deep adaptive replay mechanism. Hyperparameter ranges are defined
+  in `src/hyperparameter_range.py`. The primary metric (`accuracy` / MRR) is code-backed
+  via `diffusion/difffu_21.py`. No benchmark execution was performed during the packaging
+  pass; the agent must execute and validate all metrics at runtime.
+
+  '
+capability_tags:
+- research_code_optimization
+- temporal_kg_reasoning
+- graph_learning
+- continual_learning
+- generative_replay
+- diffusion_models
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable_not_verified
+support_level: advanced
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- mrr_filter
+- hits_at_1
+- hits_at_3
+- hits_at_10
+- temporal_kg_checkpoint
+- reasoning_report
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run a single dataset (e.g. ICEWS14s) through `src/main.py` with default
+    hyperparameters for one pass over the continual task stream. Verifies that the
+    training loop, diffusion generation, and evaluation pipeline execute end-to-end.
+    Expected wall-time: 1–3 hours on a single GPU.
+
+    '
+- id: full_train_eval
+  label: Full Train + Eval
+  description: 'Run the full continual training and evaluation workflow including
+    hyperparameter sweeps over n_hidden, n_layers, and dropout (see `src/hyperparameter_range.py`).
+    Covers all TKG snapshot tasks with adaptive replay, diffusion-enhanced generation,
+    and deep adaptive replay. Expected wall-time: 6–24 hours depending on dataset
+    size and GPU.
+
+    '
+- id: hp_sweep
+  label: Hyperparameter Sweep
+  description: 'Systematic grid search over the ranges in `src/hyperparameter_range.py`:
+    n_hidden ∈ {100,200,300,400}, n_layers ∈ {1,2}, dropout ∈ {0.2,0.4}, n_bases=100.
+    Produces a comparison table of MRR and Hits@k across configurations.
+
+    '
+dataset_download:
+  primary_method: bundled
+  sources:
+  - kind: local
+    url: null
+    access: public
+    note: 'Dataset files (e.g. ICEWS14s) are expected to be bundled in the snapshot
+      or loadable via the code''s built-in data-reading utilities (see `rgcn/knowledge_graph.py`).
+      The README indicates running with `--dataset ICEWS14s`.
+
+      '
+  notes:
+  - Dataset size is modest (tens of MB for ICEWS14s). No large external download is
+    required.
+  - If datasets are not bundled, check the original ICEWS14s public sources.
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - dgl
+  - fitlog
+  - umap-learn
+  - scikit-learn
+  - scipy
+  - tqdm
+  - matplotlib
+  notes:
+  - See bundled requirements for exact pinned versions.
+  - Code imports dgl, fitlog, umap, sklearn, scipy – all must be installed.
+  - The diffusion module uses a Transformer-based architecture; no external pretrained
+    weights are referenced.
+risk_flags:
+- unverified_execution
+- implicit_dataset_assumption
+- fitlog_dependency
+risk_notes:
+- 'No benchmark execution was performed during the packaging pass. All metric values
+  must be produced and validated by the agent at runtime.
+
+  '
+- 'The README entry point has a formatting artifact (`--dataset ICEWS14s# DGAR`);
+  the actual flag is likely `--dataset ICEWS14s`. The agent should verify the correct
+  dataset name.
+
+  '
+- 'fitlog is used for experiment tracking; if not installed or configured it may cause
+  import errors.
+
+  '
+- 'Code depends on dgl (Deep Graph Library) which has CUDA-version-specific builds.
+  Ensure the dgl version matches the installed CUDA toolkit.
+
+  '
+- 'The diffusion model pre-training and TKGR training are interleaved in the continual
+  learning loop; GPU memory may spike during the diffusion generation + gradient guidance
+  step (Eq. 8–10 in paper).
+
+  '
+recommended_when: 'Use this benchmark when you want a graph-learning task that combines
+  continual learning with generative replay and temporal knowledge graph reasoning.
+  Suitable for evaluating agents that must navigate multi-component ML pipelines (GNN
+  + diffusion + replay) with hyperparameter optimization under a continual-learning
+  protocol.
+
+  '
+not_recommended_when: 'Not suitable if you need a lightweight text-only task, cannot
+  provide ≥16 GB GPU VRAM for the combined graph + diffusion components, or require
+  a benchmark with pre-verified baseline metric values. Also not ideal if you need
+  multi-GPU distributed training support (code appears single-GPU only).
+
+  '
+paper:
+  title: A Generative Adaptive Replay Continual Learning Model for Temporal Knowledge
+    Graph Reasoning
+  authors:
+  - Zhiyu Zhang
+  - Wei Chen
+  - Youfang Lin
+  - Huaiyu Wan
+  venue: ACL 2025
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.537/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.026_gartkg.zip
+  archive_type: zip
+  local_dir_name: paper-26-GARTKG
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.026_gartkg.zip
+  sha256: 010bac738fef854266a59273862289b34ebafc7890602fd29f73613783e594f2
+  size_bytes: 81352
+commercial:
+  annual_fee: null
+display:
+  palette_seed: forest-copper-temporal
+  art_style: graph-science
+  accent_priority: high
+image_path: ../image/026_aisb.t3.026_gartkg.jpg

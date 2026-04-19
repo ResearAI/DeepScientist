@@ -1,0 +1,158 @@
+schema_version: 1
+id: aisb.t3.054_timebase
+name: 'TimeBase：极简主义在高效长期时间序列预测中的力量'
+version: 0.1.0
+one_line: >
+  训练并评估 TimeBase，这是一款超轻量级（约 0.39k 参数）的长期时间序列预测模型，
+  采用基提取和分段预测方法，在 17+ 个公开基准数据集上测量 MSE 和 MAE。
+task_description: |
+  本基准测试打包了 TimeBase，这是一款极轻量级的长期时间序列预测（LTSF）模型，
+  利用周期时间序列的近似低秩结构。模型将输入分割为长度为 P 的非重叠窗口，
+  通过单个线性层提取 R 个正交基分量，再通过第二个线性层预测未来片段——总计约 390 个参数。
+  智能体需要：
+  (1) 从 Google Drive 下载 17 个标准规模基准数据集（ETTh1/h2、ETTm1/m2、Weather、Electricity、
+  Traffic、Solar-Energy、Wind、Exchange-Rate、METR-LA、ZafNoo、CzeLan、AQShunyi、AQWan、PM2.5、Temp）
+  并放置在 ./dataset/ 目录中；
+  (2) 通过 `sh ./scripts/$DATA_NAME.sh` 运行每个数据集的训练脚本，
+  该脚本调用 `run_longExp.py` → `exp/exp_main.py`；
+  (3) 收集各预测 horizon（96、192、336、720）的 avg_mse 和 avg_mae。
+  超参数搜索范围包括 λ_orth ∈ [0.00–0.20] 和学习率 ∈ [0.01–0.5]。
+  可选的即插即用路线通过 `plug-and-play_for_patchtst/run_all.sh` 将 TimeBase 作为复杂度缩减器应用于 PatchTST。
+  指标由 `utils/metrics.py` 使用基于 numpy 的 MSE/MAE 计算。
+  所有评估均为自包含的，无需外部评估服务器。
+  此外，还可以从 LargeST 仓库获取 4 个大规模数据集（CA 4.52B、GLA 2.02B、GBA 1.24B、SD 0.38B 条记录）
+  用于扩展评估。
+capability_tags:
+- research_code_optimization
+- time_series_forecasting
+- efficient_models
+- forecasting
+- scientific_ml
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: medium
+time_band: 6-24h
+difficulty: medium
+data_access: public
+primary_outputs:
+- avg_mse
+- avg_mae
+- forecast_report
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: |
+    在单个标准规模数据集（如 ETTh1）上运行 TimeBase 训练和评估，
+    使用默认超参数。在单个 GPU 上不到 1 小时完成。
+- id: full_benchmark
+  label: 完整 17 数据集基准测试
+  description: |
+    依次运行全部 17 个标准规模数据集脚本，收集四个预测 horizon（96、192、336、720）
+    的 avg_mse 和 avg_mae。在单个 GPU 上预计需要 6–24 小时。
+- id: patchtst_plugin
+  label: PatchTST 即插即用
+  description: |
+    通过 plug-and-play_for_patchtst/run_all.sh 运行 PatchTST 的即插即用复杂度缩减器。
+    展示 77–93% 的 MAC 算力降低。
+- id: large_scale
+  label: 大规模数据集
+  description: |
+    将评估扩展到包含数十亿条记录的 4 个 LargeST 数据集（CA、GLA、GBA、SD）。
+    需要从 LargeST GitHub 仓库单独下载数据，并需要大量磁盘空间和计算时间。
+dataset_download:
+  primary_method: manual
+  sources:
+  - kind: google_drive
+    url: https://drive.google.com/file/d/1ypgCc6iQ2Z8IB_9CY3If_KMRNQKBsI3J/view?usp=sharing
+    access: public
+    note: |
+      17 个标准规模基准数据集（ETTh1/h2、ETTm1/m2、Weather、Electricity、Traffic、
+      Solar-Energy、Wind、Exchange-Rate、METR-LA、ZafNoo、CzeLan、AQShunyi、AQWan、
+      PM2.5、Temp）。解压至 ./dataset/ 目录。
+  - kind: github
+    url: https://github.com/liuxu77/LargeST
+    access: public
+    note: |
+      4 个大规模数据集（CA、GLA、GBA、SD），包含数十亿条记录。
+      按照 LargeST 预处理说明操作。仅在大规模数据集启动配置时需要。
+  notes:
+  - 标准规模数据集体积适中（解压后总计约几百 MB）。
+  - 大规模数据集需要数百 GB 磁盘空间，且为可选项。
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 1000
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: 3.8+
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - numpy
+  - torch
+  - matplotlib
+  notes:
+  - 该模型极其轻量级（约 390 个参数）；GPU 内存不是瓶颈。
+  - 推荐使用 1 TB 磁盘以容纳可选的大规模 LargeST 数据集。
+  - 完整的依赖项列表请参阅打包的 requirements 文件。
+  - 仓库中未固定 Python、CUDA 和 PyTorch 版本；任何支持 CUDA 的近期 PyTorch 版本均可工作。
+risk_flags:
+- manual_dataset_download
+- large_dataset_route
+risk_notes:
+- 数据集必须从 Google Drive 手动下载并解压至 ./dataset/ 目录，否则训练脚本将无法运行。
+- 4 个大规模 LargeST 数据集涉及数十亿条记录，需要单独的预处理步骤；
+  在磁盘和内存不足的情况下尝试会导致失败。
+- 未固定依赖版本；对于较旧或较新的 Python/PyTorch 组合，可能需要手动解决环境问题。
+recommended_when: |
+  当您需要一个以效率为重点的长期时间序列预测任务，且使用成熟的公开数据集时，
+  或者研究 LTSF 的极端模型压缩（子 1k 参数）时，请使用此基准测试。
+  非常适合需要一个轻量级、自包含的训练+评估循环以及明确的数值指标（MSE、MAE）的智能体。
+not_recommended_when: |
+  如果您需要多模态基准测试、基础模型规模的任务，
+  或以大型预训练模型为主的基准测试，请勿使用此基准测试。
+  如果您无法从 Google Drive 下载数据，则不适用。
+  没有数百 GB 磁盘空间，大规模配置不切实际。
+paper:
+  title: 'TimeBase: The Power of Minimalism in Efficient Long-term Time Series Forecasting'
+  venue: ICML 2025 Spotlight
+  year: 2025
+  url: https://proceedings.mlr.press/v267/huang25az.html
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.054_timebase.zip
+  archive_type: zip
+  local_dir_name: paper-54-TimeBase
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.054_timebase.zip
+  sha256: 0871383ee8a2d7dc7f00797e86c0392047d967f3824bf6e76052081150baadce
+  size_bytes: 346725
+commercial:
+  annual_fee: null
+display:
+  palette_seed: ivory-blue-minimal
+  art_style: minimal-forecast
+  accent_priority: medium
+image_path: ../image/054_aisb.t3.054_timebase.jpg

@@ -1,0 +1,211 @@
+schema_version: 1
+id: aisb.t3.030_processrm
+name: EpicPRM – Process-Supervised Reward Model Data Construction
+version: 0.1.0
+one_line: 'Construct high-quality process supervision data (Epic50k) via perplexity-based
+  MC estimation and adaptive binary search, train a PRM on Qwen2-math-1.5B, and evaluate
+  step-level F1 on ProcessBench (GSM8K, MATH, OlympiadBench, OmniMATH).
+
+  '
+task_description: 'This benchmark reproduces the EpicPRM framework for building process-supervised
+  reward models for mathematical reasoning. The pipeline has three stages: (1) generate
+  Chain-of-Thought reasoning chains from multiple LLMs (LLaMA3-8B-Instruct, LLaMA3.1-8B-Instruct,
+  Qwen2-7B-Instruct) on MATH dataset problems; (2) annotate intermediate reasoning
+  steps using a perplexity-weighted Monte Carlo estimation with an adaptive binary
+  search algorithm that dynamically adjusts starting position and sampling count based
+  on problem difficulty; (3) train a process reward model (PRM) on the resulting Epic50k
+  dataset (50k annotated steps) using Qwen2-math-1.5B-base with a binary classification
+  head and DeepSpeed, then evaluate step-level correctness prediction via the ProcessBench
+  strict protocol. The evaluation script (eval_strict.py) computes F1 as the harmonic
+  mean of acc_correct (fraction of correct solutions correctly identified) and acc_error
+  (fraction of error solutions where the predicted first error matches ground truth),
+  with threshold tuned on GSM8K and applied to MATH, OlympiadBench, and OmniMATH.
+  The data construction stage (generate_train_data.py) requires running multiple 7–8B
+  parameter LLMs as completers with vLLM for rollout sampling, which is the most compute-intensive
+  phase. PRM training itself uses DeepSpeed ZeRO (stage 1/2/3 configs provided). The
+  snapshot includes executable code for all stages but no pre-generated data or pre-trained
+  checkpoints; Epic50k and models are available on HuggingFace.
+
+  '
+capability_tags:
+- research_code_optimization
+- process_reward_modeling
+- mathematical_reasoning
+- large_language_models
+- data_construction
+- monte_carlo_estimation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 1d+
+difficulty: hard
+data_access: public
+primary_outputs:
+- f1_gsm8k
+- f1_math
+- f1_olympiadbench
+- f1_omnimath
+- process_reward_dataset
+- verifier_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Download the pre-trained PRM checkpoint and Epic50k from HuggingFace,
+    then run eval_strict.py on ProcessBench datasets (GSM8K, MATH, OlympiadBench,
+    OmniMATH) to reproduce F1 metrics. Requires a single GPU with ≥24 GB VRAM for
+    inference on the 1.5B model.
+
+    '
+- id: train_and_eval
+  label: Train + Eval
+  description: 'Train the PRM from scratch on Epic50k using train_reward_model.py
+    with DeepSpeed, then evaluate via eval_strict.py. Skips the data construction
+    stage by using the published dataset.
+
+    '
+- id: full_pipeline
+  label: Full Pipeline
+  description: 'Run all three stages: generate CoT chains and annotate steps via generate_train_data.py
+    (requires multiple 7-8B LLMs served via vLLM), train the PRM with DeepSpeed, and
+    evaluate. This is the most compute-intensive profile, requiring multi-GPU for
+    rollout sampling.
+
+    '
+dataset_download:
+  primary_method: huggingface
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/SunW7777/EpicPRM
+    access: public
+    note: 'Epic50k dataset (50k annotated intermediate reasoning steps) and associated
+      model. Also linked from https://github.com/xiaolizh1/EpicPRM.
+
+      '
+  - kind: external
+    url: https://github.com/openai/prm800k
+    access: public
+    note: 'PRM800k dataset used for comparison and threshold analysis in the paper.
+
+      '
+  - kind: external
+    url: https://github.com/peiyi9979/Math-Shepherd
+    access: public
+    note: 'Math-Shepherd dataset used as a baseline comparison.
+
+      '
+  notes:
+  - Epic50k is relatively small (~50k steps); download size is modest.
+  - 'The MATH dataset (Hendrycks et al., 2021) is needed for CoT generation if running
+    the full pipeline. ProcessBench evaluation data is needed for eval_strict.py.
+
+    '
+  - 'Base models (Qwen2-math-1.5B-base, LLaMA3-8B-Instruct, LLaMA3.1-8B-Instruct,
+    Qwen2-7B-Instruct) must be downloaded from HuggingFace for training and data construction.
+
+    '
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - HuggingFace account may be needed for gated model downloads (LLaMA3 family).
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 2
+    gpu_vram_gb: 48
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  key_packages:
+  - deepspeed==0.15.4
+  - transformers
+  - vllm
+  - scikit-learn
+  - numpy
+  - torch
+  notes:
+  - 'DeepSpeed ZeRO configs (stage 1/2/3 with bf16) are bundled in deepspeed_config/.
+    Use ds_config_bf16_zero2.json for typical 2-GPU training.
+
+    '
+  - 'vLLM is used for accelerating rollout sampling during data construction (generate_train_data.py).
+    Not needed for eval-only or train-only profiles.
+
+    '
+  - See bundled requirements and scripts/ for exact launch commands.
+risk_flags:
+- large_model_downloads
+- multi_model_dependency
+- compute_intensive_data_construction
+risk_notes:
+- 'The full data construction pipeline requires serving multiple 7-8B parameter LLMs
+  simultaneously as completers, each sampling many rollouts per problem. This stage
+  alone can take multiple GPU-days.
+
+  '
+- 'No benchmark execution was performed during packaging; metric values in the paper
+  have not been independently verified against this snapshot.
+
+  '
+- 'The eval_strict.py script implements ProcessBench evaluation protocol; ProcessBench
+  data files must be obtained separately if not bundled.
+
+  '
+- 'Base model weights (Qwen2-math-1.5B-base) are required for training. LLaMA3 models
+  may require accepting a license on HuggingFace.
+
+  '
+recommended_when: 'Use this benchmark when you want to study process-supervised reward
+  model training with efficient data construction, compare annotation strategies (perplexity-based
+  vs count-based MC estimation), or evaluate PRM quality on mathematical reasoning
+  step-correctness prediction. Good for researchers interested in data-efficient PRM
+  training — Epic50k is <10% the size of PRM800k but achieves competitive or superior
+  results.
+
+  '
+not_recommended_when: 'Do not use this if you cannot support DeepSpeed-based reward
+  model training, if you only need prompt-level evaluation without step-level annotation,
+  or if you lack access to at least one 24GB GPU. The full data construction pipeline
+  requires substantially more compute (multiple 7-8B LLMs for rollout sampling).
+
+  '
+paper:
+  title: 'An Efficient and Precise Training Data Construction Framework for Process-supervised
+    Reward Model in Mathematical Reasoning
+
+    '
+  venue: ACL 2025
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.216/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.030_processrm.zip
+  archive_type: zip
+  local_dir_name: paper-30-ProcessRM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.030_processrm.zip
+  sha256: e34d67b264044c51d0bcdaa9d6dc4d7b9cb59f9c2285b4a629b3ac02af8c725a
+  size_bytes: 54360
+display:
+  palette_seed: bronze-indigo-verifier
+  art_style: math-lab
+  accent_priority: high
+image_path: ../image/030_aisb.t3.030_processrm.jpg

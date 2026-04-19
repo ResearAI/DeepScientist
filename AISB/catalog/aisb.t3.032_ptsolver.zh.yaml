@@ -1,0 +1,135 @@
+schema_version: 1
+id: aisb.t3.032_ptsolver
+name: '个人旅行求解器：RealTravel 数据集'
+version: 0.1.0
+one_line: 'RealTravel 数据集（77 个美国城市，1000 个测试样本 + 155 个验证样本）的纯数据快照，包含 LLM 驱动的用户偏好提取脚本；完整的 PTS 规划器和 SCIP 求解器未包含在内。
+
+'
+task_description: '该基准测试打包了 RealTravel 数据集——这是 TravelPlanner 基准测试的扩展，包含了来自 Google Local 的真实用户评论和 POI 元数据，覆盖 77 个美国城市。快照包含结构化旅行查询、用户评论历史、POI 数据库（餐厅、景点、住宿）以及四个使用 LLM API（GPT-4o / DeepSeek）的 Python 数据处理脚本，用于提取用户偏好、汇总用户画像、标准化偏好标签，以及生成景点利弊描述。完整的个人旅行求解器（PTS）系统——包括转换器、搜索、重排序（SASRec）和规划（SCIP 求解器）模块——未包含在此快照中。主要评估指标（pass_rate）被阻塞，因为没有可执行的评估或规划代码。若要将此基准测试作为可运行的评估工具，需要从论文的外部代码发布中恢复下游 PTS 规划器。
+
+'
+capability_tags:
+- research_code_optimization
+- travel_planning
+- llm_tooling
+- constraint_solving
+- personalization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: data_only
+support_level: recovery
+cost_band: low
+time_band: 1-2h
+difficulty: medium
+data_access: public
+primary_outputs:
+- user_profiles
+- poi_summaries
+- structured_travel_data
+- preference_tags
+launch_profiles:
+- id: data_prep
+  label: 数据准备
+  description: '运行四个捆绑的数据处理脚本，提取用户偏好、汇总用户画像、标准化标签，并生成景点利弊描述。需要 LLM API 凭证（OpenAI 或 DeepSeek）。无需 GPU。
+
+'
+- id: planner_restore
+  label: 规划器恢复
+  description: '从论文的外部代码发布中恢复完整的 PTS 流程（转换器、搜索、SASRec 重排序、SCIP 求解器规划），然后才能将此基准测试作为可运行的端到端评估工具。
+
+'
+dataset_download:
+  primary_method: bundled
+  sources:
+  - kind: archive
+    url: https://deepscientist.cc/AISB/032_ptsolver
+    access: public
+    note: 'ZIP 压缩包，包含 RealTravel 数据集（1000 个测试样本 / 155 个验证样本）、77 个城市的 POI 数据库、用户评论数据及数据处理脚本。
+
+'
+  notes:
+  - 数据集来源于 Google Local（Yan et al., 2023）和 TravelPlanner（Xie et al., 2024）。
+  - 数据库子目录包含住宿、景点、餐饮和背景数据。
+  - 总磁盘占用量较小（解压后低于 20 GB）。
+credential_requirements:
+  mode: api_keys
+  items:
+  - OpenAI API 密钥（GPT-4o）或 DeepSeek API 密钥，用于运行数据处理脚本
+  - 可选：attraction-pro-con.py 中引用的 ChatGLM / SiliconFlow / Yi API 密钥
+  notes:
+  - 脚本从环境变量（Gpt_API_KEY、DEEPSEEK_API_KEY、CHATGLM_API_KEY）读取密钥。
+  - 部分源代码中存在硬编码的 API 密钥，可能已过期或无效。
+  - 仅检查预存在的数据集文件时无需任何凭据。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - langchain
+  - openai
+  - tqdm
+  notes:
+  - 所有捆绑脚本均可仅用 CPU 运行。
+  - 数据处理脚本使用 langchain ChatOpenAI 和 openai 客户端库。
+  - 完整 PTS 系统（未捆绑）还需 PySCIPOpt、SASRec、BGE 嵌入和 scikit-learn（用于 PCA）。
+  - 完整的依赖项清单请参阅捆绑的 requirements 文件。
+risk_flags:
+- blocked_metric
+- incomplete_pipeline
+- api_key_exposure
+- external_code_dependency
+risk_notes:
+- 主要评估指标（pass_rate）被阻塞——快照中没有评估或规划代码。
+- 完整的 PTS 系统（5 个模块）未捆绑；仅包含数据处理脚本。
+- attraction-pro-con.py 中存在硬编码的 API 密钥；这些可能是泄露的凭据，不应重复使用。
+  - 运行数据处理脚本会产生 LLM API 费用，成本与处理的用户/POI 数量成正比。
+  - 重排序模块（SASRec + BGE 嵌入）和规划模块（SCIP 求解器）必须从外部恢复。
+recommended_when: '当您需要一个基于真实用户评论和 POI 数据的逼真旅行规划数据集，用于混合符号约束满足与用户偏好建模的任务，且无需进行繁重的 GPU 训练时，可以使用此基准测试。适用于评估基于 LLM 的偏好提取、用户画像分析，或作为构建约束型旅行规划器的数据基础。
+
+'
+not_recommended_when: '如果需要完全自包含、端到端可运行的基准测试，请勿使用此基准测试。规划和评估流程未捆绑。此外，不适用于专注于大规模模型微调、多模态数据或非美国旅行目的地的基准测试。
+
+'
+paper:
+  title: 'Personal Travel Solver: A Preference-Driven LLM-Solver System for Travel
+    Planning'
+  venue: ACL 2025
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.1339/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.032_ptsolver.zip
+  archive_type: zip
+  local_dir_name: paper-32-PTSolver
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.032_ptsolver.zip
+  sha256: 26f7f39e12eb28552ada092809b289f77090a229d0b745e9dfbcbb7b7b4f9d5c
+  size_bytes: 38141816
+commercial:
+  annual_fee: null
+display:
+  palette_seed: sand-teal-itinerary
+  art_style: trip-planner
+  accent_priority: medium
+image_path: ../image/032_aisb.t3.032_ptsolver.jpg

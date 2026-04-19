@@ -518,6 +518,32 @@
     border-radius: 999px;
   }
 
+  .modal-scrollbar {
+    scrollbar-width: auto;
+    scrollbar-color: rgba(86, 91, 99, 0.52) rgba(30, 26, 22, 0.08);
+    scrollbar-gutter: stable both-edges;
+  }
+
+  .modal-scrollbar::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  .modal-scrollbar::-webkit-scrollbar-track {
+    background: rgba(30, 26, 22, 0.08);
+    border-radius: 999px;
+  }
+
+  .modal-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(86, 91, 99, 0.52);
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.52);
+  }
+
+  .modal-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(86, 91, 99, 0.7);
+  }
+
   .markdown-body {
     line-height: 1.75;
     color: hsl(var(--foreground));
@@ -1332,8 +1358,6 @@
   pointer-events: auto;
   flex-direction: column;
   border-radius: 18px;
-  will-change: transform;
-  filter: drop-shadow(0 16px 34px rgba(32, 40, 52, 0.16));
 }
 
 .ds-copilot-glass {
@@ -1347,12 +1371,8 @@
   flex-direction: column;
   border: 1px solid var(--ds-copilot-glass-border);
   box-shadow: var(--ds-copilot-glass-shadow), var(--ds-copilot-glass-glow);
-  backdrop-filter: blur(22px) saturate(130%);
-  transform: translateZ(0);
   background:
-    radial-gradient(120% 80% at 20% 0%, var(--ds-copilot-glass-bg-1), transparent 62%),
-    radial-gradient(90% 70% at 85% 10%, var(--ds-copilot-glass-bg-2), transparent 58%),
-    linear-gradient(180deg, rgba(251, 250, 247, 0.85), var(--ds-copilot-glass-bg-0));
+    linear-gradient(180deg, rgba(251, 250, 247, 0.98), rgba(244, 239, 232, 0.96) 100%);
 }
 
 .ds-copilot-glass::before {
@@ -1360,26 +1380,11 @@
   position: absolute;
   inset: -30%;
   pointer-events: none;
-  opacity: 0.58;
-  mix-blend-mode: soft-light;
-  filter: blur(28px) saturate(1.02);
+  opacity: 0.22;
   background:
     radial-gradient(circle at 20% 18%, rgba(215, 198, 174, 0.28), transparent 48%),
     radial-gradient(circle at 82% 20%, rgba(159, 177, 194, 0.22), transparent 52%),
     radial-gradient(circle at 40% 80%, rgba(199, 173, 150, 0.18), transparent 56%);
-  animation: dsCopilotAurora 22s ease-in-out infinite;
-}
-
-@keyframes dsCopilotAurora {
-  0% {
-    transform: translate3d(-8%, -4%, 0) rotate(0deg);
-  }
-  45% {
-    transform: translate3d(6%, 2%, 0) rotate(8deg);
-  }
-  100% {
-    transform: translate3d(-8%, -4%, 0) rotate(0deg);
-  }
 }
 
 .ds-copilot-glass-inner {
@@ -1388,9 +1393,9 @@
   width: 100%;
   min-height: 0;
   display: flex;
-  isolation: isolate;
   border-radius: inherit;
   flex-direction: column;
+  background: var(--ds-copilot-glass-inner);
 }
 
 .ds-copilot-header {
@@ -2064,6 +2069,182 @@
 
 .file-tree-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.32);
+}
+
+.explorer-pathbar {
+  position: relative;
+  min-width: 0;
+}
+
+.explorer-pathbar-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04)),
+    rgba(13, 18, 24, 0.34);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+
+.explorer-pathbar-field.is-open,
+.explorer-pathbar-field:focus-within {
+  border-color: rgba(205, 152, 96, 0.32);
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.24),
+    0 0 0 1px rgba(205, 152, 96, 0.16) inset;
+}
+
+.explorer-pathbar-field.is-disabled {
+  opacity: 0.55;
+}
+
+.explorer-pathbar-icon {
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.explorer-pathbar-input {
+  min-width: 0;
+  flex: 1 1 auto;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 12px;
+  line-height: 1.4;
+  font-family: 'Source Code Pro', 'SFMono-Regular', 'Menlo', monospace;
+}
+
+.explorer-pathbar-input:focus {
+  outline: none;
+}
+
+.explorer-pathbar-input::placeholder {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.explorer-pathbar-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.explorer-pathbar-results {
+  position: absolute;
+  inset: calc(100% + 8px) 0 auto;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(320px, 48vh);
+  overflow: auto;
+  padding: 8px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top, rgba(205, 152, 96, 0.12), transparent 58%),
+    rgba(11, 15, 21, 0.92);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.36),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+  backdrop-filter: blur(18px);
+}
+
+.explorer-pathbar-results::-webkit-scrollbar {
+  width: 8px;
+}
+
+.explorer-pathbar-results::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.explorer-pathbar-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  border-radius: 12px;
+  padding: 9px 10px;
+  text-align: left;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  transition:
+    background 120ms ease,
+    transform 120ms ease;
+}
+
+.explorer-pathbar-option:hover,
+.explorer-pathbar-option.is-active {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
+}
+
+.explorer-pathbar-option-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.explorer-pathbar-option-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.explorer-pathbar-option-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.explorer-pathbar-option-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.48);
+  font-family: 'Source Code Pro', 'SFMono-Regular', 'Menlo', monospace;
+}
+
+.explorer-pathbar-option-kind {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgba(205, 152, 96, 0.14);
+  color: rgba(229, 190, 141, 0.92);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.explorer-pathbar-empty {
+  padding: 12px 10px;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 12px;
 }
 
 :root {

@@ -1,0 +1,164 @@
+schema_version: 1
+id: aisb.t3.014_piguard
+name: 'PIGuard: 通过缓解过度防御实现提示词注入防护栏'
+version: 0.1.0
+one_line: '训练或微调基于DeBERTa的提示词注入防护模型（PIGuard），并在四个基准数据集（NotInject、PINT、BIPIA、WildGuard-Benign）上进行评估，通过测量恶意检测准确率、良性准确率和过度防御准确率来评估不同触发词难度级别下的表现。
+
+  '
+task_description: '本基准测试整合了完整的PIGuard流程：一个轻量级的基于DeBERTa的二分类器，用于检测提示词注入攻击，同时最大限度减少过度防御（对包含触发词（如"ignore"）的良性输入的误报）。优化任务是提高注入召回率而不增加误报率。训练数据来自20个开源数据集及LLM增强样本，已打包在快照中。评估涵盖四个测试集：NotInject（339个良性样本，含1/2/3个触发词，分为三个难度子集，各113个）、BIPIA（恶意样本）、WildGuard-Benign和PINT。PINT基准需要单独的访问申请。提供了三个评估脚本：eval.py（通过PIGuard.py加载本地检查点）、eval_piguard.py（从/tmp/PIGuard_weights加载HuggingFace格式权重）和run_official_eval.py（与eval_piguard.py相同但使用自定义良性分数阈值0.10）。主要指标包括NotInject上的过度防御准确率（整体及各触发词数量）、PINT/BIPIA上的恶意准确率以及PINT/WildGuard-Benign上的良性准确率。模型权重可从HuggingFace（leolee99/PIGuard）或Google Drive检查点加载。
+
+  '
+capability_tags:
+- research_code_optimization
+- llm_security
+- classification
+- prompt_injection
+- robustness
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: medium
+time_band: 6-24h
+difficulty: medium
+data_access: restricted
+primary_outputs:
+- over_defense_accuracy
+- one_trigger_accuracy
+- two_trigger_accuracy
+- three_trigger_accuracy
+- malicious_accuracy
+- benign_accuracy
+- trigger_accuracy_breakdown
+- evaluation_report
+launch_profiles:
+- id: quick_check
+  label: 快速检查（HuggingFace权重）
+  description: '运行eval_hf.py或eval_piguard.py，在所有打包的测试集（NotInject、BIPIA、WildGuard-Benign）上评估来自HuggingFace的预训练PIGuard模型。无需训练。除非单独获取访问权限，否则跳过PINT评估。
+
+    '
+- id: full_eval
+  label: 完整评估（全部四个基准）
+  description: '在NotInject、BIPIA、WildGuard-Benign和PINT上运行eval.py --resume <checkpoint>或run_official_eval.py。需要PINT访问权限并通过util.py进行YAML到JSON的转换。
+
+    '
+- id: train_and_eval
+  label: 训练 + 评估
+  description: '运行train.py，使用MOF策略在打包的20源训练集上重新训练PIGuard，然后在所有四个基准上评估生成的检查点。根据VRAM和批大小，在单GPU上预计需要6-24小时。
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/leolee99/NotInject
+    access: public
+    note: 'NotInject过度防御评估数据集（339个样本，三个子集各113个）。也已打包在快照的datasets/目录下。
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/leolee99/PIGuard
+    access: public
+    note: 预训练PIGuard模型权重（基于DeBERTa）。
+  - kind: google_drive
+    url: https://drive.google.com/file/d/1JpiVb_wtnbBLNEjIx1KS7PHuvmARQKTu/view?usp=sharing
+    access: public
+    note: 备用检查点下载。
+  - kind: external
+    url: https://share-eu1.hsforms.com/1TwiBEvLXRrCjJSdnbnHpLwfdfs3
+    access: request_required
+    note: '来自Lakera AI的PINT基准。非公开，需要填写访问申请表。下载后必须通过util.py从YAML转换为JSON。
+
+      '
+  - kind: bundled
+    url: null
+    access: public
+    note: '训练数据（20个开源数据集+LLM增强）、验证集（144个样本）和测试集（NotInject、BIPIA、WildGuard-Benign）全部打包在PIGuard/datasets/目录下。
+
+      '
+  notes:
+  - 打包的数据总量较小（几十MB）。大多数配置不需要大规模下载。
+  - PINT是唯一需要单独申请访问权限的外部数据集。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - PINT基准访问需要向Lakera AI提交表单，但不需要API密钥。
+  - HuggingFace模型下载是公开的，无需令牌。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 120
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.4.0
+  flash_attn: 2.6.1
+  key_packages:
+  - flash-attn==2.6.1
+  - vllm==0.5.4
+  - transformers==4.44.0
+  - ptflops
+  notes:
+  - 完整的依赖项列表请参见打包的requirements.txt。
+  - 模型基于DeBERTa（非LLM）；vllm仅在某些评估模式下使用。
+  - flash-attn需要兼容的CUDA和GPU架构。
+risk_flags:
+- restricted_dataset_component
+- external_model_weights
+risk_notes:
+- 'PINT基准非公开且未打包。完整的四基准评估需要通过网页表单向Lakera AI申请访问权限。没有PINT的情况下，仍可使用四个测试集中的三个。
+
+  '
+- '模型权重必须在运行时从HuggingFace或Google Drive下载，除非已预置在/tmp/PIGuard_weights。
+
+  '
+- 'eval_piguard.py和run_official_eval.py硬编码MODEL_PATH为/tmp/PIGuard_weights，DATASET_ROOT为/repo/datasets。这些路径可能需要调整。
+
+  '
+- 'run_official_eval.py使用自定义的BENIGN_THRESHOLD为0.10（从0.50降低），这与eval.py中的默认argmax方法相比改变了分类边界。
+
+  '
+recommended_when: '当您需要一个安全导向的文本分类任务，具有双重压力：在提高提示词注入检测召回率的同时控制过度防御（对包含类攻击触发词的良性输入的误报）。非常适合研究捷径学习、DeBERTa微调策略以及轻量级防护模型的阈值校准。
+
+  '
+not_recommended_when: '如果无法提供GPU（模型需要CUDA来进行实际训练和批量推理）、无法获取PINT完整评估访问权限，或者您寻找的是生成式LLM基准而非二分类任务，则不应使用此基准。
+
+  '
+paper:
+  title: 'PIGuard: Prompt Injection Guardrail via Mitigating Overdefense for Free'
+  venue: ACL 2025
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.1468/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.014_piguard.zip
+  archive_type: zip
+  local_dir_name: paper-14-PIGuard
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.014_piguard.zip
+  sha256: 9a7996fc3b40709caa357b763d7a51e1f1f2ab449480e403ec34a7c248eb4c81
+  size_bytes: 1621668
+commercial:
+  annual_fee: null
+display:
+  palette_seed: rust-sand-guard
+  art_style: safety-dashboard
+  accent_priority: high
+image_path: ../image/014_aisb.t3.014_piguard.jpg

@@ -1,0 +1,121 @@
+id: aisb.t3.060_iaggad
+name: 'IA-GGAD: Zero-shot Generalist Graph Anomaly Detection via Invariant and Affinity
+  Learning'
+version: 0.1.0
+one_line: Zero-shot generalist graph anomaly detection using invariant feature learning
+  and structure-insensitive affinity modules to handle cross-domain graph shifts.
+task_description: 'This packaged benchmark implements IA-GGAD, a zero-shot generalist
+  graph anomaly detection framework that detects anomalous nodes across diverse graph
+  domains without task-specific retraining or fine-tuning. The method addresses two
+  core domain-shift challenges: Feature Space Shift (FSS) through an anomaly-driven
+  graph invariant learning module that learns domain-invariant node representations,
+  and Graph Structure Shift (GSS) via a structure-insensitive affinity learning module
+  that captures cross-domain structural correspondences. Training uses source graphs
+  from social, citation, and e-commerce domains; evaluation measures anomaly detection
+  performance on held-out target graphs. The benchmark entry point is run_IA_GGAD.py
+  which executes 60-epoch training on source datasets and evaluation on target datasets,
+  reporting AUROC as the primary metric.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- auroc
+- anomaly_scores
+- graph_eval_report
+launch_profiles:
+- id: full_benchmark
+  label: Full Benchmark
+  description: 'Execute the full IA-GGAD benchmark pipeline: train on source datasets
+    (pubmed, Flickr, questions, YelpChi) and evaluate on target datasets (cora, citeseer,
+    ACM, BlogCatalog, Facebook, weibo, Reddit, Amazon). Default configuration uses
+    GCN backbone with 60 training epochs.
+
+    '
+dataset_download:
+  primary_method: direct_archive
+  sources:
+  - url: https://deepscientist.cc/AISB/060_iaggad
+    type: primary
+  notes:
+  - Archive contains complete source code, configuration files, and parameter sets.
+  - Graph datasets are referenced by config JSONs in params/ directory.
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: 3.8.14
+  cuda: '11.7'
+  pytorch: 1.13.1
+  flash_attn: null
+  key_packages:
+  - dgl==0.9.1
+  - torch==1.13.1
+  - numpy
+  - scikit-learn
+  notes:
+  - CUDA 11.7 build of DGL required (dgl-0.9.1+cu117).
+  - See bundled README/requirements.txt for full dependency set.
+  - GPU required for training and evaluation due to DGL graph operations.
+risk_flags:
+- requires_gpu
+- long_runtime
+risk_notes:
+- Single GPU training with 60 epochs may take several hours on minimum specs.
+- CPU-only execution not supported; DGL operations require CUDA.
+- No static code-audit execution performed; runtime validation required.
+recommended_when: 'Use this benchmark when you need to evaluate or optimize graph
+  anomaly detection methods that must generalize across domains without target-domain
+  fine-tuning. Ideal for evaluating zero-shot transfer capabilities of GAD models
+  on heterogeneous graph structures.
+
+  '
+not_recommended_when: 'Do not use if you require a CPU-only baseline, non-graph anomaly
+  detection task, or single-domain only evaluation. Not suitable when no GPU hardware
+  is available.
+
+  '
+paper:
+  title: 'IA-GGAD: Zero-shot Generalist Graph Anomaly Detection via Invariant and
+    Affinity Learning'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=Cggdvyt8ik
+  github: https://github.com/kg-cc/IA-GGAD/
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.060_iaggad.zip
+  archive_type: zip
+  local_dir_name: paper-60-IAGGAD
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.060_iaggad.zip
+  sha256: 4a3697f8b28d81d5b8bb432759c92b99abc3ca5e02233241c1efcddf7a8137c4
+  size_bytes: 191680
+display:
+  palette_seed: emerald-slate-graph
+  art_style: anomaly-atlas
+  accent_priority: high
+image_path: ../image/060_aisb.t3.060_iaggad.jpg

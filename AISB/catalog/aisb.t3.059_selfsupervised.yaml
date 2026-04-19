@@ -1,0 +1,154 @@
+id: aisb.t3.059_selfsupervised
+name: SCAM Time-Series Self-Supervised Relabeling
+version: 0.1.0
+one_line: Self-supervised pseudo-label generation via reconstruction networks with
+  adaptive masking for time-series forecasting backbones.
+task_description: 'This benchmark implements SCAM (Self-Correction with Adaptive Mask),
+  a self-supervised relabeling framework for time-series forecasting. The method trains
+  a reconstruction network g(·; φ) on raw labels and generates pseudo-labels by approximating
+  intermediate network parameters during optimization. An adaptive mask identifies
+  overfitted raw components using the sharpness metric λ_max and selectively replaces
+  them with reconstruction-based pseudo-labels. Spectral Norm Regularization (SNR)
+  further suppresses overfitting. The benchmark supports multiple forecasting backbones
+  (MLP, CycleNet, iTransformer, PatchTST) and evaluates on 11 real-world datasets.
+  Users specify backbone via task config (e.g., task=scam_mlp, task=scam_patchtst)
+  in Hydra-based training pipeline.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- avg_mse
+- avg_mae
+- selfsupervised_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run a single self-supervised forecasting evaluation route using a
+    packaged config. Executes src/eval.py with predefined hyperparameters for one
+    backbone model.
+
+    '
+- id: full_train_eval
+  label: Full Train + Eval
+  description: 'Run the complete SCAM self-supervised labeling and forecasting workflow.
+    Executes src/train.py with specified task config (scam_mlp, scam_cyclenet, scam_itransformer,
+    or scam_patchtst). Trains reconstruction network, applies adaptive masking, and
+    evaluates with SNR across all datasets.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - type: bundled
+    description: Datasets referenced in configs/data/ directory, downloaded via scripts
+  - type: url
+    description: External time-series datasets (ETT, weather, electricity, traffic)
+  notes:
+  - User must specify data paths in .env file (DATA_DIR variable) before execution
+  - See configs/data/ for dataset-specific configurations
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+    notes: GPU required for training reconstruction network and predictor models
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 24GB VRAM accommodates larger batch sizes for PatchTST/iTransformer experiments
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: 2.6.0
+  flash_attn: null
+  key_packages:
+  - name: lightning
+    version: '>=2.0'
+    purpose: Training orchestration and distributed training support
+  - name: hydra-core
+    version: '>=1.3'
+    purpose: Configuration management and experiment routing
+  - name: omegaconf
+    version: '>=2.3'
+    purpose: YAML config parsing and overrides
+  - name: rootutils
+    version: '>=1.0'
+    purpose: Project root detection and PYTHONPATH setup
+  notes:
+  - Use environment.yml for conda environment creation: conda create --name <env>
+      --file environment.yml
+  - Python entry point uses lightning-hydra-template structure
+  - PROJECT_ROOT and DATA_DIR must be set in .env file before execution
+risk_flags:
+- requires_gpu
+- long_runtime
+risk_notes:
+- Training reconstruction network adds overhead compared to standard forecasting baselines
+- Full evaluation across all backbones (MLP, CycleNet, iTransformer, PatchTST) requires
+  multiple hours
+- 11 real-world datasets must be downloaded separately; disk space requirement scales
+  with dataset count
+recommended_when: 'Use this benchmark when evaluating self-supervised relabeling strategies,
+  studying pseudo-label quality effects on forecasting, or benchmarking SCAM against
+  standard supervised baselines. Particularly suited for research on label noise,
+  overfitting mitigation, and ensemble-style self-training in time series domains.
+
+  '
+not_recommended_when: 'Do not use if you need a fully deterministic single-model benchmark
+  without stochastic components. Not recommended when GPU resources are unavailable
+  or when baseline comparison without self-supervised components is required. Avoid
+  if reproducible single-run results are needed without the multi-stage SCAM pipeline.
+
+  '
+paper:
+  title: 'Not All Data are Good Labels: On the Self-supervised Labeling for Time Series
+    Forecasting'
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2502.14704
+  code_url: https://github.com/SuDIS-ZJU/SCAM
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.059_selfsupervised.zip
+  archive_type: zip
+  local_dir_name: paper-59-SelfSupervised
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.059_selfsupervised.zip
+  sha256: 4394ab146b3401b4b5dd318050d6b6feadca18a441a905e1ea4cbb49194d3de5
+  size_bytes: 167064
+display:
+  palette_seed: linen-blue-label
+  art_style: label-forecast
+  accent_priority: medium
+image_path: ../image/059_aisb.t3.059_selfsupervised.jpg
+capability_tags:
+- research_code_optimization
+- time_series_forecasting
+- self_supervised_learning
+- forecasting
+- ensemble_methods
+- reconstruction_based_pseudolabels
+- adaptive_masking
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

@@ -20,6 +20,7 @@ import type {
 import { buildFileTree } from "@/lib/types/file";
 import * as fileApi from "@/lib/api/files";
 import * as latexApi from "@/lib/api/latex";
+import { normalizeProjectRelativePath } from "@/lib/utils/project-relative-path";
 
 /**
  * Transfer task for file operations (move, copy, etc.)
@@ -452,20 +453,10 @@ const moveEffectTimers = new Map<string, number>();
 const renameEffectTimers = new Map<string, number>();
 let latestLoadRequestId = 0;
 
-function normalizePath(path: string): string {
-  let normalized = path.trim();
-  if (normalized.startsWith("/FILES/")) {
-    normalized = normalized.slice("/FILES/".length);
-  } else if (normalized === "/FILES") {
-    normalized = "";
-  }
-  return normalized.replace(/^\/+/, "").replace(/\/+$/, "");
-}
-
 function findNodeByPathInTree(nodes: FileNode[], targetPath: string): FileNode | null {
-  const normalized = normalizePath(targetPath);
+  const normalized = normalizeProjectRelativePath(targetPath);
   for (const node of nodes) {
-    if (node.path && normalizePath(node.path) === normalized) {
+    if (node.path && normalizeProjectRelativePath(node.path) === normalized) {
       return node;
     }
     if (node.children) {

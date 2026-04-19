@@ -1,0 +1,104 @@
+id: aisb.t3.079_dpfkmeans
+name: Differentially Private Federated k-Means Clustering with Server-Side Data
+version: 0.1.0
+one_line: 带差分隐私保证的联邦 k-means 聚类方法，利用服务器侧辅助数据进行初始化。
+task_description: 该基准覆盖 FedDP-KMeans，一种完全联邦且满足差分隐私的 k-means 算法。方法将 FedDP-Init（利用可能较小且分布外的服务器侧数据进行初始化）与 FedDP-Lloyd’s（Lloyd 算法的联邦变体）结合，解决差分隐私聚类中的核心难点：在隐私约束下获得高质量初始化。当前本地快照需先恢复上游源码后方可运行；本次分阶段打包未检测到可执行代码锚点。
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 2-6h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- objective_score
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: Inspect preserved benchmark metadata for the differentially private federated k-means task without attempting execution.
+- id: restore_first
+  label: Restore First
+  description: Restore missing clustering implementation (FedDP-Init and FedDP-Lloyd's) before attempting benchmark execution.
+dataset_download:
+  primary_method: restoration_required
+  sources:
+  - type: upstream_restore
+    location: github.com/jonnyascott/fed-dp-kmeans
+    description: Original implementation repository requires restoration to local snapshot
+  notes:
+  - Current snapshot does not preserve an executable benchmark route; treat dataset and code setup as part of upstream restoration
+  - Public datasets referenced in paper include synthetic and real-world benchmarks for cross-silo and cross-device FL settings
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - Benchmark targets public data scenarios with differential privacy guarantees
+  - No external API keys or private data access required
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: null
+  cuda: null
+  pytorch: 2.4.0
+  flash_attn: null
+  key_packages:
+  - numpy
+  - scipy
+  - scikit-learn
+  notes:
+  - CPU-only execution is plausible for the minimum configuration route
+  - Current package does not preserve executable setup files; environment hints are provisional pending upstream restoration
+  - Original implementation uses standard scientific Python stack; see bundled README/requirements when restored
+risk_flags:
+- source_snapshot_incomplete
+- blocked_no_code
+- route_caveat
+risk_notes:
+- Current snapshot has no executable code anchors; primary_outputs metric (objective_score) is blocked-no-code status
+- No benchmark execution was performed in this packaging pass
+- Top-level README is absent in the current snapshot
+- Upstream restoration from github.com/jonnyascott/fed-dp-kmeans is required before evaluation
+recommended_when: 当你进行基于论文的方法规划、审阅 ICML 2025 FedDP-KMeans 技术细节，或执行差分隐私聚类实现的上游恢复时可使用本条目。
+not_recommended_when: 不要将当前本地包视为可直接运行的聚类基准。分阶段快照缺少可执行代码，恢复上游仓库前执行会失败。
+paper:
+  title: Differentially Private Federated k-Means Clustering with Server-Side Data
+  authors:
+  - Jonathan Scott
+  - Christoph H. Lampert
+  - David Saulpic
+  affiliations:
+  - Institute of Science and Technology Austria (ISTA)
+  - CNRS & Université Paris Cité
+  venue: ICML 2025
+  year: 2025
+  url: https://arxiv.org/abs/2506.05408
+  code_url: https://github.com/jonnyascott/fed-dp-kmeans
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.079_dpfkmeans.zip
+  archive_type: zip
+  local_dir_name: paper-79-DPFKMeans
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.079_dpfkmeans.zip
+  sha256: 53ac3827f51dfe09b4dec7226640cfd0eea7f0ee2829abff4aeca43f11963ab3
+  size_bytes: 49426
+display:
+  palette_seed: plum-ivory-privacy
+  art_style: privacy-clustering
+  accent_priority: medium
+image_path: ../image/079_aisb.t3.079_dpfkmeans.jpg

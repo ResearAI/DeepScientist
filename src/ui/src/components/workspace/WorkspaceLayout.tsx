@@ -11,7 +11,6 @@
  */
 
 import * as React from 'react'
-import { useQuery } from '@tanstack/react-query'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import {
@@ -35,7 +34,6 @@ import {
   ChevronRight,
   FolderOpen,
   Github,
-  LayoutTemplate,
   Braces,
   Terminal,
   X,
@@ -43,17 +41,13 @@ import {
 } from 'lucide-react'
 import { useFileTreeStore } from '@/lib/stores/file-tree'
 import { useTabsStore, useActiveTab } from '@/lib/stores/tabs'
-import { useChatSessionStore } from '@/lib/stores/session'
-import { useLabCopilotStore } from '@/lib/stores/lab-copilot'
 import { useLabGraphSelectionStore } from '@/lib/stores/lab-graph-selection'
 import { useOpenFile } from '@/hooks/useOpenFile'
 import { useProject, useUpdateProject } from '@/lib/hooks/useProjects'
 import { useQuestWorkspace } from '@/lib/acp'
 import { client as questClient } from '@/lib/api'
 import { flattenQuestExplorerPayload, invalidateQuestFileTree } from '@/lib/api/quest-files'
-import { listLabAgents, listLabQuests, listLabTemplates } from '@/lib/api/lab'
-import { useCliStore } from '@/lib/plugins/cli/stores/cli-store'
-import { supportsArxiv } from '@/lib/runtime/quest-runtime'
+import { isQuestRuntimeSurface, supportsArxiv } from '@/lib/runtime/quest-runtime'
 import { useArxivStore } from '@/lib/stores/arxiv-store'
 import { CreateFileDialog, CreateLatexProjectDialog, FileIcon, FileTree } from '@/components/file-tree'
 import { PluginRenderer } from '@/components/plugin'
@@ -61,7 +55,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Icon3D } from '@/components/ui/icon-3d'
 import { PngIcon } from '@/components/ui/png-icon'
 import { DotfilesToggleIcon } from '@/components/ui/dotfiles-toggle-icon'
-import { type AiManusChatActions, type CopilotPrefill } from '@/lib/plugins/ai-manus/view-types'
+import { type CopilotPrefill } from '@/lib/plugins/ai-manus/view-types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -87,46 +81,33 @@ import { CopilotDockOverlay } from '@/components/workspace/CopilotDockOverlay'
 import { COPILOT_DOCK_DEFAULTS, useCopilotDockState } from '@/hooks/useCopilotDockState'
 import { useI18n } from '@/lib/i18n/useI18n'
 import { useOnboardingStore } from '@/lib/stores/onboarding'
+import { useMobileViewport } from '@/lib/hooks/useMobileViewport'
 import { tutorialDemoScenarios } from '@/demo/scenarios/quickstart'
 import { resetDemoRuntime } from '@/demo/runtime'
 import { useDemoQuestWorkspace } from '@/demo/useDemoQuestWorkspace'
 import { WorkspaceTooltipLayer } from '@/components/workspace/WorkspaceTooltipLayer'
-import { WelcomeStage } from '@/components/workspace/WelcomeStage'
 import { QuestCopilotDockPanel } from '@/components/workspace/QuestCopilotDockPanel'
 import { QuestWorkspaceSurface } from '@/components/workspace/QuestWorkspaceSurface'
 import { NotificationBell } from '@/components/ui/notification-bell'
 import { MobileQuestWorkspaceShell } from '@/components/workspace/MobileQuestWorkspaceShell'
+import { ExplorerPathBar } from '@/components/workspace/ExplorerPathBar'
 import { ArxivPanel } from '@/components/arxiv'
 import {
   EXPLORER_REFRESH_EVENT,
   type ExplorerRefreshDetail,
 } from '@/lib/plugins/lab/lib/explorer-events'
 import {
+  isHiddenProjectRelativePath,
+  normalizeProjectRelativePath,
+} from '@/lib/utils/project-relative-path'
+import {
+  WORKSPACE_REVEAL_FILE_EVENT,
   WORKSPACE_LEFT_VISIBILITY_EVENT,
   type QuestStageSelection,
   type QuestWorkspaceView,
+  type WorkspaceRevealFileDetail,
   type WorkspaceLeftVisibilityDetail,
 } from './workspace-events'
-
-const LabCopilotPanel = dynamic(() => import('@/lib/plugins/lab/components/LabCopilotPanel'), {
-  ssr: false,
-  loading: () => null,
-})
-const LabCopilotHeader = dynamic(
-  () => import('@/lib/plugins/lab/components/LabCopilotPanel').then((mod) => mod.LabCopilotHeader),
-  { ssr: false, loading: () => null }
-)
-
-const getLabContextSessionId = (tab: Tab | null | undefined, projectId?: string | null) => {
-  if (!tab) return null
-  const customData = tab.context?.customData
-  if (!customData || typeof customData !== 'object') return null
-  const record = customData as Record<string, unknown>
-  if (record.lab_context !== true) return null
-  if (projectId && typeof record.projectId === 'string' && record.projectId !== projectId) return null
-  const sessionId = typeof record.lab_session_id === 'string' ? record.lab_session_id : null
-  return sessionId && sessionId.trim() ? sessionId : null
-}
 
 // ============================================================================
 // Types
@@ -142,7 +123,6 @@ interface WorkspaceLayoutProps {
 
 type CommandGroup = 'Quick' | 'Files' | 'Create' | 'Navigate' | 'Panels' | 'Access' | 'Tools'
 type ScrollbarSide = 'left' | 'right'
-type CopilotSurfaceMode = 'agent' | 'lab'
 
 const WORKSPACE_ENTRY_HOLD_MS = 120
 const WORKSPACE_ENTRY_ANIM_MS = 720
@@ -405,7 +385,6 @@ function matchCommand(query: string, item: CommandItem): boolean {
 
 const IMPORT_PREFIXES = ['i', 'im', 'imp', 'impo', 'impor', 'import']
 const NEW_PREFIXES = ['n', 'ne', 'new']
-const TEMPLATE_PREFIXES = ['te', 'tem', 'temp', 'templ', 'templa', 'templat', 'template']
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -528,6 +507,32 @@ const buildScopedQuestTree = (
   }
 }
 
+const buildScopedQuestTreeFromNodes = (nodes: FileNode[], rawScope: string) => {
+  const scope = normalizeExplorerScopePath(rawScope)
+  if (!scope) return [] as FileNode[]
+
+  const visit = (node: FileNode): FileNode | null => {
+    const normalizedPath = normalizeExplorerScopePath(node.path)
+    const nextChildren = node.children
+      ?.map((child) => visit(child))
+      .filter(Boolean) as FileNode[] | undefined
+    const isTarget = Boolean(normalizedPath && normalizedPath === scope)
+    const isAncestor = Boolean(normalizedPath && scope.startsWith(`${normalizedPath}/`))
+    if (!isTarget && !isAncestor && (!nextChildren || nextChildren.length === 0)) {
+      return null
+    }
+    return {
+      ...node,
+      children: nextChildren,
+    }
+  }
+
+  return applyQuestTreeDecorations(
+    nodes.map((node) => visit(node)).filter(Boolean) as FileNode[],
+    [scope]
+  )
+}
+
 const resolveExplorerSnapshotRevision = (
   selection:
     | {
@@ -591,15 +596,11 @@ function WorkspaceCommandPalette({
   onOpenChange,
   items,
   projectId,
-  onExitHome,
-  onEnterLab,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   items: CommandItem[]
   projectId: string
-  onExitHome?: () => void
-  onEnterLab?: () => void
 }) {
   const { t } = useI18n('workspace')
   const router = useRouter()
@@ -656,13 +657,10 @@ function WorkspaceCommandPalette({
   const isUuid = UUID_REGEX.test(trimmedQuery)
   const showImportActions = matchPrefix(normalizedQuery, IMPORT_PREFIXES)
   const showNewActions = matchPrefix(normalizedQuery, NEW_PREFIXES)
-  const showTemplateActions = matchPrefix(normalizedQuery, TEMPLATE_PREFIXES)
-
   const autocompleteKeyword = () => {
     const candidates: Array<{ prefixes: string[]; value: string }> = [
       { prefixes: IMPORT_PREFIXES, value: 'import' },
       { prefixes: NEW_PREFIXES, value: 'new' },
-      { prefixes: TEMPLATE_PREFIXES, value: 'template' },
     ]
     const match = candidates.find((candidate) => candidate.prefixes.includes(normalizedQuery))
     if (!match) return false
@@ -695,20 +693,6 @@ function WorkspaceCommandPalette({
 
     if (showImportActions) {
       addQuick('upload-files')
-    }
-
-    if (showTemplateActions && onEnterLab) {
-      next.push({
-        id: 'lab:templates',
-        title: t('command_open_lab_templates_title'),
-        description: t('command_open_lab_templates_desc'),
-        group: 'Quick',
-        keywords: ['template', 'lab', 'copilot'],
-        icon: <LayoutTemplate className="h-4 w-4 text-muted-foreground" />,
-        run: () => {
-          onEnterLab()
-        },
-      })
     }
 
     if (isUuid) {
@@ -745,11 +729,9 @@ function WorkspaceCommandPalette({
     isUuid,
     itemMap,
     normalizedQuery,
-    onEnterLab,
     router,
     showImportActions,
     showNewActions,
-    showTemplateActions,
     t,
     trimmedQuery,
   ])
@@ -1673,6 +1655,7 @@ function LeftPanel({
   demoMode = false,
   workspaceTreeSyncKey = null,
   workspaceScopeContextKey = null,
+  revealedFileScope = null,
 }: {
   width: number
   projectId: string
@@ -1685,6 +1668,7 @@ function LeftPanel({
   demoMode?: boolean
   workspaceTreeSyncKey?: string | null
   workspaceScopeContextKey?: string | null
+  revealedFileScope?: { label: string | null; nodes: FileNode[]; token: number } | null
 }) {
   const { t } = useI18n('workspace')
   const { t: tCommon } = useI18n('common')
@@ -1693,7 +1677,14 @@ function LeftPanel({
   const openTab = useTabsStore((state) => state.openTab)
   const tabs = useTabsStore((state) => state.tabs)
   const graphSelection = useLabGraphSelectionStore((state) => state.selection)
+  const fileTreeNodes = useFileTreeStore((state) => state.nodes)
   const { createFolder, upload, refresh, loadFiles, isLoading } = useFileTreeStore()
+  const findTreeNode = useFileTreeStore((state) => state.findNode)
+  const findNodeByPath = useFileTreeStore((state) => state.findNodeByPath)
+  const expandToFile = useFileTreeStore((state) => state.expandToFile)
+  const selectNode = useFileTreeStore((state) => state.select)
+  const setFocusedNode = useFileTreeStore((state) => state.setFocused)
+  const highlightFile = useFileTreeStore((state) => state.highlightFile)
   const refreshArxivLibrary = useArxivStore((state) => state.refresh)
   const { openFileInTab, downloadFile, openNotebook } = useOpenFile()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
@@ -1706,6 +1697,10 @@ function LeftPanel({
   const [scopedExplorerLabel, setScopedExplorerLabel] = React.useState<string | null>(null)
   const [scopedExplorerNodes, setScopedExplorerNodes] = React.useState<FileNode[]>([])
   const [scopedExplorerLoading, setScopedExplorerLoading] = React.useState(false)
+  const [manualScopedExplorer, setManualScopedExplorer] = React.useState<{
+    label: string | null
+    nodes: FileNode[]
+  } | null>(null)
   const [stickyScopedSelection, setStickyScopedSelection] = React.useState<QuestStageSelection | null>(null)
   const [explorerLocation, setExplorerLocation] =
     React.useState<ExplorerLocationState>(DEFAULT_EXPLORER_LOCATION)
@@ -1721,6 +1716,13 @@ function LeftPanel({
   const [diffCompareBase, setDiffCompareBase] = React.useState<string | null>(null)
   const [diffCompareHead, setDiffCompareHead] = React.useState<string | null>(null)
   const [scopedExplorerReloadKey, setScopedExplorerReloadKey] = React.useState(0)
+  const [filesRevealState, setFilesRevealState] = React.useState<{
+    fileId: string | null
+    token: number
+  }>({
+    fileId: null,
+    token: 0,
+  })
   const menuSectionId = React.useId()
   const activeTab = useActiveTab()
   const activeQuestWorkspaceView = React.useMemo(() => {
@@ -1775,8 +1777,23 @@ function LeftPanel({
 
   React.useEffect(() => {
     setExplorerModePreference('auto')
+    setManualScopedExplorer(null)
     setStickyScopedSelection(null)
   }, [projectId])
+
+  React.useEffect(() => {
+    setManualScopedExplorer(null)
+  }, [workspaceScopeContextKey])
+
+  React.useEffect(() => {
+    if (!revealedFileScope) return
+    setManualScopedExplorer({
+      label: revealedFileScope.label,
+      nodes: revealedFileScope.nodes,
+    })
+    setExplorerModePreference('auto')
+    setActiveExplorer('scope')
+  }, [revealedFileScope])
 
   React.useEffect(() => {
     setStickyScopedSelection(null)
@@ -1827,18 +1844,21 @@ function LeftPanel({
   React.useEffect(() => {
     if (explorerModePreference !== 'auto') return
     if (!localQuestMode) return
-    setActiveExplorer(liveScopedExplorerSelection || stickyScopedSelection ? 'scope' : 'files')
-  }, [explorerModePreference, liveScopedExplorerSelection, localQuestMode, stickyScopedSelection])
+    setActiveExplorer(manualScopedExplorer || liveScopedExplorerSelection || stickyScopedSelection ? 'scope' : 'files')
+  }, [explorerModePreference, liveScopedExplorerSelection, localQuestMode, manualScopedExplorer, stickyScopedSelection])
 
   const effectiveScopedExplorerSelection = React.useMemo(
     () => liveScopedExplorerSelection || stickyScopedSelection || null,
     [liveScopedExplorerSelection, stickyScopedSelection]
   )
+  const effectiveScopedExplorerLabel = manualScopedExplorer?.label ?? scopedExplorerLabel
+  const effectiveScopedExplorerNodes = manualScopedExplorer?.nodes ?? scopedExplorerNodes
+  const effectiveScopedExplorerLoading = manualScopedExplorer ? false : scopedExplorerLoading
 
   React.useEffect(() => {
     const effectiveSelection = effectiveScopedExplorerSelection
 
-    if (!localQuestMode || !effectiveSelection) {
+    if (!localQuestMode || (!effectiveSelection && !manualScopedExplorer)) {
       setScopedExplorerLabel(null)
       setScopedExplorerNodes([])
       setExplorerLocation(DEFAULT_EXPLORER_LOCATION)
@@ -1985,6 +2005,7 @@ function LeftPanel({
     effectiveScopedExplorerSelection,
     liveScopedExplorerSelection,
     localQuestMode,
+    manualScopedExplorer,
     projectId,
     scopedExplorerReloadKey,
     stickyScopedSelection,
@@ -2270,12 +2291,72 @@ function LeftPanel({
     }
   }, [addToast, refresh, t, tCommon])
 
+  const revealNodeInFilesExplorer = React.useCallback(
+    (target: FileNode | null, options?: { fallbackPath?: string | null }) => {
+      if (!target) {
+        const fallbackPath = normalizeProjectRelativePath(String(options?.fallbackPath || ''))
+        addToast({
+          type: 'error',
+          title: t('explorer_reveal_failed', undefined, 'Path not found in Explorer'),
+          description: fallbackPath
+            ? `/${fallbackPath}`
+            : tCommon('generic_try_again', undefined, 'Please try again.'),
+          duration: 2600,
+        })
+        return
+      }
+
+      if (isHiddenProjectRelativePath(target.path || target.name)) {
+        setHideDotfiles(false)
+      }
+
+      setExplorerModePreference('files')
+      setActiveExplorer('files')
+      expandToFile(target.id)
+      selectNode(target.id)
+      setFocusedNode(target.id)
+      highlightFile(target.id)
+      setFilesRevealState((current) => ({
+        fileId: target.id,
+        token: current.token + 1,
+      }))
+    },
+    [addToast, expandToFile, highlightFile, selectNode, setFocusedNode, t, tCommon]
+  )
+
+  const handleRevealNodeInExplorer = React.useCallback(
+    (node: FileNode) => {
+      const normalizedPath = normalizeProjectRelativePath(node.path || node.name || '')
+      const liveNode = normalizedPath ? findNodeByPath(normalizedPath) : findTreeNode(node.id)
+      revealNodeInFilesExplorer(liveNode, { fallbackPath: normalizedPath })
+    },
+    [findNodeByPath, findTreeNode, revealNodeInFilesExplorer]
+  )
+
+  const handleOpenContainingFolder = React.useCallback(
+    (node: FileNode) => {
+      if (node.parentId) {
+        const liveParent = findTreeNode(node.parentId)
+        if (liveParent) {
+          revealNodeInFilesExplorer(liveParent, { fallbackPath: liveParent.path || liveParent.name })
+          return
+        }
+      }
+
+      const normalizedPath = normalizeProjectRelativePath(node.path || '')
+      const parentPath = normalizedPath.split('/').slice(0, -1).join('/')
+      const parentNode = parentPath ? findNodeByPath(parentPath) : null
+      revealNodeInFilesExplorer(parentNode, { fallbackPath: parentPath })
+    },
+    [findNodeByPath, findTreeNode, revealNodeInFilesExplorer]
+  )
+
   const isArxivView = activeExplorer === 'arxiv'
   const isFilesView = activeExplorer === 'files'
   const isScopeView = activeExplorer === 'scope'
   const showArxivExplorerPanel = Boolean(projectId) && (demoMode || supportsArxiv())
   const hasScopedExplorer = Boolean(
-    effectiveScopedExplorerSelection || scopedExplorerLoading || scopedExplorerNodes.length > 0
+    manualScopedExplorer || effectiveScopedExplorerSelection || effectiveScopedExplorerLoading || effectiveScopedExplorerNodes.length > 0
   )
   const hasDiffExplorer = diffFiles.length > 0
   const disableExplorerActions = readOnlyMode
@@ -2283,7 +2364,7 @@ function LeftPanel({
   const hideDotfilesEffective = isScopeView ? true : hideDotfiles
   const explorerResetKey = [
     explorerLocation.selectionLabel || '',
-    scopedExplorerLabel || '',
+    effectiveScopedExplorerLabel || '',
     explorerLocation.appliedScopes.join(','),
   ].join('::')
 
@@ -2429,7 +2510,7 @@ function LeftPanel({
                 role="tab"
                 aria-selected={isScopeView}
                 aria-label={t('explorer_snapshot')}
-                title={scopedExplorerLabel || t('explorer_snapshot')}
+                  title={effectiveScopedExplorerLabel || t('explorer_snapshot')}
               >
                 {t('explorer_snapshot').toUpperCase()}
               </button>
@@ -2442,8 +2523,8 @@ function LeftPanel({
       {/* File Tree Section */}
       <div className="flex-1 min-h-0 flex flex-col">
         {!isArxivView ? (
-          <div className="flex items-center gap-3 border-b border-[var(--border-dark)] px-4 py-2">
-            <div className="ml-auto flex items-center gap-0.5">
+          <div className="border-b border-[var(--border-dark)]">
+            <div className="flex items-center justify-end gap-0.5 px-4 pt-2">
               <Button
                 type="button"
                 variant="ghost"
@@ -2539,7 +2620,7 @@ function LeftPanel({
                 disabled={
                   disableExplorerActions ||
                   (isFilesView ? isLoading : false) ||
-                  (!isFilesView && scopedExplorerLoading)
+                  (!isFilesView && effectiveScopedExplorerLoading)
                 }
                 className="h-7 w-7 rounded-md p-0 text-[var(--text-muted-on-dark)] hover:bg-white/[0.04] hover:text-[var(--text-on-dark)] disabled:opacity-50"
                 title={
@@ -2555,6 +2636,15 @@ function LeftPanel({
                   className={cn('h-3.5 w-3.5 text-white', isFilesView && isLoading && 'animate-spin')}
                 />
               </Button>
+            </div>
+
+            <div className="px-4 pb-3 pt-2">
+              <ExplorerPathBar
+                className="min-w-0 w-full"
+                nodes={fileTreeNodes}
+                loading={isLoading}
+                onReveal={handleRevealNodeInExplorer}
+              />
             </div>
 
             <input
@@ -2589,9 +2679,13 @@ function LeftPanel({
                 projectId={projectId}
                 onFileOpen={handleFileOpen}
                 onFileDownload={handleFileDownload}
+                onRevealInExplorer={handleRevealNodeInExplorer}
+                onOpenContainingFolder={handleOpenContainingFolder}
                 className="flex-1 min-h-0"
                 readOnly={readOnlyMode}
                 hideDotfiles={hideDotfilesEffective}
+                revealFileId={filesRevealState.fileId}
+                revealToken={filesRevealState.token}
               />
             </div>
           </div>
@@ -2609,12 +2703,14 @@ function LeftPanel({
                 projectId={projectId}
                 onFileOpen={handleFileOpen}
                 onFileDownload={handleFileDownload}
+                onRevealInExplorer={handleRevealNodeInExplorer}
+                onOpenContainingFolder={handleOpenContainingFolder}
                 className="flex-1 min-h-0"
                 readOnly
                 hideDotfiles
-                nodesOverride={scopedExplorerNodes}
-                loadingOverride={scopedExplorerLoading}
-                emptyLabel={scopedExplorerLabel ? `No files in ${scopedExplorerLabel}.` : 'No scoped files.'}
+                nodesOverride={effectiveScopedExplorerNodes}
+                loadingOverride={effectiveScopedExplorerLoading}
+                emptyLabel={effectiveScopedExplorerLabel ? `No files in ${effectiveScopedExplorerLabel}.` : 'No scoped files.'}
               />
             </div>
           </div>
@@ -3340,8 +3436,10 @@ export function WorkspaceLayout({
   const readOnlyMode = Boolean(readOnly)
   const isDemoProject = projectSource === 'demo'
   const isLocalQuestProject = projectSource === 'quest'
-  const isQuestLikeProject = isLocalQuestProject || isDemoProject
-  const questWorkspace = useQuestWorkspace(isLocalQuestProject ? projectId : null)
+  // `/projects/:id` is now local-first. Treat unknown project sources on this route as quest workspaces.
+  const isQuestRouteProject = isLocalQuestProject || (!isDemoProject && isQuestRuntimeSurface())
+  const isQuestLikeProject = isQuestRouteProject || isDemoProject
+  const questWorkspace = useQuestWorkspace(isQuestRouteProject ? projectId : null)
   const tutorialLanguage = useOnboardingStore((state) => state.language)
   const demoLocale = tutorialLanguage === 'zh' ? 'zh' : 'en'
   const demoScenario =
@@ -3378,130 +3476,14 @@ export function WorkspaceLayout({
     const key = [activeWorkspaceRoot, currentWorkspaceBranch].join('::')
     return key.trim() ? key : null
   }, [isLocalQuestProject, questWorkspace.snapshot])
-  const [isMobileQuestShell, setIsMobileQuestShell] = React.useState(false)
+  const isMobileViewport = useMobileViewport()
+  const isMobileQuestShell = Boolean(isQuestRouteProject && !isDemoProject && isMobileViewport)
   const workspaceProjectTitle = projectName ?? (projectId ? `Project ${projectId}` : 'Project')
   const { addToast } = useToast()
   const tabsHydrated = useTabsStore((state) => state.hasHydrated)
   const activeTab = useActiveTab()
-  const activeLabContextSessionId = React.useMemo(
-    () => getLabContextSessionId(activeTab, projectId),
-    [activeTab, projectId]
-  )
-  const isLabContextActive = Boolean(activeLabContextSessionId)
-  const copilotSurfaceStorageKey = `ds:project:${projectId}:copilot-surface`
-  const defaultCopilotSurface: CopilotSurfaceMode =
-    isQuestLikeProject
-      ? 'agent'
-      : (activeTab?.pluginId === BUILTIN_PLUGINS.LAB && tabMatchesProject(activeTab, projectId)) ||
-          isLabContextActive
-      ? 'lab'
-      : 'agent'
-  const [copilotSurface, setCopilotSurface] = React.useState<CopilotSurfaceMode>(() => {
-    if (typeof window === 'undefined') return defaultCopilotSurface
-    if (isQuestLikeProject) return 'agent'
-    const stored = window.localStorage.getItem(copilotSurfaceStorageKey)
-    if (stored === 'lab' || stored === 'agent') return stored
-    return defaultCopilotSurface
-  })
-  const isLabTab = copilotSurface === 'lab'
-  const labDataEnabled = Boolean(projectId && isLabTab && !isQuestLikeProject)
-  const labStaleTime = 30000
-  const cliServers = useCliStore((state) => state.servers)
-  const storedCliServerId = useChatSessionStore((state) =>
-    projectId ? state.cliServerIdsByProject[projectId] ?? null : null
-  )
-  const clearLabSelections = useLabCopilotStore((state) => state.clearSelections)
-
-  React.useEffect(() => {
-    clearLabSelections()
-  }, [clearLabSelections, projectId])
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (isQuestLikeProject) {
-      setCopilotSurface('agent')
-      return
-    }
-    const stored = window.localStorage.getItem(copilotSurfaceStorageKey)
-    if (stored === 'lab' || stored === 'agent') {
-      setCopilotSurface(stored)
-      return
-    }
-    setCopilotSurface(defaultCopilotSurface)
-  }, [copilotSurfaceStorageKey, defaultCopilotSurface, isQuestLikeProject])
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (isQuestLikeProject) return
-    window.localStorage.setItem(copilotSurfaceStorageKey, copilotSurface)
-  }, [copilotSurface, copilotSurfaceStorageKey, isQuestLikeProject])
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return
-    const media = window.matchMedia('(max-width: 1023px)')
-    const update = () => {
-      setIsMobileQuestShell(Boolean(isLocalQuestProject && media.matches))
-    }
-    update()
-    media.addEventListener('change', update)
-    window.addEventListener('resize', update)
-    return () => {
-      media.removeEventListener('change', update)
-      window.removeEventListener('resize', update)
-    }
-  }, [isLocalQuestProject])
-
-  const templatesQuery = useQuery({
-    queryKey: ['lab-templates', projectId],
-    queryFn: () => listLabTemplates(projectId),
-    enabled: labDataEnabled && !isQuestLikeProject,
-    staleTime: labStaleTime,
-  })
-  const agentsQuery = useQuery({
-    queryKey: ['lab-agents', projectId],
-    queryFn: () => listLabAgents(projectId, { silent: true }),
-    enabled: labDataEnabled && !isQuestLikeProject,
-    staleTime: labStaleTime,
-  })
-  const questsQuery = useQuery({
-    queryKey: ['lab-quests', projectId],
-    queryFn: () => listLabQuests(projectId, { silent: true }),
-    enabled: labDataEnabled && !isQuestLikeProject,
-    staleTime: labStaleTime,
-  })
-
-  const templates = templatesQuery.data?.items ?? []
-  const agents = agentsQuery.data?.items ?? []
-  const quests = questsQuery.data?.items ?? []
-  const onlineCliServers = React.useMemo(
-    () => cliServers.filter((server) => server.status !== 'offline' && server.status !== 'error'),
-    [cliServers]
-  )
-  const cliStatus: 'online' | 'offline' | 'unbound' =
-    cliServers.length === 0 ? 'unbound' : onlineCliServers.length > 0 ? 'online' : 'offline'
-  const boundCliServer = React.useMemo(() => {
-    if (!storedCliServerId) return null
-    return cliServers.find((server) => server.id === storedCliServerId) ?? null
-  }, [cliServers, storedCliServerId])
-  const boundCliServerOnline = Boolean(
-    boundCliServer && boundCliServer.status !== 'offline' && boundCliServer.status !== 'error'
-  )
-  const effectiveCliStatus: 'online' | 'offline' | 'unbound' =
-    cliStatus === 'online' && !boundCliServerOnline ? 'unbound' : cliStatus
-  const labCopilotReadOnly = readOnlyMode || effectiveCliStatus !== 'online'
   const leftStorageKey = `ds:project:${projectId}:left-panel`
   const navbarStorageKey = `ds:project:${projectId}:navbar-collapsed`
-  const homeStorageKey = `ds:project:${projectId}:home-mode`
-  const [homeMode, setHomeMode] = React.useState(() => {
-    if (typeof window === 'undefined') return false
-    if (isQuestLikeProject) return false
-    return window.localStorage.getItem(homeStorageKey) === '1'
-  })
-  const [homeVisible, setHomeVisible] = React.useState(homeMode)
-  const [homeEntering, setHomeEntering] = React.useState(false)
-  const homeEnteringTimerRef = React.useRef<number | null>(null)
-  const lastActiveTabIdRef = React.useRef<string | null>(null)
-  const homeRestoreRef = React.useRef(homeMode)
   const tabs = useTabsStore((s) => s.tabs)
   const setActiveTab = useTabsStore((s) => s.setActiveTab)
   const openTab = useTabsStore((s) => s.openTab)
@@ -3519,17 +3501,14 @@ export function WorkspaceLayout({
   const [navbarCollapsed, setNavbarCollapsed] = React.useState(() => {
     if (typeof window === 'undefined') return false
     const stored = window.localStorage.getItem(navbarStorageKey)
-    return stored === '1'
+      return stored === '1'
   })
   const [copilotPrefill, setCopilotPrefill] = React.useState<CopilotPrefill | null>(null)
-  const copilotActionsRef = React.useRef<AiManusChatActions | null>(null)
-  const handleLabClearChat = React.useCallback(() => {
-    const actions = copilotActionsRef.current
-    if (!actions?.clearThread) return
-    actions.clearThread()
-    window.setTimeout(() => actions.focusComposer(), 0)
-  }, [])
-  const pendingCopilotOpenRef = React.useRef(false)
+  const [revealedFileScope, setRevealedFileScope] = React.useState<{
+    label: string | null
+    nodes: FileNode[]
+    token: number
+  } | null>(null)
   const [commandOpen, setCommandOpen] = React.useState(false)
   const [createFileOpen, setCreateFileOpen] = React.useState(false)
   const [createLatexOpen, setCreateLatexOpen] = React.useState(false)
@@ -3556,112 +3535,12 @@ export function WorkspaceLayout({
     })
   }, [])
 
-  React.useEffect(() => {
-    if (homeMode && copilotSurface !== 'agent') {
-      setCopilotSurface('agent')
-    }
-  }, [copilotSurface, homeMode])
-
-  const clearHomeEnteringTimer = React.useCallback(() => {
-    if (homeEnteringTimerRef.current === null) return
-    window.clearTimeout(homeEnteringTimerRef.current)
-    homeEnteringTimerRef.current = null
-  }, [])
-
-  const enterHome = React.useCallback(() => {
-    lastActiveTabIdRef.current = activeTab?.id ?? null
-    homeRestoreRef.current = false
-    clearHomeEnteringTimer()
-    setHomeEntering(true)
-    homeEnteringTimerRef.current = window.setTimeout(() => {
-      homeEnteringTimerRef.current = null
-      setHomeEntering(false)
-    }, HOME_SWITCH_MS)
-    setHomeVisible(true)
-    setHomeMode(true)
-    setCopilotSurface('agent')
-  }, [activeTab?.id, clearHomeEnteringTimer, setCopilotSurface])
-
-  const enterLab = React.useCallback(() => {
-    setCopilotSurface('lab')
-    if (!readOnlyMode) {
-      copilotDock.setOpen(true)
-    }
-  }, [copilotDock, readOnlyMode, setCopilotSurface])
-
-  const exitHome = React.useCallback(() => {
-    clearHomeEnteringTimer()
-    setHomeEntering(false)
-    homeRestoreRef.current = false
-    if (!homeMode) return
-    setHomeMode(false)
-    if (!readOnlyMode) {
-      copilotDock.setOpen(true)
-    }
-  }, [clearHomeEnteringTimer, copilotDock, homeMode, readOnlyMode])
-
   const handleTabSelect = React.useCallback(
     (tabId: string) => {
-      exitHome()
       setActiveTab(tabId)
     },
-    [exitHome, setActiveTab]
+    [setActiveTab]
   )
-
-  React.useEffect(() => {
-    if (homeMode) return
-    lastActiveTabIdRef.current = activeTab?.id ?? null
-  }, [activeTab?.id, homeMode])
-
-  React.useEffect(() => {
-    if (!homeMode) return
-    const activeTabId = activeTab?.id ?? null
-    if (!activeTabId) return
-    if (homeRestoreRef.current) {
-      lastActiveTabIdRef.current = activeTabId
-      homeRestoreRef.current = false
-      return
-    }
-    if (activeTabId !== lastActiveTabIdRef.current) {
-      exitHome()
-    }
-  }, [activeTab?.id, exitHome, homeMode])
-
-  React.useEffect(() => {
-    if (homeMode) {
-      setHomeVisible(true)
-      return
-    }
-    if (!homeVisible) return
-    const timer = window.setTimeout(() => {
-      setHomeVisible(false)
-    }, HOME_SWITCH_MS)
-    return () => window.clearTimeout(timer)
-  }, [homeMode, homeVisible])
-
-  React.useEffect(() => clearHomeEnteringTimer, [clearHomeEnteringTimer])
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (isQuestLikeProject) {
-      homeRestoreRef.current = false
-      setHomeVisible(false)
-      setHomeMode(false)
-      return
-    }
-    const stored = window.localStorage.getItem(homeStorageKey)
-    const shouldShowHome = stored === '1'
-    homeRestoreRef.current = shouldShowHome
-    setHomeMode(shouldShowHome)
-    if (shouldShowHome) {
-      setHomeVisible(true)
-    }
-  }, [homeStorageKey, isQuestLikeProject])
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem(homeStorageKey, homeMode ? '1' : '0')
-  }, [homeMode, homeStorageKey])
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return
@@ -3686,6 +3565,34 @@ export function WorkspaceLayout({
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return
+    const handleRevealFile = (event: Event) => {
+      const detail = (event as CustomEvent<WorkspaceRevealFileDetail>).detail
+      if (!detail || detail.projectId !== projectId) return
+      setShowLeft(true)
+      const normalizedPath = normalizeExplorerScopePath(detail.filePath)
+      if (!normalizedPath) return
+      void (async () => {
+        try {
+          const explorerPayload = await questClient.explorer(projectId)
+          const scopeResult = buildScopedQuestTree(projectId, explorerPayload, [normalizedPath])
+          if (scopeResult.nodes.length === 0) return
+          setRevealedFileScope({
+            label: detail.label || normalizedPath,
+            nodes: scopeResult.nodes,
+            token: Date.now(),
+          })
+        } catch (error) {
+          console.error('[WorkspaceLayout] Failed to prepare revealed explorer scope:', error)
+        }
+      })()
+    }
+    window.addEventListener(WORKSPACE_REVEAL_FILE_EVENT, handleRevealFile as EventListener)
+    return () =>
+      window.removeEventListener(WORKSPACE_REVEAL_FILE_EVENT, handleRevealFile as EventListener)
+  }, [projectId])
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
     window.localStorage.setItem(leftStorageKey, showLeft ? '1' : '0')
   }, [leftStorageKey, showLeft])
 
@@ -3706,9 +3613,7 @@ export function WorkspaceLayout({
     return () => window.clearTimeout(t)
   }, [navbarMotion])
 
-  const isHomeSurface = homeMode
-  const shouldShowCopilot =
-    !readOnlyMode && copilotDock.state.open && (!isHomeSurface || homeEntering)
+  const shouldShowCopilot = !readOnlyMode && copilotDock.state.open
   const initialPanelsRef = React.useRef<{
     projectId: string
     left: boolean
@@ -3760,7 +3665,6 @@ export function WorkspaceLayout({
 
   const openSearch = React.useCallback(
     (nextQuery?: string, questId?: string) => {
-      exitHome()
       openTab({
         pluginId: BUILTIN_PLUGINS.SEARCH,
         context: {
@@ -3774,14 +3678,13 @@ export function WorkspaceLayout({
         title: t('plugin_search_title'),
       })
     },
-    [exitHome, openTab, projectId, t]
+    [openTab, projectId, t]
   )
 
   const openProjectSettings = React.useCallback(() => {
     if (readOnlyMode) return
-    exitHome()
     router.push('/settings')
-  }, [exitHome, readOnlyMode, router])
+  }, [readOnlyMode, router])
 
   const openSettings = React.useCallback(() => {
     router.push('/settings')
@@ -3959,13 +3862,11 @@ export function WorkspaceLayout({
       const focus = Boolean(detail?.focus)
       if (!text) return
       setCopilotPrefill({ text, focus, token: Date.now() })
-      if (!homeMode) {
-        copilotDock.setOpen(true)
-      }
+      copilotDock.setOpen(true)
     }
     window.addEventListener('ds:copilot:prefill', handler as EventListener)
     return () => window.removeEventListener('ds:copilot:prefill', handler as EventListener)
-  }, [copilotDock, homeMode, readOnlyMode])
+  }, [copilotDock, readOnlyMode])
 
   React.useEffect(() => {
     if (readOnlyMode) return
@@ -3975,55 +3876,18 @@ export function WorkspaceLayout({
       ).detail
       const text = typeof detail?.text === 'string' ? detail.text : null
       const focus = Boolean(detail?.focus)
-      const submit = Boolean(detail?.submit)
-      const newThread = Boolean(detail?.newThread)
       if (!text) return
-      if (newThread) {
-        copilotActionsRef.current?.startNewThread()
-      }
       setCopilotPrefill({ text, focus, token: Date.now() })
-      if (!homeMode) {
-        copilotDock.setOpen(true)
-      }
-      if (submit) {
-        const attemptSubmit = (triesLeft: number) => {
-          const actions = copilotActionsRef.current
-          if (actions?.submitComposer) {
-            actions.submitComposer()
-            return
-          }
-          if (triesLeft <= 0) return
-          window.setTimeout(() => attemptSubmit(triesLeft - 1), 400)
-        }
-        window.setTimeout(() => attemptSubmit(3), 320)
-      }
+      copilotDock.setOpen(true)
     }
     window.addEventListener('ds:copilot:run', handler as EventListener)
     return () => window.removeEventListener('ds:copilot:run', handler as EventListener)
-  }, [copilotDock, homeMode, readOnlyMode])
+  }, [copilotDock, readOnlyMode])
 
   React.useEffect(() => {
     if (readOnlyMode) return
-    const focusComposer = (triesLeft: number) => {
-      const actions = copilotActionsRef.current
-      if (actions?.focusComposer) {
-        actions.focusComposer()
-        return
-      }
-      if (triesLeft <= 0) return
-      window.setTimeout(() => focusComposer(triesLeft - 1), 260)
-    }
-    const handler = (event?: Event) => {
-      const detail = (event as CustomEvent<{ focus?: unknown }> | undefined)?.detail
-      const shouldFocus = Boolean(detail?.focus)
-      if (homeMode) {
-        pendingCopilotOpenRef.current = true
-        return
-      }
+    const handler = () => {
       copilotDock.setOpen(true)
-      if (shouldFocus) {
-        window.setTimeout(() => focusComposer(4), 160)
-      }
     }
     window.addEventListener('ds:copilot:open', handler as EventListener)
     window.addEventListener('ds:copilot:focus', handler as EventListener)
@@ -4031,15 +3895,7 @@ export function WorkspaceLayout({
       window.removeEventListener('ds:copilot:open', handler as EventListener)
       window.removeEventListener('ds:copilot:focus', handler as EventListener)
     }
-  }, [copilotDock, homeMode, readOnlyMode])
-
-  React.useEffect(() => {
-    if (readOnlyMode) return
-    if (homeMode) return
-    if (!pendingCopilotOpenRef.current) return
-    pendingCopilotOpenRef.current = false
-    copilotDock.setOpen(true)
-  }, [copilotDock, homeMode, readOnlyMode])
+  }, [copilotDock, readOnlyMode])
 
   React.useEffect(() => {
     if (readOnlyMode || !tabsHydrated) return
@@ -4060,82 +3916,34 @@ export function WorkspaceLayout({
         tabs = nextState.tabs
         hasProjectTabs = tabs.some((t) => tabMatchesProject(t, projectId))
       }
-      if (isQuestLikeProject) {
-        const visibleQuestTabs = tabs.filter(
-          (t) => tabMatchesProject(t, projectId) && isQuestFriendlyTab(t, projectId)
-        )
-        if (visibleQuestTabs.length === 0) {
-          openTab({
-            pluginId: QUEST_WORKSPACE_PLUGIN_ID,
-            context: buildQuestWorkspaceTabContext(projectId, 'canvas'),
-            title: 'Canvas',
-          })
-          return
-        }
-        const activeTabId = useTabsStore.getState().activeTabId
-        const activeTab = visibleQuestTabs.find((t) => t.id === activeTabId)
-        if (activeTab) {
-          return
-        }
-        const mostRecentQuestTab = visibleQuestTabs.sort(
-          (a, b) => (b.lastAccessedAt || 0) - (a.lastAccessedAt || 0)
-        )[0]
-        if (mostRecentQuestTab) {
-          useTabsStore.getState().setActiveTab(mostRecentQuestTab.id)
-        }
-        return
-      }
-      if (!hasProjectTabs) {
+      const visibleQuestTabs = tabs.filter(
+        (t) => tabMatchesProject(t, projectId) && isQuestFriendlyTab(t, projectId)
+      )
+      if (visibleQuestTabs.length === 0) {
         openTab({
-          pluginId: BUILTIN_PLUGINS.LAB,
-          context: {
-            type: 'custom',
-            customData: {
-              projectId,
-              readOnly: readOnlyMode,
-            },
-          },
-          title: t('plugin_lab_home_title'),
+          pluginId: QUEST_WORKSPACE_PLUGIN_ID,
+          context: buildQuestWorkspaceTabContext(projectId, 'canvas'),
+          title: 'Canvas',
         })
         return
       }
       const activeTabId = useTabsStore.getState().activeTabId
-      const activeTab = tabs.find((t) => t.id === activeTabId)
-      if (activeTab && tabMatchesProject(activeTab, projectId)) {
+      const activeTab = visibleQuestTabs.find((t) => t.id === activeTabId)
+      if (activeTab) {
         return
       }
 
-      const mostRecentProjectTab = tabs
-        .filter((t) => tabMatchesProject(t, projectId))
-        .sort((a, b) => (b.lastAccessedAt || 0) - (a.lastAccessedAt || 0))[0]
-      if (mostRecentProjectTab) {
-        useTabsStore.getState().setActiveTab(mostRecentProjectTab.id)
+      const mostRecentQuestTab = visibleQuestTabs.sort(
+        (a, b) => (b.lastAccessedAt || 0) - (a.lastAccessedAt || 0)
+      )[0]
+      if (mostRecentQuestTab) {
+        useTabsStore.getState().setActiveTab(mostRecentQuestTab.id)
         return
       }
-
-      const stateAfterReset = useTabsStore.getState()
-      const existingLabTab = stateAfterReset.tabs.find((t) => {
-        return t.pluginId === BUILTIN_PLUGINS.LAB && tabMatchesProject(t, projectId)
-      })
-      if (existingLabTab) {
-        stateAfterReset.setActiveTab(existingLabTab.id)
-        return
-      }
-      openTab({
-        pluginId: BUILTIN_PLUGINS.LAB,
-        context: {
-          type: 'custom',
-          customData: {
-            projectId,
-            readOnly: readOnlyMode,
-          },
-        },
-        title: t('plugin_lab_home_title'),
-      })
     }
 
     ensureDefaultWorkspace()
-  }, [isQuestLikeProject, openTab, projectId, readOnlyMode, resetTabs, t, tabsHydrated])
+  }, [openTab, projectId, resetTabs, tabsHydrated])
 
   const startResize = (direction: 'left') => (e: React.MouseEvent) => {
     e.preventDefault()
@@ -4332,12 +4140,11 @@ export function WorkspaceLayout({
           onNewFolder={handleNewFolder}
           onUploadFiles={handleUploadFiles}
           leftVisible={showLeft}
-          rightVisible={homeMode || copilotDock.state.open}
-          rightLocked={homeMode}
+          rightVisible={copilotDock.state.open}
+          rightLocked={false}
           readOnly={readOnlyMode}
           collapsed={navbarCollapsed}
           onToggleCollapse={toggleNavbarCollapsed}
-          onExitHome={exitHome}
           onTabSelect={handleTabSelect}
           localQuestMode={isQuestLikeProject}
         />
@@ -4378,7 +4185,6 @@ export function WorkspaceLayout({
             onOpenChange={setCreateFileOpen}
             parentId={null}
             onCreated={(file) => {
-              exitHome()
               if (file.type === 'folder' && file.folderKind === 'latex') {
                 openTab({
                   pluginId: '@ds/plugin-latex',
@@ -4415,7 +4221,6 @@ export function WorkspaceLayout({
             onOpenChange={setCreateLatexOpen}
             parentId={null}
             onCreated={(folder) => {
-              exitHome()
               openTab({
                 pluginId: '@ds/plugin-latex',
                 context: {
@@ -4449,13 +4254,11 @@ export function WorkspaceLayout({
               projectId={projectId}
               onClose={() => setShowLeft(false)}
               readOnly={readOnlyMode}
-              onEnterHome={enterHome}
-              onEnterLab={enterLab}
-              onExitHome={exitHome}
               localQuestMode={isQuestLikeProject}
               demoMode={isDemoProject}
               workspaceTreeSyncKey={workspaceTreeSyncKey}
               workspaceScopeContextKey={workspaceScopeContextKey}
+              revealedFileScope={revealedFileScope}
             />
             <div className="resizer" onMouseDown={startResize('left')} />
           </>
@@ -4463,12 +4266,7 @@ export function WorkspaceLayout({
 
         {/* Stage (Center + Agent) */}
         <div className="workspace-stage-shell" ref={stageRef}>
-          <div
-            className={cn(
-              'workspace-stage-layer workspace-center-layer',
-              homeMode && 'is-hidden'
-            )}
-          >
+          <div className="workspace-stage-layer workspace-center-layer">
             <CenterPanel
               projectId={projectId}
               readOnly={readOnlyMode}
@@ -4484,29 +4282,9 @@ export function WorkspaceLayout({
                   ? copilotDock.state.width + COPILOT_DOCK_DEFAULTS.gap + COPILOT_DOCK_DEFAULTS.edgeInset
                   : 0
               }
-              onExitHome={exitHome}
             />
           </div>
-          <div
-            className={cn(
-              'workspace-stage-layer workspace-home-layer',
-              !homeMode && 'is-hidden'
-            )}
-          >
-            {homeVisible ? (
-              <WelcomeStage
-                projectId={projectId}
-                readOnly={readOnlyMode}
-                visible={homeMode}
-                prefill={copilotPrefill}
-                onActionsChange={(actions) => {
-                  copilotActionsRef.current = actions
-                }}
-                onExitHome={exitHome}
-              />
-            ) : null}
-          </div>
-          {!readOnlyMode && (!homeMode || homeEntering) ? (
+          {!readOnlyMode ? (
             <CopilotDockOverlay
               projectId={projectId}
               stageWidth={stageWidth}
@@ -4514,48 +4292,19 @@ export function WorkspaceLayout({
               surfaceMode="copilot"
               prefill={copilotPrefill}
               visible={showCopilotPanel}
-              headerContent={
-                isLabTab && !isQuestLikeProject ? (
-                  <LabCopilotHeader
-                    disabled={readOnlyMode}
-                    agents={agents}
-                    templates={templates}
-                    quests={quests}
-                    onClearChat={handleLabClearChat}
-                    clearChatDisabled={labCopilotReadOnly}
-                  />
-                ) : undefined
-              }
               bodyContent={
-                isQuestLikeProject ? (
-                  <QuestCopilotDockPanel
-                    questId={projectId}
-                    title={workspaceProjectTitle}
-                    readOnly={readOnlyMode}
-                    prefill={copilotPrefill}
-                    workspace={isDemoProject ? (demoWorkspace as any) : questWorkspace}
-                  />
-                ) : isLabTab ? (
-                  <LabCopilotPanel
-                    projectId={projectId}
-                    readOnly={readOnlyMode}
-                    cliStatus={effectiveCliStatus}
-                    templates={templates}
-                    agents={agents}
-                    quests={quests}
-                    prefill={copilotPrefill}
-                    onActionsChange={(actions) => {
-                      copilotActionsRef.current = actions
-                    }}
-                  />
-                ) : undefined
+                <QuestCopilotDockPanel
+                  questId={projectId}
+                  title={workspaceProjectTitle}
+                  readOnly={readOnlyMode}
+                  prefill={copilotPrefill}
+                  workspace={isDemoProject ? (demoWorkspace as any) : questWorkspace}
+                />
               }
-              hideNewChat={isLabTab || isQuestLikeProject}
-              hideHistory={isLabTab || isQuestLikeProject}
-              hideFixWithAi={isQuestLikeProject}
-              onActionsChange={(actions) => {
-                copilotActionsRef.current = actions
-              }}
+              hideNewChat
+              hideHistory
+              hideFixWithAi
+              hideHeaderOrbit
               onClose={() => {
                 copilotDock.setOpen(false)
               }}
@@ -4578,7 +4327,7 @@ export function WorkspaceLayout({
             <LayoutIcon />
           </div>
         )}
-        {entranceStage === 'done' && !readOnlyMode && !homeMode && !copilotDock.state.open && (
+        {entranceStage === 'done' && !readOnlyMode && !copilotDock.state.open && (
           <div
             className="panel-toggle toggle-right"
             onClick={() => copilotDock.setOpen(true)}
@@ -4594,8 +4343,6 @@ export function WorkspaceLayout({
         onOpenChange={setCommandOpen}
         items={commandItems}
         projectId={projectId}
-        onExitHome={exitHome}
-        onEnterLab={enterLab}
       />
       <WorkspaceTooltipLayer rootId="workspace-root" />
     </div>

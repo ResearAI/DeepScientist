@@ -1,0 +1,267 @@
+id: aisb.t3.066_tropicalattention
+name: 'Tropical Attention: Neural Algorithmic Reasoning for Combinatorial Algorithms'
+version: 0.1.0
+one_line: Tropical-geometry-based attention mechanism for neural algorithmic reasoning
+  on combinatorial tasks, achieving sharp OOD generalization beyond PTIME to NP-hard
+  problems.
+task_description: 'This packaged benchmark covers Tropical Attention, an attention
+  mechanism grounded in tropical geometry that lifts the attention kernel into tropical
+  projective space where reasoning is piecewise-linear and 1-Lipschitz. The benchmark
+  evaluates whether replacing or augmenting conventional softmax attention with tropical-geometry
+  structure improves algorithmic generalization on 11 combinatorial tasks spanning
+  polynomial-time algorithms (Floyd-Warshall, Quickselect, Convex Hull, SCC), NP-complete
+  problems (3SUM, Balanced Partition, Subset Sum), and NP-hard problems (0/1 Knapsack,
+  Bin Packing, Min Coin Change). Tasks are evaluated under out-of-distribution (OOD)
+  conditions including length extrapolation and value-range generalization. Primary
+  metric is quickselect_length_ood_f1 measuring length-OOD F1 score on the Quickselect
+  task.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- quickselect_length_ood_f1
+- algorithmic_reasoning_report
+- trained_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run one packaged neural algorithmic reasoning evaluation route. Loads
+    a pre-trained checkpoint and evaluates on OOD test splits for all 11 combinatorial
+    tasks. Use --job_file pointing to jobs_to_do_evaluate.csv with --job_id selecting
+    the target task. Outputs length-OOD and value-OOD F1 scores per task.
+
+    '
+- id: full_train_eval
+  label: Full Train + Eval
+  description: 'Run the complete tropical-attention training and OOD reasoning benchmark
+    workflow. Trains models from scratch on 100k samples per task using schedulefree
+    optimizer, then evaluates on OOD test sets. Training logs saved to outputs/<timestamp>/.
+    Uses --job_file pointing to jobs_to_do_train.csv with --job_id selecting the task
+    row.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - url: https://deepscientist.cc/AISB/066_tropicalattention
+    type: benchmark_archive
+    archive_type: zip
+    local_dir_name: paper-66-TropicalAttention
+  - url: https://github.com/Baran-phys/Tropical-Attention
+    type: upstream_repository
+  notes:
+  - Archive contains full code, dataloaders, models, and evaluation scripts
+  - Datasets are procedurally generated at runtime via dataloaders.py
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: Capable of running single-task training; evaluation-only requires less
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 'Recommended for full multi-task training runs. Single GPU suffices due
+      to ~20% fewer parameters than Universal Transformer baselines.
+
+      '
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - torch
+  - schedulefree
+  - pandas
+  - matplotlib
+  - scikit-learn
+  notes:
+  - See bundled requirements.txt for full dependency set
+  - TropicalAttention.py is a drop-in module for standard Transformer blocks
+  - CUDA required for training; CPU fallback supported for inference
+risk_flags:
+- ood_metric_variance
+- multi_seed_required
+risk_notes:
+- OOD F1 scores show variance across seeds (e.g., SubsetSum 87.50±6.45); multi-seed
+  evaluation recommended
+- Floyd-Warshall and Fractional Knapsack show lower OOD scores than classification
+  tasks
+- Training uses 100k samples per task; disk space needed for outputs/<timestamp>/
+  artifacts
+recommended_when: 'Use this benchmark when you need to evaluate neural reasoning over
+  graph and combinatorial problems with clear OOD behavior. Specifically suited for:
+  (1) evaluating attention mechanisms on length-extrapolation tasks, (2) benchmarking
+  NP-hard/complete problem solving beyond PTIME, (3) comparing tropical-geometry inductive
+  bias against softmax-based transformers, (4) studying polyhedral decision boundaries
+  in neural algorithmic reasoning.
+
+  '
+not_recommended_when: 'Do not use this if you need a plug-and-play application benchmark
+  without specialized reasoning datasets. Not suitable when only in-distribution accuracy
+  matters, or when PTIME-only algorithmic reasoning is sufficient. Avoid if the research
+  question does not involve combinatorial optimization, attention mechanism design,
+  or OOD generalization.
+
+  '
+paper:
+  title: 'Tropical Attention: Neural Algorithmic Reasoning for Combinatorial Algorithms'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://arxiv.org/abs/2505.17190
+  authors:
+  - Hashemi, Baran (Origins Data Science Lab, Technical University of Munich)
+  - Pasque, Kurt (Naval Postgraduate School)
+  - Teska, Chris (Naval Postgraduate School)
+  - Yoshida, Ruriko (Naval Postgraduate School)
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.066_tropicalattention.zip
+  archive_type: zip
+  local_dir_name: paper-66-TropicalAttention
+  upstream_url: https://github.com/Baran-phys/Tropical-Attention
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.066_tropicalattention.zip
+  sha256: 59c566c1c49e1649bad3e39f2100133d7cb97cea8df9665ae1dea27bcd4a80db
+  size_bytes: 1618773
+display:
+  palette_seed: lime-violet-tropical
+  art_style: geometric-reasoning
+  accent_priority: high
+image_path: ../image/066_aisb.t3.066_tropicalattention.jpg
+capability_tags:
+- research_code_optimization
+- neural_algorithmic_reasoning
+- combinatorial_optimization
+- transformers
+- mathematical_reasoning
+- tropical_geometry
+- out_of_distribution_generalization
+- attention_mechanisms
+- np_complete_problems
+- np_hard_problems
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null
+experiment_anchors:
+  train_script: experiment.py
+  train_job_csv: jobs_to_do_train.csv
+  eval_job_csv: jobs_to_do_evaluate.csv
+  attention_module: TropicalAttention.py
+  eval_script: eval.py
+  metric_contract: json/metric_contract.json
+task_specifications:
+- task_name: Quickselect
+  type: classification
+  ood_metric: length_ood_f1
+  training_length_range: (10,30)
+  evaluation_length_range: (10,1024)
+  epochs: 100
+  notes: Primary OOD benchmark; sharp attention maps preserve k-th element selection
+- task_name: SubsetSumDecision
+  type: classification
+  complexity: NP-complete
+  training_length_range: (8,8)
+  value_range: (-5,5)
+  epochs: 100
+- task_name: Knapsack
+  type: classification
+  complexity: NP-hard
+  training_length_range: (10,20)
+  epochs: 100
+- task_name: BalancedPartition
+  type: classification
+  complexity: NP-complete
+  training_length_range: (10,30)
+  epochs: 1000
+- task_name: BinPacking
+  type: classification
+  complexity: NP-hard
+  training_length_range: (10,30)
+  epochs: 1000
+- task_name: MinCoinChange
+  type: classification
+  training_length_range: (10,20)
+  epochs: 100
+- task_name: ConvexHull
+  type: classification
+  training_length_range: (10,30)
+  epochs: 100
+- task_name: FractionalKnapsack
+  type: regression
+  training_length_range: (10,20)
+  epochs: 100
+  notes: Lower OOD performance expected for regression tasks
+- task_name: FloydWarshall
+  type: regression
+  training_length_range: (10,30)
+  epochs: 100
+  notes: All-pairs shortest paths; lower OOD scores than classification tasks
+- task_name: SCC
+  type: classification
+  training_length_range: (10,30)
+  epochs: 100
+- task_name: 3SUM
+  type: classification
+  complexity: NP-complete
+  training_length_range: (10,30)
+  epochs: 100
+execution_notes:
+  training_invocation: 'python experiment.py --job_file jobs_to_do_train.csv --job_id
+    <row_index>
+
+    '
+  evaluation_invocation: 'python experiment.py --job_file jobs_to_do_evaluate.csv
+    --job_id <row_index>
+
+    '
+  job_csv_fields:
+  - task
+  - model_type
+  - dataset_name
+  - input_dim
+  - d_model
+  - n_heads
+  - num_layers
+  - num_epochs
+  - dropout
+  - lr
+  - seed
+  - n_samples
+  - batch_size
+  - length_range
+  - value_range
+  - noise_prob
+  output_directory: outputs/<timestamp>/
+  default_hyperparameters:
+    d_model: 64
+    n_heads: 2
+    num_layers: 1
+    dropout: 0
+    learning_rate: 0.0001
+    batch_size: 500
+    n_samples: 100000
+    seed: 999

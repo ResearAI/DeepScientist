@@ -1,0 +1,182 @@
+id: aisb.t3.042_xpatch
+name: 'xPatch：基于指数季节-趋势分解的双流时间序列预测'
+version: 0.1.0
+one_line: 采用基于EMA的季节-趋势分解和长上下文补丁的CNN-MLP双流长期时间序列预测。
+task_description: '本封装基准测试包含xPatch，这是一个双流长期时间序列预测（LTSF）架构，使用指数移动平均（EMA）而非简单移动平均将输入序列分解为季节分量和趋势分量。线性流采用MLP层进行趋势预测，非线性流使用深度可分离CNN捕捉季节模式。该模型在非Transformer骨干网络中研究补丁化和通道独立技术，对标Transformer基线（PatchTST、Autoformer、FEDformer、CARD）和线性基线（DLinear、RLinear）在标准LTSF基准数据集上的表现。
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- mse
+- mae
+- forecast_checkpoints
+- ablation_outputs
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: '使用统一实验设置在单个准备好的预测数据集上运行xPatch。执行xPatch_unified脚本，使用默认超参数。适用于快速验证模型在单个基准数据集上的行为。
+
+    '
+- id: hyper_search
+  label: 超参数搜索
+  description: '在补丁长度、回溯窗口、预测长度和EMA alpha参数上运行全面的超参数搜索。使用xPatch_search脚本。生成的结果可与报告中使用drop-last技巧的基线论文进行公平比较。
+
+    '
+- id: fair_benchmark
+  label: 公平基准测试（TFB/OpenTS）
+  description: '遵循TFB基准测试协议，在不使用drop-last技巧的情况下执行公平实验。使用xPatch_fair脚本。结果可与OpenTS排行榜条目进行比较。
+
+    '
+- id: ablation_suite
+  label: 消融实验套件
+  description: '运行论文附录中的消融研究，包括EMA分解影响、arctangent损失函数效应、sigmoid学习率调整方案，以及与./ablation目录中基线模型的推理时间比较。
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - name: Google Drive
+    url: https://drive.google.com/u/0/uc?id=1NF7VEefXCmXuWNbnNe858WvQAkJ_7wuP&export=download
+    format: csv
+  - name: Baidu Pan
+    url: https://pan.baidu.com/share/init?surl=r3KhGd0Q9PJIUZdfEYoymg&pwd=i9iy
+    format: csv
+  - name: Kaggle Datasets
+    url: https://www.kaggle.com/datasets/wentixxiaogege/time-series-dataset
+    format: csv
+  notes:
+  - 将所有预处理数据集下载到./dataset目录
+  - 基准数据集包括：ETTh1、ETTh2、ETTm1、ETTm2、Weather、Traffic、Electricity
+  - 数据集已预处理完毕，可直接使用，无需额外标准化步骤
+credential_requirements:
+  mode: optional
+  items:
+  - kaggle_api_token
+  notes:
+  - Kaggle下载需要kaggle凭据或API令牌
+  - Google Drive和百度链接无需认证即可访问
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 单GPU足够；建议使用RTX 6000级或同等配置
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: '原始实验使用单张Quadro RTX 6000（24GB）。超参数搜索和消融研究受益于更大的内存，以便处理更大的批次。
+
+      '
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: 2.5.1
+  flash_attn: null
+  key_packages:
+  - pytorch>=2.0.0
+  - numpy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  notes:
+  - 环境配置文件（environment.yml）指定了conda CUDA 11.8工具包，并使用pip安装PyTorch 2.5.1
+  - 混合conda/pip环境栈需要仔细的环境管理
+  - 使用以下命令创建conda环境：conda env create -f environment.yml
+  - 参见附带的README了解完整的依赖项集合
+  - ./scripts目录中的实验脚本处理运行时配置
+risk_flags:
+- mixed_environment_stack
+- data_download_external
+- hyperparameter_sensitivity
+risk_notes:
+- 混合conda CUDA 11.8与pip PyTorch 2.5.1可能导致版本冲突；请验证CUDA运行时与PyTorch内置CUDA版本匹配
+- 从Google Drive/Baidu下载外部数据集可能需要VPN或区域访问
+- 性能对补丁长度、回溯窗口、预测长度和EMA alpha参数敏感
+- 公平基准测试结果按照TFB协议排除了drop-last技巧；请验证哪种实验设置符合您的评估目标
+recommended_when: '当评估双流非Transformer预测架构、研究基于EMA的季节-趋势分解效果、探索Transformer之外的补丁化和通道独立技术，或在长期预测任务中将CNN/MLP方法与已建立的Transformer和线性基线进行比较时，使用此基准测试。
+
+  '
+not_recommended_when: '对于非时间序列任务、实时/在线预测场景、无法访问配备24GB显存的 workstation级GPU的环境，或需要内置不确定性量化的模型时，不建议使用此基准测试。
+
+  '
+paper:
+  title: 'xPatch: Dual-Stream Time Series Forecasting with Exponential Seasonal-Trend
+    Decomposition'
+  authors:
+  - Artyom Stitsyuk
+  - Jaesik Choi
+  venue: AAAI 2025
+  year: 2025
+  volume: '39'
+  number: '19'
+  pages: 20601-20609
+  url: https://ojs.aaai.org/index.php/AAAI/article/view/34270
+  arxiv_url: https://arxiv.org/pdf/2412.17323
+  bibtex: "@inproceedings{stitsyuk2025xpatch,\n  title={xPatch: Dual-Stream Time Series\
+    \ Forecasting with Exponential Seasonal-Trend Decomposition},\n  author={Stitsyuk,\
+    \ Artyom and Choi, Jaesik},\n  booktitle={Proceedings of the AAAI Conference on\
+    \ Artificial Intelligence},\n  volume={39}, number={19}, pages={20601--20609},\
+    \ year={2025}\n}\n"
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.042_xpatch.zip
+  archive_type: zip
+  local_dir_name: paper-42-xPatch
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.042_xpatch.zip
+  sha256: 72c8e6fd7e1a8b2eb184077ce9a37fb36514ef7bb148d8d0ff4ed79d4aa9de25
+  size_bytes: 3621184
+display:
+  palette_seed: teal-sunrise-trend
+  art_style: signal-geometry
+  accent_priority: high
+image_path: ../image/042_aisb.t3.042_xpatch.jpg
+metric_contract:
+  mse:
+    origin_path: utils/metrics.py
+    source_ref: MSE function
+    evaluation_protocol:
+      code_paths:
+      - run.py
+      - utils/metrics.py
+    status: code_backed
+  mae:
+    origin_path: utils/metrics.py
+    source_ref: MAE function
+    evaluation_protocol:
+      code_paths:
+      - run.py
+      - utils/metrics.py
+    status: code_backed
+  forecast_checkpoints:
+    origin_path: exp/exp_main.py
+    source_ref: model state saving
+    status: provisional
+code_anchors:
+- environment.yml
+- run.py
+- utils/metrics.py
+- exp/exp_main.py
+- layers/decomp.py
+- layers/network.py
+- layers/network_cnn.py
+- layers/network_mlp.py
+- models/xPatch.py
+caveat_snapshot: '静态代码审计发现utils/metrics.py和run.py中存在MSE和MAE指标的可执行锚点。本封装过程中未执行基准测试。运行时执行是信任指标值之前的必要步骤。公平基准测试需要TFB/OpenTS协议合规；请确认drop-last技巧处理与评估目标匹配。
+
+  '

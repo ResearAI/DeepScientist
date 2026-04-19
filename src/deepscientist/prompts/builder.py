@@ -125,6 +125,7 @@ class PromptBuilder:
         turn_intent: str | None = None,
         turn_mode: str | None = None,
         retry_context: dict | None = None,
+        runner_name: str = "codex",
     ) -> str:
         snapshot = self.quest_service.snapshot(quest_id)
         runtime_config = self.config_manager.load_named("config")
@@ -134,58 +135,133 @@ class PromptBuilder:
         active_anchor = str(snapshot.get("active_anchor") or skill_id)
         default_locale = str(runtime_config.get("default_locale") or "en-US")
         workspace_mode = self._workspace_mode(snapshot)
+        custom_profile = self._custom_profile(snapshot)
+        start_setup_session = self._start_setup_session(snapshot)
         system_block = self._prompt_fragment(
-            "system_copilot.md" if workspace_mode == "copilot" else "system.md",
+            Path("start_setup") / "system.md"
+            if start_setup_session
+            else ("system_copilot.md" if workspace_mode == "copilot" else "system.md"),
             quest_root=quest_root,
         )
         shared_interaction_block = self._prompt_fragment(
             Path("contracts") / "shared_interaction.md",
             quest_root=quest_root,
         )
+        admin_ops_contract_block = ""
+        admin_ops_knowledge_block = ""
+        admin_ops_session_block = ""
+        settings_issue_session_block = ""
+        start_setup_session_block = ""
+        if custom_profile == "admin_ops":
+            admin_ops_contract_block = self._prompt_fragment(
+                Path("contracts") / "admin_ops.md",
+                quest_root=quest_root,
+            )
+            admin_ops_knowledge_block = self._prompt_fragment(
+                Path("contracts") / "admin_ops_knowledge.md",
+                quest_root=quest_root,
+            )
+            admin_ops_session_block = self._admin_ops_session_block(snapshot)
+        if custom_profile == "settings_issue":
+            settings_issue_session_block = self._settings_issue_session_block(snapshot)
+        if start_setup_session:
+            start_setup_session_block = self._start_setup_session_block(snapshot)
         connector_contract_block = self._connector_contract_block(quest_id=quest_id, snapshot=snapshot)
+        hardware_block = self._local_runtime_hardware_block(runtime_config=runtime_config)
         deepxiv_block = self._deepxiv_capability_block(runtime_config=runtime_config)
         sections = [
             system_block,
             "",
             shared_interaction_block,
             "",
-            "## Runtime Context",
-            f"ds_home: {self.home.resolve()}",
-            f"quest_id: {quest_id}",
-            f"quest_root: {quest_root}",
-            f"research_head_branch: {snapshot.get('research_head_branch') or 'none'}",
-            f"research_head_worktree_root: {snapshot.get('research_head_worktree_root') or 'none'}",
-            f"current_workspace_branch: {snapshot.get('current_workspace_branch') or 'none'}",
-            f"current_workspace_root: {snapshot.get('current_workspace_root') or 'none'}",
-            f"active_idea_id: {snapshot.get('active_idea_id') or 'none'}",
-            f"active_analysis_campaign_id: {snapshot.get('active_analysis_campaign_id') or 'none'}",
-            f"active_anchor: {active_anchor}",
-            f"active_branch: {snapshot.get('branch')}",
-            f"requested_skill: {skill_id}",
-            f"runner_name: codex",
-            f"model: {model}",
-            f"conversation_id: quest:{quest_id}",
-            f"default_locale: {default_locale}",
-            "built_in_mcp_namespaces: memory, artifact, bash_exec",
-            "mcp_namespace_note: **any shell-like command execution must use `bash_exec(...)`, including curl/python/bash/node/git/npm/uv and similar CLI tools; do not use native `shell_command` / `command_execution`.**",
-            "",
-            "Canonical stage skills root:",
-            str((self.repo_root / "src" / "skills").resolve()),
-            "",
-            "Standard stage skill paths:",
-            self._skill_paths_block(),
-            "",
-            "Companion skill paths:",
-            self._companion_skill_paths_block(),
-            "",
-            "## Active Communication Surface",
-            self._active_communication_surface_block(
-                quest_id=quest_id,
-                snapshot=snapshot,
-                runtime_config=runtime_config,
-                connectors_config=connectors_config,
-            ),
         ]
+        if admin_ops_contract_block:
+            sections.extend([admin_ops_contract_block, ""])
+        if start_setup_session_block:
+            sections.extend(["## Start Setup Session", start_setup_session_block, ""])
+        if admin_ops_session_block:
+            sections.extend(["## Admin Ops Session Packet", admin_ops_session_block, ""])
+        if settings_issue_session_block:
+            sections.extend(["## Settings Issue Session Packet", settings_issue_session_block, ""])
+        if admin_ops_knowledge_block:
+            sections.extend([admin_ops_knowledge_block, ""])
+        if custom_profile == "settings_issue":
+            built_in_namespaces = "artifact, bash_exec"
+            mcp_namespace_note = "mcp_namespace_note: only `artifact.prepare_github_issue(...)` and `bash_exec(...)` are available in this session."
+        elif start_setup_session:
+            built_in_namespaces = "artifact, bash_exec"
+            mcp_namespace_note = "mcp_namespace_note: only `artifact.prepare_start_setup_form(...)` and `bash_exec(...)` are available in this session."
+        else:
+            built_in_namespaces = "memory, artifact, bash_exec"
+            mcp_namespace_note = "mcp_namespace_note: use `bash_exec(...)` for all CLI commands."
+        runner_tool_name_note = ""
+        normalized_runner_name = str(runner_name or "").strip().lower()
+        if normalized_runner_name in {"claude", "opencode"}:
+            if custom_profile == "settings_issue":
+                runner_tool_name_note = (
+                    "runner_tool_name_note: this runner may expose MCP tools with names like "
+                    "`mcp__artifact__prepare_github_issue` and `mcp__bash_exec__bash_exec`; "
+                    "if the tool picker is namespaced, call those exact `mcp__...` names instead of inventing a bare "
+                    "`artifact.prepare_github_issue(...)` or `bash_exec(...)` tool name."
+                )
+            elif start_setup_session:
+                runner_tool_name_note = (
+                    "runner_tool_name_note: this runner may expose MCP tools with names like "
+                    "`mcp__artifact__prepare_start_setup_form` and `mcp__bash_exec__bash_exec`; "
+                    "if the tool picker is namespaced, call those exact `mcp__...` names instead of inventing a bare "
+                    "`artifact.prepare_start_setup_form(...)` or `bash_exec(...)` tool name."
+                )
+            else:
+                runner_tool_name_note = (
+                    "runner_tool_name_note: this runner may expose MCP tools with names like "
+                    "`mcp__memory__search`, `mcp__artifact__get_quest_state`, and `mcp__bash_exec__bash_exec`; "
+                    "if the tool picker is namespaced, call those exact `mcp__...` names instead of inventing a bare "
+                    "`memory.*`, `artifact.*`, or `bash_exec(...)` tool name."
+                )
+
+        sections.extend(
+            [
+                "## Runtime Context",
+                f"ds_home: {self.home.resolve()}",
+                f"quest_id: {quest_id}",
+                f"quest_root: {quest_root}",
+                f"research_head_branch: {snapshot.get('research_head_branch') or 'none'}",
+                f"research_head_worktree_root: {snapshot.get('research_head_worktree_root') or 'none'}",
+                f"current_workspace_branch: {snapshot.get('current_workspace_branch') or 'none'}",
+                f"current_workspace_root: {snapshot.get('current_workspace_root') or 'none'}",
+                f"active_idea_id: {snapshot.get('active_idea_id') or 'none'}",
+                f"active_analysis_campaign_id: {snapshot.get('active_analysis_campaign_id') or 'none'}",
+                f"active_anchor: {active_anchor}",
+                f"active_branch: {snapshot.get('branch')}",
+                f"requested_skill: {skill_id}",
+                f"runner_name: {runner_name}",
+                f"model: {model}",
+                f"conversation_id: quest:{quest_id}",
+                f"default_locale: {default_locale}",
+                f"built_in_mcp_namespaces: {built_in_namespaces}",
+                mcp_namespace_note,
+                *( [runner_tool_name_note] if runner_tool_name_note else [] ),
+                "",
+                "Canonical stage skills root:",
+                str((self.repo_root / "src" / "skills").resolve()),
+                "",
+                "Standard stage skill paths:",
+                self._skill_paths_block(),
+                "",
+                "Companion skill paths:",
+                self._companion_skill_paths_block(),
+                "",
+                "## Active Communication Surface",
+                self._active_communication_surface_block(
+                    quest_id=quest_id,
+                    snapshot=snapshot,
+                    runtime_config=runtime_config,
+                    connectors_config=connectors_config,
+                ),
+            ]
+        )
+        if hardware_block:
+            sections.extend(["", "## Local Runtime Hardware", hardware_block])
         if deepxiv_block:
             sections.extend(["", "## DeepXiv Capability", deepxiv_block])
         if connector_contract_block:
@@ -259,7 +335,7 @@ class PromptBuilder:
                 ),
                 "",
                 "## Recent Conversation Window",
-                self._conversation_block(quest_id),
+                self._special_conversation_block(snapshot, quest_id=quest_id),
                 "",
                 "## Current Turn Attachments",
                 self._current_turn_attachments_block(
@@ -299,6 +375,13 @@ class PromptBuilder:
                     "- handle the newest runtime-delivered user requirements first, then continue the main quest route",
                 ]
             )
+        elif normalized_reason == "immediate_read":
+            lines.extend(
+                [
+                    "- this turn was explicitly restarted because the user clicked immediate read for queued user messages",
+                    "- the attached user_message already contains the runtime-prepared queued-message bundle; treat it as freshly delivered and handle it before resuming other work",
+                ]
+            )
         else:
             preview = " ".join(str(user_message or "").split())
             if len(preview) > 220:
@@ -313,6 +396,12 @@ class PromptBuilder:
                 )
                 lines.append(
                     "- direct_answer_tool_rule: if the question is about overall progress, paper readiness, current best result, or next step, call artifact.get_global_status(detail='brief'|'full', locale='zh'|'en') before answering from memory or local stage context."
+                )
+                lines.append(
+                    "- node_progress_tool_rule: if the question is about the active node, research head, canvas-like global progress, branch switching, or which durable line is currently live, call artifact.get_research_map_status(detail='summary'|'full', locale='zh'|'en') before answering."
+                )
+                lines.append(
+                    "- node_progress_dedupe_rule: if research_map_status shows the same current node, research head, and blocker/route state as the last judgment, do not loop on more map reads or branch-switch chatter; continue the current action."
                 )
             elif resolved_turn_intent == "execute_user_command_first":
                 lines.append(
@@ -468,6 +557,220 @@ class PromptBuilder:
             return ""
         return self._markdown_body(path)
 
+    def _local_runtime_hardware_block(self, *, runtime_config: dict) -> str:
+        hardware = runtime_config.get("hardware") if isinstance(runtime_config.get("hardware"), dict) else {}
+        selection_mode = str(hardware.get("gpu_selection_mode") or "all").strip().lower() or "all"
+        if selection_mode not in {"all", "selected"}:
+            selection_mode = "all"
+        selected_gpu_ids = [str(item).strip() for item in (hardware.get("selected_gpu_ids") or []) if str(item).strip()]
+        include_summary = bool(hardware.get("include_system_hardware_in_prompt", True))
+        cache = read_json(self.home / "runtime" / "admin" / "cache" / "system_hardware.json", {})
+        preferences = cache.get("preferences") if isinstance(cache.get("preferences"), dict) else {}
+        system = cache.get("system") if isinstance(cache.get("system"), dict) else {}
+        effective_gpu_ids = [
+            str(item).strip()
+            for item in (
+                preferences.get("effective_gpu_ids")
+                if isinstance(preferences.get("effective_gpu_ids"), list)
+                else selected_gpu_ids
+            )
+            if str(item).strip()
+        ]
+        if selection_mode == "all" and not include_summary:
+            return ""
+        lines = [
+            "- hardware_scope_rule: treat the configured local hardware summary and selected GPUs as an operator-provided device boundary for local compute rather than as optional flavor text.",
+            f"- gpu_selection_mode: {selection_mode}",
+            f"- selected_gpu_ids: {', '.join(selected_gpu_ids) if selected_gpu_ids else ('all' if selection_mode == 'all' else 'none')}",
+            f"- effective_gpu_ids: {', '.join(effective_gpu_ids) if effective_gpu_ids else ('none' if selection_mode == 'selected' else 'all-detected-or-unset')}",
+            f"- cuda_visible_devices_hint: {str(preferences.get('cuda_visible_devices') or '').strip() or ('unset' if selection_mode == 'all' else 'none')}",
+        ]
+        if selection_mode == "selected":
+            if effective_gpu_ids:
+                lines.append("- gpu_boundary_rule: when launching local GPU workloads, stay within the selected GPU ids instead of assuming every detected GPU is available.")
+            else:
+                lines.append("- gpu_boundary_rule: no GPU is currently selected; treat local GPU workloads as unavailable unless the operator changes Admin hardware selection.")
+        if not include_summary:
+            lines.append("- hardware_summary_visibility: disabled by config; use the GPU boundary above but do not rely on a fuller hardware summary.")
+            return "\n".join(lines)
+        cpu = system.get("cpu") if isinstance(system.get("cpu"), dict) else {}
+        memory = system.get("memory") if isinstance(system.get("memory"), dict) else {}
+        disks = system.get("disks") if isinstance(system.get("disks"), list) else []
+        gpus = system.get("gpus") if isinstance(system.get("gpus"), list) else []
+        cpu_model = str(cpu.get("model") or "unknown cpu").strip()
+        logical_cores = str(cpu.get("logical_cores") or "unknown").strip()
+        memory_total_gb = str(memory.get("total_gb") or "unknown").strip()
+        disk_free = "unknown"
+        if disks and isinstance(disks[0], dict):
+            disk_free = f"{disks[0].get('free_gb') or 'unknown'}GB free on {disks[0].get('mount') or '/'}"
+        lines.extend(
+            [
+                f"- cpu_summary: {cpu_model} | logical_cores={logical_cores}",
+                f"- memory_total_gb: {memory_total_gb}",
+                f"- root_disk_summary: {disk_free}",
+            ]
+        )
+        if gpus:
+            gpu_parts = []
+            for item in gpus[:8]:
+                if not isinstance(item, dict):
+                    continue
+                gpu_id = str(item.get("gpu_id") or "").strip() or "?"
+                name = str(item.get("name") or "GPU").strip()
+                memory_total = item.get("memory_total_gb")
+                gpu_parts.append(f"{gpu_id}:{name}{f' {memory_total}GB' if memory_total is not None else ''}")
+            lines.append(f"- gpu_inventory: {'; '.join(gpu_parts) or 'none'}")
+        else:
+            lines.append("- gpu_inventory: none detected")
+        return "\n".join(lines)
+
+    def _deepxiv_capability_block(self, *, runtime_config: dict) -> str:
+        literature = runtime_config.get("literature") if isinstance(runtime_config.get("literature"), dict) else {}
+        deepxiv = literature.get("deepxiv") if isinstance(literature.get("deepxiv"), dict) else {}
+        enabled = bool(deepxiv.get("enabled"))
+        direct_token = str(deepxiv.get("token") or "").strip()
+        token_env_name = str(deepxiv.get("token_env") or "").strip()
+        env_token = str(__import__("os").environ.get(token_env_name) or "").strip() if token_env_name else ""
+        configured = enabled and bool(direct_token or env_token)
+        lines = [
+            f"- deepxiv_available: {configured}",
+            f"- deepxiv_enabled: {enabled}",
+            f"- deepxiv_base_url: {str(deepxiv.get('base_url') or 'https://data.rag.ac.cn').strip() or 'https://data.rag.ac.cn'}",
+            f"- deepxiv_default_result_size: {int(deepxiv.get('default_result_size') or 20)}",
+            f"- deepxiv_preview_characters: {int(deepxiv.get('preview_characters') or 5000)}",
+        ]
+        if configured:
+            lines.extend(
+                [
+                    "- deepxiv_rule: DeepXiv is configured in this runtime. For paper-centric literature discovery and shortlist paper triage, prefer the DeepXiv route before broad open-web search when it can answer the question more directly.",
+                    "- deepxiv_preferred_path: use `artifact.deepxiv(...)` for paper retrieval and structured DeepXiv reads when that tool is available in this runtime.",
+                    "- deepxiv_fallback_rule: if the runtime does not expose a DeepXiv tool, or if DeepXiv is insufficient for the needed paper detail, fall back to the legacy route: memory reuse, web discovery, and `artifact.arxiv(...)`.",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "- deepxiv_forbidden_rule: DeepXiv is not configured in this runtime. Do not rely on DeepXiv or assume its token exists.",
+                    "- deepxiv_required_fallback: use the legacy route only: memory reuse, web discovery, and `artifact.arxiv(...)`.",
+                ]
+            )
+        return "\n".join(lines)
+
+    def _local_daemon_api_block(self, *, include_benchstore: bool = False, include_admin: bool = False) -> str:
+        runtime_config = self.config_manager.load_named("config")
+        ui_config = runtime_config.get("ui") if isinstance(runtime_config.get("ui"), dict) else {}
+        host = str(ui_config.get("host") or "0.0.0.0").strip() or "0.0.0.0"
+        raw_port = ui_config.get("port")
+        try:
+            port = int(raw_port)
+        except (TypeError, ValueError):
+            port = 20999
+        daemon_state = read_json(self.home / "runtime" / "daemon.json", {})
+        daemon_url = str((daemon_state.get("url") if isinstance(daemon_state, dict) else "") or "").strip()
+        bind_url = str((daemon_state.get("bind_url") if isinstance(daemon_state, dict) else "") or "").strip()
+        if not daemon_url:
+            normalized_host = "127.0.0.1" if host in {"0.0.0.0", "::", "[::]", ""} else host
+            rendered_host = normalized_host if ":" not in normalized_host or normalized_host.startswith("[") else f"[{normalized_host}]"
+            daemon_url = f"http://{rendered_host}:{port}"
+        if not bind_url:
+            bind_url = f"http://{host}:{port}"
+        auth_enabled = bool((daemon_state.get("auth_enabled") if isinstance(daemon_state, dict) else False))
+        auth_token = str((daemon_state.get("auth_token") if isinstance(daemon_state, dict) else "") or "").strip() or None
+
+        lines = [
+            f"- local_daemon_api_base_url: {daemon_url}",
+            f"- local_daemon_bind_url: {bind_url}",
+            f"- local_daemon_auth_enabled: {auth_enabled}",
+            f"- local_daemon_auth_token: {auth_token or 'none'}",
+            "- local_daemon_api_call_rule: if you need direct daemon API state beyond the MCP surface, use `bash_exec(...)` to call the local daemon over HTTP.",
+            "- local_daemon_api_auth_rule: when `local_daemon_auth_enabled` is true, include header `Authorization: Bearer <local_daemon_auth_token>` in those HTTP calls.",
+            "- local_daemon_api_health_endpoint: GET /api/health",
+        ]
+        if include_benchstore:
+            lines.extend(
+                [
+                    "- local_daemon_api_benchstore_endpoints:",
+                    "  - GET /api/benchstore/entries",
+                    "  - GET /api/benchstore/entries/:entry_id",
+                    "  - GET /api/benchstore/entries/:entry_id/setup-packet",
+                    "  - POST /api/benchstore/entries/:entry_id/install",
+                    "  - POST /api/benchstore/entries/:entry_id/launch",
+                ]
+            )
+        if include_admin:
+            lines.extend(
+                [
+                    "- local_daemon_api_admin_endpoints:",
+                    "  - GET /api/system/overview",
+                    "  - GET /api/system/hardware",
+                    "  - GET /api/system/logs/sources",
+                    "  - GET /api/system/logs/tail?source=<source>&line_count=<n>",
+                    "  - GET /api/system/quests",
+                    "  - GET /api/system/quests/:quest_id/summary",
+                    "  - GET /api/system/repairs",
+                    "  - POST /api/system/repairs",
+                    "  - GET /api/system/tasks",
+                    "  - GET /api/system/tasks/:task_id",
+                ]
+            )
+        return "\n".join(lines)
+
+    def _admin_ops_session_block(self, snapshot: dict) -> str:
+        startup_contract = snapshot.get("startup_contract")
+        if not isinstance(startup_contract, dict):
+            return "- none"
+        admin_session = startup_contract.get("admin_session")
+        if not isinstance(admin_session, dict):
+            return "- none"
+
+        repair_id = str(admin_session.get("repair_id") or "none").strip() or "none"
+        scope = str(admin_session.get("scope") or "system").strip() or "system"
+        repair_policy = str(admin_session.get("repair_policy") or "diagnose_only").strip() or "diagnose_only"
+        source_page = str(admin_session.get("source_page") or "/admin").strip() or "/admin"
+        targets = admin_session.get("targets")
+        selected_paths = [str(item).strip() for item in (admin_session.get("selected_paths") or []) if str(item).strip()]
+        knowledge_refs = [str(item).strip() for item in (admin_session.get("knowledge_refs") or []) if str(item).strip()]
+
+        lines = [
+            f"- repair_id: {repair_id}",
+            f"- scope: {scope}",
+            f"- repair_policy: {repair_policy}",
+            f"- source_page: {source_page}",
+            f"- local_repo_root: {self.repo_root.resolve()}",
+            self._local_daemon_api_block(include_admin=True),
+            f"- launcher_entry: {(self.repo_root / 'bin' / 'ds.js').resolve()}",
+            f"- python_runtime_root: {(self.repo_root / 'src' / 'deepscientist').resolve()}",
+            f"- web_ui_root: {(self.repo_root / 'src' / 'ui').resolve()}",
+            f"- tui_root: {(self.repo_root / 'src' / 'tui').resolve()}",
+            "- install_path_rule: treat the paths above as the active local checkout / install roots for this admin session unless fresh evidence proves a different deployed copy is in use.",
+            "- github_origin: https://github.com/ResearAI/DeepScientist",
+        ]
+        if isinstance(targets, dict) and targets:
+            lines.extend(
+                [
+                    "- targets_json:",
+                    "```json",
+                    json.dumps(targets, ensure_ascii=False, indent=2),
+                    "```",
+                ]
+            )
+        else:
+            lines.append("- targets_json: {}")
+        if selected_paths:
+            lines.append("- selected_paths:")
+            lines.extend([f"  - {item}" for item in selected_paths[:20]])
+        else:
+            lines.append("- selected_paths: none")
+        lines.append("- source_address_rule: when proposing or applying source changes, always cite exact repo-relative file paths; when useful, also cite the absolute path anchored at `local_repo_root`.")
+        lines.append("- selected_paths_rule: treat `selected_paths` as the first-priority source scope for SEARCH / REPRO / PATCH / VERIFY whenever it is non-empty.")
+        lines.append("- command_forms_available: INSPECT, LOGS, SEARCH, REPRO, PATCH, VERIFY, ISSUE, PR")
+        if knowledge_refs:
+            lines.append("- recommended_knowledge_refs:")
+            lines.extend([f"  - {item}" for item in knowledge_refs[:24]])
+        else:
+            lines.append("- recommended_knowledge_refs: none")
+        return "\n".join(lines)
+
     def _active_user_requirements_block(self, quest_root: Path) -> str:
         path = self.quest_service._active_user_requirements_path(quest_root)
         if not path.exists():
@@ -528,16 +831,15 @@ class PromptBuilder:
             lines.extend(
                 [
                     f"- active_bash_run_count: {bash_running_count}",
-                    "- long_run_watchdog_rule: while an important long-running bash_exec session is active, never let more than 30 minutes pass without inspecting real logs/status and sending a concise artifact.interact progress update if the run is still ongoing",
+                    "- long_run_watchdog_rule: while an important long-running bash_exec session is active, inspect real logs/status periodically instead of parking or busy-looping",
                 ]
             )
         if str(turn_reason or "").strip() == "auto_continue":
             lines.extend(
                 [
-                    "- auto_continue_rule: this turn has no new user message; continue from the active requirements, durable artifacts, current quest state, and resume context spine instead of replaying the previous user message",
-                    f"- auto_continue_interval_rule: when a real long-running external task is already active, background-progress auto-continue becomes a low-frequency monitoring pass, about every {_AUTO_CONTINUE_MONITOR_INTERVAL_SECONDS} seconds rather than sub-minute polling",
-                    "- auto_continue_fast_prepare_rule: in autonomous mode before a real external long-running task exists, auto-continue may advance quickly, around 0.2 seconds between turns, so the agent can keep preparing or launching the real work without idling",
-                    "- autonomous_prepare_rule: in autonomous mode, if no real long-running external task is active yet, use the next turns to keep preparing, launching, or durably deciding the next real unit of work instead of parking idly",
+                    "- auto_continue_rule: this turn has no new user message; continue from the active requirements, durable artifacts, current quest state, current workspace checklist/plan state, and resume context spine instead of replaying the previous user message",
+                    f"- auto_continue_interval_rule: when a real long-running external task is already active, background-progress auto-continue becomes a low-frequency monitoring pass, about every {_AUTO_CONTINUE_MONITOR_INTERVAL_SECONDS} seconds rather than rapid polling",
+                    "- autonomous_prepare_rule: in autonomous mode, if no real long-running external task is active yet, use the next turns to prepare, launch, or durably close the next real unit of work instead of parking idly",
                     "- copilot_park_rule: in copilot mode, once the current requested unit is complete, it is normal to park and wait for the next user message or `/resume` instead of continuing autonomously",
                 ]
             )
@@ -600,7 +902,7 @@ class PromptBuilder:
         if active_idea_id and active_anchor in {"experiment", "analysis-campaign", "write", "finalize"}:
             return f"Continue the `{active_anchor}` stage on the current idea `{active_idea_id}` from the latest durable evidence."
         if active_anchor == "baseline":
-            return "Continue baseline establishment, verification, or reuse until the baseline gate is durably resolved."
+            return "Continue baseline only until one comparator is durably trustworthy enough for the next scientific step, then leave baseline immediately."
         if active_anchor == "idea":
             return (
                 "Continue idea analysis and route selection until the next durable idea branch is submitted "
@@ -650,17 +952,20 @@ class PromptBuilder:
             f"- attachment_count: {len(attachments)}",
             "- attachment_handling_rule: prefer readable sidecars such as extracted text, OCR text, or archive manifests when they exist; use raw binaries only when the readable sidecar is insufficient.",
             "- attachment_handling_rule_2: if the attachment belongs to a prior idea or experiment line, treat it as reference material rather than the active contract unless durable evidence promotes it.",
+            "- attachment_handling_rule_3: do not assume raw image/video/audio binaries can be injected directly into the runner prompt; when no readable sidecar exists, treat the binary as non-inline reference material.",
         ]
         for index, item in enumerate(attachments[:6], start=1):
             preferred_read_path = (
-                str(item.get("extracted_text_path") or item.get("ocr_text_path") or item.get("archive_manifest_path") or item.get("path") or "").strip()
+                str(item.get("extracted_text_path") or item.get("ocr_text_path") or item.get("archive_manifest_path") or "").strip()
                 or "none"
             )
             label = str(item.get("name") or item.get("file_name") or item.get("path") or item.get("url") or f"attachment-{index}").strip()
             kind = str(item.get("kind") or "attachment").strip()
             content_type = str(item.get("content_type") or item.get("mime_type") or "unknown").strip()
+            binary_path = str(item.get("path") or "").strip() or "none"
+            binary_hidden = preferred_read_path == "none" and binary_path != "none"
             lines.append(
-                f"- attachment_{index}: label={label} | kind={kind} | content_type={content_type} | preferred_read_path={preferred_read_path}"
+                f"- attachment_{index}: label={label} | kind={kind} | content_type={content_type} | preferred_read_path={preferred_read_path} | raw_binary_path={'hidden' if binary_hidden else binary_path}"
             )
         if len(attachments) > 6:
             lines.append(f"- remaining_attachment_count: {len(attachments) - 6}")
@@ -670,7 +975,7 @@ class PromptBuilder:
         if str(turn_reason or "").strip() != "auto_continue":
             return "- none"
         lines = [
-            "- resume_spine_rule: on auto_continue turns, first continue from the latest durable user requirement, the latest assistant checkpoint, the latest run summary, and recent memory cues instead of reconstructing intent from scratch",
+            "- resume_spine_rule: on auto_continue turns, first continue from the latest durable user requirement, the latest assistant checkpoint, the latest run summary, the current workspace checklist/plan state, and recent memory cues instead of reconstructing intent from scratch",
         ]
         bash_running_count = int(((snapshot.get("counts") or {}).get("bash_running_count")) or 0)
         latest_bash_session = (
@@ -721,6 +1026,8 @@ class PromptBuilder:
                 f"exit_code={latest_run.get('exit_code') if latest_run.get('exit_code') is not None else 'none'} | "
                 f"preview={preview or 'none'}"
             )
+        lines.append("- workspace_checklist_rule: before changing route on auto_continue turns, reopen current workspace `CHECKLIST.md` / `REPRO_CHECKLIST.md` and continue from the latest completed and in-progress items.")
+        lines.append("- workspace_plan_rule: if checklist state is ambiguous, reopen current workspace `PLAN.md` / `analysis_plan.md` before changing direction.")
         recent_memory = self.memory_service.list_recent(scope="quest", quest_root=quest_root, limit=3)
         if recent_memory:
             lines.append("- recent_memory_cues:")
@@ -968,9 +1275,113 @@ class PromptBuilder:
         startup_contract = snapshot.get("startup_contract")
         if isinstance(startup_contract, dict):
             value = str(startup_contract.get("custom_profile") or "").strip().lower()
-            if value in {"continue_existing_state", "review_audit", "revision_rebuttal", "freeform"}:
+            if value in {"continue_existing_state", "review_audit", "revision_rebuttal", "admin_ops", "settings_issue", "freeform"}:
                 return value
         return "freeform"
+
+    @staticmethod
+    def _start_setup_session(snapshot: dict) -> dict[str, Any] | None:
+        startup_contract = snapshot.get("startup_contract")
+        if not isinstance(startup_contract, dict):
+            return None
+        payload = startup_contract.get("start_setup_session")
+        if isinstance(payload, dict):
+            return dict(payload)
+        return None
+
+    def _start_setup_session_block(self, snapshot: dict) -> str:
+        payload = self._start_setup_session(snapshot) or {}
+        locale = str(payload.get("locale") or "zh").strip().lower() or "zh"
+        source = str(payload.get("source") or "manual").strip() or "manual"
+        benchmark_context = payload.get("benchmark_context") if isinstance(payload.get("benchmark_context"), dict) else {}
+        suggested_form = payload.get("suggested_form") if isinstance(payload.get("suggested_form"), dict) else {}
+        lines = [
+            f"- session_kind: autonomous_start_setup",
+            f"- source: {source}",
+            f"- preferred_language: {locale}",
+            self._local_daemon_api_block(include_benchstore=True),
+            "- mission: help the user complete the autonomous start form and stop there; do not begin the real research workflow",
+            "- context_first_rule: before asking the user for missing information, first read the current setup state and use the information already present in the form or benchmark context",
+            "- start_setup_prepare_tool_rule: when you want to update the left-side form, prefer `artifact.prepare_start_setup_form(form_patch={...})` so the browser can patch the form automatically",
+            "- start_setup_prepare_signature_rule: `form_patch` is the required top-level argument for `artifact.prepare_start_setup_form(...)`; do not hide the patch JSON inside `message`.",
+            "- start_setup_context_rule: the current suggested form and benchmark context are already injected into this prompt; do not assume `memory.*` or other `artifact.*` helpers are available here",
+            "- benchmark_context_source_rule: if `benchmark_context.raw_payload` exists, treat it as the full benchmark description file for this setup session rather than relying only on the shorter summary fields.",
+            "- start_setup_message_injection_rule: the recent conversation for this setup session is expanded explicitly below; use that full message history before asking the user to repeat requirements.",
+            "- aisb_selection_rule: when the user asks you to choose or recommend a task, prefer the existing AISB / BenchStore catalog first instead of asking the user to invent a task from scratch.",
+            "- aisb_selection_path: use `bash_exec(...)` against the injected local daemon BenchStore endpoints to inspect current catalog entries, then recommend the best fit based on both the user's stated needs and the current device boundary.",
+            "- aisb_selection_truncation_rule: if you inspect BenchStore output through `head`, `tail`, `sed -n`, or another clipped shell window, explicitly treat it as truncated / partial output and never infer the global entry count from that preview alone.",
+            "- aisb_selection_count_rule: before claiming how many BenchStore entries exist, read an explicit count such as `total`, `count`, or `items | length` from the daemon API result.",
+            "- aisb_selection_output_rule: when multiple AISB candidates fit, summarize the top 1 to 3 options briefly, recommend one first, and then patch the form toward that recommendation.",
+            "- performance_fit_rule: combine the user's requested task shape with the current machine boundary; if the machine is weak, prefer API-only, low-compute, short-cycle, and benchmark-faithful routes.",
+            "- output_rule: if the prepare tool is unavailable, fall back to one fenced block named `start_setup_patch` containing a JSON object with only the fields that should change",
+            "- start_setup_prepare_schema_summary:",
+            "```json",
+            json.dumps(
+                {
+                    "tool": "prepare_start_setup_form",
+                    "runner_namespaced_tool": "mcp__artifact__prepare_start_setup_form",
+                    "input_schema": {
+                        "type": "object",
+                        "required": ["form_patch"],
+                        "properties": {
+                            "form_patch": {
+                                "type": "object",
+                                "description": "Required top-level patch object containing only the fields that should change.",
+                            },
+                            "message": {
+                                "type": "string",
+                                "description": "Optional short user-facing note.",
+                            },
+                            "comment": {
+                                "type": ["string", "object", "null"],
+                                "description": "Optional internal note.",
+                            },
+                        },
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            "```",
+            "- patch_fallback_example:",
+            "```start_setup_patch",
+            '{"title":"Example Project","goal":"Example goal","runtime_constraints":"- One key limit"}',
+            "```",
+            "- patch_rule: keep the patch small; only include fields that truly need to change",
+            "- no_black_talk_rule: use natural user-facing language and avoid internal words like route, taxonomy, stage, slice, trace, checkpoint, or contract unless the user explicitly asks for them",
+            "- no_research_execution_rule: do not start baseline work, experiments, analysis campaigns, or paper drafting in this setup session",
+            "- user_choice_rule: if the user already filled the form clearly enough, say so and avoid unnecessary follow-up questions",
+            "- ask_rule: only ask short questions when a missing answer would materially change what gets submitted",
+            "- mandatory_confirmation_rule: do not guess critical operator-controlled resources. If GPU scope, GPU count, explicit GPU ids, external LLM/API usage, API keys, tokens, paid-call permission, large-download permission, or privacy boundaries would change the launch plan, you must ask the user to confirm them before treating the form as launch-ready.",
+            "- credential_confirmation_rule: if the task or benchmark would rely on an external API key, token, or account and that credential is not already explicitly available in context, proactively ask the user whether they want to provide it or switch to a different route.",
+            "- gpu_confirmation_rule: do not assume every detected GPU is available. If the allowed GPU scope is unclear and local GPU usage matters, ask the user how many GPUs or which GPU ids may be used.",
+            "- gated_patch_rule: if critical resource confirmations are still missing, you may patch a provisional draft but you must mark the remaining uncertainty clearly in user-facing language instead of presenting the setup as fully ready to launch.",
+            "- question_categories: when user input is incomplete, ask at most for these practical categories: task goal, current materials, runtime limits, and whether they prefer paper-facing delivery or result-first delivery",
+            "- field_mapping_rule: treat title as a short project name, goal as the real mission, baseline_urls as baseline/code/data inputs, paper_urls as paper or benchmark references, runtime_constraints as hard limits, objectives as the first 2-4 near-term outcomes, and custom_brief as extra preferences",
+        ]
+        if benchmark_context:
+            lines.extend(
+                [
+                    "- benchmark_context_json:",
+                    "```json",
+                    json.dumps(benchmark_context, ensure_ascii=False, indent=2),
+                    "```",
+                ]
+            )
+        else:
+            lines.append("- benchmark_context_json: {}")
+        if suggested_form:
+            lines.extend(
+                [
+                    "- current_suggested_form_json:",
+                    "```json",
+                    json.dumps(suggested_form, ensure_ascii=False, indent=2),
+                    "```",
+                ]
+            )
+        else:
+            lines.append("- current_suggested_form_json: {}")
+        return "\n".join(lines)
 
     @staticmethod
     def _baseline_execution_policy(snapshot: dict) -> str:
@@ -980,6 +1391,40 @@ class PromptBuilder:
             if value in {"auto", "must_reproduce_or_verify", "reuse_existing_only", "skip_unless_blocking"}:
                 return value
         return "auto"
+
+    @staticmethod
+    def _baseline_source_mode(snapshot: dict) -> str:
+        startup_contract = snapshot.get("startup_contract")
+        if isinstance(startup_contract, dict):
+            value = str(startup_contract.get("baseline_source_mode") or "").strip().lower()
+            if value in {
+                "auto",
+                "verify_local_existing",
+                "attach_registry_baseline",
+                "reproduce_from_source",
+                "repair_existing_baseline",
+                "skip_until_blocking",
+            }:
+                return value
+        return "auto"
+
+    @staticmethod
+    def _execution_start_mode(snapshot: dict) -> str:
+        startup_contract = snapshot.get("startup_contract")
+        if isinstance(startup_contract, dict):
+            value = str(startup_contract.get("execution_start_mode") or "").strip().lower()
+            if value in {"plan_then_execute", "execute_immediately"}:
+                return value
+        return "execute_immediately"
+
+    @staticmethod
+    def _baseline_acceptance_target(snapshot: dict) -> str:
+        startup_contract = snapshot.get("startup_contract")
+        if isinstance(startup_contract, dict):
+            value = str(startup_contract.get("baseline_acceptance_target") or "").strip().lower()
+            if value in {"comparison_ready", "paper_repro_ready", "registry_publishable"}:
+                return value
+        return "comparison_ready"
 
     @staticmethod
     def _review_followup_policy(snapshot: dict) -> str:
@@ -999,7 +1444,71 @@ class PromptBuilder:
                 return value
         return "none"
 
+    def _settings_issue_session_block(self, snapshot: dict) -> str:
+        startup_contract = snapshot.get("startup_contract")
+        if not isinstance(startup_contract, dict):
+            return "- none"
+        lines = [
+            self._local_daemon_api_block(include_benchstore=True, include_admin=True),
+            f"- local_repo_root: {self.repo_root.resolve()}",
+            f"- launcher_entry: {(self.repo_root / 'bin' / 'ds.js').resolve()}",
+            f"- python_runtime_root: {(self.repo_root / 'src' / 'deepscientist').resolve()}",
+            f"- web_ui_root: {(self.repo_root / 'src' / 'ui').resolve()}",
+            "- settings_issue_context_rule: the operator message history is expanded explicitly below; absorb that full conversation before asking for clarification.",
+            "- settings_issue_issue_rule: the final output should still converge on `artifact.prepare_github_issue(...)`, but the draft must reflect the real daemon/settings state you verified.",
+            "- settings_issue_tool_schema_summary:",
+            "```json",
+            json.dumps(
+                {
+                    "tool": "prepare_github_issue",
+                    "runner_namespaced_tool": "mcp__artifact__prepare_github_issue",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "summary": {"type": "string"},
+                            "user_notes": {"type": "string"},
+                            "include_doctor": {"type": "boolean"},
+                            "include_logs": {"type": "boolean"},
+                            "open_settings_page": {"type": "boolean"},
+                            "comment": {"type": ["string", "object", "null"]},
+                        },
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            "```",
+        ]
+        return "\n".join(lines)
+
     def _research_delivery_policy_block(self, snapshot: dict) -> str:
+        start_setup_session = self._start_setup_session(snapshot)
+        if start_setup_session:
+            locale = str(start_setup_session.get("locale") or "zh").strip().lower() or "zh"
+            lines = [
+                "- workspace_mode: start_setup",
+                "- delivery_goal: fill the autonomous start form well enough that the user can launch confidently",
+                "- hard_boundary: this is a setup session, not the real research session",
+                "- start_setup_rule: organize the user's task, materials, and runtime limits into a clean launch-ready form",
+                "- patch_protocol: prefer `artifact.prepare_start_setup_form(form_patch={...})`; only use a fenced `start_setup_patch` block as fallback when the tool path is unavailable",
+                "- completion_rule: once the form is good enough to launch, say so clearly and stop asking for more unless the user requests changes",
+                "- directness_rule: if the current information is already sufficient, tell the user they can launch now",
+                "- ask_rule: only ask short practical questions that directly affect what gets submitted",
+                "- critical_confirmation_rule: treat GPU scope, explicit GPU ids, API keys, external credentials, paid-service permission, large-download permission, and privacy boundaries as mandatory confirmations when they would materially affect launch readiness; do not silently assume them.",
+            ]
+            if locale.startswith("zh"):
+                lines.extend(
+                    [
+                        "- example_hint: 可以自然说“我已经先帮你整理出一版草案”“现在还差 2 件事就可以直接启动”。",
+                    ]
+                )
+            else:
+                lines.extend(
+                    [
+                        "- example_hint: natural lines like 'I already drafted a starting version for you' and 'Two details remain before launch' are preferred.",
+                    ]
+                )
+            return "\n".join(lines)
         if self._workspace_mode(snapshot) == "copilot":
             return "\n".join(
                 [
@@ -1017,6 +1526,9 @@ class PromptBuilder:
         standard_profile = self._standard_profile(snapshot)
         custom_profile = self._custom_profile(snapshot)
         baseline_execution_policy = self._baseline_execution_policy(snapshot)
+        baseline_source_mode = self._baseline_source_mode(snapshot)
+        execution_start_mode = self._execution_start_mode(snapshot)
+        baseline_acceptance_target = self._baseline_acceptance_target(snapshot)
         review_followup_policy = self._review_followup_policy(snapshot)
         manuscript_edit_mode = self._manuscript_edit_mode(snapshot)
         lines = [
@@ -1024,6 +1536,9 @@ class PromptBuilder:
             f"- launch_mode: {launch_mode}",
             f"- standard_profile: {standard_profile if launch_mode == 'standard' else 'n/a'}",
             f"- custom_profile: {custom_profile if launch_mode == 'custom' else 'n/a'}",
+            f"- baseline_source_mode: {baseline_source_mode}",
+            f"- execution_start_mode: {execution_start_mode}",
+            f"- baseline_acceptance_target: {baseline_acceptance_target}",
             f"- review_followup_policy: {review_followup_policy if custom_profile == 'review_audit' else 'n/a'}",
             f"- baseline_execution_policy: {baseline_execution_policy if launch_mode == 'custom' else 'n/a'}",
             f"- manuscript_edit_mode: {manuscript_edit_mode if custom_profile in {'review_audit', 'revision_rebuttal'} else 'n/a'}",
@@ -1035,6 +1550,67 @@ class PromptBuilder:
             "- post_main_result_rule: after every `artifact.record_main_experiment(...)`, first interpret the measured result and only then choose the next route.",
             "- foundation_selection_rule: for a genuinely new idea round, default to the current research head but feel free to choose another durable foundation when it is cleaner or stronger; inspect `artifact.list_research_branches(...)` first when the best foundation is not obvious.",
         ]
+        if execution_start_mode == "plan_then_execute":
+            lines.extend(
+                [
+                    "- plan_first_entry_rule: this execution-start preference applies to the startup baseline route only. Before heavy baseline reproduction or expensive baseline setup at quest entry, first produce a bounded execution plan and wait for explicit user approval instead of executing immediately.",
+                ]
+            )
+        if baseline_source_mode == "verify_local_existing":
+            lines.extend(
+                [
+                    "- baseline_source_rule: if local code or a local service already exists and the metric path is concrete, verify that local existing system first instead of defaulting into from-scratch source reproduction.",
+                ]
+            )
+        elif baseline_source_mode == "attach_registry_baseline":
+            lines.extend(
+                [
+                    "- baseline_source_rule: prefer attaching and verifying a reusable registered baseline before considering a full source reproduction path.",
+                ]
+            )
+        elif baseline_source_mode == "reproduce_from_source":
+            lines.extend(
+                [
+                    "- baseline_source_rule: treat source reproduction as the expected startup baseline path unless a clearly stronger local shortcut becomes trustworthy after inspection.",
+                ]
+            )
+        elif baseline_source_mode == "repair_existing_baseline":
+            lines.extend(
+                [
+                    "- baseline_source_rule: prefer repairing the stale existing baseline before restarting from a clean-slate reproduction.",
+                ]
+            )
+        elif baseline_source_mode == "skip_until_blocking":
+            lines.extend(
+                [
+                    "- baseline_source_rule: do not front-load baseline work at quest entry unless the missing comparator is actually blocking the next scientific step.",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "- baseline_source_rule: auto mode prefers verify/reuse/attach before source reproduction.",
+                ]
+            )
+        if baseline_acceptance_target == "comparison_ready":
+            lines.extend(
+                [
+                    "- baseline_acceptance_rule: once the comparator is trustworthy enough for the next scientific step, move forward immediately. Prefer attach / import / verify-local-existing over full reproduction whenever those lighter routes already satisfy `comparison_ready`, and do not escalate to heavier baseline work without naming one explicit unresolved comparison risk.",
+                ]
+            )
+        elif baseline_acceptance_target == "paper_repro_ready":
+            lines.extend(
+                [
+                    "- baseline_acceptance_rule: keep startup baseline work primary until the comparator is strong enough to support paper-facing claims, not just one quick comparison.",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "- baseline_acceptance_rule: treat the startup baseline as incomplete until it is reusable and clean enough to publish as a registry-quality baseline package.",
+                ]
+            )
+
         if launch_mode == "custom":
             lines.extend(
                 [
@@ -1079,6 +1655,25 @@ class PromptBuilder:
                     [
                         "- rebuttal_entry_rule: treat reviewer comments and the current paper state as the active contract; open `rebuttal` before ordinary writing.",
                         "- rebuttal_routing_rule: route supplementary reviewer-facing evidence through `analysis-campaign` and manuscript deltas through `write`, but let `rebuttal` orchestrate that mapping.",
+                    ]
+                )
+            elif custom_profile == "admin_ops":
+                lines.extend(
+                    [
+                        "- admin_ops_entry_rule: this is an administrator diagnosis / repair session for the local DeepScientist runtime rather than an ordinary end-user research quest.",
+                        "- admin_ops_scope_rule: treat `startup_contract.admin_session`, `entry_state_summary`, `custom_brief`, and `review_materials` as the active incident context packet.",
+                        "- admin_ops_truth_rule: prefer documented daemon APIs, durable quest files, config files, connector state, runtime logs, and bounded `bash_exec(...)` inspection over speculation.",
+                        "- admin_ops_repair_rule: diagnose first, then apply the smallest safe fix allowed by the repair policy; avoid direct mutation of undocumented `.ds/*` internals when a safer route exists.",
+                        "- admin_ops_output_rule: separate diagnosis, fix, verification, and residual risk; keep summaries operational and explicit about blast radius.",
+                    ]
+                )
+            elif custom_profile == "settings_issue":
+                lines.extend(
+                    [
+                        "- settings_issue_entry_rule: this is a settings-only GitHub issue drafting session rather than a general research or admin repair session.",
+                        "- settings_issue_tool_surface_rule: prefer `artifact.prepare_github_issue(...)` for the final issue draft, but rely on the injected daemon API context and explicit message history first so the issue reflects the full settings conversation.",
+                        "- settings_issue_bash_rule: `bash_exec(...)` remains available for bounded local inspection or daemon checks when needed, and should be used to verify live settings/runtime behavior before the final draft.",
+                        "- settings_issue_execution_rule: collect the issue summary and user notes, call `artifact.prepare_github_issue(...)`, and rely on the browser prefill flow instead of hand-writing a separate issue body when the tool can provide it.",
                     ]
                 )
             else:
@@ -1129,10 +1724,10 @@ class PromptBuilder:
         if need_research_paper:
             lines.extend(
                 [
-                    "- delivery_goal: the quest should normally continue until at least one paper-like deliverable exists.",
-                    "- main_result_rule: a strong main experiment is evidence, not the endpoint; usually continue into analysis, writing, or strengthening work.",
+                    "- delivery_goal: the default paper-facing goal is at least one paper-like deliverable, but do not force every later stage when the nearer gate for this turn is already open.",
+                    "- main_result_rule: a strong main experiment is evidence, not the endpoint; often continue into analysis, writing, or strengthening work when the current contract really needs it.",
                     "- paper_branch_rule: writing should normally continue on a dedicated `paper/*` branch/worktree derived from the evidence line rather than mutating the evidence branch itself.",
-                    "- review_gate_rule: before declaring a substantial paper/draft task done, open `review` for an independent skeptical audit; if that audit finds serious gaps, route to `analysis-campaign`, `baseline`, `scout`, or `write` instead of stopping.",
+                    "- review_gate_rule: when a paper draft becomes substantial, consider opening `review` for an independent skeptical audit before calling it done; if that audit finds serious gaps, route to analysis, baseline, scout, or more writing instead of stopping.",
                     "- stop_rule: do not stop with only an improved algorithm or isolated run logs unless the user explicitly narrows scope.",
                 ]
             )
@@ -1230,7 +1825,6 @@ class PromptBuilder:
                 "- stage_continue_rule: if the user mainly wants the quest to keep moving, continue from the active durable stage state after acknowledging the request.",
                 "- route_decision_rule: switch into `decision`-style reasoning only when safe continuation depends on a real route, scope, cost, branch, or scientific-direction judgment.",
                 "- decision_skill_escalation_rule: if a turn upgrades into `route_decision`, explicitly read the `decision` skill before substantial route-changing work.",
-                "- response_pattern: say what changed -> say what it means -> say what happens next",
                 "- mailbox_protocol: artifact.interact(include_recent_inbound_messages=True) remains the queued human-message mailbox and should be checked whenever human continuity matters.",
                 "- planning_rule: before non-trivial execution, make the immediate plan explicit and keep the first step small.",
                 "- tool_rule: use memory for durable recall, artifact for quest state and git-aware research operations, and bash_exec for terminal execution.",
@@ -1242,15 +1836,8 @@ class PromptBuilder:
                 "- micro_task_stop_rule: after finishing a `direct_answer` or `direct_action` turn, report the result plainly and wait instead of auto-continuing.",
                 "- stop_rule: once the current requested unit is done, send a concise update and wait for the next message or `/resume`.",
                 "- escalation_rule: if a route change materially affects cost, scope, or scientific direction, ask before proceeding.",
+                "- connector_style_rule: connector-facing tone and report style live in the active connector contract rather than in this runtime block.",
             ]
-            if chinese_turn:
-                lines.append(
-                    "- tone_hint: 使用自然、礼貌、专业、带一点活泼感的中文；像靠谱又主动汇报进展的研究搭子，不要冷冰冰或官话腔；对真实好消息可自然用“都搞定啦”“有结果了”这种轻微庆祝开头，但下一句要立刻说清具体结果。"
-                )
-            else:
-                lines.append(
-                    "- tone_hint: use concise, natural, warm English, lead with the conclusion, and avoid sounding cold, bureaucratic, or log-like."
-                )
             return "\n".join(lines)
         bound_conversations = snapshot.get("bound_conversations") or []
         need_research_paper = self._need_research_paper(snapshot)
@@ -1273,45 +1860,37 @@ class PromptBuilder:
             "- stage_continue_rule: if the user is clearly asking to continue quest progress, resume from the active durable stage state.",
             "- route_decision_rule: open `decision`-style reasoning only when safe continuation genuinely depends on a real route, scope, cost, branch, or scientific-direction judgment.",
             "- decision_skill_escalation_rule: if a fresh user-message turn upgrades into `route_decision`, explicitly read the `decision` skill before substantial route-changing work.",
-            "- response_pattern: say what changed -> say what it means -> say what happens next",
             "- interaction_protocol: first message may be plain conversation; after that, treat artifact.interact threads and mailbox polls as the main continuity spine across TUI, web, and connectors",
             "- shared_interaction_contract_precedence: use the shared interaction contract as the default user-facing cadence; the rules below add runtime-specific execution behavior instead of restating the same chat cadence",
             "- shell_tool_mandate: **native `shell_command` / `command_execution` is forbidden; all shell-like execution must use `bash_exec(...)`.**",
             "- mailbox_protocol: artifact.interact(include_recent_inbound_messages=True) is the queued human-message mailbox; when it returns user text, treat that input as higher priority than background subtasks until it has been acknowledged",
             "- acknowledgment_protocol: after artifact.interact returns any human message, immediately send one substantive artifact.interact(...) follow-up; if the active connector runtime already emitted a transport-level receipt acknowledgement, do not send a redundant receipt-only message; if answerable, answer directly, otherwise state the short plan, nearest checkpoint, and that the current background subtask is paused",
             "- subtask_boundary_protocol: send a user-visible update whenever the active subtask changes materially, especially across intake -> audit, audit -> experiment planning, experiment planning -> run launch, run result -> drafting, or drafting -> review/rebuttal",
-            "- smoke_then_detach_protocol: for baseline reproduction, main experiments, and analysis experiments, first validate the command path with a bounded smoke test; once the smoke test passes, launch the real long run with bash_exec(mode='detach', ...) and usually leave timeout_seconds unset rather than guessing a fake deadline",
-            "- progress_first_monitoring_protocol: when supervising a long-running bash_exec session, judge health by forward progress rather than by whether the final artifact has already appeared within a short window",
+            "- smoke_then_detach_protocol: for baseline reproduction, main experiments, and analysis experiments, use a bounded smoke test only when the command path, output schema, or environment viability is still unverified; otherwise launch the real long run directly with bash_exec(mode='detach', ...) and usually leave timeout_seconds unset rather than guessing a fake deadline",
+            "- progress_first_monitoring_protocol: judge health by forward progress in logs, metrics, new artifacts, or checkpoints rather than by wall-clock silence alone.",
+            "- intervention_threshold_protocol: intervene only when the run shows a concrete blocker such as repeated hard errors, no forward progress across multiple checks, exhausted resources, or clearly invalid outputs.",
+            "- timeout_protocol: do not kill or restart a run merely because a short watch window passed without final completion; use timeout_seconds for bounded command setup or watch windows, not as a fake experiment deadline.",
             "- long_run_reporting_protocol: inspect real logs/status after each meaningful await cycle and at least once every 30 minutes at worst, but only send a user-visible update when there is a human-meaningful delta, blocker, recovery, route change, or the visibility bound would otherwise be exceeded",
-            "- intervention_threshold_protocol: do not kill or restart a run merely because a short watch window passed without final completion; intervene only on explicit failure, clear invalidity, process exit, or no meaningful delta across a sufficiently long observation window",
-            "- timeout_protocol: before using bash_exec(mode='await', ...), estimate whether the command can finish within the selected wait window; if runtime is uncertain or likely longer, use bash_exec(mode='detach', ...) and monitor instead of guessing a fake deadline",
             f"- auto_continue_monitoring_protocol: if the runtime schedules background-progress auto_continue turns while a real external task is already active, treat them as low-frequency monitoring passes roughly every {_AUTO_CONTINUE_MONITOR_INTERVAL_SECONDS} seconds rather than as a fast polling loop",
-            "- auto_continue_prepare_protocol: in autonomous mode before a real long-running external task exists, rapid auto-continue passes around 0.2 seconds apart are acceptable only for active preparation, launch, or durable route closure work; they are not a substitute for starting the real task",
             "- long_run_ownership_protocol: real long-running execution should stay alive in detached bash_exec sessions or the runtime process it launched; do not rely on repeated model turns to simulate continuous execution",
             "- auto_continue_resume_protocol: on auto_continue turns, read the resume context spine first and continue from the latest durable user requirement, latest assistant checkpoint, latest run summary, recent memory cues, and current bash_exec state before changing route",
+            "- decision_dedupe_rule: if no new durable evidence, blocker change, or user requirement appeared since the last route judgment, do not restate the same decision; continue the current action or remain waiting.",
             "- blocking_protocol: use reply_mode='blocking' only for true unresolved user decisions; ordinary progress updates should stay threaded and non-blocking",
             "- credential_blocking_protocol: if continuation requires user-supplied external credentials or secrets such as an API key, GitHub key/token, or Hugging Face key/token, emit one structured blocking decision request that asks the user to provide the credential or choose an alternative route; do not invent placeholders or silently skip the blocked step",
             "- credential_wait_protocol: if that credential request remains unanswered, keep the quest waiting rather than self-resolving; if you are resumed without new credentials and no other work is possible, a long low-frequency park such as `bash_exec(command='sleep 3600', mode='await', timeout_seconds=3700)` is acceptable to avoid busy-looping",
             f"- standby_prefix_rule: when you intentionally leave one blocking standby interaction after task completion, prefix it with {'[等待决策]' if chinese_turn else '[Waiting for decision]'} and wait for a new user reply before continuing",
             "- stop_notice_protocol: if work must pause or stop, send a user-visible notice that explains why, confirms preserved context, and states that any new message or `/resume` will continue from the same quest",
-            "- respect_protocol: write user-facing updates as natural, respectful, easy-to-follow chat; do not sound like a formal status report or internal tool log",
-            "- novice_context_protocol: assume the user may not know the repo layout, branch model, artifact schema, or tool names; explain progress in task language first.",
-            "- structure_protocol: when explaining 2 to 3 options, tradeoffs, or next steps, prefer a short numbered structure so the user can scan the decision surface quickly.",
-            "- example_and_numbers_protocol: when it materially improves understanding, include one short example or 1 to 3 key numbers or comparisons instead of relying only on vague adjectives such as better, slower, or more stable.",
-            "- omission_protocol: for ordinary user-facing updates, omit file paths, file names, artifact ids, branch/worktree ids, session ids, raw commands, raw logs, and internal tool names unless the user asked for them or needs them to act",
-            "- compaction_protocol: ordinary artifact.interact progress updates should usually fit in 2 to 4 short sentences and should not read like a monitoring transcript or execution diary",
             "- micro_task_stop_rule: after a fresh user-message turn that was only `direct_answer` or `direct_action`, finish that unit and do not silently turn the same turn into a broader autonomous stage pass unless the user asked for it.",
             "- watchdog_payload_protocol: if a tool result includes `watchdog_notes`, `progress_watchdog_note`, `visibility_watchdog_note`, or `state_change_watchdog_note`, treat that as an action item to inspect state and decide whether a fresh user-visible update is actually needed; do not emit duplicate progress by reflex",
-            "- human_progress_shape_protocol: ordinary progress updates should usually make three things explicit in human language: the current task, the main difficulty or latest real progress, and the concrete next measure you will take",
             "- stage_contract_protocol: stage-specific plan/checklist rules, milestone rules, literature rules, and writing rules belong in the requested skill; do not expect this runtime block to restate them",
-            "- teammate_voice_protocol: write like a calm capable teammate using natural first-person phrasing when helpful, for example 'I'm working on ...', 'The main issue right now is ...', 'Next I'll ...'; do not sound like a dashboard or incident log",
-            "- translation_protocol: convert internal actions into user-facing meaning; describe what was finished and why it matters instead of naming every touched file, path, branch, counter, timestamp, or subprocess",
-            "- detail_gate_protocol: include exact counters, worker labels, timestamps, retry counts, or file names only when the user explicitly asked for them, when they change the recommended action, or when they are the only honest way to explain a real blocker",
-            "- monitoring_summary_protocol: for long-running monitoring loops, summarize the frontier state in plain language such as still progressing, temporarily stalled, recovered, or needs intervention; do not narrate each watch window",
-            "- preflight_rewrite_protocol: before sending artifact.interact, quickly self-check whether the draft reads like a monitoring log, file inventory, or internal diary; if it mentions watch windows, heartbeats, retry counters, raw counts, timestamps, or multiple file names without being necessary for user action, rewrite it into conclusion -> meaning -> next step first",
+            "- connector_style_rule: connector-facing tone and report style live in the active connector contract rather than in this runtime block.",
             "- workspace_discipline: read and modify code inside current_workspace_root; treat quest_root as the canonical repo identity and durable runtime root",
             "- binary_safety: do not open or rewrite large binary assets unless truly necessary; prefer summaries, metadata, and targeted inspection first",
         ]
+        if re.search(r"(understand|easy|simple|plain|non-technical|更新|看懂|易懂|通俗)", user_message, re.IGNORECASE):
+            lines.append(
+                "- novice_context_protocol: when the user asks for accessible updates, omit file paths, file names, internal ids, retry counters, and low-level monitor narration; translate them into user-facing meaning such as baseline record, draft, experiment result, or supplementary run."
+            )
         if decision_policy == "autonomous":
             lines.extend(
                 [
@@ -1342,14 +1921,12 @@ class PromptBuilder:
         if chinese_turn:
             lines.extend(
                 [
-                    "- tone_hint: 使用自然、礼貌、专业、带一点活泼感的中文；必要时可自然称呼用户为“老师”，但不要每句重复；像靠谱又主动汇报进展的研究搭子，避免冷冰冰、官话化、机械模板腔；对真实好消息可自然用“都搞定啦”“有结果了”这种轻微庆祝开头，但下一句要立刻说清结果。",
                     "- connector_reply_hint: 在聊天面里优先简明说明当前状态、下一步动作、预计回传内容。",
                 ]
             )
         else:
             lines.extend(
                 [
-                    "- tone_hint: use a polite, professional, warm English tone; avoid sounding cold, bureaucratic, or like a monitoring log.",
                     "- connector_reply_hint: keep chat replies concise but operational, with explicit next steps and evidence targets.",
                 ]
             )
@@ -1361,6 +1938,9 @@ class PromptBuilder:
                 "- quest_context_rule: quest documents are durable but not pre-expanded here.",
                 "- quest_documents_tool: call artifact.read_quest_documents(names=['brief','plan','status','summary'], mode='excerpt'|'full') when document detail is needed.",
                 "- active_user_requirements_tool: call artifact.read_quest_documents(names=['active_user_requirements'], mode='full') when exact current durable user requirements matter.",
+                "- research_map_tool: call artifact.get_research_map_status(detail='summary'|'full') when the current active node, research head, node history, canvas progress, or activation refs matter.",
+                "- research_map_usage_rule: use `summary` for ordinary recovery/status/switch questions and `full` only when you need the full node list or edge payload.",
+                "- workspace_execution_rule: on resume/restart/auto_continue turns, read current workspace `PLAN.md` / `CHECKLIST.md` (or aliases) before inventing a new route.",
             ]
         )
 
@@ -1449,7 +2029,8 @@ class PromptBuilder:
         global_kinds = ", ".join(plan.get("global", ())) or "none"
         lines = [
             f"- stage_memory_rule: for `{stage}`, prefer quest memory kinds [{quest_kinds}] and global memory kinds [{global_kinds}] when memory lookup is needed.",
-            "- memory_lookup_tool: call memory.list_recent(...) to recover context after pause/restart and memory.search(...) before repeating prior work.",
+            "- memory_lookup_tool: call memory.list_recent(...) after pause/restart and memory.search(...) before repeating old work or reopening an old baseline route.",
+            "- checkpoint_memory_lookup_rule: on resume/restart/auto_continue turns and continue/status questions, look for the latest checkpoint-style quest memory that states the current route, current active node, node history, what not to reopen, the next resume step, and the first files to read.",
             "- memory_injection_rule: keep the injected memory compact, but do not drop all continuity on auto_continue turns; reuse a few recent durable cues directly when they materially anchor the next action.",
         ]
         selected: list[dict] = []
@@ -1490,6 +2071,21 @@ class PromptBuilder:
                         quest_root=quest_root,
                         reason=f"matched current-turn query `{query}`",
                     )
+        for query in self._checkpoint_memory_queries(stage=stage, user_message=user_message):
+            for card in self.memory_service.search(
+                query,
+                scope="quest",
+                quest_root=quest_root,
+                limit=1,
+            ):
+                self._append_priority_memory(
+                    selected,
+                    seen_paths,
+                    card=card,
+                    scope="quest",
+                    quest_root=quest_root,
+                    reason=f"matched checkpoint-memory query `{query}`",
+                )
         lines.extend(["- selected_memory:", self._format_priority_memory(selected)])
         return "\n".join(lines)
 
@@ -1552,6 +2148,25 @@ class PromptBuilder:
                 break
         return tokens
 
+    @staticmethod
+    def _checkpoint_memory_queries(*, stage: str, user_message: str) -> list[str]:
+        normalized = str(user_message or "").strip().lower()
+        continue_markers = ("继续", "resume", "status", "进展", "当前", "checkpoint", "next")
+        if stage not in {"decision", "finalize", "write", "experiment", "analysis-campaign"} and not any(
+            marker in normalized for marker in continue_markers
+        ):
+            return []
+        return [
+            "current checkpoint",
+            "current node",
+            "node history",
+            "continue-later",
+            "superseded",
+            "reopen condition",
+            "what should be read first",
+            "do not repeat",
+        ]
+
     def _conversation_block(self, quest_id: str, limit: int = 12) -> str:
         return "\n".join(
             [
@@ -1559,6 +2174,36 @@ class PromptBuilder:
                 f"- conversation_tool: call artifact.get_conversation_context(limit={limit}, include_attachments=False) when earlier turn continuity matters.",
             ]
         )
+
+    def _expanded_conversation_block(self, quest_id: str, *, limit: int = 200, char_budget: int = 24000) -> str:
+        history = self.quest_service.history(quest_id, limit=limit)
+        if not history:
+            return "- none"
+        lines = [
+            f"- conversation_injection_rule: the recent {len(history)} message(s) are expanded below so you do not need to ask the user to restate them.",
+        ]
+        used = sum(len(line) for line in lines)
+        for index, item in enumerate(history, start=1):
+            role = str(item.get("role") or "unknown").strip() or "unknown"
+            source = str(item.get("source") or "unknown").strip() or "unknown"
+            created_at = str(item.get("created_at") or "").strip() or "unknown-time"
+            content = str(item.get("content") or "").strip()
+            if not content:
+                continue
+            line = f"{index}. [{role}|{source}|{created_at}] {content}"
+            if used + len(line) > char_budget:
+                lines.append(
+                    f"- conversation_injection_truncated: stopped after {index - 1} message(s) to stay within prompt budget."
+                )
+                break
+            lines.append(line)
+            used += len(line)
+        return "\n".join(lines)
+
+    def _special_conversation_block(self, snapshot: dict, *, quest_id: str) -> str:
+        if self._start_setup_session(snapshot) or self._custom_profile(snapshot) in {"settings_issue", "admin_ops"}:
+            return self._expanded_conversation_block(quest_id)
+        return self._conversation_block(quest_id)
 
     def _markdown_body(self, path: Path) -> str:
         text = path.read_text(encoding="utf-8")

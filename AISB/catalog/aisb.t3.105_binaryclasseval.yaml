@@ -1,0 +1,161 @@
+id: aisb.t3.105_binaryclasseval
+name: Aligning Evaluation with Clinical Priorities
+version: 0.1.0
+one_line: Subgroup-aware binary classifier evaluation framework using Bounded DCA
+  Log Score under label shift, calibration mismatch, and asymmetric clinical error
+  costs.
+task_description: 'This packaged benchmark implements the evaluation methodology from
+  NeurIPS 2025 paper "Aligning Evaluation with Clinical Priorities: Calibration, Label
+  Shift, and Error Costs." It evaluates binary clinical classifiers (APACHE IV mortality
+  predictor) across demographic subgroups using accuracy-versus-prevalence curves
+  and the proposed Bounded DCA Log Score metric. The framework addresses limitations
+  of accuracy and AUC-ROC by explicitly accounting for class prevalence uncertainty,
+  asymmetric decision costs, and calibration quality. No model training is required;
+  the benchmark operates on pre-computed APACHE IV predictions from the eICU Collaborative
+  Research Database.
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: advanced
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- dca_overall_african_american
+- dca_calibration_only_african_american
+- subgroup_accuracy_curves
+- clinical_figure_batch
+launch_profiles:
+- id: demo_curves
+  label: Demo Curves
+  description: Run subgroup accuracy-versus-prevalence curve plotting using demo data
+    subset. Requires staging local demo eICU CSVs under data/demo before execution.
+- id: paper_figure_batch
+  label: Paper Figure Batch
+  description: Reproduce all paper figures and tables via generate_figures.sh or eval_all.py.
+    Requires staging full eICU tables (patient.csv, apachePatientResult.csv) locally
+    under data/full.
+dataset_download:
+  primary_method: manual_external
+  sources:
+  - kind: external_registration
+    url: https://eicu-crd.mit.edu/
+    access: permission_required
+    note: MIT eICU Collaborative Research Database requires data use agreement registration
+      before download.
+  - kind: repository_archive
+    url: https://deepscientist.cc/AISB/105_binaryclasseval
+    archive_type: zip
+    local_dir_name: paper-105-BinaryClassEval
+    note: Contains evaluation code only; eICU CSV files must be staged separately.
+  notes:
+  - The snapshot does not bundle eICU CSV files consumed by etl/eicu.py.
+  - Required tables: patient.csv, apachePatientResult.csv must be placed under data/demo
+      or data/full directories before running.
+  - Staged evaluation scripts read local CSV files rather than downloading data.
+  - The public eICU subset is sufficient for demo and paper-figure reproduction.
+credential_requirements:
+  mode: external_registration
+  items:
+  - eICU data use agreement (MIT)
+  notes:
+  - No explicit API credentials detected in snapshot.
+  - Data access requires completing MIT eICU Collaborative Research Database registration
+    and data use agreement.
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.9'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - scikit-learn
+  notes:
+  - CPU-only execution throughout; no GPU required for any route.
+  - This repository performs evaluation only; no model training occurs.
+  - Full dependency list in requirements.txt.
+  - Execution time scales with subgroup count and confidence interval settings.
+risk_flags:
+- route_caveat
+- data_caveat
+risk_notes:
+- The evaluation code is intact, but the snapshot does not bundle the expected eICU
+  CSV files (data/demo or data/full) consumed by etl/eicu.py.
+- Reproducing paper figures requires staging patient.csv and apachePatientResult.csv
+  locally before running plot.py, eval_all.py, or generate_figures.sh.
+- No benchmark execution was performed during packaging; runtime validation required
+  before trusting metric values.
+recommended_when: 'Use this benchmark for clinically grounded subgroup-aware evaluation
+  of binary classifiers without retraining. Particularly suited for evaluating APACHE-style
+  mortality predictors or similar clinical scoring functions where calibration, label
+  shift robustness, and asymmetric error costs are relevant.
+
+  '
+not_recommended_when: 'Do not use this benchmark if the goal is model training or
+  hyperparameter optimization. This benchmark does not train predictors; it assumes
+  pre-computed scores are available.
+
+  '
+paper:
+  title: 'Aligning Evaluation with Clinical Priorities: Calibration, Label Shift,
+    and Error Costs'
+  venue: NeurIPS 2025
+  year: 2025
+  authors:
+  - Gerardo A. Flores
+  - Alyssa H. Smith
+  - Julia A. Fukuyama
+  - Ashia C. Wilson
+  url: https://arxiv.org/abs/2506.14540
+  affiliation:
+  - MIT
+  - Northeastern University
+  - Indiana University
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.105_binaryclasseval.zip
+  archive_type: zip
+  local_dir_name: paper-105-BinaryClassEval
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.105_binaryclasseval.zip
+  sha256: a681ab2633779256a0ae5e31156a439fee7967caf91981d14bc80e3693114db9
+  size_bytes: 108008
+display:
+  palette_seed: rose-slate-clinical
+  art_style: clinical-evaluation
+  accent_priority: medium
+image_path: ../image/105_aisb.t3.105_binaryclasseval.jpg
+capability_tags:
+- clinical_ai
+- evaluation
+- calibration
+- label_shift
+- subgroup_analysis
+- decision_analysis
+- research_code_optimization
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

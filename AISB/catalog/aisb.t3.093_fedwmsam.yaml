@@ -1,0 +1,134 @@
+id: aisb.t3.093_fedwmsam
+name: FedWMSAM
+version: 0.1.0
+one_line: Federated optimization under non-IID data using weighted momentum and sharpness-aware
+  minimization for stable training and improved generalization.
+task_description: 'This packaged benchmark implements FedWMSAM (Federated Weighted
+  Momentum with Sharpness-Aware Minimization), a federated optimization algorithm
+  built upon the FL-simulator framework. The method addresses the non-IID (non-independently
+  and identically distributed) data challenge inherent to federated learning by combining
+  two complementary mechanisms: weighted momentum to stabilize training under long-tail
+  data distributions, and momentum-driven Sharpness-Aware Minimization (SAM) to improve
+  model generalization on heterogeneous data. The benchmark supports CIFAR-10 and
+  CIFAR-100 with configurable data split rules (Dirichlet and Pathological non-IID
+  partitions) and model architectures (ResNet-18, LeNet). Training proceeds in federated
+  rounds where a central server coordinates client-side local training and aggregates
+  model updates.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- top1_test_accuracy
+- federated_checkpoint
+- training_logs
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run one packaged federated optimization route on CIFAR-10 data with
+    default IID split for rapid validation.
+- id: full_federated_run
+  label: Full Federated Run
+  description: Execute the full FedWMSAM training workflow across all supported split
+    rules (IID, Dirichlet 0.1, Pathological 2) and datasets (CIFAR-10, CIFAR-100).
+dataset_download:
+  primary_method: bundled
+  sources: []
+  notes:
+  - CIFAR-10 and CIFAR-100 are downloaded automatically via PyTorch torchvision datasets.
+  - Non-IID data partitions are generated at runtime using the specified split rule.
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+    gpu_arch: NVIDIA GPU with CUDA support recommended
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+    gpu_arch: NVIDIA A100 or equivalent for mixed-precision training
+environment:
+  python: '3.8'
+  cuda: '11.1'
+  pytorch: 1.9.0
+  flash_attn: null
+  key_packages:
+  - torchsampler==0.1.0
+  - scipy
+  notes:
+  - Create environment with: conda create -n fedwmsam python=3.8 && conda activate
+      fedwmsam
+  - Install dependencies via bundled install.sh script
+  - See bundled README/requirements.txt for full dependency set
+risk_flags:
+- non_iid_convergence_risk
+- client_dropout_simulation
+risk_notes:
+- Non-IID data distributions may cause slower convergence compared to IID settings
+- Full federated run with multiple split rules and datasets increases total execution
+  time
+recommended_when: 'Use this benchmark when evaluating federated optimization methods
+  under heterogeneous (non-IID) data distributions, studying the impact of weighted
+  momentum and sharpness-aware minimization on generalization, or comparing against
+  baseline federated optimizers (FedAvg, FedProx, FedSAM) on image classification
+  tasks.
+
+  '
+not_recommended_when: 'Do not use this benchmark for centralized training evaluation,
+  natural language processing tasks, or when single-GPU memory constraints cannot
+  be met (minimum 12GB VRAM recommended for ResNet-18 training).
+
+  '
+paper:
+  title: 'FedWMSAM: Fast and Flat Federated Learning via Weighted Momentum and Sharpness-Aware
+    Minimization'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=75JiIa0fU1
+  citation: null
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.093_fedwmsam.zip
+  archive_type: zip
+  local_dir_name: paper-93-FedWMSAM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.093_fedwmsam.zip
+  sha256: 82f848ec812f83c028ed40090155cda3ea04ca716f1e804c11c8d1272169fbf8
+  size_bytes: 91274
+display:
+  palette_seed: terracotta-blue-federated
+  art_style: optimization-dashboard
+  accent_priority: high
+image_path: ../image/093_aisb.t3.093_fedwmsam.jpg
+capability_tags:
+- research_code_optimization
+- federated_learning
+- sharpness_aware_minimization
+- image_classification
+- optimization
+- non_iid_learning
+- weighted_momentum
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null

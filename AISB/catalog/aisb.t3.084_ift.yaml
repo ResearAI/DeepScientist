@@ -1,0 +1,139 @@
+id: aisb.t3.084_ift
+name: Towards Accurate Time Series Forecasting via Implicit Decoding
+version: 0.1.0
+one_line: Paper-backed time-series decoder optimization using implicit frequency-based
+  forecasting modules, currently requiring upstream source restoration.
+task_description: 'This benchmark entry covers the Implicit Forecaster (IF) method
+  from a NeurIPS 2025 paper, which replaces the output MLP layers of existing time-series
+  transformer encoders with a novel frequency-domain decoding module. Instead of independent
+  pointwise predictions, IF globally forms forecasts by predicting constituent waves
+  parameterized by frequency, amplitude, and phase, enabling better handling of long-short-term
+  dynamics and multi-periodicity patterns. The approach is architecture-agnostic and
+  can boost mainstream TSF models including Informer, Autoformer, PatchTST, and iTransformer.
+  The current snapshot preserves only metadata and metric contracts; executable code,
+  launcher scripts, and README are absent. This entry is suitable for paper-backed
+  planning and upstream restoration planning, but not for direct local execution until
+  the upstream GitHub source (https://github.com/rakuyorain/Implicit-Forecaster) is
+  rehydrated into the package.
+
+  '
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- mse
+- mae
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: 'Review the preserved metric contracts, catalog metadata, and paper-backed
+    design rationale. No executable code is present in the current snapshot. Suitable
+    for route planning.
+
+    '
+- id: restore_and_validate
+  label: Restore and Validate
+  description: 'Restore upstream GitHub source tree before treating this as a runnable
+    benchmark. Requires fetching the external repository and rehydrating code, scripts,
+    and documentation into the current package snapshot.
+
+    '
+dataset_download:
+  primary_method: manual_or_not_explicit
+  sources:
+  - type: upstream_github
+    url: https://github.com/rakuyorain/Implicit-Forecaster
+    note: Linked in the paper abstract; not preserved in current snapshot
+  notes:
+  - The current local package contains no dataset scripts, README, or setup instructions.
+  - Dataset setup is an upstream restoration step, not a bundled one-click download.
+  - The paper reports experiments on 14 real-world time-series datasets commonly used
+    in TSF research.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No explicit dataset or API credential variables were detected in the bundled snapshot.
+  - Any credential needs must be determined during upstream source restoration.
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: '2.0'
+  flash_attn: null
+  key_packages: []
+  notes:
+  - Paper reports experiments on a single NVIDIA RTX 4090 GPU.
+  - Implementation built on PyTorch 2.0 per the paper.
+  - Current local snapshot preserves no dependency files or environment specifications.
+  - Environment details sourced from paper rather than executable artifacts.
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- blocked_no_code
+risk_notes:
+- Current snapshot contains no executable code files; metric surface is blocked.
+- Code, launcher scripts, and README are absent; upstream rehydration required.
+- Top-level README absent in the current snapshot.
+- No benchmark execution was performed in this packaging pass.
+- Treat as a paper-backed planning entry pending source restoration.
+recommended_when: 'Use this entry when planning paper-backed research on decoder-side
+  optimization for time-series forecasting, studying frequency-domain implicit decoding
+  design, or executing upstream source restoration. Appropriate for route planning
+  and benchmark rehydration projects.
+
+  '
+not_recommended_when: 'Do not use as a ready-to-run local benchmark. The current snapshot
+  lacks executable anchors for any staged metrics. Execution requires upstream GitHub
+  restoration before any benchmark run is attempted.
+
+  '
+paper:
+  title: Towards Accurate Time Series Forecasting via Implicit Decoding
+  authors:
+  - Xinyu Li (University of Melbourne)
+  - Yuchen Luo (University of Melbourne)
+  - Hao Wang (Zhejiang University)
+  - Haoxuan Li (Peking University, MBZUAI)
+  - Liuhua Peng (University of Melbourne)
+  - Feng Liu (University of Melbourne)
+  - Yandong Guo (AI2 Robotics)
+  - Kun Zhang (Carnegie Mellon University, MBZUAI)
+  - Mingming Gong (University of Melbourne, MBZUAI)
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=gqoeQPhQcE
+  github: https://github.com/rakuyorain/Implicit-Forecaster
+display:
+  palette_seed: amber-sky-implicit
+  art_style: decoding-wave
+  accent_priority: high
+image_path: ../../../AISB/image/084_aisb.t3.084_ift.jpg
+download:
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.084_ift.zip
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.084_ift.zip
+  archive_type: zip
+  sha256: d71123fe55a046305a8aca0aec7ee5a5205ef1742c296c01e77b62f5d7542b7c
+  size_bytes: 41911

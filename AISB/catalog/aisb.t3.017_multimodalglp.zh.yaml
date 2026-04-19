@@ -1,0 +1,122 @@
+schema_version: 1
+id: aisb.t3.017_multimodalglp
+name: GLPN-LLM（多模态虚假新闻检测）
+version: 0.1.0
+one_line: '训练并评估一个基于GCN的多模态虚假新闻分类器，该分类器通过掩码全局标签传播整合GPT-4o伪标签，利用CLIP嵌入构建跨模态相似图，在Twitter、PHEME和Weibo数据集上进行测试。'
+task_description: '本基准实现了用于多模态虚假新闻检测的GLPN-LLM框架（ACL 2025）。该流程分为两个阶段：（1）图构建（`construction.py`）从社交媒体帖子的CLIP文本+图像嵌入构建跨模态相似图；（2）训练/评估（`main.py`）运行GCN（或UniMP TransformerConv变体），并使用全局随机掩码机制将真实标签和GPT-4o生成的伪标签整合到节点特征中，同时防止标签泄漏。任务是在论文的标签传播框架下，优化三个基准数据集——Twitter（17k条推文）、PHEME（2k条推文）和Weibo（5.3k条帖子）——的分类准确率和宏F1分数。GPT-4o预计算的伪标签以CSV文件形式打包；运行时无需调用LLM API。智能体应在保留核心GLPN-LLM架构的同时，提升论文中报告的基线准确率。'
+capability_tags:
+- research_code_optimization
+- multimodal_learning
+- fake_news_detection
+- graph_learning
+- classification
+- label_propagation
+- pseudo_labeling
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+snapshot_status: runnable
+support_level: advanced
+primary_outputs:
+- accuracy
+- f1_score
+- pseudo_label_artifacts
+- benchmark_report
+launch_profiles:
+- id: quick_check
+  label: 快速检查（单数据集）
+  description: '仅在Twitter数据集上运行construction.py，然后运行main.py，以验证代码路径并在2k条推文测试集上产生准确率/F1分数。在单个GPU上几分钟内完成。'
+- id: full_train_eval
+  label: 完整训练+评估（全部三个数据集）
+  description: '在Twitter、PHEME和Weibo数据集上端到端运行完整的图构建和GCN训练/评估流程，复现论文中的表1。需要更改main.py中的dataset_name变量或通过run.sh参数化。'
+dataset_download:
+  primary_method: google_drive
+  sources:
+  - kind: google_drive
+    url: https://drive.google.com/file/d/1gPX-tAC1Vo6C8j8PV9IbAk8hbDhd1XMG/view?usp=drive_link
+    access: public
+    note: 'ZIP压缩包，包含weibo/、twitter/和pheme/子目录，其中包含CSV文件、预计算的CLIP嵌入（.pt）、图结构（.pt）和GPT-4o伪标签CSV文件。解压到script/dataset/目录。'
+  notes:
+  - 确切压缩包大小未记录；考虑到17k+条推文嵌入，解压后预计需要数GB空间。
+  - 预计算的GPT-4o伪标签以*_analysis_results.csv文件形式包含；运行时无需OpenAI API密钥。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - GPT-4o伪标签已预计算并打包在数据集下载文件中。
+  - 训练和评估无需API密钥或外部服务凭证。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.7.1
+  flash_attn: null
+  key_packages:
+  - torch-geometric==2.6.1
+  - dgl==2.1.0
+  - openai-clip
+  - scikit-learn
+  - pandas
+  notes:
+  - 论文推荐直接从https://github.com/openai/CLIP.git安装CLIP。
+  - 完整依赖列表请参见script/requirements.txt。
+  - Python和CUDA版本是根据PyTorch 2.7.1兼容性估算的；请根据requirements.txt进行验证。
+risk_flags:
+- external_dataset_download
+- dataset_name_hardcoded
+- no_prior_execution
+risk_notes:
+- 必须在运行前从Google Drive下载数据集并解压到script/dataset/目录。
+- main.py中的dataset_name硬编码为'twitter'；评估PHEME/Weibo时必须手动更改。
+- 打包过程中未执行基准测试；指标值未经验证。
+- main.py中的伪标签CSV文件名硬编码为'twitter_analysis_results.csv'，即使dataset_name更改时也是如此，weibo/pheme数据集可能需要修复。
+- 图构建（construction.py）在较大数据集上可能因成对相似度计算而较慢。
+recommended_when: '当您需要结合文本、图像和图结构社交媒体数据的多模态图学习任务，并使用LLM衍生的伪标签进行优化时，可以使用此基准。适合评估智能体在涉及GNN、标签传播和多模态特征融合的中等规模社交媒体数据集上的研究代码优化能力。'
+not_recommended_when: '如果需要纯文本基准、无法从Google Drive下载数GB的数据集，或想要有已验证基线执行输出的基准，请勿使用。如果需要将端到端LLM推理作为流程的一部分（伪标签是预计算的），也不适用。'
+paper:
+  title: Synergizing LLMs with Global Label Propagation for Multimodal Fake News Detection
+  authors:
+  - Shuguo Hu
+  - Jun Hu
+  - Huaiwen Zhang
+  venue: ACL 2025
+  year: 2025
+  url: https://arxiv.org/abs/2506.00488
+commercial:
+  annual_fee: null
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.017_multimodalglp.zip
+  archive_type: zip
+  local_dir_name: paper-17-MultimodalGLP
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.017_multimodalglp.zip
+  sha256: 0f2ab3bc3b08fdb577994ecd08fbca2b2796342cebdf9c5f797bd6b327107350
+  size_bytes: 34225
+display:
+  palette_seed: ruby-graph-signal
+  art_style: social-graph
+  accent_priority: high
+image_path: ../image/017_aisb.t3.017_multimodalglp.jpg

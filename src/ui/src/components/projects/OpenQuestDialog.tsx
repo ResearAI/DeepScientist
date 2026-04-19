@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { ConfirmModal } from '@/components/ui/modal'
 import { useI18n } from '@/lib/i18n'
+import { filterProjectsVisibleQuests } from '@/lib/questVisibility'
 import { resolveProjectDisplay, resolveProjectTemplate } from '@/lib/projectDisplayCatalog'
 import { runtimeHomePath } from '@/lib/runtime/quest-runtime'
 import type { QuestSummary } from '@/types'
@@ -50,6 +51,7 @@ export function OpenQuestDialog({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmQuest, setConfirmQuest] = useState<QuestSummary | null>(null)
   const activeRuntimeHome = useMemo(() => runtimeHomePath(), [])
+  const visibleQuests = useMemo(() => filterProjectsVisibleQuests(quests), [quests])
 
   useEffect(() => {
     if (!open) {
@@ -62,15 +64,15 @@ export function OpenQuestDialog({
   const filteredQuests = useMemo(() => {
     const keyword = search.trim().toLowerCase()
     if (!keyword) {
-      return quests
+      return visibleQuests
     }
-    return quests.filter((quest) =>
+    return visibleQuests.filter((quest) =>
       `${quest.title} ${quest.quest_id} ${quest.branch || ''} ${quest.summary?.status_line || ''}`
         .toLowerCase()
         .includes(keyword)
     )
-  }, [quests, search])
-  const emptyBecauseNoProjects = filteredQuests.length === 0 && quests.length === 0 && !search.trim()
+  }, [visibleQuests, search])
+  const emptyBecauseNoProjects = filteredQuests.length === 0 && visibleQuests.length === 0 && !search.trim()
 
   return (
     <OverlayDialog
@@ -98,8 +100,8 @@ export function OpenQuestDialog({
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <Badge>{t('landingQuestCount')}: {quests.length}</Badge>
-            {quests[0]?.updated_at ? <Badge>{t('openQuestLatest')}: {formatTime(quests[0].updated_at, locale)}</Badge> : null}
+            <Badge>{t('landingQuestCount')}: {visibleQuests.length}</Badge>
+            {visibleQuests[0]?.updated_at ? <Badge>{t('openQuestLatest')}: {formatTime(visibleQuests[0].updated_at, locale)}</Badge> : null}
           </div>
         </aside>
 

@@ -1,0 +1,127 @@
+id: aisb.t3.098_xmahalanobis
+name: X-Mahalanobis：用于可靠 OOD 检测的变压器特征混合
+version: 0.1.0
+one_line: 自适应变换层融合与马哈拉诺比斯距离评分，用于最先进的分布外检测。
+task_description: 该打包基准测试通过自适应融合模块涵盖基于 Transformer 的分布外 (OOD) 检测，该模块动态地将重要性权重分配给每个 Transformer 层学习的表示。该方法使用跨多个中间层的马哈拉诺比斯距离评分来检测 OOD 样本，不再仅仅依赖最终层特征。该基准测试支持参数高效微调 (PEFT) 策略，包括 AdaptFormer、LoRA、Adapter、视觉提示调整 (VPT)、偏差调整和完全微调。针对九个不同的 OOD 数据集对类平衡 (CIFAR100) 和长尾 (ImageNet-LT) 分布内分类任务进行评估，报告 AUROC 和 FPR95 指标。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- auroc
+- fpr95
+- ood_detection_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 使用 main_test.py 在准备好的检查点上运行 OOD 检测评估。需要经过训练的模型权重和配置与训练设置保持一致。适合评估基线或比较微调的检查点。
+  estimated_time: 1-2h
+  compute_profile: quick_eval
+- id: train_and_test
+  label: 训练+测试
+  description: CIFAR100 或 ImageNet-LT 上的完整 PEFT 训练工作流程，然后进行 OOD 评估。支持AdaptFormer（默认）、LoRA、Adapter、VPT、偏置调整和全面微调。训练 ViT-B/16（IN21K 预训练或 CLIP 预训练）并针对多个 OOD 数据集进行评估。
+  estimated_time: 6-18h
+  compute_profile: full_training
+dataset_download:
+  primary_method: bundled
+  sources:
+  - cifar100: torchvision datasets (auto-download)
+  - imagenet_lt: requires manual download from ImageNet, LT split preconfigured in configs
+  - ood_datasets: preconfigured in evaluation pipeline (e.g., SVHN, LSUN, iNaturalist)
+  notes:
+  - CIFAR100 通过 torchvision 自动下载
+  - ImageNet-LT需要从ImageNet官方源手动下载
+  - 由评估脚本处理的 OOD 测试数据集（TIN、SVHN、LSUN 等）
+  - 数据配置位于 configs/data/ (cifar100.yaml, imagenet_lt.yaml, imagenet.yaml)
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - ImageNet 下载可能需要学术注册
+  - 所有其他数据集均可公开访问或自动下载
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: 支持单 GPU 执行 quick_eval 和小规模训练
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 建议 batch_size 64 使用 24GB VRAM，在 ImageNet-LT 上使用完整的 PEFT 方法。 AdaptFormer 使用 CLIP ViT-B/16 在 ImageNet-LT 上以 lr 0.1 进行 20 个周期的训练是要求最高的配置。
+environment:
+  python: '3.9'
+  cuda: '11.8'
+  pytorch: '2.0'
+  flash_attn: null
+  key_packages:
+  - torch>=2.0
+  - torchvision
+  - numpy
+  - scikit-learn
+  - scipy
+  - timm
+  - open_clip_torch
+  notes:
+  - 请参阅捆绑的 requirements.txt 或 README 以获取完整的依赖项集
+  - CLIP ViT-B/16 模型支持需要 open_clip_torch
+  - IN21K ViT-B/16 预训练模型所需的 timm
+risk_flags:
+- long_runtime
+- gpu_memory_sensitive
+- config_sensitivity
+risk_notes:
+- 对 ImageNet-LT 进行 20 个 epoch 的完整训练可能需要 12-18 小时
+- 24GB GPU 上的批量大小 64 需要 AdaptFormer PEFT；完全微调可能会OOM
+- 训练和测试之间的配置对齐至关重要；不匹配的配置会产生无效结果
+- 每个实验必须明确设置 PEFT 方法标志（adaptformer、lora、adapter 等）
+- 通过 --seed 标志设置种子可用，但不强制执行；再现性需要手动播种
+recommended_when: 开发基于变压器的可靠性和 OOD 检测方法时使用此基准。特别适合研究：(1) 自适应层融合策略，(2) 基于 Mahalanobis 的 OOD 评分，(3) 针对分布外泛化的参数高效微调，(4) 比较浅层和深层变压器表示，以及 (5) 类不平衡（长尾）分布下的基准 OOD 检测。
+not_recommended_when: 请勿将此基准用于：(1) 纯文本可靠性任务（此处的 OOD 检测仅针对视觉）、(2) 非 Transformer 架构（纯基于 CNN 的方法）、(3) 需要无需微调的 OOD 检测的任务（零样本 OOD 评估）或 (4) 无法访问 GPU 的资源受限环境。
+paper:
+  title: 'X-Mahalanobis: Transformer Feature Mixing for Reliable OOD Detection'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://arxiv.org/abs/2505.09128
+  notes: NeurIPS 2025 出版物；基准包官方实现来自论文。实验证明了跨九个 OOD 数据集的 SOTA OOD 检测。
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.098_xmahalanobis.zip
+  archive_type: zip
+  local_dir_name: paper-98-XMahalanobis
+  notes: 'Bundled archive includes full training/test code, configs, utility modules, and pretrained model loading support for CLIP and IN21K ViT variants.
+
+    '
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.098_xmahalanobis.zip
+  sha256: c65b3f81a78754d84bff9a76b8a0c13e180f6b3b6d379801647ed189b1f4741e
+  size_bytes: 1420263
+display:
+  palette_seed: cobalt-silver-mahalanobis
+  art_style: reliability-vision
+  accent_priority: high
+image_path: ../image/098_aisb.t3.098_xmahalanobis.jpg
+capability_tags:
+- ood_detection
+- transformers
+- computer_vision
+- reliable_ml
+- parameter_efficient_finetuning
+- layer_fusion
+- mahalanobis_distance
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

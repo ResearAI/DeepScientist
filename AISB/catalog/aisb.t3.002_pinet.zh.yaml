@@ -1,0 +1,130 @@
+schema_version: 1
+id: aisb.t3.002_pinet
+name: 'PINet：通过正交投影层优化硬约束神经网络'
+version: 0.1.0
+one_line: '在JAX中训练并基准测试通过Douglas–Rachford投影层强制凸约束的可行设计神经网络，测量推理速度、约束违反和相对次优性在参数化QP和玩具MPC问题上的表现。'
+task_description: '该基准测试评估ΠNet (PINet)，这是一种神经网络输出层，通过算子分裂（Douglas–Rachford）在前向传播中对凸约束集进行正交投影，并使用隐函数定理进行反向传播。打包的任务在参数化约束优化问题（QP基准测试两个规模：d=100和d=1000，以及一个玩具MPC问题）上训练骨干网络+投影模型，然后测量单次和批量推理时间、约束违反（CV）以及相对于高精度求解器最优解的相对次优性（RS）。小规模QP数据集已打包；大规模QP数据集需从论文的OpenReview补充材料获取。所有训练和评估代码均包含在快照中，通过`src/benchmarks/QP/run_QP.py`和`src/benchmarks/toy_MPC/run_toy_MPC.py`运行。提供了Docker Compose设置以确保CPU和GPU执行的可重现性。'
+capability_tags:
+- research_code_optimization
+- constrained_optimization
+- jax
+- scientific_ml
+- systems_efficiency
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: low
+time_band: 1-2h
+difficulty: medium
+data_access: public
+primary_outputs:
+- convex_small_batch_inference_time_s
+- nonconvex_small_batch_inference_time_s
+- relative_suboptimality
+- constraint_violation
+- benchmark_report
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '运行最小的QP基准测试脚本（小数据集、单次随机种子）以验证投影层编译、训练并产生可行性指标。CPU上预计约10分钟。'
+- id: full_benchmark
+  label: 完整基准测试
+  description: '通过run_QP_batch.sh运行完整QP基准测试套件，覆盖所有配置、种子和投影方法（PINet、JAXopt、cvxpylayers）。生成与论文匹配的RS、CV和计时对比结果。GPU上预计约1-2小时，CPU上更长。'
+- id: toy_mpc
+  label: 玩具MPC
+  description: '生成玩具MPC数据集并使用run_toy_MPC.py运行端到端训练+评估。生成训练日志、验证指标和保存的参数。'
+dataset_download:
+  primary_method: bundled
+  sources:
+  - kind: bundled
+    url: https://deepscientist.cc/AISB/002_pinet
+    access: public
+    note: '小规模QP基准测试数据已包含在快照压缩包中。'
+  - kind: external
+    url: https://openreview.net
+    access: public
+    note: '大规模QP数据集（d=1000、n_eq=500、n_ineq=500）需从论文的OpenReview补充材料获取。未打包。'
+  notes:
+  - 小数据集已打包，足以支持小规模的quick_check和full_benchmark配置。
+  - 玩具MPC数据集可通过`python -m src.benchmarks.toy_MPC.generate_toy_MPC`在本地生成。
+  - 包含代码和小数据的总磁盘占用小于1 GB。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 无需API密钥、令牌或外部账户。
+  - run_QP.py中存在可选的wandb集成，但非必需。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 40
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.10'
+  cuda: '12'
+  pytorch: 2.6.0
+  key_packages:
+  - jax==0.6.2
+  - optax==0.2.4
+  - cvxpy==1.6.6
+  - flax
+  - pinet-hcnn
+  notes:
+  - CPU仅执行模式已完全支持最小配置；通过`pip install pinet-hcnn`安装。
+  - GPU模式需要NVIDIA CUDA 12；通过`pip install "pinet-hcnn[cuda12]"`安装。
+  - 提供了CPU（pinet-cpu）和GPU（pinet-gpu）两种Docker Compose配置以确保可重现性。
+  - GPU Docker方式需要在主机上安装NVIDIA Container Toolkit。
+  - PyTorch仅用于数据加载（torch DataLoader）；JAX是主要计算框架。
+risk_flags:
+- large_dataset_external
+- optional_wandb
+risk_notes:
+- '大规模QP基准测试数据集（d=1000）未打包，需从OpenReview补充材料下载。没有该数据集，只能复现小规模QP实验。'
+- 'run_QP.py中引用了wandb日志记录但为可选；即使没有wandb运行也能完成。'
+- 'GPU CUDA wheel仅支持Linux（x86_64和aarch64）。Windows和macOS仅支持CPU。'
+recommended_when: '当你需要一个涉及隐式层投影方法的约束学习任务时、当你想在参数化QP上比较可行设计方法时、或者当你需要一个可在不到两小时内仅用CPU硬件运行的JAX基准测试时，使用此基准测试。'
+not_recommended_when: '如果需要大规模视觉、语言或多模态训练工作负载，或者需要处理目标函数以外的非凸约束，请勿使用此基准测试。同样不适用于无法安装JAX的环境（如非Linux GPU环境）。'
+paper:
+  title: 'PINet: Optimizing hard-constrained neural networks with orthogonal projection
+    layers'
+  authors:
+  - Panagiotis D. Grontas
+  - Antonio Terpin
+  - Efe C. Balta
+  - Raffaello D'Andrea
+  - John Lygeros
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2508.10480
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.002_pinet.zip
+  archive_type: zip
+  local_dir_name: paper-2-PINet
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.002_pinet.zip
+  sha256: eb3944c02853116c2cf70f2213a7809eee8f0714143e5dac4f7e35876d187535
+  size_bytes: 180464
+commercial:
+  annual_fee: null
+display:
+  palette_seed: graphite-lime-precision
+  art_style: technical-minimal
+  accent_priority: medium
+image_path: ../image/002_aisb.t3.002_pinet.jpg

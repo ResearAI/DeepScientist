@@ -319,9 +319,11 @@ def test_acp_tool_updates_include_args_for_tool_results(temp_home: Path) -> None
             "source": "codex",
             "skill_id": "decision",
             "tool_call_id": "ws_1",
-            "tool_name": "web_search",
+            "tool_name": "mcp__artifact__search_docs",
             "status": "calling",
             "args": "OpenAI homepage official",
+            "mcp_server": "artifact",
+            "mcp_tool": "search_docs",
             "created_at": "2026-03-09T00:00:00Z",
         },
     )
@@ -335,10 +337,12 @@ def test_acp_tool_updates_include_args_for_tool_results(temp_home: Path) -> None
             "source": "codex",
             "skill_id": "decision",
             "tool_call_id": "ws_1",
-            "tool_name": "web_search",
+            "tool_name": "mcp__artifact__search_docs",
             "status": "completed",
             "args": "OpenAI homepage official",
             "output": '{"results": 3}',
+            "mcp_server": "artifact",
+            "mcp_tool": "search_docs",
             "created_at": "2026-03-09T00:00:01Z",
         },
     )
@@ -359,5 +363,9 @@ def test_acp_tool_updates_include_args_for_tool_results(temp_home: Path) -> None
     result_update = next(item for item in tool_updates if item["label"] == "tool_result")
 
     assert call_update["args"] == "OpenAI homepage official"
+    assert call_update["mcp_server"] == "artifact"
+    assert call_update["mcp_tool"] == "search_docs"
     assert result_update["args"] == "OpenAI homepage official"
     assert result_update["output"] == '{"results": 3}'
+    assert result_update["mcp_server"] == "artifact"
+    assert result_update["mcp_tool"] == "search_docs"

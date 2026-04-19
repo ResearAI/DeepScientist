@@ -13,7 +13,7 @@ DeepScientist 灵活且易于使用，支持：
 - 本地优先、开源、一条命令安装
 - Git 驱动的 quest 仓库、Web 工作区、Studio / Canvas 与 TUI
 - 工作坊式协作：可长期自主推进，也可随时接管、协作、改代码、跑终端或记录 Notion 式笔记
-- 默认使用 Codex + `gpt-5.4`
+- 内建 `codex`、`claude`、`opencode` 三种 runner，其中 `codex` 是主路径，`claude` 与 `opencode` 属于 supported experimental
 - 兼容外部 OpenAI-compatible 模型端点
 - 你可以在任何地方使用 DeepScientist：服务器（TUI）、浏览器（Web）、手机（微信或 QQ），甚至眼镜（Rokid Glasses）
 - 每个 quest 绑定一个外部 connector
@@ -77,7 +77,7 @@ DeepScientist 灵活且易于使用，支持：
 ## 如果你是第一次使用
 
 - [00 快速开始](./00_QUICK_START.md)
-  从安装、启动，到创建第一个项目，先看这一篇。
+  从安装、选择 Codex / Claude Code / OpenCode runner，到启动和创建第一个项目，先看这一篇。
 - [20 工作区模式指南](./20_WORKSPACE_MODES_GUIDE.md)
   如果你最纠结的是“应该选 Copilot 还是全自动”，先看这篇。
 - [19 本地浏览器密码说明](./19_LOCAL_BROWSER_AUTH.md)
@@ -86,10 +86,14 @@ DeepScientist 灵活且易于使用，支持：
   如果你主要在服务器或终端里工作，这篇会带你从 `ds --tui` 一路走到 quest、connector 和跨端协作跑通。
 - [15 Codex Provider 配置](./15_CODEX_PROVIDER_SETUP.md)
   如果你准备通过 MiniMax、GLM、火山方舟、阿里百炼 Coding Plan 或其他 Codex profile 来运行 DeepScientist，先看这一篇。
+- [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+  如果 Claude Code 在你的机器上已经能正常工作，并且你想让 DeepScientist 直接复用它，先看这一篇。
+- [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
+  如果 OpenCode 在你的机器上已经能正常工作，并且你想让 DeepScientist 直接复用它的 provider/model 配置，先看这一篇。
 - [21 本地模型后端指南](./21_LOCAL_MODEL_BACKENDS_GUIDE.md)
   如果你想通过 vLLM、Ollama、SGLang 等本地 OpenAI-compatible 后端运行 DeepScientist，先看这一篇。
-- [22 Windows + WSL2 部署指南](./22_WINDOWS_WSL2_DEPLOYMENT_GUIDE.md)
-  如果你希望在 Windows 上通过 WSL2 本地部署 DeepScientist，并配置阿里百炼 Coding Plan，可以直接看这篇。
+- [26 引用与致谢说明](./26_CITATION_AND_ATTRIBUTION.md)
+  如果 DeepScientist 对论文或报告已经产生了实质性帮助，想看推荐引用方式、致谢模板和归因边界，就看这一篇。
 - [12 引导式工作流教程](./12_GUIDED_WORKFLOW_TOUR.md)
   按真实产品流程，逐步理解从首页到工作区应该怎么使用。
 - [02 Start Research 参考](./02_START_RESEARCH_GUIDE.md)
@@ -105,6 +109,8 @@ DeepScientist 灵活且易于使用，支持：
   当你需要配置 runner、connector、运行时默认值或主目录路径时，看这一篇。
 - [11 协议与风险说明](./11_LICENSE_AND_RISK.md)
   如果你关心开源协议、责任边界、服务器安全、结果伪造风险和 connector 泄露风险，先看这一篇。
+- [26 引用与致谢说明](./26_CITATION_AND_ATTRIBUTION.md)
+  如果你主要关心的是论文里该如何引用、如何做温和而清楚的 AI assistance 披露，优先看这篇。
 
 ## 如果你想通过外部协作面继续推进
 
@@ -140,12 +146,18 @@ DeepScientist 灵活且易于使用，支持：
   启动诊断、排查常见运行问题，先看这篇。
 - [15 Codex Provider 配置](./15_CODEX_PROVIDER_SETUP.md)
   如果问题更像出在 Codex profile、provider endpoint、API key 或模型配置上，优先看这篇。
+- [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+  如果问题更像出在 Claude Code 登录、配置目录、permission mode 或 Anthropic 兼容网关上，优先看这篇。
+- [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
+  如果问题更像出在 OpenCode provider 登录、配置文件、模型选择、agent 或 variant 上，优先看这篇。
 - [21 本地模型后端指南](./21_LOCAL_MODEL_BACKENDS_GUIDE.md)
   如果问题具体出在本地 OpenAI-compatible 后端以及 `/v1/responses` 支持上，优先看这篇。
 - [01 设置参考](./01_SETTINGS_REFERENCE.md)
   如果问题可能和配置、凭据或 connector 有关，再查这篇。
 
 ## 如果你在维护 DeepScientist
+- [23 BenchStore GitHub Releases 分发规范](./23_BENCHSTORE_GITHUB_RELEASES_SPEC.md)
+  如果你想把 BenchStore 的 benchmark 源码包发布到 GitHub Releases，并让用户在前端通过 Download 正常安装，先看这篇。
 
 - [90 Architecture](../en/90_ARCHITECTURE.md)
   说明系统级约束、核心契约和仓库结构。

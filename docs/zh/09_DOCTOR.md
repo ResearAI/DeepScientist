@@ -118,6 +118,7 @@ ds --codex /absolute/path/to/codex --codex-profile m27
 同时检查：
 
 - 启动 DeepScientist 的这个 shell 中，provider API key 仍然可见
+- 如果 `codex --profile <name>` 能跑，但 `ds doctor` 或 `ds docker` 仍然提示缺少 provider 环境变量，还要把这个 key 写进 `~/DeepScientist/config/runners.yaml` 的 `runners.codex.env`
 - 该 profile 指向的是 provider 的 Coding Plan endpoint，而不是普通通用 API endpoint
 - 如果你走的是阿里百炼上的 Qwen，只能使用百炼 Coding Plan endpoint；普通百炼 / DashScope 平台的 Qwen API 这里不支持
 - 如果模型应该由 profile 自己决定，请在 `~/DeepScientist/config/runners.yaml` 中使用 `model: inherit`
@@ -233,16 +234,23 @@ git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 ```
 
-### 误开启了 Claude
+### Runner 切换与启用检查
 
-当前开源版本里，`claude` 仍然只是 TODO / 预留位，并不能正常运行。
-请在：
+当前版本已经支持 `codex`、`claude`、`opencode`。
+
+如果你误启用了某个 runner，先检查：
 
 ```text
+~/DeepScientist/config/config.yaml
 ~/DeepScientist/config/runners.yaml
 ```
 
-里把它重新设为禁用。
+然后确认：
+
+- `default_runner` 指向你真正想用的 runner
+- 目标 runner 的 `enabled: true`
+- 不用的 runner 保持禁用
+- 在把 quest 切过去之前，先确保 `ds doctor` 对该 runner 已通过
 
 ## 说明
 

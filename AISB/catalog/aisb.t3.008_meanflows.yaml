@@ -1,0 +1,188 @@
+schema_version: 1
+id: aisb.t3.008_meanflows
+name: Mean Flows for One-step Generative Modeling
+version: 0.1.0
+one_line: 'Train and evaluate a MeanFlow one-step generative model on CIFAR-10, measuring
+  FID-50K via a bundled evaluation script that requires a restored source tree and
+  checkpoint.
+
+  '
+task_description: 'This benchmark covers one-step image generation using the MeanFlow
+  framework, which learns an average velocity field (as opposed to instantaneous velocity
+  in standard Flow Matching) to enable single-NFE sampling. The packaged snapshot
+  includes an evaluation script (eval_cifar10.py) and config but is missing the core
+  MeanFlow training source tree (expected at /py-meanflow/meanflow/) and the pretrained
+  checkpoint (/checkpoints/cifar10_meanflow.pth). Before any benchmark run, agents
+  must restore the upstream MeanFlow codebase (model definitions, train_arg_parser,
+  model_configs) and obtain or retrain the CIFAR-10 checkpoint. Once restored, the
+  evaluation route generates 50,000 samples with a single forward pass per image (1-NFE)
+  using an EMA network, computes FID against CIFAR-10 training images via torchmetrics
+  FrechetInceptionDistance, and reports the scalar FID score. The paper reports FID
+  3.43 on ImageNet 256×256; the CIFAR-10 route here is a smaller-scale reproduction
+  target. Training uses a JVP-based loss with stop-gradient on the target, implemented
+  in JAX in the original paper but the evaluation script is PyTorch. No pre-training,
+  distillation, or curriculum learning is required by the method itself. The optimization
+  goal is to minimize FID while maintaining one-step (1-NFE) generation.
+
+  '
+capability_tags:
+- research_code_optimization
+- generative_modeling
+- diffusion_models
+- computer_vision
+- image_generation
+- flow_matching
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: partial
+support_level: recovery
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- fid
+- generated_samples
+- evaluation_log
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: 'Inspect the preserved eval_cifar10.py, config.yaml, and metric contract
+    without running any generation. Useful for understanding the evaluation route
+    and planning restoration of the missing source tree.
+
+    '
+- id: restore_first
+  label: Restore First
+  description: 'Clone the upstream MeanFlow repository to provide model definitions
+    and train_arg_parser, obtain or retrain the CIFAR-10 checkpoint, then run the
+    full FID-50K evaluation pipeline via eval_cifar10.py.
+
+    '
+- id: train_and_eval
+  label: Train and Evaluate
+  description: 'Restore the full training pipeline, train MeanFlow on CIFAR-10 from
+    scratch using the JVP-based average-velocity loss, then evaluate FID-50K. Expect
+    multi-hour training on 2× A100 GPUs.
+
+    '
+dataset_download:
+  primary_method: torchvision
+  sources:
+  - kind: torchvision
+    url: https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz
+    access: public
+    note: 'CIFAR-10 training set (50K images, 32×32). The eval script expects pre-downloaded
+      data at /tmp/cifar10_data/cifar10_data with download=False. Use torchvision.datasets.CIFAR10(download=True)
+      to fetch automatically.
+
+      '
+  notes:
+  - CIFAR-10 is approximately 170 MB compressed, under 1 GB extracted.
+  - The pretrained checkpoint (cifar10_meanflow.pth) is not bundled and must be obtained
+    or retrained.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No API keys or credentials are needed. CIFAR-10 is freely downloadable.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 60
+    gpu_count: 2
+    gpu_vram_gb: 40
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 120
+    gpu_count: 2
+    gpu_vram_gb: 80
+environment:
+  python: '3.10'
+  cuda: '12.1'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages:
+  - torchvision
+  - torchmetrics
+  - numpy
+  notes:
+  - The original paper implementation uses JAX with jax.jvp for the JVP-based training
+    loss; the bundled eval script uses PyTorch with torch.func.jvp.
+  - The local reproduction config used two A100 GPUs for FID-50K evaluation.
+  - The upstream MeanFlow source tree (model definitions, train_arg_parser, model_configs)
+    must be restored before execution.
+  - Batch size defaults to 128 for evaluation; adjust based on available VRAM.
+risk_flags:
+- missing_source_tree
+- missing_checkpoint
+- hardcoded_paths
+- no_prior_execution
+risk_notes:
+- The eval script hardcodes paths to /py-meanflow/meanflow/ and /checkpoints/cifar10_meanflow.pth
+  which do not exist in the snapshot.
+- The core MeanFlow model code (models/model_configs.py, train_arg_parser.py) is not
+  present in the local snapshot and must be sourced from the upstream repository.
+- No benchmark execution was performed during packaging; all metric values are unverified.
+- The README is absent from the current snapshot; rely on AGENTS.md, OPTIMIZATION.md,
+  and the paper for guidance.
+- The training route requires JAX if following the paper's implementation, but the
+  eval route is PyTorch-based, creating a potential framework mismatch.
+recommended_when: 'Use this benchmark when you want a compact, single-dataset image
+  generation task with a clear scalar FID target, one-step (1-NFE) sampling as the
+  core constraint, and interest in optimizing flow-based generative models without
+  distillation or curriculum learning. Good for agents that can handle code restoration
+  and dependency resolution.
+
+  '
+not_recommended_when: 'Do not use this if you cannot provision at least two modern
+  CUDA GPUs (≥40 GB VRAM each) for sample generation and FID scoring, or if you need
+  a fully self-contained ready-to-run benchmark without any source tree restoration.
+  Also avoid if you require ImageNet-scale results, as this snapshot targets CIFAR-10
+  only.
+
+  '
+paper:
+  title: Mean Flows for One-step Generative Modeling
+  authors:
+  - Zhengyang Geng
+  - Mingyang Deng
+  - Xingjian Bai
+  - J. Zico Kolter
+  - Kaiming He
+  affiliations:
+  - CMU
+  - MIT
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2505.13447
+  key_results:
+  - metric: FID
+    value: 3.43
+    dataset: ImageNet 256×256
+    condition: 1-NFE, trained from scratch, no distillation
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.008_meanflows.zip
+  archive_type: zip
+  local_dir_name: paper-8-MeanFlows
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.008_meanflows.zip
+  sha256: 3583357776f7b2d323b8a8170a88cb6559c1c90319e5b2947dc84ad1baf822e3
+  size_bytes: 100179
+commercial:
+  annual_fee: null
+display:
+  palette_seed: magenta-slate-ode
+  art_style: modern-lab
+  accent_priority: high
+image_path: ../image/008_aisb.t3.008_meanflows.jpg

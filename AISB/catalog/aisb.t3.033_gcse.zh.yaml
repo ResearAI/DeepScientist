@@ -1,0 +1,126 @@
+id: aisb.t3.033_gcse
+name: GCSE
+version: 0.1.0
+one_line: 基于知识图谱引导增强和高斯衰减对比学习的无监督句子嵌入优化，实现噪声感知训练。
+task_description: '本基准测试包涵盖基于高斯衰减梯度辅助对比句子嵌入（GCSE）模型的无监督句子嵌入训练。该方法针对无监督句子表示学习中的两个主要挑战：数据多样性不足和数据噪声过高。流程首先从源数据中提取细粒度知识（实体、数量）以构建知识图谱，然后使用大语言模型合成多样化正样本。评估模型对假正例进行标注和过滤，而高斯衰减函数在训练过程中降低假负例的梯度影响，逐步恢复权重。这在保持样本多样性的同时，防止噪声样本扭曲语义空间。基准测试通过SentEval在多个STS任务上进行评估。
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- avg_sts
+- embedding_checkpoint
+- contrastive_eval_report
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 使用SentEval在STS基准测试（STS12-STS16、STS-Benchmark、SICK-Relatedness）上运行打包的句子嵌入评估流程。
+- id: full_train_eval
+  label: 完整训练 + 评估
+  description: 执行完整的GCSE训练流程，包括知识图谱构建、基于大语言模型的数据合成、去噪和下游评估。
+dataset_download:
+  primary_method: url
+  sources:
+  - url: https://deepscientist.cc/AISB/033_gcse
+    archive_type: zip
+  notes:
+  - 数据集包含源领域数据及用于增强的预处理知识图谱。
+  - 基于大语言模型的数据合成可能需要额外的模型权重，具体取决于配置。
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.12'
+  cuda: '12.0'
+  pytorch: '2.0'
+  flash_attn: null
+  key_packages:
+  - transformers==4.44.1
+  - senteval
+  - prettytable
+  notes:
+  - README明确建议为基于大语言模型的数据合成任务配置独立的vLLM环境。
+  - 默认训练使用bert-base-uncased作为基础模型；根据论文实验，还支持其他编码器变体（BERT-large、RoBERTa-base、RoBERTa-large）。
+  - 有关完整环境设置，请参阅附带的requirements.txt和流程依赖项。
+risk_flags:
+- requires_llm_synthesis
+- single_gpu_training
+risk_notes:
+  - 基于大语言模型的数据合成（流程5-8）需要访问语言模型进行推理；推荐使用vLLM以提高效率。
+  - 训练时间随数据集大小和合成量增加而延长；6-24小时的估计假设使用中等规模的领域数据。
+  - 本次打包过程中未执行基准测试运行；在使用报告的指标值之前，建议进行运行时验证。
+recommended_when: '当您需要进行中等规模的NLP训练任务，且重点关注语义文本相似性和句子嵌入鲁棒性时，可使用此基准测试。适用于探索知识驱动数据增强或噪声感知对比学习以改进无监督句子表示的场景。
+
+  '
+not_recommended_when: '如果您需要完全基于CPU的工作流程、以完全自回归生成为中心的基准测试，或没有可用的GPU资源，请勿使用此基准测试。不适用于需要大规模多GPU分布式训练的任务。
+
+  '
+paper:
+  title: Enhancing Unsupervised Sentence Embeddings via Knowledge-Driven Data Augmentation
+    and Gaussian-Decayed Contrastive Learning
+  venue: ACL 2025
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.244/
+  authors:
+  - Peichao Lai (Peking University)
+  - Zhengfeng Zhang (Fuzhou University)
+  - Wentao Zhang (Peking University)
+  - Fangcheng Fu (Peking University)
+  - Bin Cui (Peking University)
+  abstract_summary: 本文提出了一种名为GCSE的新方法，通过知识图谱引导的数据增强和高斯衰减对比学习来提升无监督句子嵌入的质量。该方法首先利用知识图谱获取细粒度知识来增强数据多样性，然后通过高斯衰减函数降低噪声样本的影响。在多个STS基准测试上的实验表明，该方法显著优于现有无监督方法。
+  abstract: '无监督句子嵌入学习面临着数据多样性不足和噪声干扰的双重挑战。本研究提出了一种名为高斯衰减梯度辅助对比句子嵌入（GCSE）的新方法，通过知识驱动的数据增强和噪声感知对比学习来解决这些问题。首先，我们从源数据中提取细粒度知识（实体、数量）构建知识图谱，并利用大语言模型合成多样化的正样本。然后，引入高斯衰减函数来降低训练过程中假负例的梯度影响，同时通过评估模型过滤假正例。在多个标准STS基准测试上的实验表明，我们的方法显著提升了无监督句子嵌入的性能，超越了现有的最先进方法。
+
+    '
+  notes: []
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.033_gcse.zip
+  archive_type: zip
+  local_dir_name: paper-33-GCSE
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.033_gcse.zip
+  sha256: 1d0220f894ed883ae572eb0da0ce1a358966a280ddfafadeb19a9db1f01f7866
+  size_bytes: 912820
+display:
+  palette_seed: mint-slate-semantic
+  art_style: embedding-atlas
+  accent_priority: medium
+image_path: ../image/033_aisb.t3.033_gcse.jpg
+capability_tags:
+- research_code_optimization
+- sentence_embeddings
+- representation_learning
+- data_augmentation
+- nlp
+- contrastive_learning
+- knowledge_graphs
+- noise_aware_training
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null

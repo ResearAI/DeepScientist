@@ -1,0 +1,161 @@
+schema_version: 1
+id: aisb.t3.022_chainofreasoning
+name: Chain-of-Reasoning (CoR)
+version: 0.1.0
+one_line: '训练并评估 CoR-Math-7B，一个多范式数学推理模型，通过链式整合自然语言、算法（Python）和符号（Lean 4）推理来求解算术和定理证明基准测试（GSM8K、MATH、miniF2F、AMC 2023、AIME 2024）。
+
+  '
+task_description: '本基准测试涵盖完整的链式推理（CoR）流程：(1) 通过扩展 Lean-Workbook 和 NuminaMath-TIR，利用 GPT-4o 生成跨范式解答和 Lean 4 证明验证，构建多范式数学（MPM）数据集（约 167k 条推理路径）；(2) 在 7B 基座模型上通过 DeepSpeed ZeRO Stage 3 SFT 进行三个阶段的渐进范式训练（PPT）——仅 NLR、NLR+AR、NLR+AR+SR；(3) 使用 vLLM 推理和顺序多范式采样（SMPS）在五个数学基准测试（GSM8K、MATH、miniF2F、AMC 2023、AIME 2024）上评估最终的 CoR-Math-7B 模型。评估脚本（evaluation/eval_CoR.py）计算准确率、收集推理轨迹，并可选地通过捆绑的 Lean 服务器调度器验证 Lean 4 证明。数据集构建步骤需要 OpenAI API 密钥并调用 GPT-4o；训练和评估步骤在数据准备完成后可独立运行。
+
+  '
+capability_tags:
+- research_code_optimization
+- mathematical_reasoning
+- formal_methods
+- large_language_models
+- theorem_proving
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 1d+
+difficulty: hard
+data_access: public
+primary_outputs:
+- accuracy
+- reasoning_traces
+- lean_artifacts
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: '仅在单个基准测试（如 MATH 或 GSM8K）上使用预训练检查点和捆绑的 eval_CoR.py 脚本进行 vLLM 推理评估。完全跳过数据集构建和训练步骤。需要模型检查点和 1-8 块 GPU。
+
+    '
+- id: full_train_eval
+  label: 完整训练+评估
+  description: '从 Lean-Workbook 和 NuminaMath-TIR 构建 MPM 数据集（需要 OpenAI API 密钥用于 GPT-4o 增强）、运行三阶段渐进范式训练的 DeepSpeed ZeRO-3，然后在所有五个基准测试（GSM8K、MATH、miniF2F、AMC 2023、AIME 2024）上进行评估。这是论文忠实路线，需要多 GPU 基础设施和 Lean 4/Mathlib 构建。
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/internlm/Lean-Workbook
+    access: public
+    note: 'lean_workbook.json — 符号推理范式的种子数据。在 utils/generate_informalproof.py 中用于创建非形式证明。
+
+      '
+  - kind: huggingface
+    url: https://huggingface.co/datasets/AI-MO/NuminaMath-TIR
+    access: public
+    note: 'train-00000-of-00001.parquet — 算法推理范式的种子数据。需转换为 JSON 供 utils/generate_lean4.py 使用。
+
+      '
+  notes:
+  - 'MPM 数据集（约 167k 条路径来自约 83k 道题目）由用户在运行时通过 GPT-4o 增强脚本构建，并非直接可下载。
+
+    '
+  - '原始种子数据集规模适中（数十 GB）；合成后的 MPM 数据集和模型检查点将需要额外的存储空间。
+
+    '
+credential_requirements:
+  mode: optional
+  items:
+  - OpenAI API 密钥（仅在通过 GPT-4o 构建 MPM 数据集时需要）
+  - Weights & Biases API 密钥（可选，用于训练日志记录）
+  notes:
+  - 'OpenAI API 密钥用于 script/leanwb_informalproof.sh 和 script/numinatir_lean4.sh 调用 GPT-4o 生成跨范式推理路径。如果您使用预构建的 MPM 数据集或预训练检查点，则不需要 API 密钥。
+
+    '
+  - 'WandB 凭据在 script/train_CoR.sh 中设置，但可设为离线模式。
+
+    '
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 250
+    gpu_count: 1
+    gpu_vram_gb: 48
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 500
+    gpu_count: 8
+    gpu_vram_gb: 80
+environment:
+  python: '3.10'
+  cuda: '12.1'
+  pytorch: 2.5.1
+  flash_attn: 2.7.0.post2
+  key_packages:
+  - flash-attn==2.7.0.post2
+  - deepspeed==0.15.4
+  - vllm==0.6.4.post1
+  - transformers==4.46.3
+  - accelerate
+  - datasets
+  notes:
+  - 完整的依赖项请参见 requirements.txt。
+  - 'Lean 4 必须通过 elan（leanprover-community.github.io）单独安装。在运行定理证明评估或 MPM 数据集构建之前，必须使用 `lake build` 在本地构建 Mathlib4。
+
+    '
+  - '仓库中未明确固定 CUDA 版本；根据 vLLM 和 flash-attn 的兼容性，推荐 12.1 版本。11.8 也可能可用。
+
+    '
+risk_flags:
+- external_api_dependency
+- lean_toolchain_setup
+- large_training_pipeline
+- openai_cost
+risk_notes:
+- 'MPM 数据集构建需要在约 285k 样本上大量调用 OpenAI API（GPT-4o），可能产生可观的 API 费用。完整构建需预算数百美元。
+
+  '
+- 'Lean 4 和 Mathlib4 必须在本地编译。Mathlib 构建本身可能需要 1-2 小时，并需要大量 RAM。在配置不当的系统上构建失败很常见。
+
+  '
+- '训练在最多 8 块 GPU 上使用 DeepSpeed ZeRO Stage 3 运行 4 个 epoch。训练脚本有占位符路径，启动前必须编辑。
+
+  '
+- '评估脚本使用 vLLM 且 gpu_memory_utilization=0.95，根据批次大小不同可能在显存小于 48 GB 的 GPU 上导致 OOM。
+
+  '
+recommended_when: '当您需要一个重量级、多阶段的数学推理任务，将 LLM 微调、Lean 4 形式验证、Python 代码执行和自然语言思维链相结合时使用此基准测试。非常适合探索多范式协作如何提升数学推理能力，涵盖算术计算（GSM8K、MATH、AIME）和定理证明（miniF2F）。
+
+  '
+not_recommended_when: '如果无法配置多 GPU 基础设施（≥48 GB 显存）、无法安装和构建 Lean 4 + Mathlib4，或希望避免 OpenAI API 数据集构建费用，请勿使用此基准测试。同样不适合需要快速、独立运行的纯评估基准测试——完整流程需要大量设置和计算时间。
+
+  '
+paper:
+  title: 'Chain-of-Reasoning: Towards Unified Mathematical Reasoning in Large Language
+    Models via a Multi-Paradigm Perspective
+
+    '
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2501.11110
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.022_chainofreasoning.zip
+  archive_type: zip
+  local_dir_name: paper-22-ChainOfReasoning
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.022_chainofreasoning.zip
+  sha256: 10a4cef8d810a0806780f11b2059b970a3ac4152b614f97a1e9e47294629764b
+  size_bytes: 986391
+commercial:
+  annual_fee: null
+display:
+  palette_seed: cobalt-ivory-proof
+  art_style: formal-reasoning
+  accent_priority: high
+image_path: ../image/022_aisb.t3.022_chainofreasoning.jpg

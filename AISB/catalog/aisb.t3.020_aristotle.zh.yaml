@@ -1,0 +1,119 @@
+schema_version: 1
+id: aisb.t3.020_aristotle
+name: 'Aristotle：使用逻辑完备的分解-搜索-解决框架掌握逻辑推理'
+version: 0.1.0
+one_line: '多阶段LLM驱动的逻辑推理基准测试，采用符号分解、双路径反证法搜索和针对ProntoQA、ProofWriter及LogicNLI数据集的归结技术。'
+task_description: '本基准测试用于评估和优化Aristotle框架——一个面向LLM的逻辑完备推理流程。该工作流包含四个阶段：(1) translate_decompose.py将自然语言前提转换为Prolog风格的符号表达式，并将其分解为合取范式；(2) negate.py通过对目标猜想取反来初始化双搜索路径；(3) search_resolve.py执行反证法搜索和子句归结，运行两次（一次negation=True，一次negation=False），为每个数据集生成两个结果文件；(4) evaluate.py使用论文中的公式(1)聚合双路径答案，并计算相对于黄金标签的准确率。所有LLM调用都通过OpenAI兼容API进行（GPT-4、GPT-4o、Claude或LLaMA，通过base_url配置）。支持三个难度递增的捆绑数据集：ProntoQA（基础演绎推理）、ProofWriter（与或结构）和LogicNLI（异或、双条件）。主要评估指标是准确率，通过evaluate.py计算。无需GPU，主要成本驱动因素是API token使用量。'
+capability_tags:
+- research_code_optimization
+- logical_reasoning
+- llm_tooling
+- evaluation
+- symbolic_reasoning
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+cost_band: low
+time_band: 1-2h
+difficulty: medium
+data_access: public
+snapshot_status: runnable
+support_level: turnkey
+primary_outputs:
+- accuracy
+- reasoning_traces
+- evaluation_report
+launch_profiles:
+- id: quick_check
+  label: 快速检查
+  description: '在单个数据集（如ProntoQA开发集）上运行完整的四阶段流程（translate_decompose → negate → search_resolve × 2 → evaluate），以验证端到端连通性和API访问。'
+- id: benchmark_eval
+  label: 完整基准测试评估
+  description: '使用目标模型（GPT-4或GPT-4o）在所有三个数据集（ProntoQA、ProofWriter、LogicNLI）上运行Aristotle流程，并收集准确率分数以与论文基准进行对比。'
+- id: single_dataset
+  label: 单数据集运行
+  description: '在选定的单个数据集上运行，以便在提交完整测试套件之前迭代框架改进。'
+dataset_download:
+  primary_method: bundled
+  sources:
+  - kind: local
+    url: ./data
+    access: public
+    note: 'ProntoQA、ProofWriter和LogicNLI的数据应位于./data/{dataset_name}/目录下。提示模板位于./prompts/{dataset_name}/目录下。部分数据错误修正存储在./data_errors/LogicNLI/中。'
+  notes:
+  - 数据集文件似乎以捆绑形式包含在快照的./data目录下；下载后请验证完整性。
+  - 总体数据占用很小（远低于1 GB）。
+credential_requirements:
+  mode: api_key
+  items:
+  - OpenAI API密钥（或用于GPT-4/GPT-4o/Claude/LLaMA服务的兼容端点密钥）
+  notes:
+  - translate_decompose.py和search_resolve.py需要--api_key参数。
+  - 可选的--base_url参数允许指向非OpenAI端点。
+  - API成本取决于数据集大小和模型选择；GPT-4每个token的成本显著高于GPT-4o。
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - openai==0.27.9
+  notes:
+  - 仅CPU执行；无需GPU。
+  - 所有重型计算都卸载到LLM API；本地计算负责I/O和符号搜索路由。
+  - negate.py是纯Python，无需API调用。
+  - 完整依赖项请参见requirements.txt。
+  - openai包版本（0.27.9）使用旧版API接口；如使用新版SDK请验证兼容性。
+risk_flags:
+- api_dependency
+- api_cost_variable
+- legacy_sdk_version
+risk_notes:
+  - 除negate.py外，所有翻译、分解、搜索和归结阶段都需要实时API访问；基准测试无法离线运行。
+  - API成本随数据集大小和搜索迭代次数（由--search_round和--batch_num控制）而增加。
+  - openai==0.27.9是旧版SDK；较新的OpenAI端点可能需要迁移到openai>=1.0。
+  - 打包过程中未执行基准测试；尚未验证指标值。
+  - 通过线程进行的并发批处理执行可能会触及提供商的API速率限制。
+recommended_when: '当您需要进行由API支持的分解、符号搜索路由和归结阶段驱动的结构化逻辑推理评估，且覆盖逻辑复杂度递增的数据集时使用此基准测试。非常适合研究LLM如何处理形式符号推理、反证法证明和基于CNF的子句归结，同时无需本地GPU资源。'
+not_recommended_when: '如果需要完全离线或以GPU训练为中心的基准测试，请勿使用。如果无法配置OpenAI兼容的API密钥或需要避免按查询计费的API成本，也不宜使用。此外，如果需要确定性的可复现性，此基准测试也不理想，因为LLM API输出具有随机性。'
+paper:
+  title: 'Aristotle: Mastering Logical Reasoning with A Logic-Complete Decompose-Search-Resolve
+    Framework'
+  venue: ACL 2025
+  year: 2025
+  url: https://arxiv.org/abs/2412.16953
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.020_aristotle.zip
+  archive_type: zip
+  local_dir_name: paper-20-Aristotle
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.020_aristotle.zip
+  sha256: f6c04512a751c42a8cd33286a62c46b34019cf91eac8d1245cead4de475b84e2
+  size_bytes: 695245
+commercial:
+  annual_fee: null
+display:
+  palette_seed: parchment-navy-logic
+  art_style: structured-proof
+  accent_priority: medium
+image_path: ../image/020_aisb.t3.020_aristotle.jpg

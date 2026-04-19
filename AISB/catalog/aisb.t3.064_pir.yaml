@@ -1,0 +1,221 @@
+id: aisb.t3.064_pir
+name: Improving Time Series Forecasting via Instance-aware Post-hoc Revision
+version: 0.1.0
+one_line: Model-agnostic post-hoc revision framework that identifies and repairs biased
+  time series forecast instances through local and global context-guided revision.
+task_description: 'This packaged benchmark covers PIR (Post-forecasting Identification
+  and Revision), a model-agnostic framework designed to enhance time series forecasting
+  by addressing instance-level variations that mainstream models overlook. The framework
+  operates in two stages: (1) Failure Identification, which estimates per-instance
+  forecasting accuracy to detect potentially biased outputs, and (2) Forecast Revision,
+  which refines identified failures using contextual information from both local and
+  global perspectives. Local revision leverages immediate covariate forecasts and
+  exogenous information within a sliding window; global revision employs retrieval-based
+  strategies to capture long-tail patterns from historical data. The revised forecasts
+  integrate with original outputs via weighted summation, making PIR compatible with
+  arbitrary forecasting backbones including PatchTST, iTransformer, SparseTSF, and
+  TimeMixer. Experiments cover long-term and short-term forecasting settings on established
+  real-world datasets (ETTh1, ETTm1, Weather, Electricity, Traffic).
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- mse
+- mae
+- revision_outputs
+- forecast_report
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run one packaged PIR-enhanced forecasting evaluation route on a single
+    backbone and dataset combination.
+- id: full_revision_eval
+  label: Full Revision Eval
+  description: Run the full packaged post-hoc revision workflow across all supported
+    forecasting backbones and datasets.
+dataset_download:
+  primary_method: bundled
+  sources:
+  - name: ETTh1/ETTm1
+    url: https://github.com/thuml/Time-Series-Library
+    note: ETT benchmark from Time-Series-Library
+  - name: Weather
+    url: https://github.com/thuml/Time-Series-Library
+    note: Weather forecasting dataset
+  - name: Electricity
+    url: https://github.com/thuml/Time-Series-Library
+    note: UCI electricity consumption dataset
+  - name: Traffic
+    url: https://github.com/thuml/Time-Series-Library
+    note: PEMS-BAY traffic dataset
+  notes:
+  - Datasets managed via data_provider/data_factory.py and data_loader.py
+  - Data loading follows Time-Series-Library conventions
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.8'
+  cuda: '11.0'
+  pytorch: 1.12.0
+  flash_attn: null
+  key_packages:
+  - name: torch
+    min_version: 1.12.0
+  - name: numpy
+    note: For array operations and metrics computation
+  - name: pandas
+    note: For time series data handling
+  notes:
+  - Built on Time-Series-Library (thuml/Time-Series-Library)
+  - See bundled README/requirements for full dependency set
+  - Models implemented in models/ directory (models/PIR.py, models/PatchTST.py, etc.)
+  - Core execution via run.py with exp/exp_long_term_forecasting_pir.py
+  - Metrics computed in utils/metrics.py (MSE, MAE, RMSE, MAPE, MSPE)
+risk_flags:
+- long_tail_patterns
+- distribution_shift
+- instance_variation
+risk_notes:
+- Instance-level variations arise from distribution shifts, missing data, and long-tail
+  patterns
+- Global revision relies on retrieval quality from historical context
+- Weighted integration of original and revised forecasts requires careful tuning per
+  backbone
+recommended_when: 'Use this benchmark when you want to enhance an existing forecasting
+  backbone with post-hoc revision capabilities. Ideal for evaluating model-agnostic
+  forecasting improvements, studying instance-level error patterns, or benchmarking
+  post-processing strategies on established time series datasets.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you need a from-scratch foundation-model
+  training task, require a forecasting task without backbones to enhance, or seek
+  methods that operate within the forward pass rather than as post-processing.
+
+  '
+paper:
+  title: Improving Time Series Forecasting via Instance-aware Post-hoc Revision
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://arxiv.org/abs/2505.23583
+  authors:
+  - Zhiding Liu
+  - Mingyue Cheng
+  - Guanhao Zhao
+  - Jiqian Yang
+  - Qi Liu
+  - Enhong Chen
+  affiliation: University of Science and Technology of China
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.064_pir.zip
+  archive_type: zip
+  local_dir_name: paper-64-PIR
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.064_pir.zip
+  sha256: 6908afed6d75d39e1d32ceb6504872021a9fc5bf222e115ab78a85fb402716fb
+  size_bytes: 1127481
+display:
+  palette_seed: amber-blue-revise
+  art_style: repair-notebook
+  accent_priority: medium
+image_path: ../image/064_aisb.t3.064_pir.jpg
+capability_tags:
+- research_code_optimization
+- time_series_forecasting
+- post_hoc_revision
+- forecasting
+- instance_level_modeling
+- model_agnostic
+- long_tail_patterns
+- retrieval_augmented
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+commercial:
+  annual_fee: null
+code_anchors:
+  executable:
+  - path: run.py
+    role: Entry point for training and evaluation
+  - path: exp/exp_long_term_forecasting_pir.py
+    role: PIR experiment class implementing training/evaluation loop
+  - path: utils/metrics.py
+    role: Metric functions (MSE, MAE, RMSE, MAPE, MSPE)
+  data:
+  - path: data_provider/data_factory.py
+    role: Data loader factory
+  - path: data_provider/data_loader.py
+    role: Time series data loading
+  models:
+  - path: models/PIR.py
+    role: PIR model implementation
+  - path: models/PatchTST.py
+    role: PatchTST backbone
+  - path: models/iTransformer.py
+    role: iTransformer backbone
+  - path: models/SparseTSF.py
+    role: SparseTSF backbone
+  - path: models/TimeMixer.py
+    role: TimeMixer backbone
+  scripts:
+  - path: scripts/
+    role: Shell scripts for running backbone and PIR-enhanced experiments per dataset
+metric_contract:
+  mse:
+    origin_path: utils/metrics.py
+    source_ref: MSE function
+    evaluation_protocol:
+      code_paths:
+      - exp/exp_long_term_forecasting_pir.py
+      - utils/metrics.py
+    status: code_backed
+  mae:
+    origin_path: utils/metrics.py
+    source_ref: MAE function
+    evaluation_protocol:
+      code_paths:
+      - exp/exp_long_term_forecasting_pir.py
+      - utils/metrics.py
+    status: code_backed
+  rmse:
+    origin_path: utils/metrics.py
+    source_ref: RMSE function
+    evaluation_protocol:
+      code_paths:
+      - exp/exp_long_term_forecasting_pir.py
+      - utils/metrics.py
+    status: code_backed
+notes:
+- PIR operates as a post-processing plugin, not requiring modifications to the base
+  forecaster
+- The framework handles both long-term and short-term forecasting scenarios
+- Integration with Time-Series-Library ensures compatibility with standard benchmark
+  protocols
+- Static code audit confirms executable anchors for all staged metrics
+- No benchmark execution was performed during packaging pass; runtime validation recommended

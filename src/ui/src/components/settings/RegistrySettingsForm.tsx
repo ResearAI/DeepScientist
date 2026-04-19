@@ -504,11 +504,6 @@ function RunnerCard({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-xl font-semibold tracking-tight">{catalogEntry?.label || runnerName}</h3>
-                {runnerName === 'claude' ? (
-                  <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-amber-700 dark:text-amber-200">
-                    TODO
-                  </span>
-                ) : null}
                 {testItem ? (
                   <span className="text-xs text-muted-foreground">{testItem.ok ? t.ok : t.needsWork}</span>
                 ) : null}
@@ -538,7 +533,7 @@ function RunnerCard({
           />
           <div className="mt-3 text-xs text-muted-foreground">{t.runnerIdHint}</div>
         </div>
-        {runnerFields.map((field) => (
+        {runnerFields.filter((field) => !field.runners || field.runners.includes(runnerName)).map((field) => (
           <StructuredFieldControl
             key={`${runnerName}-${field.key}`}
             field={field}
@@ -822,7 +817,7 @@ export function RegistrySettingsForm({
                     approval_policy: 'never',
                     sandbox_mode: 'danger-full-access',
                     retry_on_failure: true,
-                    retry_max_attempts: 5,
+                    retry_max_attempts: 7,
                     retry_initial_backoff_sec: 10,
                     retry_backoff_multiplier: 6,
                     retry_max_backoff_sec: 1800,

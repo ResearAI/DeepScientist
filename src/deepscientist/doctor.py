@@ -8,7 +8,7 @@ import sys
 import tempfile
 from shutil import which
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -17,7 +17,7 @@ from .config import ConfigManager
 from .diagnostics import diagnose_runner_failure
 from .home import ensure_home_layout
 from .runtime_tools import RuntimeToolService
-from .shared import read_json, read_jsonl_tail, resolve_runner_binary, utc_now
+from .shared import read_json, read_jsonl_tail, resolve_runner_binary, utc_now, utf8_text_subprocess_kwargs
 
 
 _RUNTIME_FAILURE_LOOKBACK = timedelta(hours=24)
@@ -172,7 +172,7 @@ def _check_uv(home: Path) -> dict[str, Any]:
             [resolved, "--version"],
             check=False,
             capture_output=True,
-            text=True,
+            **utf8_text_subprocess_kwargs(),
         )
         if result.returncode == 0:
             version = (result.stdout or result.stderr or "").strip()
@@ -233,96 +233,104 @@ def _check_runner_support(config_manager: ConfigManager) -> dict[str, Any]:
     runners_payload = config_manager.load_named_normalized("runners")
 
     default_runner = str(config_payload.get("default_runner") or "codex").strip().lower() or "codex"
-    codex_cfg = runners_payload.get("codex") if isinstance(runners_payload.get("codex"), dict) else {}
-    claude_cfg = runners_payload.get("claude") if isinstance(runners_payload.get("claude"), dict) else {}
+    enabled_runners = sorted(
+        name for name, value in runners_payload.items() if isinstance(value, dict) and bool(value.get("enabled", False))
+    )
 
     errors: list[str] = []
     warnings: list[str] = []
     guidance: list[str] = []
 
-    if default_runner != "codex":
-        errors.append("Current open-source release supports `codex` as the runnable default runner.")
-        guidance.append("Set `default_runner: codex` in `~/DeepScientist/config/config.yaml`.")
-    if not bool(codex_cfg.get("enabled", False)):
-        errors.append("`runners.codex.enabled` must stay `true` in the current release.")
-        guidance.append("Set `runners.codex.enabled: true` in `~/DeepScientist/config/runners.yaml`.")
-    if bool(claude_cfg.get("enabled", False)):
-        errors.append("`claude` is still TODO in the current release and should stay disabled.")
-        guidance.append("Set `runners.claude.enabled: false` in `~/DeepScientist/config/runners.yaml`.")
-    else:
-        warnings.append("`claude` remains a TODO/reserved runner slot and is not runnable yet.")
+    if not enabled_runners:
+        errors.append("At least one runner must be enabled.")
+        guidance.append("Enable one of `codex`, `claude`, or `opencode` in `~/DeepScientist/config/runners.yaml`.")
+    if default_runner not in runners_payload:
+        errors.append(f"Configured default runner `{default_runner}` does not exist in `runners.yaml`.")
+    elif default_runner not in enabled_runners:
+        errors.append(f"Configured default runner `{default_runner}` is currently disabled.")
+        guidance.append(
+            f"Set `runners.{default_runner}.enabled: true`, or switch `default_runner` to one of: {', '.join(enabled_runners) or 'none'}."
+        )
+    if len(enabled_runners) > 1:
+        warnings.append(f"Multiple runners are enabled: {', '.join(enabled_runners)}.")
 
     return _make_check(
         check_id="runner_support",
         label="Supported runners",
         ok=len(errors) == 0,
-        summary="Runner policy matches the current release surface." if len(errors) == 0 else "Runner policy needs adjustment.",
+        summary="Runner policy is internally consistent." if len(errors) == 0 else "Runner policy needs adjustment.",
         warnings=warnings,
         errors=errors,
         guidance=guidance,
-        details={"default_runner": default_runner},
+        details={"default_runner": default_runner, "enabled_runners": enabled_runners},
     )
 
 
-def _check_codex(config_manager: ConfigManager) -> dict[str, Any]:
+def _check_runner(config_manager: ConfigManager, runner_name: str) -> dict[str, Any]:
+    normalized_runner = str(runner_name or "codex").strip().lower() or "codex"
     runners_payload = config_manager.load_named_normalized("runners")
-    codex_cfg = runners_payload.get("codex") if isinstance(runners_payload.get("codex"), dict) else {}
-    binary = str(codex_cfg.get("binary") or "codex").strip() or "codex"
-    resolved_binary = resolve_runner_binary(binary, runner_name="codex")
+    runner_cfg = runners_payload.get(normalized_runner) if isinstance(runners_payload.get(normalized_runner), dict) else {}
+    binary = str(runner_cfg.get("binary") or normalized_runner).strip() or normalized_runner
+    resolved_binary = resolve_runner_binary(binary, runner_name=normalized_runner)
+    label = {"codex": "Codex CLI", "claude": "Claude Code CLI", "opencode": "OpenCode CLI"}.get(normalized_runner, normalized_runner)
 
     if not resolved_binary:
+        guidance = config_manager._runner_missing_binary_guidance(normalized_runner, runner_cfg)
         return _make_check(
-            check_id="codex",
-            label="Codex CLI",
+            check_id=normalized_runner,
+            label=label,
             ok=False,
-            summary="Codex CLI is not available to DeepScientist.",
+            summary=f"{label} is not available to DeepScientist.",
             errors=[f"Runner binary `{binary}` could not be resolved."],
-            guidance=config_manager._codex_missing_binary_guidance(codex_cfg),
+            guidance=guidance,
             details={"binary": binary},
         )
 
-    probe = config_manager.probe_codex_bootstrap(persist=False, payload=runners_payload)
+    probe = (
+        config_manager.probe_codex_bootstrap(persist=False, payload=runners_payload)
+        if normalized_runner == "codex"
+        else config_manager.probe_runner_bootstrap(normalized_runner, persist=False, payload=runners_payload)
+    )
     probe_errors = [str(value) for value in probe.get("errors") or []]
     probe_warnings = [str(value) for value in probe.get("warnings") or []]
     probe_guidance = [str(value) for value in probe.get("guidance") or []]
-    summary = str(probe.get("summary") or "Codex startup probe completed.")
+    summary = str(probe.get("summary") or f"{label} startup probe completed.")
     probe_details = probe.get("details") if isinstance(probe.get("details"), dict) else {}
-    diagnosis = diagnose_runner_failure(
-        runner_name="codex",
-        summary="\n".join([summary, *probe_errors]),
-        stderr_text=str(probe_details.get("stderr_excerpt") or ""),
-        output_text=str(probe_details.get("stdout_excerpt") or ""),
-    )
+    diagnosis = None
+    if normalized_runner == "codex":
+        diagnosis = diagnose_runner_failure(
+            runner_name="codex",
+            summary="\n".join([summary, *probe_errors]),
+            stderr_text=str(probe_details.get("stderr_excerpt") or ""),
+            output_text=str(probe_details.get("stdout_excerpt") or ""),
+        )
     if probe.get("ok"):
         return _make_check(
-            check_id="codex",
-            label="Codex CLI",
+            check_id=normalized_runner,
+            label=label,
             ok=True,
             summary=summary,
             warnings=probe_warnings,
             details={"resolved_binary": resolved_binary},
         )
-    if not probe_guidance:
-        probe_guidance = [
-            "Run `codex login` (or just `codex`) manually once and complete login, then retry `ds doctor`.",
-        ]
     return _make_check(
-        check_id="codex",
-        label="Codex CLI",
+        check_id=normalized_runner,
+        label=label,
         ok=False,
         summary=diagnosis.problem if diagnosis is not None else summary,
         warnings=probe_warnings,
-        errors=probe_errors or ["Codex startup probe did not succeed."],
+        errors=probe_errors or [f"{label} startup probe did not succeed."],
         guidance=probe_guidance,
         details={"resolved_binary": resolved_binary},
         problem=diagnosis.problem if diagnosis is not None else None,
         why=diagnosis.why if diagnosis is not None else None,
         fix=list(diagnosis.guidance) if diagnosis is not None else None,
-        evidence=(
-            [f"matched: {diagnosis.matched_text}"] if diagnosis is not None and diagnosis.matched_text else None
-        ),
+        evidence=([f"matched: {diagnosis.matched_text}"] if diagnosis is not None and diagnosis.matched_text else None),
     )
 
+
+def _check_codex(config_manager: ConfigManager) -> dict[str, Any]:
+    return _check_runner(config_manager, "codex")
 
 def _parse_timestamp(value: object) -> datetime | None:
     normalized = str(value or "").strip()
@@ -663,7 +671,15 @@ def _check_ui_port(home: Path, config_manager: ConfigManager) -> dict[str, Any]:
     )
 
 
-def run_doctor(home: Path, *, repo_root: Path) -> dict[str, Any]:
+DoctorProgressCallback = Callable[[dict[str, Any]], None]
+
+
+def run_doctor(
+    home: Path,
+    *,
+    repo_root: Path,
+    on_check: DoctorProgressCallback | None = None,
+) -> dict[str, Any]:
     ensure_home_layout(home)
     config_manager = ConfigManager(home)
     config_manager.ensure_files()
@@ -673,20 +689,43 @@ def run_doctor(home: Path, *, repo_root: Path) -> dict[str, Any]:
     port = int(ui_payload.get("port") or 20999)
     browser_url = _browser_ui_url(host, port)
 
-    checks = [
-        _check_python_runtime(),
-        _check_home_writable(home),
-        _check_uv(home),
-        _check_shell_backend(),
-        _check_git(config_manager),
-        _check_config_validation(config_manager),
-        _check_runner_support(config_manager),
-        _check_codex(config_manager),
-        _check_recent_runtime_failures(home),
-        _check_latex_runtime(home),
-        _check_bundles(repo_root),
-        _check_ui_port(home, config_manager),
+    check_factories: list[tuple[str, Callable[[], dict[str, Any]]]] = [
+        ("python_runtime", _check_python_runtime),
+        ("home_writable", lambda: _check_home_writable(home)),
+        ("uv", lambda: _check_uv(home)),
+        ("shell_backend", _check_shell_backend),
+        ("git", lambda: _check_git(config_manager)),
+        ("config_validation", lambda: _check_config_validation(config_manager)),
+        ("runner_support", lambda: _check_runner_support(config_manager)),
     ]
+    runners_payload = config_manager.load_named_normalized("runners")
+    default_runner = str(config_payload.get("default_runner") or "codex").strip().lower() or "codex"
+    runner_targets: list[str] = []
+    for candidate in [default_runner, *sorted(name for name, value in runners_payload.items() if isinstance(value, dict) and bool(value.get("enabled", False)))]:
+        normalized_candidate = str(candidate or "").strip().lower()
+        if normalized_candidate and normalized_candidate not in runner_targets:
+            runner_targets.append(normalized_candidate)
+    check_factories.extend((runner_name, (lambda runner_name=runner_name: _check_runner(config_manager, runner_name))) for runner_name in runner_targets)
+    check_factories.extend([
+        ("recent_runtime_failures", lambda: _check_recent_runtime_failures(home)),
+        ("latex_runtime", lambda: _check_latex_runtime(home)),
+        ("bundles", lambda: _check_bundles(repo_root)),
+        ("ui_port", lambda: _check_ui_port(home, config_manager)),
+    ])
+    checks: list[dict[str, Any]] = []
+    total_checks = len(check_factories)
+    for index, (check_id, factory) in enumerate(check_factories, start=1):
+        check = factory()
+        checks.append(check)
+        if on_check is not None:
+            on_check(
+                {
+                    "check_id": check_id,
+                    "index": index,
+                    "total": total_checks,
+                    "check": check,
+                }
+            )
 
     return {
         "ok": all(item["ok"] for item in checks),

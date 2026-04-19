@@ -1,0 +1,199 @@
+id: aisb.t3.077_cmnn
+name: 'Advancing Constrained Monotonic Neural Networks: Achieving Universal Approximation
+  Beyond Bounded Activations'
+version: 0.1.0
+one_line: Constrained monotonic neural network theory and tabular modeling evaluation
+  requiring upstream source restoration before execution.
+task_description: 'This benchmark entry covers constrained monotonic neural networks
+  for tabular modeling under monotonicity constraints. The theoretical contribution
+  demonstrates that MLPs with non-negative weight constraints and alternating saturating
+  activations achieve universal approximation for monotonic functions, extending beyond
+  traditional bounded-activation approaches. Additionally, the work proves that MLPs
+  with non-positive constrained weights and ReLU activation also qualify as universal
+  approximators with at least 4 layers. The proposed parametrization eliminates weight
+  reparameterization requirements, improving training stability. The current local
+  snapshot preserves only metadata, audit files, and documentation rather than executable
+  training or evaluation code; upstream source restoration is required before this
+  benchmark becomes runnable.
+
+  '
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- id: test_rmse
+  description: Root mean squared error on held-out test set
+  status: blocked_no_code
+  note: No executable code anchor in current snapshot; requires restoration
+  code_anchor: null
+- id: metadata_review
+  description: Preserved benchmark framing and monotonic model documentation
+  status: available
+capability_tags:
+- research_code_optimization
+- monotonic_networks
+- tabular_ml
+- constrained_learning
+- trustworthy_ml
+- universal_approximation
+- hard_monotonicity
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: Review the preserved metadata, paper documentation, and monotonic-model
+    benchmark framing without execution.
+  estimated_time: <1h
+  resource_intensive: false
+- id: restore_first
+  label: Restore Then Execute
+  description: Restore the missing constrained monotonic model implementation and
+    dataset setup before attempting benchmark execution.
+  estimated_time: 1-2h
+  resource_intensive: false
+  prerequisites:
+  - source_code_restoration
+  - dataset_acquisition
+  - dependency_verification
+dataset_download:
+  primary_method: pending_restoration
+  sources: []
+  notes:
+  - The current local package does not preserve executable benchmark routes; dataset
+    setup is part of upstream restoration
+  - Treat dataset requirements as undetermined pending source code recovery
+  - No data files are bundled in the current snapshot
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No authenticated data sources identified in current snapshot
+  - Public paper archive access sufficient for documentation review
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes: CPU-only execution viable for analysis route; no GPU required for metadata
+      review
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 1
+    gpu_vram_gb: 8
+    notes: GPU acceleration would be needed for restored training execution; 8GB VRAM
+      sufficient for tabular MLP training
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.5.1
+  flash_attn: null
+  key_packages:
+  - torch
+  - numpy
+  - scikit-learn
+  notes:
+  - Environment specifications are provisional pending upstream source restoration
+  - Current snapshot contains no executable setup files or runnable source code
+  - Bundled README and requirements.txt expected but not yet verified in snapshot
+  - Actual dependency versions should be confirmed from restored source before execution
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- blocked_no_code
+- metric_not_anchored
+risk_notes:
+- The current snapshot preserves metadata only; no executable training or evaluation
+  code is available
+- Primary metric test_rmse cannot be evaluated without restored code anchor
+- No benchmark execution was performed in this packaging pass
+- Treat this entry as blocked until source restoration or richer local snapshot is
+  recovered
+- Top-level README absent in current snapshot; documentation may be incomplete
+recommended_when:
+- Conducting paper-backed planning or feasibility assessment for monotonic tabular
+  modeling
+- Performing code-audit review of theoretical contributions without execution
+- Preparing upstream restoration roadmap for constrained monotonic network benchmarks
+- Reviewing theoretical framework for hard monotonicity in neural networks
+not_recommended_when:
+- Expecting a ready-to-run benchmark with executable training and evaluation paths
+- Requiring immediate metric evaluation or model checkpoint generation
+- Needing bundled datasets and data loading pipelines
+- Treating this as a production-ready benchmark entry
+paper:
+  title: 'Advancing Constrained Monotonic Neural Networks: Achieving Universal Approximation
+    Beyond Bounded Activations'
+  authors:
+  - Davide Sartor
+  - Alberto Sinigaglia
+  - Gian Antonio Susto
+  venue: ICML 2025
+  year: 2025
+  url: https://arxiv.org/abs/2505.02537
+  abstract_summary: 'Generalizes theoretical results for monotonic MLPs showing that
+    networks with non-negative weight constraints and alternating saturating activations
+    are universal approximators. Proves equivalence between activation saturation
+    side and weight constraint sign. Demonstrates that ReLU with non-positive constrained
+    weights also achieves universal approximation with greater-than-or-equal-to 4
+    layers. Proposes alternative parametrization eliminating weight reparameterization
+    for improved training stability.
+
+    '
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.077_cmnn.zip
+  archive_type: zip
+  local_dir_name: paper-77-CMNN
+  notes:
+  - Archive contains metadata, documentation, and LaTeX source only
+  - No executable Python code bundled in current archive version
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.077_cmnn.zip
+  sha256: 4e7704808fbec948ed14f73c416eeb37bc3e1e1bd1735df0b5c66617a267c15f
+  size_bytes: 34676
+display:
+  palette_seed: sand-olive-monotone
+  art_style: trustworthy-minimal
+  accent_priority: medium
+  summary_cards:
+  - label: Theory Focus
+    value: Universal Approximation for Monotonic MLPs
+  - label: Architecture
+    value: Constrained Weight Networks
+  - label: Activation
+    value: Saturating Functions (ReLU family)
+  - label: Restoration Status
+    value: Blocked - No Code Anchor
+image_path: ../image/077_aisb.t3.077_cmnn.jpg
+audit_metadata:
+  static_code_audit_status: blocked_no_code
+  executable_anchors: none_detected
+  code_bearing_roots: none_detected
+  route_classification: prepackaged_import_candidate
+  owner_stage: baseline_prepackage
+recovery_rule: 'Prefer existing code files over README-only claims when choosing origin_path,
+  source_ref, and evaluation_protocol.code_paths. Keep metrics_summary empty until
+  trusted execution outputs exist. If the current snapshot has no executable anchor
+  for a metric, mark that metric as provisional or blocked rather than inventing support.
+
+  '
+execution_status_summary: 'The current snapshot is blocked or only partially anchorable
+  from code. No benchmark execution was performed in this packaging pass. Recovery
+  requires upstream source restoration before evaluation can proceed.
+
+  '

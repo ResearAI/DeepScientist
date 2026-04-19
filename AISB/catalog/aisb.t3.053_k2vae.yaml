@@ -1,0 +1,158 @@
+schema_version: 1
+id: aisb.t3.053_k2vae
+name: 'K2VAE: A Koopman-Kalman Enhanced Variational AutoEncoder for Probabilistic
+  Time Series Forecasting'
+version: 0.1.0
+one_line: Train and evaluate a Koopman-Kalman VAE for probabilistic time-series forecasting
+  across 17 public datasets, measuring CRPS and NLL.
+task_description: 'This benchmark trains and evaluates K2VAE, a VAE-based generative
+  model that uses a KoopmanNet to linearize nonlinear time series into a latent dynamical
+  system and a KalmanNet to iteratively refine predictions and model process uncertainty
+  via learned Kalman gains. The task covers both short-term forecasting (8 datasets:
+  exchange_rate_nips, electricity_nips, traffic_nips, solar_nips, etth1/2, ettm1/2
+  with horizon ≤30) and long-term forecasting (9 datasets: etth1/2, ettm1/2, traffic_ltsf,
+  electricity_ltsf, exchange_ltsf, illness_ltsf, weather_ltsf with horizons up to
+  720). Training is driven by run.py with per-dataset YAML configs under config/stsf/
+  and config/ltsf/, using PyTorch Lightning. Primary metrics are CRPS (continuous
+  ranked probability score) and NLL (negative log-likelihood). Datasets must be downloaded
+  externally from Google Drive or Baidu Cloud and placed under ./datasets. A typical
+  full run trains 50 epochs per dataset-horizon combination on a single GPU. All evaluation
+  is self-contained within the codebase; no external evaluation toolkit is required.
+
+  '
+capability_tags:
+- research_code_optimization
+- time_series_forecasting
+- variational_autoencoders
+- probabilistic_forecasting
+- uncertainty_estimation
+- koopman_theory
+- kalman_filtering
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+primary_outputs:
+- crps
+- nll
+- forecast_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval (single dataset)
+  description: 'Run one short-term or long-term K2VAE training + evaluation on a single
+    dataset (e.g., solar_nips or exchange_ltsf) for one prediction length. Expect
+    1-3 hours on a single GPU depending on dataset size.
+
+    '
+- id: full_train_eval
+  label: Full Train + Eval (all datasets)
+  description: 'Run the complete K2VAE training and evaluation workflow across all
+    17 datasets and multiple prediction horizons as reported in the paper. This reproduces
+    the full experimental grid (50 epochs per configuration). Expect 12-24+ hours
+    on a single GPU.
+
+    '
+dataset_download:
+  primary_method: manual_download
+  sources:
+  - kind: google_drive
+    url: https://drive.google.com/drive/folders/1l0c4H57xYKKQQ5Tm7kd4C8M2nCepky-y?usp=sharing
+    access: public
+    note: Pre-processed time series datasets (ETT, traffic, electricity, exchange,
+      solar, weather, illness). Place contents under ./datasets.
+  - kind: baidu_cloud
+    url: https://pan.baidu.com/s/1eyJvwnPx595nlJzYIzLAJA?pwd=0525
+    access: public
+    note: Mirror of the same datasets on Baidu Cloud (password 0525).
+  notes:
+  - Total dataset size is not documented; expect a few GB after extraction based on
+    the standard ETT/traffic/electricity/weather benchmark datasets.
+  - Download may be slow; the README warns to wait patiently.
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: 2.4.1
+  flash_attn: null
+  key_packages:
+  - gluonts==0.15.1
+  - lightning
+  notes:
+  - Install via 'pip install .' from the repo root (uses pyproject.toml).
+  - The README recommends optionally running 'pip uninstall -y k2vae' after install
+    to avoid root package conflicts.
+  - See the bundled README and pyproject.toml for the full dependency set.
+risk_flags:
+- manual_dataset_download
+- multi_dataset_grid
+risk_notes:
+- Datasets must be manually downloaded from Google Drive or Baidu Cloud before any
+  run; there is no automated download script.
+- The full experimental grid (17 datasets × multiple horizons × 50 epochs each) is
+  time-intensive; plan for serial or parallel scheduling.
+- No CUDA version is explicitly pinned; PyTorch 2.4.1 supports CUDA 11.8 and 12.x.
+  Verify GPU driver compatibility.
+- The codebase sets torch float32 matmul precision to 'high', which may affect numerical
+  reproducibility across hardware.
+recommended_when: 'Use this benchmark when you want a probabilistic forecasting task
+  with explicit uncertainty calibration metrics (CRPS, NLL), multiple public time-series
+  datasets spanning short- and long-term horizons, and a self-contained training +
+  evaluation loop requiring only a single GPU. Good for exploring Koopman-based latent
+  dynamics or Kalman-filter-inspired uncertainty modeling.
+
+  '
+not_recommended_when: 'Do not use this if you only need deterministic point forecasting
+  without uncertainty quantification, or if you cannot manually download datasets
+  from Google Drive / Baidu Cloud. Also not ideal if you need a benchmark that runs
+  in under an hour for quick iteration.
+
+  '
+paper:
+  title: 'K2VAE: A Koopman-Kalman Enhanced Variational AutoEncoder for Probabilistic
+    Time Series Forecasting'
+  venue: ICML 2025 Spotlight
+  year: 2025
+  url: https://arxiv.org/abs/2505.23017
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.053_k2vae.zip
+  archive_type: zip
+  local_dir_name: paper-53-K2VAE
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.053_k2vae.zip
+  sha256: 1542a525136c41bdb95128583254d2a8251b57d0a5f161aa92c76a1c0f9ed6e1
+  size_bytes: 10134476
+commercial:
+  annual_fee: null
+display:
+  palette_seed: turquoise-slate-kalman
+  art_style: probabilistic-lab
+  accent_priority: high
+image_path: ../image/053_aisb.t3.053_k2vae.jpg

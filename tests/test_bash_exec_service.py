@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from deepscientist.config import ConfigManager
 from deepscientist.bash_exec.service import BashExecService
 from deepscientist.shared import ensure_dir
 
@@ -148,3 +149,22 @@ def test_list_running_sessions_returns_empty_from_summary_without_full_scan(
     )
 
     assert service.list_sessions(quest_root, status="running", limit=10) == []
+
+
+def test_hardware_env_overrides_follow_selected_gpu_config(temp_home: Path) -> None:
+    ConfigManager(temp_home).ensure_files()
+    config_manager = ConfigManager(temp_home)
+    config = config_manager.load_runtime_config()
+    config["hardware"] = {
+        "gpu_selection_mode": "selected",
+        "selected_gpu_ids": ["1", "3"],
+        "include_system_hardware_in_prompt": True,
+    }
+    config_manager.save_named_payload("config", config)
+
+    service = BashExecService(temp_home)
+    overrides = service._hardware_env_overrides()
+
+    assert overrides["CUDA_VISIBLE_DEVICES"] == "1,3"
+    assert overrides["NVIDIA_VISIBLE_DEVICES"] == "1,3"
+    assert overrides["ROCR_VISIBLE_DEVICES"] == "1,3"

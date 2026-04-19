@@ -22,7 +22,7 @@ from .network import configure_runtime_proxy, urlopen_with_proxy as urlopen
 from .prompts import PromptBuilder
 from .quest import QuestService
 from .registries import BaselineRegistry
-from .runners import CodexRunner, RunRequest, get_runner_factory, register_builtin_runners
+from .runners import ClaudeRunner, CodexRunner, OpenCodeRunner, RunRequest, get_runner_factory, register_builtin_runners
 from .runtime_tools import RuntimeToolService
 from .runtime_logs import JsonlLogger
 from .shared import ensure_dir, read_json, read_yaml
@@ -128,6 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--quest-id", required=True)
     run_parser.add_argument("--message", required=True)
     run_parser.add_argument("--model", default=None)
+    run_parser.add_argument("--runner", default=None)
     run_parser.add_argument(
         "--prompt-version",
         default=None,
@@ -317,6 +318,7 @@ def run_command(
     message: str,
     model: str | None,
     prompt_version: str | None,
+    runner_override: str | None = None,
 ) -> int:
     ensure_home_layout(home)
     config_manager = ConfigManager(home)
@@ -325,21 +327,45 @@ def run_command(
     runners = config_manager.load_runners_config()
     quest_root = home / "quests" / quest_id
     codex_cfg = runners.get("codex", {})
+    claude_cfg = runners.get("claude", {})
+    opencode_cfg = runners.get("opencode", {})
     logger = JsonlLogger(home / "logs", level=config.get("logging", {}).get("level", "info"))
-    runner = CodexRunner(
+    prompt_builder = PromptBuilder(
+        repo_root(),
+        home,
+        prompt_version_selection=str(prompt_version or "").strip() or None,
+    )
+    artifact_service = ArtifactService(home)
+    codex_runner = CodexRunner(
         home=home,
         repo_root=repo_root(),
         binary=codex_cfg.get("binary", "codex"),
         logger=logger,
-        prompt_builder=PromptBuilder(
-            repo_root(),
-            home,
-            prompt_version_selection=str(prompt_version or "").strip() or None,
-        ),
-        artifact_service=ArtifactService(home),
+        prompt_builder=prompt_builder,
+        artifact_service=artifact_service,
     )
-    register_builtin_runners(codex_runner=runner)
-    runner_name = str(config.get("default_runner", "codex")).strip().lower()
+    claude_runner = ClaudeRunner(
+        home=home,
+        repo_root=repo_root(),
+        binary=claude_cfg.get("binary", "claude"),
+        logger=logger,
+        prompt_builder=prompt_builder,
+        artifact_service=artifact_service,
+    )
+    opencode_runner = OpenCodeRunner(
+        home=home,
+        repo_root=repo_root(),
+        binary=opencode_cfg.get("binary", "opencode"),
+        logger=logger,
+        prompt_builder=prompt_builder,
+        artifact_service=artifact_service,
+    )
+    register_builtin_runners(
+        codex_runner=codex_runner,
+        claude_runner=claude_runner,
+        opencode_runner=opencode_runner,
+    )
+    runner_name = str(runner_override or config.get("default_runner", "codex")).strip().lower()
     runner_cfg = runners.get(runner_name, {})
     if runner_cfg.get("enabled") is False:
         print(
@@ -590,7 +616,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "daemon":
         return daemon_command(home, args.host, args.port, args.auth, args.auth_token, args.prompt_version)
     if args.command == "run":
-        return run_command(home, args.quest_id, args.skill_id, args.message, args.model, args.prompt_version)
+        return run_command(home, args.quest_id, args.skill_id, args.message, args.model, args.prompt_version, args.runner)
     if args.command == "ui":
         return ui_command(home, args.mode)
     if args.command == "note":

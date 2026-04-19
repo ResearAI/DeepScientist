@@ -36,9 +36,10 @@
 建议你先准备好这些：
 
 - 安装好 Node.js `>=18.18` 和 npm `>=9`；请优先参考官方页面安装：https://nodejs.org/en/download
-- 一条已经可用的 Codex 路径：
-  - 默认 OpenAI 登录路径：`codex login`（或直接运行 `codex`）
-  - provider-backed 路径：一个已经可用的 Codex profile，例如 `minimax`、`glm`、`ark`、`bailian`
+- 一条已经可用的 runner 路径：
+  - `codex` 是主路径，也是目前最稳妥的路径
+  - `claude` 属于 supported experimental，并且应先在你的 shell 里直接可用
+  - `opencode` 属于 supported experimental，并且应先在你的 shell 里直接可用
 - 模型或 API 凭证
 - 如果任务比较重，准备好 GPU 或远程服务器
 - 如果你要长期运行，优先准备 Docker 或其他隔离环境，并准备一个非 root 账号专门启动 DeepScientist
@@ -57,9 +58,13 @@
 
 如果你要通过阿里百炼使用 Qwen，请只使用百炼 **Coding Plan** endpoint。普通百炼 / DashScope 平台的 Qwen API，不在当前 Codex-backed DeepScientist 支持范围内。
 
-如果你准备使用 provider-backed 的 Codex profile，而不是默认 OpenAI 登录流，请继续看：
+如果你只是想先走最稳的一条，优先从 Codex 开始。
+
+第一次正式启动前，请先看和自己 runner 对应的那篇配置文档：
 
 - [15 Codex Provider 配置](./15_CODEX_PROVIDER_SETUP.md)
+- [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
 
 ## 1. 先安装 Node.js，再安装 DeepScientist
 
@@ -82,7 +87,18 @@ npm install -g @researai/deepscientist
 
 这一步会把 `ds` 命令安装到你的机器上。
 
-DeepScientist 依赖一个可用的 Codex CLI。它会优先使用你机器上已经可用的 `codex`，只有在本机找不到时才回退到 npm 包内置的依赖。如果安装完成后 `codex` 仍然不可用，请显式修复：
+DeepScientist 现在内建三条 runner 路径：
+
+- `codex`：主路径
+- `claude`：supported experimental
+- `opencode`：supported experimental
+
+安装相关有一个很重要的差异：
+
+- 对 `codex`，DeepScientist 会优先使用你机器上已有的 `codex`，本机找不到时才回退到 npm 包里 bundled 的依赖。
+- 对 `claude` 和 `opencode`，DeepScientist 不会替你完成安装和认证；这两条路径都应该先让 CLI 本身跑通，再交给 DeepScientist 复用。
+
+如果安装完成后 `codex` 仍然不可用，请显式修复：
 
 ```bash
 npm install -g @openai/codex
@@ -105,11 +121,11 @@ ds latex install-runtime
 
 这一步会安装一个轻量级 TinyTeX 运行时。
 
-## 2. 第一次运行 `ds` 前，先完成 Codex 配置
+## 2. 第一次运行 `ds` 前，先完成你要使用的 runner 配置
 
-这里有两条路径，二选一即可。
+如果你还没决定，优先从 `codex` 开始。
 
-### 2.1 默认 OpenAI 登录路径
+### 2.1 Codex：默认 OpenAI 登录路径
 
 运行：
 
@@ -131,7 +147,7 @@ codex
 ds doctor
 ```
 
-### 2.2 provider-backed 的 Codex profile 路径
+### 2.2 Codex：provider-backed 的 profile 路径
 
 如果你已经在 MiniMax、GLM、火山方舟、阿里百炼 Coding Plan 或其他 provider 上配置了一个命名的 Codex profile，请先在终端里确认这个 profile 本身可用：
 
@@ -177,6 +193,50 @@ MiniMax 额外说明：
 - 如果你还希望终端里的 `codex --profile <name>` 也直接可用，再在 `~/.codex/config.toml` 顶层补上 `model_provider = "minimax"`，以及对应的顶层 `model`，例如 `MiniMax-M2.7` 或 `MiniMax-M2.5`
 - 当 DeepScientist 检测到旧版 Codex CLI 不支持 `xhigh` 时，会自动把它降级成 `high`
 
+### 2.3 Claude Code 路径
+
+这条路径适合你本机里的 `claude` 已经能直接工作时使用。
+
+最短验证路径是：
+
+```bash
+claude --version
+claude -p --output-format json --tools "" "Reply with exactly HELLO."
+ds doctor --runner claude
+```
+
+确认通过后，再用 Claude Code 启动 DeepScientist：
+
+```bash
+ds --runner claude
+```
+
+如果你要看完整顺序、配置映射和网关说明，继续读：
+
+- [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+
+### 2.4 OpenCode 路径
+
+这条路径适合你本机里的 `opencode` 已经能直接工作时使用。
+
+最短验证路径是：
+
+```bash
+opencode --version
+opencode run --format json --pure "Reply with exactly HELLO"
+ds doctor --runner opencode
+```
+
+确认通过后，再用 OpenCode 启动 DeepScientist：
+
+```bash
+ds --runner opencode
+```
+
+如果你要看完整顺序、配置映射和 provider 说明，继续读：
+
+- [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
+
 ## 3. 启动本地运行时
 
 运行：
@@ -186,6 +246,15 @@ ds
 ```
 
 这会启动本地 daemon 和网页工作区。
+
+如果你希望这一轮直接用非默认 runner，可以显式加上 `--runner`：
+
+```bash
+ds --runner claude
+ds --runner opencode
+```
+
+如果目标 runner 已经通过 `ds doctor`，且你准备长期使用它，后面再去 `~/DeepScientist/config/config.yaml` 或 Settings 页面把 `config.default_runner` 切过去。
 
 再次强调：
 

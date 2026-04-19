@@ -1,0 +1,153 @@
+id: aisb.t3.095_fastfeaturecp
+name: Fast Feature Conformal Prediction
+version: 0.1.0
+one_line: Accelerate feature-space conformal prediction ~50x via Taylor approximation
+  of nonlinear band transformations.
+task_description: 'This packaged benchmark provides Fast Feature Conformal Prediction
+  (FFCP), a Taylor-expansion approximation of Feature Conformal Prediction (FCP) that
+  significantly reduces computational overhead. FFCP introduces a novel non-conformity
+  score s_ff that avoids expensive nonlinear operations required by FCP to transform
+  confidence bands from feature space to output space. The method is post-hoc, distribution-free,
+  and model-agnostic. It applies to both regression (band length minimization) and
+  classification (prediction set size) tasks. Users calibrate a pretrained base model,
+  then construct conformalized confidence bands with guaranteed coverage at specified
+  confidence levels.
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- band_length
+- coverage_pct
+- conformal_prediction_sets
+launch_profiles:
+- id: ffcp_regression
+  label: FFCP Regression
+  description: 'Run 1D and high-dimensional synthetic regression evaluation. Scripts:
+    FastFeatureCP/main.py. Supports com (1D) and x100-y10-reg (synthetic) datasets.
+
+    '
+- id: ffcp_cqr
+  label: FFCP Quantile Regression (FFCQR)
+  description: 'Run Fast Feature Conformalized Quantile Regression evaluation. Script:
+    FastFeatureCQR/main_FFCQR.py. Combines FFCP concept with quantile regression for
+    asymmetric uncertainty bounds.
+
+    '
+- id: ffcp_classification
+  label: FFCP Classification (FFRAPS)
+  description: 'Run Fast Feature Regularized Adaptive Prediction Sets for ImageNet
+    classification. Script: FastFeatureRAPS/main_FFRaps.py. Requires --data pointing
+    to ImageNet validation set.
+
+    '
+- id: ffcp_segmentation
+  label: FFCP Segmentation
+  description: 'Run Fast Feature Conformal Prediction on Cityscapes for semantic segmentation.
+    Script: FastFeatureCP_seg/main_fcn.py. Requires CITYSCAPES_PATH environment variable.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - type: public_url
+    url: https://deepscientist.cc/AISB/095_fastfeaturecp
+    note: Benchmark archive with bundled synthetic datasets
+  - type: external
+    name: ImageNet Val
+    note: Required for FFRAPS classification variant; user must obtain separately
+  - type: external
+    name: Cityscapes
+    note: Required for segmentation variant; user must obtain separately
+  notes:
+  - Synthetic regression datasets (com, x100-y10-reg) are bundled in the archive
+  - Real-world datasets (ImageNet, Cityscapes) require separate download per their
+    respective licenses
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+    gpu_architecture: pascal_or_newer
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+    gpu_architecture: ampere_or_newer
+environment:
+  python: '3.8'
+  cuda: '11.6'
+  pytorch: 1.12.1
+  flash_attn: null
+  key_packages:
+  - numpy
+  - pandas
+  - torch
+  - torchvision
+  - scikit-learn
+  - tqdm
+  - matplotlib
+  - pillow
+  notes:
+  - Full dependency set specified in bundled requirements.txt
+  - GPU strongly recommended for segmentation and ImageNet classification variants
+  - CPU-only acceptable for 1D synthetic regression only
+risk_flags:
+- no_runtime_execution_in_packaging_pass
+risk_notes:
+- Static code audit confirmed executable anchors exist for all staged metrics
+- Band_length and coverage_pct backed by FastFeatureCP/main.py
+- Runtime validation recommended before trusting output values
+recommended_when: 'Use this benchmark for post-hoc uncertainty quantification on pretrained
+  models. Ideal when you need (1) faster conformal prediction than standard FCP, (2)
+  guaranteed coverage with shorter prediction bands than Vanilla CP, (3) both regression
+  and classification variants, or (4) model-agnostic calibration without retraining.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you require end-to-end model training
+  from scratch rather than post-hoc conformal calibration. For production deployment,
+  note that Cityscapes and ImageNet variants require separate dataset acquisition.
+
+  '
+paper:
+  title: Accelerating Feature Conformal Prediction via Taylor Approximation
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://arxiv.org/abs/2412.00653
+  github: https://github.com/ElvisWang1111/FastFeatureCP
+  authors:
+  - Zihao Tang
+  - Boyuan Wang
+  - Chuan Wen
+  - Jiaye Teng
+display:
+  palette_seed: silver-teal-conformal
+  art_style: uncertainty-lab
+  accent_priority: high
+image_path: ../image/095_aisb.t3.095_fastfeaturecp.jpg
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.095_fastfeaturecp.zip
+  archive_type: zip
+  local_dir_name: paper-95-FastFeatureCP
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.095_fastfeaturecp.zip
+  sha256: 7c6f8ffd5b2da0cb2f70bf871cedf808a004e8be3b3f3ea68b3dc2a01c6e0471
+  size_bytes: 13655698

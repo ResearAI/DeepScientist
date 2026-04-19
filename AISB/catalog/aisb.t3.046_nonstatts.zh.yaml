@@ -1,0 +1,194 @@
+id: aisb.t3.046_nonstatts
+name: TAFAS
+version: 0.1.0
+one_line: >
+  针对非平稳时间序列预测的测试时自适应框架，采用周期感知调度和门控校准模块。
+task_description: >
+  本基准测试实现了 TAFAS（针对非平稳时间序列的测试时自适应预测），
+  这是一个开创性的时间序列预测测试时自适应框架。
+  核心问题在于：预训练预测模型在非平稳测试分布下会退化，因为时间动态不断演变。
+  不同于传统视觉领域的测试时自适应（假设无标签的独立同分布输入），
+  TSF-TTA 利用时间序列的序列特性，在推理过程中可获取部分观测到的真实值。
+  TAFAS 由两个技术组件构成：（1）PAAS（周期感知自适应调度），
+  自适应选择足够的部分真实值窗口以捕捉有意义的周期模式，
+  （2）GCM（门控校准模块），将测试时输入校准到源预测器能够处理分布，
+  门控机制根据全局分布偏移程度控制校准强度。
+  源预测器在自适应过程中保持冻结，以保留预训练的语义知识。
+  该基准测试支持多种基础预测器架构，在 ETTh1、ETTm1、ETTh2、ETTm2、
+  exchange_rate 和 weather 数据集上进行基准测试。在分布偏移明显的长时预测场景中表现尤为出色。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+  - test_mse
+  - test_mae
+  - adaptation_report
+launch_profiles:
+  - id: quick_eval
+    label: 快速评估
+    description: >
+      在单个模型-数据集对上运行 TTA 工作流，预测长度为 720。
+      执行 scripts/{model}/{dataset}_720/run.sh。
+      适用于验证一种自适应场景。
+  - id: full_adaptation
+    label: 完整自适应
+    description: >
+      在所有支持的模型-数据集组合上运行完整的测试时自适应工作流。
+      在 ETTh1、ETTm1、ETTh2、ETTm2、exchange_rate 和 weather 数据集上
+      评估 PatchTST、DLinear、OLS 和 FreTS 模型的多种预测长度。
+dataset_download:
+  primary_method: external
+  sources:
+    - name: Time-Series-Library
+      url: https://github.com/thuml/Time-Series-Library
+      type: dataset_repository
+      notes: 基准测试数据集来源于 Time-Series-Library 仓库
+    - name: Google Drive
+      url: https://drive.google.com/drive/folders/16UdpRYf3BLRfem2LXLspN78dW4MOJkbn
+      type: model_checkpoints
+      notes: >
+        预训练检查点仅提供 pred_len=720 版本。
+        模型包括：PatchTST、DLinear、OLS、FreTS。
+        数据集包括：ETTh1、ETTm1、ETTh2、ETTm2、exchange_rate、weather。
+    - name: DeepScientist Archive
+      url: https://deepscientist.cc/AISB/046_nonstatts
+      type: packaged_code
+      archive_type: zip
+  placement:
+    datasets: data/{dataset}/{dataset}.csv
+    checkpoints: checkpoints/{model}/{dataset}_{pred_len}/checkpoint_best.pth
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+    - 仅需公开访问权限，无需身份验证
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+    notes: 单 GPU 足以进行评估；训练需要更长时间
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: >
+      建议使用 24GB 显存以支持批量大小 256 和更长序列长度。
+      可通过 NUM_GPUS 配置支持多 GPU（已测试至 8 卡）。
+environment:
+  python: '3.8'
+  cuda: '11.8'
+  pytorch: 2.0.0
+  flash_attn: null
+  key_packages:
+    - wandb
+    - yacs
+    - pandas
+    - numpy
+    - torch
+    - tqdm
+  notes:
+    - 详见打包的 requirements.txt 或 README 获取完整依赖列表
+    - 核心模型实现参考 Time-Series-Library
+    - GCM 自适应使用 PyTorch autograd，无需特殊 CUDA 扩展
+risk_flags:
+  - no_runtime_execution_verified
+  - checkpoint_availability_limited
+risk_notes:
+  - 静态代码审计确认所有分阶段指标的可执行锚点
+  - 打包过程中未执行基准测试
+  - 预训练检查点仅在 pred_len=720 时可用；其他长度需要训练
+  - 可通过在 run.sh 中设置 TRAIN.ENABLE=True 来启用训练
+recommended_when: >
+  - 在分布偏移的测试条件下评估预测模型
+  - 研究针对序列数据的测试时自适应技术
+  - 对具有非平稳模式的长时预测进行基准测试
+  - 比较纯预训练方法与自适应方法
+  - 研究时间序列基础模型的通用自适应方法
+not_recommended_when: >
+  - 仅需要静态分布内预测基线
+  - 需要预测长度 720 以外的预训练检查点
+  - 使用不在支持基准集合中的数据集
+  - 需要在未进行自适应调优的情况下立即投入生产部署
+paper:
+  title: Battling the Non-stationarity in Time Series Forecasting via Test-time Adaptation
+  venue: AAAI 2025
+  year: 2025
+  authors:
+    - HyunGi Kim
+    - Siwon Kim
+    - Jisoo Mok
+    - Sungroh Yoon
+  institution: Seoul National University
+  url: https://arxiv.org/abs/2501.04970
+  github: https://github.com/kimanki/TAFAS
+  bibtex: '@article{kim2025battling, title={Battling the Non-stationarity in Time Series Forecasting via Test-time Adaptation}, author={Kim, HyunGi and Kim, Siwon and Mok, Jisoo and Yoon, Sungroh}, journal={arXiv preprint arXiv:2501.04970}, year={2025}}'
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.046_nonstatts.zip
+  archive_type: zip
+  local_dir_name: paper-46-NonStatTS
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.046_nonstatts.zip
+  sha256: 58816149c85cd2e8433b166dec9b2336ec49f0cc1a9c4fb24b986022663d3dee
+  size_bytes: 341067
+display:
+  palette_seed: blue-sand-adapt
+  art_style: adaptive-signal
+  accent_priority: medium
+  tags:
+    - time-series-forecasting
+    - test-time-adaptation
+    - distribution-shift
+    - non-stationarity
+    - tta
+    - tsf-tta
+image_path: ../image/046_aisb.t3.046_nonstatts.jpg
+execution_notes:
+  entry_point: main.py
+  config_file: config.py
+  predictor_file: predictor.py
+  script_pattern: scripts/{model}/{dataset}_{pred_len}/run.sh
+  supported_models:
+    - PatchTST
+    - DLinear
+    - OLS
+    - FreTS
+    - Informer
+    - Autoformer
+    - FEDformer
+    - ETSformer
+    - MICN
+    - Koopa
+    - TimesNet
+    - iTransformer
+  supported_datasets:
+    - ETTh1
+    - ETTm1
+    - ETTh2
+    - ETTm2
+    - exchange_rate
+    - weather
+  prediction_lengths:
+    - 96
+    - 192
+    - 336
+    - 720
+  code_structure:
+    layers: Transformer 和卷积层实现
+    models: 包括 TAFAS 组件的预测器架构
+    tta: tafas.py 包含 PAAS 和 GCM 实现
+    scripts: 模型特定的评估和训练脚本
+    utils: 日志、解析、掩码和计量工具

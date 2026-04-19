@@ -8,6 +8,7 @@
 
 import { apiClient } from "./client";
 import { client as questClient } from "@/lib/api";
+import { filterProjectsVisibleQuests } from "@/lib/questVisibility";
 import { hasQuestApi, isQuestRuntimeSurface, shouldUseQuestProject } from "@/lib/runtime/quest-runtime";
 import type { QuestSummary } from "@/types";
 
@@ -176,7 +177,7 @@ function shouldFallbackToLocalQuest(error: unknown): boolean {
  */
 export async function listProjects(): Promise<ProjectListResponse> {
   if (preferLocalQuestProjects() || (await hasQuestApi())) {
-    const items = (await questClient.quests()).map(mapQuestSummaryToProject);
+    const items = filterProjectsVisibleQuests(await questClient.quests()).map(mapQuestSummaryToProject);
     return {
       items,
       total: items.length,
@@ -196,7 +197,7 @@ export async function listProjects(): Promise<ProjectListResponse> {
     if (!shouldFallbackToLocalQuest(error)) {
       throw error;
     }
-    const items = (await questClient.quests()).map(mapQuestSummaryToProject);
+    const items = filterProjectsVisibleQuests(await questClient.quests()).map(mapQuestSummaryToProject);
     return {
       items,
       total: items.length,

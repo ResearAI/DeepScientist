@@ -1,0 +1,179 @@
+id: aisb.t3.100_invmissingdata
+name: Kernel Point Imputation (KPI)
+version: 0.1.0
+one_line: Bi-level kernel-adaptive iterative imputation leveraging oracle-feature
+  supervision for heterogeneous missing-data recovery.
+task_description: 'This benchmark implements KPI (Kernel Point Imputation), a bi-level
+  optimization framework for iterative missing-data imputation. The inner loop adapts
+  per-feature imputation models via functional optimization in a Reproducing Kernel
+  Hilbert Space (RKHS), addressing model misspecification in heterogeneous data-generating
+  processes. The outer loop exploits oracle (fully observed) features as privileged
+  supervision signals. Supports CPU-only execution for minimum route; GPU acceleration
+  available for full workflow.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- mae
+- wass
+- rmse
+- imputation_report
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run the packaged KPI benchmark script on a prepared dataset with default
+    hyperparameters. Suitable for rapid metric extraction from pre-processed UCI data
+    without full training.
+
+    '
+- id: full_train_eval
+  label: Full Train + Eval
+  description: 'Execute the complete KPI pipeline: kernel point imputation optimization,
+    bi-level training with oracle-feature supervision, and full benchmark suite across
+    all supported datasets. Includes Wasserstein distance evaluation.
+
+    '
+dataset_download:
+  primary_method: manual
+  sources:
+  - name: UCI Machine Learning Repository
+    url: https://archive.ics.uci.edu
+    notes: 'Pre-processed tabular datasets (e.g., blood_transfusion, concrete_compression)
+      should be placed in the ./dataset folder. Specific dataset references are documented
+      in benchmark_kpi.py argument defaults and aisb_catalog.yaml.
+
+      '
+  - name: Benchmark archive
+    url: https://deepscientist.cc/AISB/100_invmissingdata
+    archive_type: zip
+    local_dir_name: paper-100-InvMissingData
+  notes:
+  - Both UCI source data and the packaged benchmark archive are required.
+  - Dataset preparation steps are detailed in the bundled README.
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 30
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes: CPU-only execution is fully supported for the minimum configuration.
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 8
+    notes: GPU recommended for full_train_eval to accelerate kernel computations and
+      bi-level optimization.
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.7.1
+  flash_attn: null
+  key_packages:
+  - ot (Optimal Transport)
+  - numpy
+  - pandas
+  - scipy
+  - torch
+  notes:
+  - CPU-only execution is plausible for the minimum route.
+  - See bundled requirements.txt for the full dependency set.
+  - Optional Docker container with conda-based environment named 'kpi' is provided.
+risk_flags: []
+risk_notes:
+- Static code audit confirmed executable anchors exist for all staged metrics.
+- No runtime execution was performed during this packaging pass; metric values require
+  verification via execution.
+recommended_when: 'Use this benchmark when you need a missing-data benchmark that
+  focuses on flexible nonparametric imputation behavior with kernel-adapted geometry
+  and oracle-feature supervision. Appropriate for tabular data with heterogeneous
+  missingness patterns.
+
+  '
+not_recommended_when: Do not use this if you require a heavy multimodal benchmark
+  or deep learning-based imputation without explicit kernel-method foundations.
+paper:
+  title: Inverse Methods for Missing Data Imputation
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/kim25ag.html
+  code_url: null
+  baseline_id: aisb.t3.100_invmissingdata
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.100_invmissingdata.zip
+  archive_type: zip
+  local_dir_name: paper-100-InvMissingData
+  notes:
+  - Archive contains benchmark_kpi.py, model/KPI.py, scripts/, and requirements.txt.
+  - UCI datasets must be obtained separately from archive.ics.uci.edu.
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.100_invmissingdata.zip
+  sha256: 0b54fbad4ac73321054a33a6dc80e069c22a81cf54788c237d938a8f1caf70ef
+  size_bytes: 1388561
+display:
+  palette_seed: bone-blue-impute
+  art_style: imputation-lab
+  accent_priority: medium
+  tags:
+  - research_code_optimization
+  - missing_data
+  - imputation
+  - kernel_methods
+  - tabular_ml
+image_path: ../image/100_aisb.t3.100_invmissingdata.jpg
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+capability_tags:
+- research_code_optimization
+- missing_data
+- imputation
+- kernel_methods
+- tabular_ml
+executable_anchors:
+  benchmark_script: benchmark_kpi.py
+  core_model: model/KPI.py
+  scripts_dir: scripts/
+  evaluation_protocol:
+  - scripts/qb.sh (quick_eval)
+  - scripts/is.sh (full_train_eval)
+metric_evidence:
+  mae:
+    origin_path: model/remasker/model_mae.py
+    source_ref: code-backed
+    status: executable_anchor_found
+  wass:
+    origin_path: benchmark_kpi.py
+    source_ref: code-backed
+    status: executable_anchor_found
+  rmse:
+    origin_path: benchmark_kpi.py
+    source_ref: code-backed
+    status: executable_anchor_found
+  mse:
+    origin_path: benchmark_kpi.py
+    source_ref: code-backed
+    status: executable_anchor_found
+caveat_snapshot: 'Static code audit confirmed executable anchors for every staged
+  metric. Runtime execution has not been performed; metric values require verification
+  before trust.
+
+  '

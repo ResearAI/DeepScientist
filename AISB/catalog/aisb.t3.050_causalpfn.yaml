@@ -1,0 +1,214 @@
+id: aisb.t3.050_causalpfn
+name: 'CausalPFN: Amortized Causal Effect Estimation via In-Context Learning'
+version: 0.1.0
+one_line: Transformer-based amortized causal effect estimation using PFN-style in-context
+  learning with calibrated uncertainty quantification.
+task_description: 'CausalPFN is a transformer model that amortizes causal effect estimation
+  by training once on a large library of simulated data-generating processes (DGPs)
+  satisfying the ignorability assumption. Given a new observational dataset, it infers
+  causal effects out of the box via in-context learning without task-specific tuning,
+  fine-tuning, or hyperparameter optimization. The model estimates both conditional
+  average treatment effects (CATE) and average treatment effects (ATE), with a principled
+  uncertainty quantification framework producing finite-sample calibrated credible
+  intervals. Amortization shifts computational burden from inference to pre-training,
+  enabling fast forward-pass-only evaluation on new datasets.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 2-8h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- ihdp_pehe
+- ihdp_ate_rel_err
+- causal_predictions
+- bootstrap_report
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: Run CausalPFN evaluation on a single supported dataset (e.g., IHDP)
+    with default settings. Suitable for verifying installation and basic functionality.
+- id: full_benchmark
+  label: Full Benchmark
+  description: Run the complete amortized causal-effect benchmark across IHDP, ACIC,
+    and Lalonde datasets with bootstrap ensemble aggregation and temperature scaling.
+dataset_download:
+  primary_method: pypi
+  sources:
+  - name: PyPI
+    url: https://pypi.org/project/causalpfn/
+    archive_type: null
+    local_dir_name: null
+  - name: HuggingFace Hub
+    url: https://huggingface.co/vdblm/causalpfn
+    archive_type: null
+    local_dir_name: null
+  notes:
+  - Model weights are downloaded from HuggingFace Hub at runtime.
+  - Install via: pip install causalpfn
+  - Optional dev dependencies: pip install causalpfn[dev]
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - HuggingFace Hub access requires network connectivity for model download.
+  - Optional HF_TOKEN for rate-limited or private model access.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+    notes: CPU-only execution is supported via causalpfn Python API with torch.device('cpu').
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: GPU acceleration recommended for faster inference on large datasets.
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: '2.3'
+  flash_attn: null
+  key_packages:
+  - causalpfn>=1.0.0
+  - torch>=2.3.0
+  - numpy>=1.24.0
+  - scikit-learn>=1.3.0
+  - faiss-cpu==1.9.0
+  - huggingface_hub>=0.20.0
+  - tqdm>=4.65.0
+  notes:
+  - CPU-only execution is viable for minimum resource route.
+  - GPU acceleration available via CUDA for inference speedup.
+  - Full dependency set available in bundled requirements.txt and pyproject.toml.
+risk_flags:
+- external_model_download
+- bootstrap_variance
+risk_notes:
+- Model weights are fetched from HuggingFace Hub at runtime; ensure network access.
+- Bootstrap ensemble introduces variance across seeds; use provided bootstrap_report
+  for diagnostics.
+recommended_when: 'Use this benchmark for causal inference tasks requiring tractable
+  local runs, clear effect-estimation metrics (PEHE, ATE relative error), and uncertainty
+  quantification. Ideal for uplift modeling, treatment effect estimation from observational
+  data, and comparison with specialized causal estimators. Recommended when you need
+  a ready-to-use estimator without manual tuning.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you need a giant multimodal benchmark,
+  raw language generation tasks, or image/video understanding. Not suitable when treatment
+  assignment is not ignorable or when unobserved confounding is present in the data.
+
+  '
+paper:
+  title: 'CausalPFN: Amortized Causal Effect Estimation via In-Context Learning'
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://arxiv.org/abs/2506.07918
+  authors:
+  - Vahid Balazadeh
+  - Hamidreza Kamkari
+  - Valentin Thomas
+  - Benson Li
+  - Junwei Ma
+  - Jesse C. Cresswell
+  - Rahul G. Krishnan
+  institutions:
+  - University of Toronto
+  - Vector Institute
+  - Layer 6 AI
+display:
+  palette_seed: mint-charcoal-causal
+  art_style: causal-analytics
+  accent_priority: medium
+image_path: ../image/050_aisb.t3.050_causalpfn.jpg
+capability_tags:
+- causal_inference
+- in_context_learning
+- tabular_ml
+- uncertainty_estimation
+- uplift_modeling
+- treatment_effect_estimation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+code_anchors:
+  evaluation:
+  - path: eval.py
+    description: Main evaluation script for IHDP benchmark with multi-seed bootstrap
+      ensemble
+  - path: src/causalpfn/evaluation.py
+    description: Core evaluation metrics including PEHE and calibration curve calculations
+  estimators:
+  - path: src/causalpfn/causal_estimator.py
+    description: CATEEstimator and ATEEstimator classes with confidence interval estimation
+  benchmarks:
+  - path: benchmarks/ihdp.py
+    description: IHDP benchmark implementation
+  - path: benchmarks/acic2016.py
+    description: ACIC 2016 benchmark implementation
+  - path: benchmarks/lalonde.py
+    description: Lalonde benchmark implementation
+  - path: benchmarks/hillstrom.py
+    description: Hillstrom uplift modeling benchmark
+metric_contract:
+  ihdp_pehe:
+    origin_path: eval.py
+    source_ref: calculate_pehe
+    evaluation_protocol:
+      code_paths:
+      - eval.py
+      - src/causalpfn/evaluation.py
+    status: code_backed
+    provisional: false
+  ihdp_ate_rel_err:
+    origin_path: eval.py
+    source_ref: calculate_ate_rel_error
+    evaluation_protocol:
+      code_paths:
+      - eval.py
+      - src/causalpfn/evaluation.py
+    status: code_backed
+    provisional: false
+evaluation_details:
+  bootstrap_ensemble:
+    seeds: 2
+    subsamples: 3
+    subsample_fraction: 0.92
+    temperature_values:
+    - 0.3
+    - 0.5
+    - 0.7
+    - 0.9
+    - 2.0
+    - 4.0
+    - 8.0
+    total_predictions_per_realization: 42
+  s_learner:
+    regressor: Ridge
+    alpha: 0.001
+    mu_features: true
+  nearest_neighbors: 85
+commercial:
+  annual_fee: null
+  notes: Apache 2.0 License
+download:
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.050_causalpfn.zip
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.050_causalpfn.zip
+  archive_type: zip
+  sha256: d7ba4ba97509f90f00b4f9953b10d76fc5bc56ea116a7141a74a11990ee99a99
+  size_bytes: 48053403

@@ -410,7 +410,7 @@ export function CreateCopilotProjectPage() {
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
                     placeholder={t.titlePlaceholder}
-                    className="h-12 rounded-[18px] border-black/10 bg-white/80 text-base text-[#2D2A26] placeholder:text-[#8A8278]"
+                    className="h-12 rounded-[18px] border-black/10 bg-white/80 text-base text-black placeholder:text-[rgba(107,103,97,0.72)] caret-black dark:text-black dark:placeholder:text-[rgba(107,103,97,0.72)]"
                   />
                   <div className="mt-2 text-sm leading-6 text-[#5D5A55]">{t.titleHint}</div>
                 </div>

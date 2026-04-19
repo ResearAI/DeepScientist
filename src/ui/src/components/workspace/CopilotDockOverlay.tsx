@@ -3,7 +3,6 @@
 import * as React from 'react'
 import { animate, motion, useMotionValue, useReducedMotion } from 'framer-motion'
 import { FolderOpen, Loader2, PanelLeft, Plus, Sparkles, X } from 'lucide-react'
-import dynamic from 'next/dynamic'
 import type {
   AiManusChatActions,
   AiManusChatMeta,
@@ -13,7 +12,7 @@ import type {
 } from '@/lib/plugins/ai-manus/view-types'
 import OrbitLogoStatus from '@/lib/plugins/ai-manus/components/OrbitLogoStatus'
 import type { ChatSurface } from '@/lib/types/chat-events'
-import { GlareHover, Noise, SpotlightCard } from '@/components/react-bits'
+import { Noise } from '@/components/react-bits'
 import RotatingText from '@/components/RotatingText'
 import { cn } from '@/lib/utils'
 import { COPILOT_FILES_ENABLED } from '@/lib/feature-flags'
@@ -33,16 +32,6 @@ import { useI18n } from '@/lib/i18n/useI18n'
 import { useWorkspaceSurfaceStore, type WorkspaceTabViewState } from '@/lib/stores/workspace-surface'
 import { getWorkspaceContentKind, getWorkspaceContentKindBadge } from '@/lib/workspace/content-meta'
 
-function CopilotDockLoading() {
-  const { t } = useI18n('workspace')
-
-  return (
-    <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-      {t('copilot_loading')}
-    </div>
-  )
-}
-
 const CopilotDockHeaderPortalContext = React.createContext<HTMLElement | null>(null)
 
 export const useCopilotDockHeaderPortal = () => React.useContext(CopilotDockHeaderPortalContext)
@@ -54,11 +43,6 @@ const CopilotDockCallbacksContext = React.createContext<{
 } | null>(null)
 
 export const useCopilotDockCallbacks = () => React.useContext(CopilotDockCallbacksContext)
-
-const AiManusChatView = dynamic(() => import('@/lib/plugins/ai-manus/AiManusChatView'), {
-  ssr: false,
-  loading: () => <CopilotDockLoading />,
-})
 
 type CopilotDockOverlayProps = {
   projectId: string
@@ -76,6 +60,7 @@ type CopilotDockOverlayProps = {
   visible?: boolean
   keepAlive?: boolean
   onClose: () => void
+  hideHeaderOrbit?: boolean
   setSide: (side: CopilotDockSide) => void
   toggleSide: () => void
   setWidth: (width: number) => void
@@ -384,6 +369,7 @@ export function CopilotDockOverlay({
   visible,
   keepAlive = true,
   onClose,
+  hideHeaderOrbit = false,
   setSide,
   setWidth,
   setMaxRatio,
@@ -965,15 +951,8 @@ export function CopilotDockOverlay({
         }
         transition={prefersReducedMotion ? undefined : { duration: 0.18 }}
       >
-        <GlareHover
-          className="relative h-full w-full rounded-[18px] overflow-hidden"
-          strength={0.32}
-        >
-          <SpotlightCard
-            spotlightColor="rgba(159, 177, 194, 0.24)"
-            hoverOnly
-            className="ds-copilot-glass"
-          >
+        <div className="relative h-full w-full overflow-hidden rounded-[18px]">
+          <div className="ds-copilot-glass">
             <Noise size={260} className="ds-copilot-noise opacity-[0.06]" />
 
             <div className="ds-copilot-glass-inner">
@@ -984,16 +963,18 @@ export function CopilotDockOverlay({
                   </div>
                 ) : (
                   <div className="ds-copilot-header-left ds-copilot-drag-area">
-                    <div className="ds-copilot-header-orbit-wrap" aria-hidden="true">
-                      <OrbitLogoStatus
-                        compact
-                        sizePx={20}
-                        className="ds-copilot-header-orbit"
-                        toolCount={copilotMeta?.toolCount}
-                        resetKey={headerOrbitResetKey}
-                        animated={Boolean(copilotMeta?.isResponding)}
-                      />
-                    </div>
+                    {!hideHeaderOrbit ? (
+                      <div className="ds-copilot-header-orbit-wrap" aria-hidden="true">
+                        <OrbitLogoStatus
+                          compact
+                          sizePx={20}
+                          className="ds-copilot-header-orbit"
+                          toolCount={copilotMeta?.toolCount}
+                          resetKey={headerOrbitResetKey}
+                          animated={Boolean(copilotMeta?.isResponding)}
+                        />
+                      </div>
+                    ) : null}
                     <div className="ds-copilot-title-stack">
                       <div className="ds-copilot-title-row">
                         <span className="ds-copilot-title">{t('copilot_title')}</span>
@@ -1128,8 +1109,7 @@ export function CopilotDockOverlay({
                     >
                       {hasCustomBody ? (
                         bodyContent
-                      ) : (
-                        copilotLocked ? (
+                      ) : copilotLocked ? (
                           <div className="flex h-full items-center justify-center p-6 text-center">
                             <div>
                               <div className="text-sm font-medium">{t('copilot_plan_access_required')}</div>
@@ -1138,30 +1118,7 @@ export function CopilotDockOverlay({
                               </div>
                             </div>
                           </div>
-                        ) : (
-                          chatVisible ? (
-                            <AiManusChatView
-                              mode={surfaceMode}
-                              projectId={projectId}
-                              readOnly={readOnlyMode}
-                              prefill={prefill}
-                              visible={chatVisible}
-                              deferSessionList
-                              embedded
-                              uiMode={surfaceMode === 'welcome' ? 'copilot' : undefined}
-                              historyMode="overlay"
-                              historyPanelId={historyPanelId}
-                              historyOpenOverride={historyOpenOverride}
-                              onHistoryOpenChange={setHistoryOpenOverride}
-                              onActionsChange={handleActionsChange}
-                              onMetaChange={handleMetaChange}
-                              suggestions={suggestions}
-                              suggestionsDisabled={!copilotActions || !copilotMeta?.ready}
-                              onSuggestionSelect={handleSuggestionSelect}
-                            />
-                          ) : null
-                        )
-                      )}
+                        ) : null}
                     </CopilotDockCallbacksContext.Provider>
                   </CopilotDockHeaderPortalContext.Provider>
                 </div>
@@ -1179,8 +1136,8 @@ export function CopilotDockOverlay({
                 tabIndex={0}
               />
             </div>
-          </SpotlightCard>
-        </GlareHover>
+          </div>
+        </div>
       </motion.div>
     </div>
   )

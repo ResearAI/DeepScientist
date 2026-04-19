@@ -10,7 +10,7 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, label, error, hint, id, ...props }, ref) => {
+  ({ className, label, error, hint, id, style, ...props }, ref) => {
     const generatedId = useId();
     const inputId = id || generatedId;
 
@@ -45,6 +45,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             error && 'shadow-soft-inset-error',
             className
           )}
+          style={{
+            WebkitTextFillColor: 'currentColor',
+            ...style,
+          }}
           {...props}
         />
         {error && (

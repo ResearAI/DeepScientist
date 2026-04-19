@@ -1,0 +1,224 @@
+id: aisb.t3.056_infosam
+name: 'InfoSAM: Fine-Tuning the Segment Anything Model from An Information-Theoretic
+  Perspective'
+version: 0.1.0
+one_line: Information-theoretic SAM fine-tuning via mutual-information-based distillation
+  preserving domain-invariant relational knowledge for specialized segmentation.
+task_description: 'InfoSAM is a parameter-efficient fine-tuning (PEFT) framework for
+  SAM that enhances segmentation performance in specialized domains by preserving
+  pre-trained domain-invariant knowledge through information-theoretic distillation.
+  The method introduces two novel mutual information-based objectives: (1) a relational
+  compression loss that extracts domain-invariant structural patterns from pre-trained
+  SAM by minimizing mutual information between task-irrelevant features and the relational
+  module outputs, and (2) a cross-model distillation loss that maximizes mutual information
+  between teacher (pre-trained SAM) and student (fine-tuned SAM) relational representations.
+  The approach uses attention-driven relation modules and Renyi entropy-based quantification
+  with normalized Gram matrices computed via Frobenius norm. Benchmarked across diverse
+  domains including natural images, medical imaging, agriculture (leaf disease), and
+  remote sensing.
+
+  '
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 1-2d
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- s_measure
+- e_measure
+- weighted_f_measure
+- infosam_checkpoint
+- segmentation_results
+launch_profiles:
+- id: train_only
+  label: Train Only
+  description: Run InfoSAM fine-tuning with information-theoretic distillation loss
+    on specified dataset.
+- id: eval_only
+  label: Evaluation Only
+  description: Evaluate fine-tuned model using S-measure, E-measure, and weighted
+    F-measure.
+- id: full_pipeline
+  label: Full Pipeline
+  description: Complete training and evaluation pipeline with checkpoint management.
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: github_repo
+    url: https://github.com/autogluon/autogluon/tree/master/examples/automm/Conv-LoRA
+    access: public
+    note: Datasets sourced from Conv-LoRA repository covering multiple segmentation
+      domains
+  - kind: huggingface_model
+    url: https://huggingface.co/MuyaoYuan/InfoSAM/tree/main
+    access: public
+    note: Pre-trained InfoSAM checkpoints available for direct use
+  - kind: facebook_ai
+    url: https://dl.fbaipublicfiles.com/segment_anything/
+    access: public
+    note: Pre-trained SAM teacher models (ViT-B, ViT-H, ViT-L) required for training
+  notes:
+  - The current local snapshot does not include the `data/data_download.py` script
+    referenced in README
+  - Dataset acquisition requires reconstruction from Conv-LoRA external route
+  - Shell scripts `config/train/InfoSAM_b_leaf.sh` and `config/eval/InfoSAM_b_leaf.sh`
+    referenced in README are absent from snapshot
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No explicit API credentials or dataset access tokens detected in bundled materials
+  - HuggingFace model access is public
+  - Facebook AI SAM checkpoint downloads are public
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 48
+environment:
+  python: '3.8'
+  cuda: '12.1'
+  pytorch: 2.4.1
+  flash_attn: null
+  key_packages:
+  - torchvision==0.19.1
+  - transformers
+  - pillow
+  - numpy
+  - opencv-python
+  - scipy
+  notes:
+  - Tested environment: Python 3.8.20, PyTorch 2.4.1, torchvision 0.19.1, CUDA 12.1
+      on Ubuntu 20.04
+  - Environment specifications derived from README documentation; end-to-end execution
+    requires restoration of missing launcher scripts
+risk_flags:
+- source_snapshot_incomplete
+- launch_scripts_missing
+- dataset_download_script_absent
+risk_notes:
+- Current snapshot preserves documentation (README, OPTIMIZATION.md, AGENTS.md, latex.md)
+  but lacks executable train/eval launcher trees
+- Missing `data/data_download.py` script required for dataset preparation
+- Missing `config/train/InfoSAM_b_leaf.sh` and `config/eval/InfoSAM_b_leaf.sh` for
+  training and evaluation
+- Treat as paper-backed reconstruction target; full execution requires upstream script
+  restoration from official repository
+recommended_when: 'Use this benchmark to reconstruct and audit the InfoSAM PEFT methodology
+  for SAM adaptation. Suitable for researchers investigating information-theoretic
+  distillation for vision foundation models, relational knowledge transfer, and domain-invariant
+  segmentation. Prepare to restore missing training and evaluation scripts from the
+  official repository.
+
+  '
+not_recommended_when: 'Do not use as a ready-to-run local benchmark. The current snapshot
+  is incomplete relative to the official README. Full execution requires restoring
+  missing launcher scripts, download utilities, and configuration files from the upstream
+  InfoSAM repository before the benchmark becomes operational.
+
+  '
+paper:
+  title: 'InfoSAM: Fine-Tuning the Segment Anything Model from An Information-Theoretic
+    Perspective'
+  venue: ICML 2025 Spotlight
+  year: 2025
+  url: https://proceedings.mlr.press/v267/zhang25ct.html
+  arxiv_url: https://arxiv.org/pdf/2505.21920
+  project_page: https://muyaoyuan.github.io/InfoSAM_Page
+  authors:
+  - Yuanhong Zhang
+  - Muyao Yuan
+  - Weizhan Zhang
+  - Tieliang Gong
+  - Wen Wen
+  - Jiangyong Ying
+  - Weijie Shi
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.056_infosam.zip
+  archive_type: zip
+  local_dir_name: paper-56-InfoSAM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.056_infosam.zip
+  sha256: 6339252a6968df0ec70cdac20e1eb44e1eeae9f33b3b6386513a2772d1e51ba9
+  size_bytes: 45688
+display:
+  palette_seed: gold-forest-segment
+  art_style: info-geometry
+  accent_priority: high
+  domain_tags:
+  - computer_vision
+  - segmentation
+  - foundation_models
+  - distillation
+  - parameter_efficient_finetuning
+  - information_theory
+image_path: ../../../AISB/image/056_aisb.t3.056_infosam.jpg
+capability_tags:
+- research_code_optimization
+- computer_vision
+- segmentation
+- foundation_models
+- distillation
+- parameter_efficient_finetuning
+- mutual_information
+- knowledge_distillation
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+metric_contracts:
+  s_measure:
+    description: Structure measure for foreground segmentation quality evaluation
+    origin: paper_evaluation
+    blocked_reason: No executable evaluation code anchor in current snapshot
+  e_measure:
+    description: Enhanced alignment measure for boundary and region evaluation
+    origin: paper_evaluation
+    blocked_reason: No executable evaluation code anchor in current snapshot
+  weighted_f_measure:
+    description: Weighted F-measure combining precision and recall with optimal threshold
+      selection
+    origin: paper_evaluation
+    blocked_reason: No executable evaluation code anchor in current snapshot
+external_models:
+  teacher_models:
+  - model_id: sam_vit_b
+    url: https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
+    description: ViT-Base SAM model (default teacher)
+  - model_id: sam_vit_h
+    url: https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+    description: ViT-Huge SAM model
+  - model_id: sam_vit_l
+    url: https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth
+    description: ViT-Large SAM model
+  pretrained_checkpoints:
+  - model_id: infosam_finetuned
+    url: https://huggingface.co/MuyaoYuan/InfoSAM/tree/main
+    description: Pre-trained InfoSAM checkpoints on HuggingFace
+    access: public
+restoration_required:
+- data/data_download.py
+- config/train/InfoSAM_b_leaf.sh
+- config/eval/InfoSAM_b_leaf.sh
+- requirements.txt
+- launcher scripts referenced in README
+restoration_notes: 'The official repository contains complete training and evaluation
+  scripts. Reconstruction involves cloning the upstream repository or restoring the
+  referenced shell scripts and download utilities to achieve a fully operational benchmark.
+
+  '

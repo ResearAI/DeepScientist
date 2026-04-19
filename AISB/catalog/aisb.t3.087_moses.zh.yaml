@@ -1,0 +1,132 @@
+id: aisb.t3.087_moses
+name: MoSES - 多任务车辆路径求解器
+version: 0.1.0
+one_line: 使用基于 LoRA 的专业专家和状态可分解 MDP 框架下的自适应门控的多任务车辆路径求解器。
+task_description: 该打包基准测试涵盖了用于解决多任务车辆路径问题的专业专家混合求解器 (MoSES)。该方法引入了状态可分解 MDP (SDMDP)，通过将状态空间表示为基础状态空间的笛卡尔积来重新表述 VRP，每个基础状态空间都与一个基础 VRP 变体相关联。基础策略是通过专门的 LoRA 专家实现的，每个专家都根据特定基础变体的冻结预训练骨干进行微调。潜在空间扩展（LS-SDMDP）结合了最佳基础策略和可学习的混合函数，以实现嵌入空间中的策略重用。混合函数通过自适应门控机制将最优基础策略生成的基础状态嵌入映射到统一状态嵌入。在温和的假设下，LS-SDMDP 可证明恢复最优统一策略。当前的本地快照保留基准元数据和论文工件，但不包含可执行的训练或评估代码；在执行基准测试之前需要恢复可运行管道。
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 1d+
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- optimality_gap_pct
+- tour_cost
+- inference_time
+launch_profiles:
+- id: analysis_only
+  label: 仅分析
+  description: 在不执行管道的情况下查看保留的车辆路线基准元数据、目标输出和指标定义。
+- id: restore_first
+  label: 首先恢复
+  description: 在将该基准测试视为可运行之前，从上游存储库恢复丢失的 MoSES 训练实施、路由执行代码和 LoRA 专家组件。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - url: https://github.com/panyxy/moses_vrp
+    type: upstream_repository
+  - url: https://deepscientist.cc/AISB/087_moses
+    type: local_archive
+  notes:
+  - 上游 GitHub 存储库 (panyxy/moses_vrp) 包含官方 MoSES 实现，应作为恢复的主要来源。
+  - 当前本地包不保留可执行的基准测试路线；将数据集设置视为上游恢复的一部分，而不是捆绑的运行路径。
+  - VRP实例生成和评估数据集需要从上游存储库单独获取。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 公共访问上游存储库或本地存档不需要身份验证。
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: 适合单专家推理和基础分析的最低配置。
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 300
+    gpu_count: 2
+    gpu_vram_gb: 48
+    notes: 推荐用于 LoRA 适配器的多专家培训和批量评估。
+environment:
+  python: '3.10'
+  cuda: '12.1'
+  pytorch: 2.6.0
+  flash_attn: 2.7.0
+  key_packages:
+  - torch
+  - numpy
+  - scipy
+  - networkx
+  - pyyaml
+  notes:
+  - 当前本地包不保留可执行安装文件或可运行源代码；这里的环境提示应被视为临时的，直到上游恢复为止。
+  - 恢复完成后，请参阅捆绑的自述文件/要求以获取完整的依赖项集。
+  - LoRA 实现通常需要 flash_attn 来在训练期间进行有效的注意力计算。
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- no_executable_anchor
+risk_notes:
+- 当前快照不包含可以锚定暂存指标的可执行代码文件；所有主输出（optimality_gap_pct、tour_cost、inference_time）都被阻止执行。
+- 本地包仅保留元数据和纸质工件；在执行基准测试之前，需要从上游 GitHub 存储库进行恢复。
+- 在此打包过程中未执行任何基准测试。
+- 当前快照中缺少顶级自述文件；有关操作细节，请参阅上游文档。
+recommended_when: 当您需要纸质规划、MoSES 多级路由管道的上游恢复或状态可分解 MDP 框架和 LoRA 专家组合方法的分析时，请使用此条目。
+not_recommended_when: 不要将此本地包视为可立即运行的路由基准；打包的快照不保留可执行的训练管道或评估代码。在未先从上游存储库恢复丢失的组件之前，请勿尝试执行基准测试。
+paper:
+  title: Multi-Task Vehicle Routing Solver via Mixture of Specialized Experts under State-Decomposable MDP
+  authors:
+  - Yuxin Pan (HKUST)
+  - Zhiguang Cao (SMU)
+  - Chengyang Gu (HKUST-GZ)
+  - Liu Liu (Tencent AI Lab)
+  - Peilin Zhao (Tencent AI Lab, SJTU)
+  - Yize Chen (U Alberta)
+  - Fangzhen Lin (HKUST)
+  venue: NeurIPS
+  year: 2025
+  url: https://openreview.net/forum?id=ezSyZM6Lp7
+  code_url: https://github.com/panyxy/moses_vrp
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.087_moses.zip
+  archive_type: zip
+  local_dir_name: paper-87-MoSES
+  upstream_url: https://github.com/panyxy/moses_vrp
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.087_moses.zip
+  sha256: 26adaf9a54f2476f1ec7e293992e40065c0f6fb02abe3b702cd794bb07730c69
+  size_bytes: 59011
+display:
+  palette_seed: orange-navy-routing
+  art_style: optimization-playbook
+  accent_priority: high
+  tags:
+  - vehicle-routing
+  - mixture-of-experts
+  - lora
+  - multi-task-learning
+  - combinatorial-optimization
+  - state-decomposable-mdp
+image_path: ../image/087_aisb.t3.087_moses.jpg
+capability_tags:
+- research_code_optimization
+- combinatorial_optimization
+- vehicle_routing
+- mixture_of_experts
+- multi_task_learning
+- lora_specialization
+- latent_space_policy
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track

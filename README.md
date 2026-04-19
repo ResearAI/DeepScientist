@@ -31,11 +31,16 @@
 </p>
 
 <p align="center">
+  <strong>Built-in runners: Codex (primary), Claude Code (supported experimental), OpenCode (supported experimental)</strong>
+</p>
+
+<p align="center">
   <a href="docs/en/00_QUICK_START.md">Quick Start</a> •
   <a href="docs/en/02_START_RESEARCH_GUIDE.md">Launch Your First Project</a> •
   <a href="docs/en/12_GUIDED_WORKFLOW_TOUR.md">Product Tour</a> •
-  <a href="docs/en/15_CODEX_PROVIDER_SETUP.md">Model Setup</a> •
-  <a href="docs/en/22_WINDOWS_WSL2_DEPLOYMENT_GUIDE.md">Windows + WSL2 Setup</a>
+  <a href="docs/en/15_CODEX_PROVIDER_SETUP.md">Codex Setup</a> •
+  <a href="docs/en/24_CLAUDE_CODE_PROVIDER_SETUP.md">Claude Setup</a> •
+  <a href="docs/en/25_OPENCODE_PROVIDER_SETUP.md">OpenCode Setup</a>
 </p>
 
 ![deepscientist_install](https://github.com/user-attachments/assets/d8244944-4f70-4e08-94e3-002b74ce70fb)
@@ -244,17 +249,34 @@ We believe a system that is actually suitable for research should at least satis
 
 If that sounds like the way you want to work, DeepScientist is worth trying now.
 
-## Get Started In 30 Seconds
+## 🚀 Get Started In 30 Seconds
 
-If you want to try it right now, the shortest path is:
+If you want to try it right now, here is the shortest path:
 
 Platform note: DeepScientist fully supports Linux and macOS. Native Windows support is currently experimental (strongly recommend WSL2).
+
+---
 
 **Windows + WSL2 users**: Copy the following line to your AI coding agent (Claude Code, Codex, Cursor, etc.) and let it handle the full setup for you:
 
 > Install DeepScientist on this Windows machine using WSL2. Follow the skill at `skills/deepscientist-windows-wsl-setup/SKILL.md` in the DeepScientist repo for the full procedure. Keep going until `ds doctor` passes and I can open http://127.0.0.1:20999 in my Windows browser.
 
+---
+
 For manual installation on Linux / macOS:
+DeepScientist ships three built-in runners:
+
+- `codex`: the primary and most battle-tested path
+- `claude`: supported experimental; use this when `claude` already works directly on your machine
+- `opencode`: supported experimental; use this when `opencode` already works directly on your machine
+
+If one of these CLIs already works for you, DeepScientist can usually meet you there instead of asking you to rebuild your whole setup first.
+
+Think of the startup choice like this: bring one runner that already works, and DeepScientist gives you a persistent local research workspace around it.
+
+If you just want the safest recommendation, start with Codex first.
+
+🎯 Recommended first run: `codex`
 
 ```bash
 npm install -g @researai/deepscientist
@@ -262,10 +284,44 @@ codex login
 ds --here
 ```
 
+If Claude Code already works directly in your shell, use this lane:
+
+```bash
+npm install -g @researai/deepscientist
+claude --version
+ds doctor --runner claude
+ds --here --runner claude
+```
+
+If OpenCode already works directly in your shell, use this lane:
+
+```bash
+npm install -g @researai/deepscientist
+opencode --version
+ds doctor --runner opencode
+ds --here --runner opencode
+```
+
 To stop the managed local daemon and all currently running agents:
 
 ```bash
 ds --stop
+```
+
+🛠 Prefer installing from a Git checkout instead of npm? Use the repo path directly:
+
+```bash
+git clone https://github.com/ResearAI/DeepScientist.git
+cd DeepScientist
+bash install.sh
+ds
+```
+
+If you plan to edit the UI or TUI from source, also install the workspace dependencies:
+
+```bash
+npm --prefix src/ui install
+npm --prefix src/tui install
 ```
 
 If you prefer the interactive first-run flow, run this once first:
@@ -283,6 +339,11 @@ codex login
 ```
 
 If `which codex` still prints nothing after that, fix the npm global bin path first, then retry `codex login` and `ds doctor`.
+
+Important runner note:
+
+- DeepScientist can fall back to the npm-bundled helper copy for `codex`
+- DeepScientist does not set up Claude Code or OpenCode for you; for those two paths, make `claude` or `opencode` work first, then run `ds doctor --runner <name>`
 
 After startup, the default local address is:
 
@@ -306,27 +367,31 @@ If this is your first run, prefer an isolated environment, a non-root user, and 
 
 - [00 Quick Start](docs/en/00_QUICK_START.md)
 - [15 Codex Provider Setup](docs/en/15_CODEX_PROVIDER_SETUP.md)
+- [24 Claude Code Setup](docs/en/24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [25 OpenCode Setup](docs/en/25_OPENCODE_PROVIDER_SETUP.md)
 - [09 Doctor](docs/en/09_DOCTOR.md)
 
-## Choose Your Starting Path
+## 🧭 Choose Your Starting Path
 
-### I just want to get it running first
+### ⚡ I just want to get it running first
 
 - [00 Quick Start](docs/en/00_QUICK_START.md)
 - [12 Guided Workflow Tour](docs/en/12_GUIDED_WORKFLOW_TOUR.md)
 
-### I want to launch a real project today
+### 🧪 I want to launch a real project today
 
 - [02 Start Research Guide](docs/en/02_START_RESEARCH_GUIDE.md)
 - [01 Settings Reference](docs/en/01_SETTINGS_REFERENCE.md)
 
-### I mainly work on servers and terminals
+### 🖥 I mainly work on servers and terminals
 
 - [05 TUI Guide](docs/en/05_TUI_GUIDE.md)
 
-### I want to connect my own models or external collaboration channels
+### 🔌 I want to connect my own models or external collaboration channels
 
 - [15 Codex Provider Setup](docs/en/15_CODEX_PROVIDER_SETUP.md)
+- [24 Claude Code Setup](docs/en/24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [25 OpenCode Setup](docs/en/25_OPENCODE_PROVIDER_SETUP.md)
 - [21 Local Model Backends Guide](docs/en/21_LOCAL_MODEL_BACKENDS_GUIDE.md)
 - [Weixin Connector Guide](docs/en/10_WEIXIN_CONNECTOR_GUIDE.md)
 - [QQ Connector Guide](docs/en/03_QQ_CONNECTOR_GUIDE.md)
@@ -334,7 +399,7 @@ If this is your first run, prefer an isolated environment, a non-root user, and 
 - [WhatsApp Connector Guide](docs/en/17_WHATSAPP_CONNECTOR_GUIDE.md)
 - [Feishu Connector Guide](docs/en/18_FEISHU_CONNECTOR_GUIDE.md)
 
-### I want to understand the system design first
+### 🧠 I want to understand the system design first
 
 - [Docs Index](docs/en/README.md)
 - [Core Architecture Guide](docs/en/13_CORE_ARCHITECTURE_GUIDE.md)
@@ -387,7 +452,24 @@ If you are developing or maintaining DeepScientist, continue with:
 
 ## Citation
 
-If DeepScientist helps your research or engineering work, please cite the paper below. DeepScientist is jointly developed by Yixuan Weng, Weixu Zhao, Shichen Li, Zhen Lin, and Minjun Zhu.
+If DeepScientist materially helps your paper, report, or research workflow, please cite the DeepScientist paper and disclose meaningful AI assistance honestly.
+
+This is a strong request for fair academic attribution, not an extra software license condition.
+
+Useful links:
+
+- Paper: `https://openreview.net/forum?id=cZFgsLq8Gs`
+- Repository citation metadata: [CITATION.cff](CITATION.cff)
+- Citation and attribution guidance: [docs/en/26_CITATION_AND_ATTRIBUTION.md](docs/en/26_CITATION_AND_ATTRIBUTION.md)
+- Name and logo usage: [TRADEMARK.md](TRADEMARK.md)
+
+Suggested acknowledgment text:
+
+```text
+We used DeepScientist to assist parts of the research workflow, including selected planning, implementation, experiment orchestration, analysis, and/or writing support. Final judgments, claims, and reported real experimental results remain the responsibility of the human authors.
+```
+
+DeepScientist is jointly developed by Yixuan Weng, Weixu Zhao, Shichen Li, Zhen Lin, and Minjun Zhu.
 
 ```bibtex
 @inproceedings{
@@ -407,7 +489,7 @@ If this feels like the research workflow you have been waiting for, give the pro
 Welcome to join the WeChat group for discussion.
 
 <p align="center">
-  <img src="assets/readme/wechat6.jpg" alt="DeepScientist WeChat group" width="360" />
+  <img src="assets/readme/wechat7.jpg" alt="DeepScientist WeChat group" width="360" />
 </p>
 
 ## More From ResearAI

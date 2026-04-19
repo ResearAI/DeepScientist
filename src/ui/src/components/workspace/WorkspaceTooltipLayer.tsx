@@ -9,6 +9,7 @@ const INTERACTIVE_SELECTOR =
   'button, a, [role="button"], [role="menuitem"], .ds-copilot-icon-btn, .ghost-btn'
 const VIEWPORT_PADDING = 8
 const TOOLTIP_GAP = 8
+const TOOLTIP_HIDE_DELAY_MS = 220
 
 type TooltipSource = 'data' | 'aria' | 'title'
 
@@ -39,12 +40,16 @@ function getTooltipLabel(el: HTMLElement): { label: string; source: TooltipSourc
 
 function findTooltipAnchor(target: EventTarget | null, root: HTMLElement | null) {
   if (!root || !(target instanceof Element)) return null
-  const candidate = target.closest(TOOLTIP_TARGET_SELECTOR)
-  if (!candidate || !root.contains(candidate)) return null
-  if (!(candidate instanceof HTMLElement)) return null
-
-  if (candidate.matches(INTERACTIVE_SELECTOR) || candidate.hasAttribute('data-tooltip')) {
-    return candidate
+  let candidate: Element | null = target
+  while (candidate && root.contains(candidate)) {
+    if (
+      candidate instanceof HTMLElement &&
+      candidate.matches(TOOLTIP_TARGET_SELECTOR) &&
+      (candidate.matches(INTERACTIVE_SELECTOR) || candidate.hasAttribute('data-tooltip'))
+    ) {
+      return candidate
+    }
+    candidate = candidate.parentElement
   }
 
   return null
@@ -64,6 +69,15 @@ export function WorkspaceTooltipLayer({ rootId = 'workspace-root' }: { rootId?: 
   const tooltipRef = React.useRef<HTMLDivElement | null>(null)
   const titleAnchorRef = React.useRef<HTMLElement | null>(null)
   const rafRef = React.useRef<number | null>(null)
+  const hideTimeoutRef = React.useRef<number | null>(null)
+  const tooltipHoveredRef = React.useRef(false)
+
+  const cancelScheduledHide = React.useCallback(() => {
+    if (hideTimeoutRef.current !== null) {
+      window.clearTimeout(hideTimeoutRef.current)
+      hideTimeoutRef.current = null
+    }
+  }, [])
 
   const restoreTitle = React.useCallback(() => {
     if (!titleAnchorRef.current) return
@@ -84,15 +98,31 @@ export function WorkspaceTooltipLayer({ rootId = 'workspace-root' }: { rootId?: 
   }, [])
 
   const hideTooltip = React.useCallback(() => {
+    cancelScheduledHide()
+    tooltipHoveredRef.current = false
     restoreTitle()
     anchorRef.current = null
     setVisible(false)
     setLabel('')
-  }, [restoreTitle])
+  }, [cancelScheduledHide, restoreTitle])
+
+  const scheduleHide = React.useCallback(
+    (delay = TOOLTIP_HIDE_DELAY_MS) => {
+      cancelScheduledHide()
+      hideTimeoutRef.current = window.setTimeout(() => {
+        hideTimeoutRef.current = null
+        if (tooltipHoveredRef.current) return
+        hideTooltip()
+      }, delay)
+    },
+    [cancelScheduledHide, hideTooltip]
+  )
 
   const showTooltip = React.useCallback(
     (anchor: HTMLElement, nextLabel: string) => {
       if (!nextLabel) return
+      cancelScheduledHide()
+      tooltipHoveredRef.current = false
       restoreTitle()
       const titleValue = anchor.getAttribute('title')
       if (titleValue?.trim()) {
@@ -102,7 +132,7 @@ export function WorkspaceTooltipLayer({ rootId = 'workspace-root' }: { rootId?: 
       setLabel(nextLabel)
       setVisible(true)
     },
-    [restoreTitle, suppressTitle]
+    [cancelScheduledHide, restoreTitle, suppressTitle]
   )
 
   const updatePosition = React.useCallback(() => {
@@ -181,14 +211,15 @@ export function WorkspaceTooltipLayer({ rootId = 'workspace-root' }: { rootId?: 
     if (!root) return
 
     const handlePointerOver = (event: PointerEvent) => {
+      cancelScheduledHide()
       const anchor = findTooltipAnchor(event.target, root)
       if (!anchor) {
-        hideTooltip()
+        scheduleHide()
         return
       }
       const next = getTooltipLabel(anchor)
       if (!next) {
-        hideTooltip()
+        scheduleHide()
         return
       }
       if (anchor === anchorRef.current && next.label === label && visible) return
@@ -200,12 +231,16 @@ export function WorkspaceTooltipLayer({ rootId = 'workspace-root' }: { rootId?: 
       if (related instanceof Element && anchorRef.current?.contains(related)) {
         return
       }
+      if (related instanceof Element && tooltipRef.current?.contains(related)) {
+        return
+      }
       const nextAnchor = findTooltipAnchor(related, root)
       if (nextAnchor) return
-      hideTooltip()
+      scheduleHide()
     }
 
     const handleFocusIn = (event: FocusEvent) => {
+      cancelScheduledHide()
       const anchor = findTooltipAnchor(event.target, root)
       if (!anchor) return
       const next = getTooltipLabel(anchor)
@@ -232,7 +267,7 @@ export function WorkspaceTooltipLayer({ rootId = 'workspace-root' }: { rootId?: 
       root.removeEventListener('focusin', handleFocusIn)
       root.removeEventListener('focusout', handleFocusOut)
     }
-  }, [hideTooltip, label, rootId, showTooltip, visible])
+  }, [cancelScheduledHide, hideTooltip, label, rootId, scheduleHide, showTooltip, visible])
 
   React.useEffect(() => {
     if (!visible) return
@@ -265,15 +300,34 @@ export function WorkspaceTooltipLayer({ rootId = 'workspace-root' }: { rootId?: 
     updatePosition()
   }, [label, updatePosition, visible])
 
+  React.useEffect(() => {
+    return () => {
+      cancelScheduledHide()
+      restoreTitle()
+    }
+  }, [cancelScheduledHide, restoreTitle])
+
   if (!portalTarget || !visible || !label) return null
 
   return createPortal(
     <div
       ref={tooltipRef}
       className="workspace-tooltip"
-      style={{ top: position.top, left: position.left, position: 'fixed', pointerEvents: 'none' }}
+      style={{ top: position.top, left: position.left, position: 'fixed', pointerEvents: 'auto' }}
       data-placement={position.placement}
       role="tooltip"
+      onPointerEnter={() => {
+        tooltipHoveredRef.current = true
+        cancelScheduledHide()
+      }}
+      onPointerLeave={(event) => {
+        tooltipHoveredRef.current = false
+        const related = event.relatedTarget
+        if (related instanceof Element && anchorRef.current?.contains(related)) {
+          return
+        }
+        scheduleHide(0)
+      }}
     >
       {label}
     </div>,

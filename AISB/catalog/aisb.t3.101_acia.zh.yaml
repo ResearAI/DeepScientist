@@ -1,0 +1,109 @@
+id: aisb.t3.101_acia
+name: 测度论反因果表征学习
+version: 0.1.0
+one_line: 通过测量理论干预内核进行两级因果表示学习，以实现跨多环境设置的反因果 OOD 泛化。
+task_description: 该打包基准实现了 ACIA（反因果不变抽象），这是一个测量理论框架，用于在反因果设置中学习因果不变表示，其中标签 Y 引起观察 X。该方法采用两级架构：低级表示 (phi_L) 捕获标签如何生成可观察特征，包括虚假的环境特定相关性，而高级表示 (phi_H) 提取环境不变因果模式。 ACIA 通过干预内核处理完美和不完美的干预，而不需要明确的结构因果模型。训练将标准交叉熵与 R1（环境独立性）和 R2（干预不变性）正则化器相结合，以及针对颜色去除场景的可选 R3（特征抑制）来优化复合损失。评估包括保留环境的准确性、测量跨域表示稳定性的 environment_invariance 指标、low_level_invariance 跟踪 phi_L 稳健性以及 intervention_robustness 测量 do(X) 和 do(Y) 干预下的性能。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- accuracy
+- environment_invariance
+- low_level_invariance
+- intervention_robustness
+launch_profiles:
+- id: quick_cmnist
+  label: 快速CMNIST
+  description: 使用矢量化数据集构建运行优化的快速 CMNIST 路线。通过 torchvision 下载 MNIST 并自动重新着色为 e1/e2 变体。报告单次训练运行（约 10 个时期）的准确性和不变性指标。适用于快速验证和超参数调整。
+- id: paper_cmnist
+  label: 论文CMNIST
+  description: 执行全纸式完美干预训练路线匹配表1评价条件。包括环境训练循环、综合指标记录和干预鲁棒性测试。与论文中报告的 97.7% CMNIST 准确率相符。
+dataset_download:
+  primary_method: torchvision
+  sources:
+  - name: MNIST
+    url: torchvision.datasets.MNIST
+    auto_download: true
+    notes: 'MNIST downloads automatically via torchvision when dataset is first instantiated. Recoloring into ColoredMNIST environment variants (e1: even→red, e2: even→green) happens locally in-memory. No manual staging required.
+
+      '
+  notes:
+  - CMNIST 综合基准测试不需要除 torchvision MNIST 之外的外部数据暂存。
+  - 真实世界数据集 (Camelyon17) 需要示例/04_camelyon17.py 中记录的额外下载步骤。
+  - 论文报告 Camelyon17 的准确率为 84.40%，比 LECI 基线提高了 19%。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - CMNIST 路径不需要外部 API 凭据、数据集帐户或 HPC 分配。
+  - 打包的CMNIST路由仅使用本地缓存的MNIST数据。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 30
+    gpu_count: 1
+    gpu_vram_gb: 8
+    notes: 合理的训练吞吐量所需的 GPU；仅 CPU 训练可行，但速度明显慢（约 5-10 倍）。由于 CMNIST 规模，单个 GPU 就足够了。
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+    notes: 16GB VRAM 可容纳 CMNIST 的完整批量大小 (128)，且无内存压力。如果超出打包基准测试范围，额外的 RAM 可支持更大的自定义数据集。
+environment:
+  python: '3.8'
+  cuda: '11.3'
+  pytorch: 1.12.0
+  flash_attn: null
+  key_packages:
+  - torch>=1.12.0
+  - torchvision>=0.13.0
+  - numpy
+  notes:
+  - 需要 Python 3.8+；使用 1.12.0 进行测试，但与较新的 PyTorch 版本兼容。
+  - GPU 训练推荐使用 CUDA 11.3+；支持 CPU 回退以进行调试。
+  - requirements.txt 中设置的完整依赖项；运行 pip install -e 。用于包含所有附加功能的可编辑安装。
+risk_flags: []
+risk_notes:
+- 除了本地 MNIST 缓存之外，没有运行时文件 I/O 到外部存储。
+- 训练期间无网络调用；首次下载后缓存 MNIST。
+- 训练是确定性的，使用打包脚本中的固定种子 (42)。
+recommended_when: 当您需要评估具有显式环境标签的多环境设置中的因果不变性时，请使用此基准。非常适合对反因果学习方法进行基准测试、测试干预稳健性或将结构化合成数据的表示学习方法与已知的真实因果结构进行比较。
+not_recommended_when: 请勿将此基准测试用于大规模多模式任务、生成建模或需要多 GPU 训练的基准测试。当明确的 SCM/DAG 知识可用且首选时不适合 — ACIA 特别避免了 SCM 要求。
+paper:
+  title: Measure-Theoretic Anti-Causal Representation Learning
+  venue: NeurIPS
+  year: 2025
+  url: https://openreview.net/forum?id=lp6XOoQ4VL
+  authors:
+  - Arman Behnam
+  - Binghui Wang
+  institution: Illinois Institute of Technology
+  notes: 论文介绍了 ACIA 框架以及 OOD 泛化的理论界限。声称 CMNIST 准确率达到 97.7%，Camelyon17 准确率达到 84.40%，比 LECI 提高 19%。静态审计确认所有报告指标的可执行锚点。
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.101_acia.zip
+  archive_type: zip
+  local_dir_name: paper-101-ACIA
+  notes: 'Download contains full source with acia/ package, examples/, run_*.py scripts, and json/metric_contract.json for metric specification.
+
+    '
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.101_acia.zip
+  sha256: 12590ff23562c80d2cf91dc224d44ba1909950585248f0717624a9914a2fb89a
+  size_bytes: 3127466
+display:
+  palette_seed: violet-sand-invariant
+  art_style: causal-abstraction
+  accent_priority: medium
+image_path: ../image/101_aisb.t3.101_acia.jpg

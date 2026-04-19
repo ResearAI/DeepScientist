@@ -1,87 +1,70 @@
-# Analysis Campaign Plan Template
+# Analysis Evidence Record Template
 
-Use this for the campaign-level plan.
-Treat it as the durable version of the charter, not a separate optional memo.
-For `analysis-lite`, a shorter charter is enough if the question, first slice, expected output, and next route are already clear.
+Use this only when a durable campaign record would reduce ambiguity.
+It is a reference template, not a required path or required filename.
+For `analysis-lite`, keep only the objective, first slice, evidence boundary, and next route.
+Expand only when the analysis is multi-slice, writing-facing, route-changing, expensive, unstable, or long-running.
 
-## 1. Map Link
+## 1. Objective
 
-- parent_map_node:
-- loop_id:
-- node_objective:
-- node_deliverable:
-- success_condition:
-- abandonment_condition:
-- next_on_success:
-- next_on_failure:
+- parent object:
+- parent claim or gap:
+- evidence question:
+- success condition:
+- stop or abandonment condition:
+- next route on support:
+- next route on contradiction / blocker:
 
-## 2. Objective
+## 2. Comparability Boundary
 
-- campaign id:
-- parent run or idea:
-- main claim under test:
-- selected outline ref:
-- paper experiment matrix path:
-- current matrix execution frontier:
-
-## 3. Current Node Tasks
-
-- [ ] sync the campaign node status and parent claim
-- [ ] confirm slice ordering and comparability boundary
-- [ ] launch the first claim-critical slice
-- [ ] aggregate campaign evidence
-- [ ] update the next map edge
-
-## 4. Boundary And Comparability
-
-- baseline comparison contract:
+- baseline or main comparison contract:
 - fixed conditions:
 - variables that may change:
-- non-comparable slices to watch for:
+- direct-comparison limits:
+- non-comparable slices to label explicitly:
 
-## 5. Slice Plan
+## 3. Slice Frontier
 
-| Exp id | Slice id | Experiment type | Research question | Priority | Paper placement | Needs extra baseline? |
+| Slice id | Slice class | Evidence question | Intervention / inspection target | Metric / observable | Priority | Paper role |
 |---|---|---|---|---|---|---|
-| | | ablation / sensitivity / robustness / efficiency / highlight / boundary | | | main_text / appendix / maybe / omit | yes / no |
+| | auxiliary / claim-carrying / supporting / failure-analysis | | | | | main_text / appendix / reference_only / none |
 
-## 6. Highlight Hypotheses
-
-- highlight id:
-- one-line claim:
-- why it is plausible:
-- which slices validate or falsify it:
-- what happens if it fails:
-
-## 7. Assets And Dependencies
+## 4. Assets And Dependencies
 
 - quest-local assets already available:
 - checkpoints / baselines already available:
-- still-missing dependencies:
+- required comparators:
+- missing dependencies or credentials:
+- fallback if unavailable:
 
-## 8. Execution Strategy
+## 5. Execution Choice
 
-- first slices to run:
-- smoke-test policy:
-- main run policy:
-- expected outputs:
-- conditions that trigger slice redesign or route change:
+- artifact-backed campaign needed:
+- working location:
+- environment or service route:
+- smoke / direct verification / real-run decision:
+- expected outputs or evidence paths:
+- monitoring plan if long-running:
 
-## 9. Reporting Plan
+## 6. Interpretation Boundary
 
 - what will count as stable support:
+- what will count as partial support:
 - what will count as contradiction:
 - what will count as unresolved ambiguity:
-- campaign summary should say in `1-2` sentences:
-- main-text gating rule:
+- what result would stop further slices:
 
-## 10. Checklist Link
+## 7. Paper Or Review Mapping
 
-- checklist path:
-- next unchecked item:
+- selected outline ref:
+- paper experiment matrix path:
+- evidence ledger path:
+- reviewer / rebuttal item:
+- write-back target:
 
-## 11. Revision Log
+## 8. Current Frontier
 
-| Time | What changed | Why it changed | Impact on slices or interpretation |
-|---|---|---|---|
-| | | | |
+- next action:
+- active blocker:
+- latest evidence:
+- next route:

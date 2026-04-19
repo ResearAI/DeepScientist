@@ -1,0 +1,159 @@
+schema_version: 1
+id: aisb.t3.012_efficientqat
+name: 'EfficientQAT：大型语言模型的高效量化感知训练'
+version: 0.1.0
+one_line: '针对 Llama-2/3 和 Mistral 系列（7B–70B）的两阶段低位宽量化感知训练（Block-AP → E2E-QP），通过 WikiText-2 困惑度、C4 困惑度及五个推理基准零样本准确率进行评估。
+
+'
+task_description: '本基准实现了 EfficientQAT，这是一种针对大型语言模型在 2/3/4 位权重仅量化精度下的两阶段量化感知训练流程。阶段一（Block-AP）使用 4096 个 RedPajama 样本（上下文长度 2048）的重构损失，对所有参数——权重、缩放因子和零点——进行逐块训练。阶段二（E2E-QP）冻结量化后的整数权重，仅在目标数据集（RedPajama 或 Alpaca，上下文长度 4096）上端到端微调量化缩放因子。主要可执行入口为 main_block_ap.py 和 main_e2e_qp.py，并配有辅助的缩放因子校准脚本（calibrate_scales.py、calibrate_scales_v2.py）。评估指标包括 WikiText-2 困惑度、C4 困惑度，以及在 WinoGrande、PIQA、HellaSwag、ARC-Easy 和 ARC-Challenge 上使用 lm-eval v0.4.2 测量的平均零样本准确率。多种模型/位宽配置的预量化检查点可在 HuggingFace 上获取，并可通过捆绑的转换脚本转换为 GPTQ 或 BitBLAS 格式。论文报告称，2 位 Llama-2-70B 可在单张 A100-80GB 上于 41 小时内完成，且精度下降小于 3 个点。无需外部评估服务，所有指标均在本地计算。
+
+'
+capability_tags:
+- research_code_optimization
+- large_language_models
+- quantization
+- model_compression
+- efficient_inference
+- quantization_aware_training
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 1d+
+cost_band: high
+difficulty: hard
+data_access: public
+primary_outputs:
+- wikitext2_ppl
+- c4_ppl
+- quantized_checkpoint
+- avg_accuracy
+launch_profiles:
+- id: calibration_only
+  label: 仅校准
+  description: '使用 WikiText-2 训练数据对预量化检查点运行缩放因子校准（calibrate_scales.py 或 calibrate_scales_v2.py）。生成更新后的缩放因子参数，无需完整的 Block-AP 或 E2E-QP 再训练。最快的路径；需要磁盘上有预量化模型。
+
+'
+- id: qat_eval
+  label: QAT + 评估
+  description: '运行完整的两阶段 EfficientQAT 流程：通过 main_block_ap.py 进行 Block-AP 逐块训练，然后通过 main_e2e_qp.py 进行 E2E-QP 端到端缩放因子训练，最后评估 WikiText-2/C4 困惑度及五个推理任务的零样本准确率。这是论文忠实路线，需要大量 GPU 时间（根据模型大小可能需要数小时到数天）。
+
+'
+- id: eval_pretrained
+  label: 评估预量化模型
+  description: '从 HuggingFace 下载预量化的 EfficientQAT 检查点，无需任何训练即可评估困惑度和零样本准确率。使用带 --resume_quant 参数的 main_block_ap.py。
+
+'
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: huggingface
+    url: https://huggingface.co/datasets/togethercomputer/RedPajama-Data-1T-Sample
+    access: public
+    note: 'RedPajama 校准数据，用于 Block-AP（4096 样本，序列长度 2048）和 E2E-QP（4096 样本，序列长度 4096）。由 datautils_block.py 自动下载。
+
+'
+  - kind: huggingface
+    url: https://huggingface.co/datasets/wikitext
+    access: public
+    note: 'WikiText-2（wikitext-2-raw-v1），用于困惑度评估和缩放因子校准。在评估期间自动下载。
+
+'
+  - kind: huggingface
+    url: https://huggingface.co/ChenMnZ
+    access: public
+    note: 'Llama-2（7B/13B/70B）、Llama-3（8B/70B）、Llama-3-Instruct 和 Mistral-Large 的预量化模型检查点，支持 EQAT/GPTQ/BitBLAS 格式。各检查点大小从约 2 GB 到约 39 GB 不等。
+
+'
+  - kind: huggingface
+    url: https://huggingface.co/datasets/tatsu-lab/alpaca
+    access: public
+    note: 'Alpaca 指令微调数据集，用作指令微调场景的替代 E2E-QP 训练数据。
+
+'
+  notes:
+  - 全精度基模型（如约 131 GB 的 Llama-2-70B）如需从头运行 Block-AP，必须从其原始 HuggingFace 仓库单独下载。
+  - 预量化检查点要小得多（例如 w2g64 Llama-2-70B 约 20 GB）。
+  - 总磁盘使用量很大程度上取决于目标模型系列和位宽。
+credential_requirements:
+  mode: none
+  items:
+  - HuggingFace 账户可能需要用于门控模型（Llama-2、Llama-3），但访问 EfficientQAT 检查点本身无需账户。
+  notes:
+  - Meta Llama 模型权重需要在 HuggingFace 上接受许可协议后方可下载。
+  - ChenMnZ 命名空间下的预量化 EfficientQAT 检查点可公开访问。
+resources:
+  minimum:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 48
+  recommended:
+    cpu_cores: 32
+    ram_gb: 128
+    disk_gb: 500
+    gpu_count: 2
+    gpu_vram_gb: 80
+environment:
+  python: '3.11'
+  cuda: null
+  pytorch: 2.2.2
+  flash_attn: null
+  key_packages:
+  - bitsandbytes==0.41.0
+  - transformers==4.40.1
+  - lm-eval==0.4.2
+  - accelerate
+  - datasets
+  notes:
+  - 完整的依赖项列表请参阅捆绑的 requirements.txt。
+  - CUDA 工具包版本在仓库中未固定；任何支持 PyTorch 2.2.2 的版本均可使用。
+  - GPTQModel（已测试 v0.9.8）仅在模型格式转换为 GPTQ/BitBLAS 时需要；核心 QAT 和评估不需要。
+  - bitsandbytes 用于 E2E-QP 训练中的 AdamW 优化器。
+risk_flags:
+- large_model_download
+- high_gpu_memory
+- long_training_time
+- gated_model_access
+risk_notes:
+- 70B 模型路线需要单张 A100-80GB（论文报告 2 位 Llama-2-70B 的 Block-AP + E2E-QP 需 41 小时）或多人 GPU 配置。
+- 7B 模型路线可在单张 48GB GPU 上完成，但完整的 Block-AP + E2E-QP 仍需数小时。
+- Llama-2/3 的全精度基模型权重在 HuggingFace 上受门控限制，需要接受许可协议。
+- Block-AP 中的 --off_load_to_disk 标志可以训练速度换取降低 CPU 内存使用量。
+- 打包过程中未执行基准测试运行；仍需运行时验证。
+- 论文报告 2 位 Llama-2-70B 的 E2E-QP 内存需求为 34.2 GB。
+recommended_when: '当您需要一个以激进位宽（2-4 位）量化感知训练为中心的 LLM 系统任务，且具备自包含的训练和评估流程，覆盖从 7B 到 70B 的多种模型规模时，可使用此基准。适用于评估低位宽 QAT 的优化策略、与 PTQ 和 Q-PEFT 基线对比，或生成可部署的 GPTQ/BitBLAS 格式量化检查点。
+
+'
+not_recommended_when: '如果您无法访问至少一块 ≥48 GB VRAM 的 GPU、需要亚小时级基准测试周转时间，或关注的是小型模型（<7B 参数），则不应使用此基准。此外，如需权重-激活量化基准也不适用（此基准为权重仅量化）。
+
+'
+paper:
+  title: 'EfficientQAT: Efficient Quantization-Aware Training for Large Language Models'
+  venue: ACL 2025 Main
+  year: 2025
+  url: https://arxiv.org/abs/2407.11062
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.012_efficientqat.zip
+  archive_type: zip
+  local_dir_name: paper-12-EfficientQAT
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.012_efficientqat.zip
+  sha256: 8f53850f12f1bdbc4e3212b21fb51a7479ebb8ab715f3138d96ef1da979b2977
+  size_bytes: 107235
+commercial:
+  annual_fee: null
+display:
+  palette_seed: amber-steel-llm
+  art_style: hardware-editorial
+  accent_priority: high
+image_path: ../image/012_aisb.t3.012_efficientqat.jpg

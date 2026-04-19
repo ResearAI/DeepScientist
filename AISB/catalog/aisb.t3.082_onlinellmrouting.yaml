@@ -1,0 +1,160 @@
+id: aisb.t3.082_onlinellmrouting
+name: Online LLM Routing
+version: 0.1.0
+one_line: Training-free online router allocating prompts across multiple LLMs under
+  token budget constraints using ANNS and one-time optimization.
+task_description: 'This benchmark implements a training-free online routing algorithm
+  for high-volume multi-LLM serving under constrained token budgets. The system uses
+  Approximate Nearest Neighbor Search (ANNS) to efficiently estimate query features
+  for each deployed LLM from a historical auxiliary dataset, then performs a one-time
+  Mixed-Integer Linear Programming (MILP) optimization over a small sample set of
+  observed queries (typically ~250) to learn routing weights. These weights guide
+  routing decisions for subsequent queries arriving sequentially. The approach requires
+  no model training and introduces negligible deployment overhead, making it adaptable
+  to dynamic LLM deployment configurations. Theoretical analysis guarantees a competitive
+  ratio of 1 - o(1) under mild assumptions.
+
+  '
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- quality_score
+- routing_decisions
+- cost_efficiency_metrics
+- throughput_metrics
+launch_profiles:
+- id: analysis_only
+  label: Analysis Only
+  description: Review preserved routing benchmark metadata, target objective function,
+    and MILP formulation. No execution performed.
+- id: restore_first
+  label: Restore First
+  description: Restore missing online routing implementation and ANNS components before
+    treating this benchmark as runnable. Current snapshot lacks executable code anchors.
+dataset_download:
+  primary_method: mixed
+  sources:
+  - type: external_archive
+    url: https://deepscientist.cc/AISB/082_onlinellmrouting
+    archive_type: zip
+    local_dir_name: paper-82-OnlineLLMRouting
+  - type: github_repository
+    url: https://github.com/fzwark/PORT
+    note: Original implementation source referenced in paper
+  notes:
+  - Archive contains bundled README and requirements for full dependency set
+  - Benchmark datasets referenced in paper not included in snapshot
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No API credentials required for CPU-only routing evaluation
+  - LLM inference APIs not required for the core routing algorithm evaluation
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 30
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 0
+    gpu_vram_gb: 0
+  notes:
+  - CPU-only execution is fully viable for the minimum routing implementation
+  - ANNS operations (FAISS) are CPU-optimized with faiss_cpu package
+  - No GPU required for MILP solver or routing weight optimization
+  - Memory requirements scale with auxiliary dataset size for ANNS indexing
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: 2.6.0
+  flash_attn: null
+  key_packages:
+  - faiss_cpu==1.10.0
+  - transformers==4.51.0
+  notes:
+  - faiss_cpu provides ANNS index for query feature estimation
+  - transformers used for embedding generation if auxiliary dataset requires
+  - Full dependency list provided in bundled requirements.txt
+risk_flags:
+- snapshot_incomplete
+- blocked_no_code
+risk_notes:
+- Current snapshot does not expose executable code files anchoring staged metrics
+- No benchmark execution was performed in this packaging pass
+- Treat as blocked until source restoration or richer local snapshot is recovered
+- Top-level README absent in current snapshot
+recommended_when: 'Use this benchmark for systems-routing research focused on retrieval,
+  optimization, and budget allocation under token constraints. Ideal for evaluating
+  training-free approaches to multi-LLM serving that require rapid routing decisions
+  without model retraining.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you require local GPU finetuning
+  of language models, offline ensemble methods with multiple model calls per query,
+  or tasks requiring model-based predictors that need training overhead.
+
+  '
+paper:
+  title: Efficient Training-Free Online Routing for High-Volume Multi-LLM Serving
+  venue: NeurIPS 2025
+  year: 2025
+  url: https://openreview.net/forum?id=d4mZyZB5I9
+  authors:
+  - Fangzhou Wu
+  - Sandeep Silwal
+  institution: University of Wisconsin-Madison
+display:
+  palette_seed: silver-blue-router
+  art_style: serving-console
+  accent_priority: high
+image_path: ../image/082_aisb.t3.082_onlinellmrouting.jpg
+capability_tags:
+- research_code_optimization
+- llm_routing
+- approximate_nearest_neighbors
+- serving_systems
+- online_optimization
+- milp
+- budget_allocation
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+metric_contract:
+  primary_metric: quality_score
+  status: blocked_no_code
+  notes:
+  - No executable code anchor in current snapshot
+  - Metric surface blocked until routing implementation is restored
+  - Original paper reports 3.55x overall performance improvement and 1.85x cost efficiency
+    against 8 baselines
+commercial:
+  annual_fee: null
+recovery_rule: 'Prefer existing code files over README-only claims when choosing origin_path,
+  source_ref, and evaluation_protocol.code_paths. Keep metrics_summary empty until
+  trusted execution outputs exist. If the current snapshot has no executable anchor
+  for a metric, mark that metric as provisional or blocked instead of inventing support.
+
+  '
+download:
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.082_onlinellmrouting.zip
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.082_onlinellmrouting.zip
+  archive_type: zip
+  sha256: 60d8ccca2c47273b6fa1cd022d1625bd395bd8358d3ef7f79234036d9b1d8a04
+  size_bytes: 54262

@@ -1,3 +1,8 @@
-Open the launch dialog first.
+**Next move:** click `Start Research`.
 
-`Start Research` now begins with one lightweight choice: pick **Copilot** or **Autonomous**, then continue into the matching setup flow.
+You are not launching the full system yet. You are only opening the first choice screen.
+
+That screen asks one simple question first:
+
+- do you want a quieter, human-led start
+- or a normal autonomous start

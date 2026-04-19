@@ -1,0 +1,104 @@
+id: aisb.t3.104_balancedactiveinf
+name: 平衡主动推理
+version: 0.1.0
+one_line: 使用立方体方法平衡抽样、校准不确定性和渐近有效总体均值估计进行回归的主动推理。
+task_description: '该打包基准测试实现了平衡主动推理，将平衡采样的立方体方法与主动推理相结合，以解决标签稀缺回归设置中的方差膨胀问题。 The framework trains two XGBoost models: a label predictor and an uncertainty estimator.采样概率使用 τ 混合规则（默认值 τ=0.5），然后通过约束优化进行立方体方法平衡。总体平均值是使用广义差值估计器估计的。根据经典的简单随机采样、均匀主动推理和传统的基于泊松的主动推理基线进行评估。支持合成（线性、非线性、弗里德曼）和现实世界回归数据集（自行车、社区、混凝土、能源、生命、超导）。'
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 1-2h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- ci_width_cube_active
+- coverage_cube_active
+- prediction_rmse
+- comparison_figure
+launch_profiles:
+- id: demo_notebook
+  label: 演示笔记本
+  description: 运行捆绑的 demo.ipynb 以生成 Friedman 合成数据、训练双 XGBoost 模型、执行抽样预算扫描并生成出版质量的比较数据。
+- id: full_budget_sweep
+  label: 全面预算扫荡
+  description: 在预算 0.03–0.45 范围内执行 T=10,000 次蒙特卡罗重复的完整模拟实验，导出 CSV 指标和 PDF 比较图。
+dataset_download:
+  primary_method: procedural
+  sources: []
+  notes:
+  - Benchmark 在 src/data_generation.py 内按程序生成弗里德曼式综合回归数据。
+  - Formula: Y = 10*sin(π*X₁*X2) + 20*(X₃-0.5)² + 10*X₄ + 5*X₅ + ε，其中 ε~N(0, 0.09)。
+  - 特征 X₁–X₅ 具有丰富的信息； X₆–X₁₀ 是噪声变量。
+  - 无需下载外部数据集；现实世界的数据集是可选的扩展。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 无需 API 凭证；纯粹受 CPU 限制的过程计算。
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.8'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - xgboost==1.5.0
+  - rpy2==3.4.0
+  - numpy>=1.21.0
+  - pandas>=1.3.0
+  - scikit-learn>=1.0.0
+  - scipy>=1.7.0
+  - matplotlib>=3.4.0
+  - seaborn>=0.11.0
+  - joblib>=1.1.0
+  notes:
+  - 仅 CPU 执行；无需 GPU。
+  - R runtime required for BalancedSampling package: 通过 R 控制台使用 install.packages("BalancedSampling") 安装。
+  - 通过 rpy2 实现 Python+R 互操作；执行前验证 R 安装。
+risk_flags:
+- route_caveat
+risk_notes:
+- 执行取决于通过 rpy2 和 BalancedSampling R 包实现的 Python + R 互操作性。
+- 确保 R 已安装并且 rpy2 在运行前可以加载 BalancedSampling 库。
+- 综合数据驱动路线；无需外部数据集下载或网络访问。
+- 通过 joblib（n_jobs 参数）并行执行需要足够的 RAM。
+- 全面预算扫描（T=10,000 次试验）需要大量计算；考虑减少 n_trials 以进行快速验证。
+recommended_when: 使用此基准进行 CPU 友好的主动学习研究，包括方差估计、不确定性校准或统计效率比较。非常适合标签预算有限的回归任务，其中可靠的置信区间和 RMSE 降低是主要指标。
+not_recommended_when: 如果您需要大规模多模式基准测试、深度学习管道或 GPU 加速训练，请勿使用此选项。不适合需要外部数据集下载或实时 API 访问的任务。
+paper:
+  title: Balanced Active Inference
+  authors: Boyu Chen, Zhixiang Zhou, Liuhua Peng, Zhonglei Wang
+  institution: Xiamen University, Shanghai Innovation Institute, The University of Melbourne
+  venue: NeurIPS
+  year: 2025
+  url: https://neurips.cc/virtual/2025/poster/117263
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.104_balancedactiveinf.zip
+  archive_type: zip
+  local_dir_name: paper-104-BalancedActiveInf
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.104_balancedactiveinf.zip
+  sha256: d1c5e0c466d3f1bdd4fdfe96fa9161ea425e88dbf0d0b2ab9f6c2a3992d8c338
+  size_bytes: 35848
+display:
+  palette_seed: lemon-slate-balance
+  art_style: active-estimation
+  accent_priority: medium
+image_path: ../image/104_aisb.t3.104_balancedactiveinf.jpg

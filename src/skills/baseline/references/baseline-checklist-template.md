@@ -1,38 +1,38 @@
-# Baseline Checklist Template
+# Baseline Gate Checklist Template
 
-Use this as a living checklist.
-Keep it short by default.
-For a fast path, complete the core checklist first and expand only if the route becomes complex or unstable.
+Use this as a compact acceptance-boundary checklist when it helps.
+It is optional; the hard requirement is that the accepted, blocked, waived, or route-changed state is durable and unambiguous.
 
 ## Identity
 
-- parent_map_node:
-- loop_id:
 - baseline id:
 - route:
-- owner stage:
+- acceptance target:
+- primary comparator:
 
-## Active Frontier
+## Current Frontier
 
-- [ ] next baseline route check is explicit
-- [ ] next execution or verification step is explicit
-- [ ] next map transition is explicit
-
-## Blocked
-
-- [ ] blockers or unresolved dependencies are recorded here
+- [ ] next execution, verification, acceptance, blocker, or route-switch step is explicit
+- [ ] active uncertainty is written as a concrete question
+- [ ] next stage is known if this gate clears
 
 ## Core Gate
 
-- [ ] baseline object and route are explicit
-- [ ] dataset / split and core metric contract are explicit enough to judge comparability
-- [ ] `PLAN.md` captures the command path, expected outputs, acceptance condition, and fallback when the route is non-trivial
-- [ ] smoke decision is explicit
-- [ ] real validation/run decision is explicit
-- [ ] expected result files and currently required metrics are checked
-- [ ] baseline is accepted, blocked, or waived with a durable note
+- [ ] comparator identity and provenance are explicit
+- [ ] dataset, split, evaluation path, required metrics, and metric directions are explicit enough to judge comparability
+- [ ] trusted outputs or metrics are traceable to concrete files, logs, service responses, source artifacts, or accepted package records
+- [ ] smoke was used, skipped, or replaced by direct verification for an explicit reason when that choice matters
+- [ ] expected result files or trusted-output pointers have been checked
+- [ ] `<baseline_root>/json/metric_contract.json` exists or will be produced before acceptance
+- [ ] baseline is accepted, blocked, waived, or route-changed with a durable note
+
+## Blocked Boundary
+
+- [ ] if blocked, the failure class is explicit
+- [ ] if blocked, tried steps and evidence paths are recorded
+- [ ] if blocked, next best move is attach, import, retry, repair, reset, waive, or ask the user
 
 ## Closeout
 
-- [ ] concise `1-2` sentence baseline summary written
-- [ ] next stage named explicitly
+- [ ] concise baseline summary written
+- [ ] next anchor named explicitly

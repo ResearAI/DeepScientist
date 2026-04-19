@@ -1,0 +1,173 @@
+schema_version: 1
+id: aisb.t3.020_aristotle
+name: 'Aristotle: Mastering Logical Reasoning with A Logic-Complete Decompose-Search-Resolve
+  Framework'
+version: 0.1.0
+one_line: 'Multi-stage LLM-driven logical reasoning benchmark using symbolic decomposition,
+  dual-path proof-by-contradiction search, and resolution over ProntoQA, ProofWriter,
+  and LogicNLI datasets.
+
+  '
+task_description: 'This benchmark evaluates and optimizes the Aristotle framework,
+  a logic-complete reasoning pipeline for LLMs. The workflow has four stages: (1)
+  translate_decompose.py converts natural-language premises into Prolog-style symbolic
+  expressions and decomposes them into Conjunctive Normal Form; (2) negate.py initialises
+  dual search paths by negating the target conjecture; (3) search_resolve.py runs
+  proof-by-contradiction search and clause resolution twice (once with negation=True,
+  once with negation=False), producing two result files per dataset; (4) evaluate.py
+  aggregates dual-path answers using the paper''s Eq. (1) and computes accuracy against
+  gold labels. All LLM calls go through an OpenAI-compatible API (GPT-4, GPT-4o, Claude,
+  or LLaMA via base_url). Three bundled datasets of increasing difficulty are supported:
+  ProntoQA (basic deductive), ProofWriter (and/or structures), and LogicNLI (either/or,
+  biconditional). The primary metric is accuracy, code-backed via evaluate.py. No
+  GPU is required; the main cost driver is API token usage.
+
+  '
+capability_tags:
+- research_code_optimization
+- logical_reasoning
+- llm_tooling
+- evaluation
+- symbolic_reasoning
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+cost_band: low
+time_band: 1-2h
+difficulty: medium
+data_access: public
+snapshot_status: runnable
+support_level: turnkey
+primary_outputs:
+- accuracy
+- reasoning_traces
+- evaluation_report
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run the full four-stage pipeline (translate_decompose → negate → search_resolve
+    × 2 → evaluate) on a single dataset (e.g., ProntoQA dev split) to verify end-to-end
+    connectivity and API access.
+
+    '
+- id: benchmark_eval
+  label: Full Benchmark Evaluation
+  description: 'Run the Aristotle pipeline on all three datasets (ProntoQA, ProofWriter,
+    LogicNLI) with the target model (GPT-4 or GPT-4o) and collect accuracy scores
+    for comparison with paper baselines.
+
+    '
+- id: single_dataset
+  label: Single Dataset Run
+  description: 'Run on one selected dataset to iterate on framework improvements before
+    committing to the full suite.
+
+    '
+dataset_download:
+  primary_method: bundled
+  sources:
+  - kind: local
+    url: ./data
+    access: public
+    note: 'Data for ProntoQA, ProofWriter, and LogicNLI is expected under ./data/{dataset_name}/.
+      Prompt templates are under ./prompts/{dataset_name}/. Some data-error corrections
+      are stored in ./data_errors/LogicNLI/.
+
+      '
+  notes:
+  - Dataset files appear to be bundled in the snapshot under ./data; verify completeness
+    after download.
+  - Total data footprint is small (well under 1 GB).
+credential_requirements:
+  mode: api_key
+  items:
+  - OpenAI API key (or compatible endpoint key for GPT-4/GPT-4o/Claude/LLaMA serving)
+  notes:
+  - The --api_key flag is required by translate_decompose.py and search_resolve.py.
+  - An optional --base_url flag allows pointing to non-OpenAI endpoints.
+  - API costs depend on dataset size and model choice; GPT-4 is significantly more
+    expensive per token than GPT-4o.
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.10'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - openai==0.27.9
+  notes:
+  - CPU-only execution; no GPU required.
+  - All heavy computation is offloaded to the LLM API; local compute handles I/O and
+    symbolic search routing.
+  - negate.py is pure Python with no API calls.
+  - See requirements.txt for the full dependency set.
+  - The openai package version (0.27.9) uses the legacy API interface; verify compatibility
+    if using a newer SDK.
+risk_flags:
+- api_dependency
+- api_cost_variable
+- legacy_sdk_version
+risk_notes:
+- All translation, decomposition, search, and resolution stages except negate.py require
+  live API access; the benchmark cannot run offline.
+- API costs scale with dataset size and number of search iterations (controlled by
+  --search_round and --batch_num).
+- openai==0.27.9 is a legacy SDK; newer OpenAI endpoints may require migration to
+  openai>=1.0.
+- No benchmark execution was performed during the packaging pass; metric values are
+  not yet validated.
+- Concurrent batch execution via threading may hit API rate limits depending on the
+  provider.
+recommended_when: 'Use this benchmark when you want a structured logical-reasoning
+  evaluation driven by API-backed decomposition, symbolic search routing, and resolution
+  stages across datasets of increasing logical complexity. Good fit for studying how
+  LLMs handle formal symbolic reasoning, proof by contradiction, and CNF-based clause
+  resolution without requiring local GPU resources.
+
+  '
+not_recommended_when: 'Do not use this if you need a fully offline or GPU-training-centric
+  benchmark. Not suitable if you cannot provision an OpenAI-compatible API key or
+  if you need to avoid per-query API costs. Also not ideal if you require deterministic
+  reproducibility, as LLM API outputs are stochastic.
+
+  '
+paper:
+  title: 'Aristotle: Mastering Logical Reasoning with A Logic-Complete Decompose-Search-Resolve
+    Framework'
+  venue: ACL 2025
+  year: 2025
+  url: https://arxiv.org/abs/2412.16953
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.020_aristotle.zip
+  archive_type: zip
+  local_dir_name: paper-20-Aristotle
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.020_aristotle.zip
+  sha256: f6c04512a751c42a8cd33286a62c46b34019cf91eac8d1245cead4de475b84e2
+  size_bytes: 695245
+commercial:
+  annual_fee: null
+display:
+  palette_seed: parchment-navy-logic
+  art_style: structured-proof
+  accent_priority: medium
+image_path: ../image/020_aisb.t3.020_aristotle.jpg

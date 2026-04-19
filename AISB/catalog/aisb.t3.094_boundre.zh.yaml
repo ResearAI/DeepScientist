@@ -1,0 +1,114 @@
+schema_version: 1
+id: aisb.t3.094_boundre
+name: BounDr.E：通过生物医学知识对齐和类 EM 一类边界优化来预测药物相似性
+version: 0.1.0
+one_line: 通过知识图谱对齐和分子指纹的类 EM 一类优化进行药物相似性边界预测。
+task_description: 该打包基准涵盖两阶段药物相似性边界预测。步骤 1 将分子指纹（摩根指纹）和生物医学知识图嵌入到统一空间中进行多模态比对。第 2 步使用类似 EM 的优化来训练深度一类分类器，以迭代地细化已批准药物周围的超球形边界，推动超出边界的非药物化合物，同时将类药物化合物收缩到中心。该模型输出归一化距离分数，其中大于 1 的值表示化合物在类药物边界之外。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- f1
+- auroc
+- avgpr
+- drug_boundary_checkpoint
+launch_profiles:
+- id: single_score
+  label: 单分
+  description: 使用预先训练的对齐和边界模型对 SMILES 输入文件运行药物相似度评分。输出归一化距离分数，其中推断值 > 1 表示化合物在药物边界之外。用法： python score.py --input_smiles test.smi --project_dir [project_dir] --device cuda:0
+- id: train_and_eval
+  label: 火车+评估
+  description: 运行完整的两阶段管道：(1) 在知识图和指纹嵌入上训练多模态对齐编码器，然后 (2) 训练类似 EM 的边界优化器并评估 F1、AUROC 和 AVPR 指标。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - url: https://deepscientist.cc/AISB/094_boundre
+    type: archive
+  - type: internal_benchmark
+    path: benchmark/
+    description: Pre-processed drug and compound SMILES files with train/valid/test splits
+  notes:
+  - benchmark/ 文件夹中提供的基准数据和分割
+  - 演示文件可在 demo/ 文件夹中使用 test.smi 进行快速验证
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.8'
+  cuda: '10.1'
+  pytorch: 1.8.1
+  flash_attn: null
+  key_packages:
+  - rdkit-pypi==2022.9.5
+  - numpy==1.24.1
+  - pandas==2.0.1
+  notes:
+  - 分子指纹计算和SMILES解析需要rdkit
+  - 请参阅捆绑的 requirements.txt 以获取完整的依赖项集
+risk_flags:
+- em_iteration_convergence
+- knowledge_graph_alignment_quality
+risk_notes:
+- 类似 EM 的优化可能需要仔细调整初始化和迭代计数以实现稳定的边界收敛
+- 知识图比对质量取决于 ATC 相似矩阵和化学结构之间的一致性
+recommended_when: 当您需要具有化学输入、知识图特征和迭代边界细化的生物医学一类边界学习任务时，请使用此基准。适用于评估药物相似性评分管道、多模式嵌入对齐和开放世界化合物分类。
+not_recommended_when: 如果您需要轻量级非生物医学基准、具有硬负例的二元分类或无需训练定制的预训练模型，请勿使用此选项。
+paper:
+  title: 'BounDr.E: Predicting Drug-likeness via Biomedical Knowledge Alignment and EM-like One-Class Boundary Optimization'
+  venue: ICML 2025
+  year: 2025
+  url: https://proceedings.mlr.press/v267/bang25a.html
+  authors:
+  - Dongmin Bang
+  - Inyoung Sung
+  - Yinhua Piao
+  - Sangseon Lee
+  - Sun Kim
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.094_boundre.zip
+  archive_type: zip
+  local_dir_name: paper-94-BounDrE
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.094_boundre.zip
+  sha256: 2753a34922d6d0c3d0b021300ab177f667a76ff28dfd357b39fce26571e9bad7
+  size_bytes: 14967140
+display:
+  palette_seed: sage-crimson-boundary
+  art_style: biomedical-geometry
+  accent_priority: high
+image_path: ../image/094_aisb.t3.094_boundre.jpg
+capability_tags:
+- research_code_optimization
+- drug_discovery
+- one_class_classification
+- multimodal_learning
+- biomedical_ai
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null

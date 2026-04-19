@@ -1,5 +1,6 @@
 export const WORKSPACE_LEFT_VISIBILITY_EVENT = 'ds:workspace:left-visibility'
 export const QUEST_WORKSPACE_VIEW_EVENT = 'ds:quest:workspace-view'
+export const WORKSPACE_REVEAL_FILE_EVENT = 'ds:workspace:reveal-file'
 
 export type WorkspaceLeftVisibilityDetail = {
   projectId: string
@@ -35,6 +36,12 @@ export type QuestWorkspaceViewDetail = {
   stageSelection?: QuestStageSelection | null
 }
 
+export type WorkspaceRevealFileDetail = {
+  projectId: string
+  filePath: string
+  label?: string | null
+}
+
 export function dispatchWorkspaceLeftVisibility(detail: WorkspaceLeftVisibilityDetail) {
   if (typeof window === 'undefined') return
   window.dispatchEvent(
@@ -48,6 +55,15 @@ export function dispatchQuestWorkspaceView(detail: QuestWorkspaceViewDetail) {
   if (typeof window === 'undefined') return
   window.dispatchEvent(
     new CustomEvent<QuestWorkspaceViewDetail>(QUEST_WORKSPACE_VIEW_EVENT, {
+      detail,
+    })
+  )
+}
+
+export function dispatchWorkspaceRevealFile(detail: WorkspaceRevealFileDetail) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(
+    new CustomEvent<WorkspaceRevealFileDetail>(WORKSPACE_REVEAL_FILE_EVENT, {
       detail,
     })
   )

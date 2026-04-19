@@ -1,0 +1,120 @@
+id: aisb.t3.071_neuralmjd
+name: 神经非平稳Merton跳跃扩散
+version: 0.1.0
+one_line: 用于时间序列预测的神经非平稳Merton跳跃扩散网络参数化方法，具备显式随机动力学建模和突变跳跃捕捉能力。
+task_description: '该标准化基准测试涵盖了基于神经参数化非平稳Merton跳跃扩散（MJD）模型的跳跃扩散时间序列预测任务。该方法结合了时变Itô扩散以捕捉连续非平稳随机动力学，以及时变复合泊松过程以建模突变跳跃。相应随机微分方程（SDEs）的参数由神经网络根据历史数据和上下文信息预测。该任务评估在包含不连续变化的非平稳数据上的预测保真度，使用MAE衡量确定性精度，使用NLL评估概率校准。
+
+'
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: external_eval_required
+support_level: recovery
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- mae
+- nll
+- jump_diffusion_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 在预训练检查点上使用SP500数据运行单个标准化跳跃扩散预测评估流程。
+  estimated_time: 1-2h
+- id: full_train_eval
+  label: 完整训练+评估
+  description: 运行完整的蒙特卡洛跳跃扩散训练工作流程，包括模型初始化、周期性评估的训练循环、检查点保存以及最终测试集评估。
+  estimated_time: 6-18h
+dataset_download:
+  primary_method: curl
+  sources:
+  - name: SP500历史股票数据
+    url: https://www.kaggle.com/api/v1/datasets/download/camnugent/sandp500
+    type: kaggle
+    format: zip
+    local_path: ./data/sandp500
+  notes:
+  - SP500数据集需要Kaggle API凭证才能下载
+  - 演示笔记本支持合成数据生成，无需外部下载
+  - 配置文件位于config/sp500/mjd/目录
+credential_requirements:
+  mode: kaggle_api
+  items:
+  - name: Kaggle API令牌
+    description: 从Kaggle下载SP500数据集所需
+    optional: true
+  notes:
+  - Kaggle凭证仅在使用真实SP500数据时才需要；演示笔记本可通过合成数据使用，无需凭证
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 16
+    network: false
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    network: true
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.2
+  flash_attn: null
+  key_packages:
+  - torch>=2.0.0
+  - pytorch-geometric
+  - pyyaml
+  - numpy
+  - scipy
+  notes:
+  - 环境通过setup/conda.yaml或setup/requirements.txt配置
+  - PyG（pytorch-geometric）用于数据加载器
+  - 完整依赖集在打包的requirements文件中； conda环境设置说明请参阅README
+risk_flags:
+- long_training_time
+- stochastic_variance
+risk_notes:
+- 蒙特卡洛采样引入随机方差；建议使用多个随机种子以获得稳健的评估结果
+- 使用默认超参数在SP500上训练在单个GPU上可能需要6-12小时
+- 指标值为临时值，待首次可信执行后确定；随机特性意味着不同运行之间结果可能有所差异
+recommended_when: '当需要明确建模突变跳跃和不连续变化的概率时间序列预测时使用此基准。适用于具有突然价格波动的金融时间序列、具有促销尖峰的供应链数据，或任何需要将可解释的随机过程建模与神经网络灵活性相结合的场景。
+
+'
+not_recommended_when: '如果仅需简单的确定性点预测而不需要不确定性量化，请勿使用此基准。当跳跃事件已标注且基于事件的时序点过程模型更合适时不推荐使用。当GPU内存小于16GB且训练吞吐量是主要约束时应避免。
+
+'
+paper:
+  title: Neural Non-Stationary Merton Jump Diffusion for Time Series Prediction
+  authors:
+  - Yuanpei Gao (University of British Columbia, Vector Institute)
+  - Qi Yan (University of British Columbia, Vector Institute)
+  - Yan Leng (University of Texas at Austin)
+  - Renjie Liao (University of British Columbia, Vector Institute, Canada CIFAR AI
+    Chair)
+  venue: arXiv preprint arXiv:2506.04542
+  year: 2025
+  url: https://arxiv.org/abs/2506.04542
+  github: https://github.com/DSL-Lab/neural-MJD
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.071_neuralmjd.zip
+  archive_type: zip
+  local_dir_name: paper-71-NeuralMJD
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.071_neuralmjd.zip
+  sha256: 0ea7d70c8c22946e148ccfdf01295d7608888a1423b5ae6391ad927a6224f2e0
+  size_bytes: 101203
+display:
+  palette_seed: indigo-copper-jump
+  art_style: stochastic-signal
+  accent_priority: high
+image_path: ../image/071_aisb.t3.071_neuralmjd.jpg

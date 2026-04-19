@@ -1,0 +1,207 @@
+schema_version: 1
+id: aisb.t3.035_moralvalueswa
+name: Comparing Moral Values in Western English-speaking societies and LLMs with Word
+  Associations
+version: 0.1.0
+one_line: Graph-based moral-value propagation benchmark comparing human and LLM word-association
+  networks against Moral Foundation Theory using Spearman correlations on five moral
+  dimensions.
+task_description: 'This benchmark evaluates moral-value alignment between humans and
+  LLMs by constructing word-association graphs and propagating moral scores from Moral
+  Foundation Theory (MFT) seed words through them via a random-walk algorithm. The
+  primary task is to optimize the propagation parameters and graph construction to
+  maximize Spearman correlation of predicted moral scores against the extended Moral
+  Foundations Dictionary (eMFD) across five dimensions: care, sanctity, fairness,
+  authority, and loyalty. The benchmark ships pre-computed LLaMA 3.1 word-association
+  data (llama_2.1_association.json, llama_2.1_moral.json) so the expensive LLM generation
+  step (100 prompts × 12k cues on GPU) can be skipped. The evaluation route (eval.py)
+  loads pre-computed moral scores, computes correlations against eMFD, and reports
+  per-dimension results. Two external data files must be obtained before running:
+  SWOW-EN.R100.csv (human word associations, requires registration at smallworldofwords.org)
+  and emfd_scoring.csv (auto-downloaded from GitHub if missing). The experiments.py
+  script provides additional analyses including alpha tuning, MAG comparison, and
+  cross-graph experiments from the paper.
+
+  '
+capability_tags:
+- research_code_optimization
+- moral_reasoning
+- graph_analysis
+- llm_evaluation
+- nlp
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: low
+time_band: 2-6h
+difficulty: medium
+data_access: public
+primary_outputs:
+- correlation_care
+- correlation_sanctity
+- correlation_fairness
+- correlation_authority
+- correlation_loyalty
+- moral_value_graphs
+- analysis_report
+launch_profiles:
+- id: graph_eval
+  label: Graph Eval (Quick)
+  description: 'Run eval.py with pre-computed moral scores to reproduce Table 1 GMN-L
+    correlation results. Requires only emfd_scoring.csv (auto-downloaded). CPU-only,
+    completes in minutes.
+
+    '
+- id: full_experiments
+  label: Full Experiments
+  description: 'Run experiments.py to reproduce alpha tuning, MAG comparison, varying-alpha
+    sweeps, and cross-graph analyses from the paper. Requires SWOW-EN.R100.csv for
+    human association graph construction. CPU-feasible but benefits from GPU for getMoralValue
+    propagation.
+
+    '
+- id: llm_generation
+  label: LLM Association Generation
+  description: 'Re-run produce.py to regenerate LLaMA word associations from scratch.
+    Requires a HuggingFace token with access to meta-llama/Meta-Llama-3.1-8B-Instruct,
+    a GPU with ≥24 GB VRAM, and significant compute time (100 iterations × 12k cues).
+    Not required for evaluation; pre-computed outputs are bundled.
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: bundled
+    url: null
+    access: public
+    note: 'Pre-computed LLaMA word associations (llama_2.1.json, llama_2.1_association.json,
+      llama_2.1_moral.json), MFD2 dictionary, cue words, and mag_words.json are included
+      in the snapshot under data/.
+
+      '
+  - kind: external_download
+    url: https://raw.githubusercontent.com/medianeuroscience/emfd/master/dictionaries/emfd_scoring.csv
+    access: public
+    note: 'eMFD scoring CSV. Auto-downloaded by eval.py if missing. ~200 KB.
+
+      '
+  - kind: external_registration
+    url: https://smallworldofwords.org/en/project/research
+    access: public
+    note: 'SWOW-EN.R100.csv (human word association data). Requires free registration
+      at smallworldofwords.org. Needed only for full_experiments and human graph construction.
+
+      '
+  - kind: external_download
+    url: https://provalisresearch.com/products/content-analysis-software/wordstat-dictionary/moral-foundations-dictionary/
+    access: public
+    note: 'MFD 2.0 dictionary (mfd2.txt). Already bundled in data/ but original source
+      listed for reference.
+
+      '
+  notes:
+  - Total disk footprint including all external files is well under 1 GB.
+  - The graph_eval launch profile needs only the bundled files plus emfd_scoring.csv.
+credential_requirements:
+  mode: optional
+  items:
+  - HuggingFace token (only if re-running LLM association generation via produce.py)
+  notes:
+  - produce.py requires HF_TOKEN with access to meta-llama/Meta-Llama-3.1-8B-Instruct
+  - Evaluation and experiments routes do not require any credentials
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: null
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - numpy
+  - pandas
+  - scipy
+  - gensim
+  - matplotlib
+  - tqdm
+  - torch
+  - transformers
+  - huggingface_hub
+  notes:
+  - CPU-only execution is sufficient for eval.py and most of experiments.py.
+  - GPU and transformers/torch are needed only for produce.py (LLM association generation).
+  - getMoralValue.py imports torch.cuda but the propagation algorithm itself is array-based.
+  - See bundled requirements.txt for the full dependency set.
+risk_flags:
+- external_data_registration
+- optional_credential
+risk_notes:
+- SWOW-EN.R100.csv requires free registration at smallworldofwords.org; without it
+  the human association graph cannot be rebuilt and some experiments.py functions
+  will fail.
+- emfd_scoring.csv is auto-fetched from GitHub but network access is needed on first
+  run.
+- Re-generating LLM associations via produce.py is computationally expensive (GPU
+  hours) and requires HuggingFace model access; this is optional since pre-computed
+  outputs are bundled.
+- No benchmark execution was performed during the packaging pass; metric values are
+  from paper Table 1.
+recommended_when: 'Use this benchmark when you want a lightweight graph-based NLP
+  evaluation task focused on moral reasoning that can reuse bundled word-association
+  data without retraining or prompting a language model. Good for testing optimization
+  of graph propagation algorithms, exploring moral foundation analysis, or comparing
+  human vs. LLM conceptual organization.
+
+  '
+not_recommended_when: 'Do not use this if you need a large-scale end-to-end LLM fine-tuning
+  benchmark, if you require vision or multimodal capabilities, or if you cannot obtain
+  the SWOW dataset registration and need the full experiments pipeline including human
+  association graph construction.
+
+  '
+paper:
+  title: Comparing Moral Values in Western English-speaking societies and LLMs with
+    Word Associations
+  authors:
+  - Chaoyi Xiang
+  - Chunhua Liu
+  - Simon De Deyne
+  - Lea Frermann
+  venue: ACL 2025 Main
+  year: 2025
+  url: https://aclanthology.org/2025.acl-long.177/
+  doi: 10.18653/v1/2025.acl-long.177
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.035_moralvalueswa.zip
+  archive_type: zip
+  local_dir_name: paper-35-MoralValuesWA
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.035_moralvalueswa.zip
+  sha256: 49fa6c7fa381c4e8059933d6e2aabda5b93a2d0d1eff27940bfd404a356a4b72
+  size_bytes: 48717
+commercial:
+  annual_fee: null
+display:
+  palette_seed: sepia-emerald-values
+  art_style: social-science
+  accent_priority: medium
+image_path: ../image/035_aisb.t3.035_moralvalueswa.jpg

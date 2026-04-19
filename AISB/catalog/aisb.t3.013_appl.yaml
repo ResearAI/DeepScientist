@@ -1,0 +1,152 @@
+schema_version: 1
+id: aisb.t3.013_appl
+name: 'APPL: A Prompt Programming Language for Harmonious Integration of Programs
+  and Large Language Model Prompts'
+version: 0.1.0
+one_line: Measure and optimize the AST compactness of APPL prompt-programming constructs
+  by running a code-backed evaluator on canonical code snippets from the paper.
+task_description: 'This benchmark evaluates the structural compactness of APPL, a
+  Python-native prompt programming language that seamlessly integrates LLM calls into
+  conventional programs. The primary task is to optimize the APPL runtime and language
+  constructs so that canonical prompt-program patterns (e.g., Chain-of-Thought with
+  self-consistency from Figure 7a of the paper) yield smaller Python ASTs, measured
+  by counting AST nodes via the bundled eval_ast_size.py script. The evaluator parses
+  a fixed code snippet with Python''s ast module and reports the total node count.
+  No model training is involved; the benchmark is CPU-only and focuses on compiler-style
+  simplification and language design efficiency. An LLM API key (e.g., OpenAI) is
+  required only if you wish to exercise the APPL runtime end-to-end beyond the AST
+  metric; the core AST evaluation itself needs no external API.
+
+  '
+capability_tags:
+- research_code_optimization
+- prompt_programming
+- software_language_tools
+- llm_tooling
+- python
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: low
+time_band: 30-60m
+difficulty: medium
+data_access: public
+primary_outputs:
+- ast_size
+- runtime_output
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run eval_ast_size.py to compute the AST node count of the canonical
+    CoT-SC snippet. No LLM API key needed. Completes in seconds.
+
+    '
+- id: ast_eval
+  label: AST Eval
+  description: 'Run the full compactness-focused APPL evaluation workflow, including
+    any optimizations applied to the APPL language constructs, and report the resulting
+    ast_size metric.
+
+    '
+- id: runtime_exercise
+  label: Runtime Exercise
+  description: 'Install applang, configure an LLM backend (e.g., OpenAI), and run
+    the bundled examples to verify end-to-end runtime behavior alongside the AST metric.
+
+    '
+dataset_download:
+  primary_method: self_contained
+  sources: []
+  notes:
+  - No external dataset download is required. The evaluation code snippet is embedded
+    in eval_ast_size.py.
+  - The full APPL library source is included in the snapshot under src/appl/.
+credential_requirements:
+  mode: optional
+  items:
+  - OpenAI API key (only for end-to-end runtime exercises, not for the core AST metric)
+  notes:
+  - The primary ast_size metric requires no credentials or network access.
+  - Set OPENAI_API_KEY in .env or as an environment variable if exercising runtime
+    examples.
+  - Other LLM backends supported via litellm may require their own API keys.
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 10
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.9'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - applang>=0.2.2
+  - litellm>=1.59.8
+  - openai>=1.13.3
+  - pydantic>=2.6.3
+  - libcst>=1.4.0
+  notes:
+  - CPU-only execution is sufficient for the core AST evaluation metric.
+  - Python 3.9+ required; tested through 3.13.
+  - Install via pip install -U applang or from the bundled pyproject.toml with pdm.
+  - See pyproject.toml for the full dependency set including optional extras (lunary,
+    instructor, langfuse).
+risk_flags:
+- optional_api_dependency
+risk_notes:
+- The core ast_size metric is fully self-contained and reproducible without any external
+  service.
+- End-to-end runtime exercises require a working LLM API (OpenAI or other litellm-supported
+  backend), which incurs API costs and introduces non-determinism in generated text.
+- No benchmark execution was performed during the packaging pass; metric values should
+  be verified by running eval_ast_size.py.
+recommended_when: 'Use this benchmark when you want a software-oriented LLM task that
+  emphasizes runtime behavior, prompt-program structure, and code compactness rather
+  than GPU training. Suitable for evaluating compiler-style optimizations to prompt
+  programming language constructs.
+
+  '
+not_recommended_when: 'Do not use this if you are looking for a heavy model-training
+  benchmark, a purely offline task with no LLM backend integration path, or a benchmark
+  that measures model accuracy on downstream NLP tasks.
+
+  '
+paper:
+  title: 'APPL: A Prompt Programming Language for Harmonious Integration of Programs
+    and Large Language Model Prompts'
+  venue: arXiv preprint
+  year: 2024
+  url: https://arxiv.org/abs/2406.13161
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.013_appl.zip
+  archive_type: zip
+  local_dir_name: paper-13-APPL
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.013_appl.zip
+  sha256: 92f377259bd60724229ee6c61adda761177ee60e47813ebb71dc37f43c0e24f2
+  size_bytes: 2259394
+commercial:
+  annual_fee: null
+display:
+  palette_seed: apple-ink-notebook
+  art_style: language-design
+  accent_priority: medium
+image_path: ../image/013_aisb.t3.013_appl.jpg

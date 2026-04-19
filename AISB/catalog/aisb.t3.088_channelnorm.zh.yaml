@@ -1,0 +1,109 @@
+id: aisb.t3.088_channelnorm
+name: 用于时间序列通道识别的通道归一化
+version: 0.1.0
+one_line: 特定于通道的仿射归一化可增强时间序列预测模型中的通道可识别性。
+task_description: 该基准条目涵盖了通道归一化 (CN)，这是一种归一化策略，可为时间序列模型中的每个通道分配不同的仿射变换参数，从而实现通道可识别性 (CID)。当前的本地快照保留纸张元数据和乳胶源，但不包含可执行的基准代码或可运行的评估脚本。打包基准旨在用于 CN 预测实施的纸质规划和上游恢复。提出了两种变体：自适应 CN (ACN) 根据输入时间序列动态调整参数，而原型 CN (PCN) 使用可学习原型来处理具有未知或变化通道数的数据集，便于在时间序列基础模型中使用。
+task_mode: analysis_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: restore_needed
+support_level: recovery
+time_band: 2-6h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- mse
+- channel_identifiability_metrics
+- forecasting_accuracy
+launch_profiles:
+- id: analysis_only
+  label: 仅分析
+  description: 查看保留的通道标准化基准元数据、指标定义和目标 MSE 评估标准。
+- id: restore_first
+  label: 首先恢复
+  description: 在尝试执行基准测试之前，从上游恢复丢失的 ChannelNorm 预测实现。可执行代码路径所需的上游恢复。
+dataset_download:
+  primary_method: restoration_required
+  sources: []
+  notes:
+  - 当前本地包不保留可执行的基准测试路线；数据集和代码设置是上游恢复的一部分，而不是捆绑的运行路径。
+  - 该论文引用了标准时间序列基准（ETTm1、Weather、PEMS03），但这些基准未捆绑在当前快照中。
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 8
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.0
+  flash_attn: null
+  key_packages: []
+  notes:
+  - 当前本地包不保留可执行安装文件或可运行源代码；这里的环境规范是基于典型时间序列深度学习设置的临时环境规范。
+  - 该论文将 CN 应用于各种骨干网，包括 Transformer (iTransformer)、MLP（RMLP、TSMixer）和 SSM（Mamba 变体）。
+  - 将环境提示视为待处理的上游恢复；请参阅捆绑的自述文件/要求以获取完整的依赖项集（如果可用）。
+risk_flags:
+- source_snapshot_incomplete
+- route_caveat
+- no_executable_anchor
+risk_notes:
+- 当前快照被阻止；未检测到可以锚定分阶段指标的可执行代码文件。
+- 在此打包过程中未执行任何基准测试。
+- 主要指标 (mse) 在当前快照中是无代码阻塞的。
+- 当前快照中缺少顶级自述文件。
+- 不要将此本地包视为准备运行的规范化基准。
+recommended_when: 在规划对通道可识别时间序列模型的论文支持研究、评估 ChannelNorm 预测路线的上游恢复候选者或分析时间序列预测架构的标准化策略时，请使用此条目。
+not_recommended_when: 在寻求可立即运行的标准化基准时不要使用；暂存快照仅保留元数据。在没有事先上游恢复丢失代码的情况下，不要尝试执行。
+paper:
+  title: Channel Normalization for Time Series Channel Identification
+  venue: ICML 2025
+  year: 2025
+  url: https://arxiv.org/abs/2506.00432
+  code_url: https://github.com/seunghan96/CN
+  authors:
+  - Seunghan Lee
+  - Taeyoung Park
+  - Kibok Lee
+  institution: Yonsei University
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.088_channelnorm.zip
+  archive_type: zip
+  local_dir_name: paper-88-ChannelNorm
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.088_channelnorm.zip
+  sha256: bb1b5c0c7b3d2731d2698c1b4b9ec11f9601967281315c37e6548078eeb28913
+  size_bytes: 39531
+display:
+  palette_seed: cyan-slate-channel
+  art_style: normalization-grid
+  accent_priority: medium
+image_path: ../image/088_aisb.t3.088_channelnorm.jpg
+capability_tags:
+- research_code_optimization
+- time_series
+- normalization_layers
+- forecasting
+- channel_modeling
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3
+commercial:
+  annual_fee: null

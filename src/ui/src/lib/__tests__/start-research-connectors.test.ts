@@ -201,4 +201,21 @@ describe('start research standard profiles', () => {
     expect(prompt).toContain('do not plan around paper writing')
     expect(prompt).toContain('do not drift into paper writing or default analysis-campaign work')
   })
+
+  it('can compile a local-existing baseline route with plan-first execution', () => {
+    const prompt = compileStartResearchPrompt({
+      ...defaultStartResearchTemplate('en'),
+      goal: 'Use the already running local system as the baseline comparator first.',
+      baseline_source_mode: 'verify_local_existing',
+      execution_start_mode: 'plan_then_execute',
+      baseline_acceptance_target: 'comparison_ready',
+    })
+
+    expect(prompt).toContain('Baseline Source Preference')
+    expect(prompt).toContain('Verify local existing')
+    expect(prompt).toContain('Execution Start Mode')
+    expect(prompt).toContain('Plan first')
+    expect(prompt).toContain('Baseline Acceptance Target')
+    expect(prompt).toContain('Comparison ready')
+  })
 })

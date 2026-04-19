@@ -1,0 +1,116 @@
+id: aisb.t3.103_qdcp
+name: 通过消息传递的分布式共形预测
+version: 0.1.0
+one_line: 分布式共形预测，消息在任意图拓扑上传递，为分散的不确定性量化提供通信感知的覆盖保证。
+task_description: 该打包基准涵盖 ICML 2025 中基于分位数的分布式共形预测 (Q-DCP) 和基于直方图的分布式共形预测 (H-DCP)。去中心化网络中的每个设备都保存有限的本地校准数据，并且只能通过消息传递与相邻节点进行通信。 Q-DCP 采用基于 ADMM 的平滑和正则化增强的分布式分位数回归来加速收敛，而 H-DCP 使用基于共识的直方图估计来实现无超参数覆盖。该基准评估不同网络拓扑（包括星形图、环形图和路径图）之间的覆盖保证、预测集大小、通信开销和超参数敏感性之间的权衡。
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: partial
+support_level: advanced
+time_band: 2-6h
+cost_band: low
+difficulty: medium
+data_access: public
+primary_outputs:
+- mean_set_size
+- mean_coverage
+- topology_comparison_plots
+- experiment_score_tensors
+launch_profiles:
+- id: build_scores
+  label: 建立分数
+  description: 运行中央或联合训练以在 `experiments/` 下生成实验分数文件夹。使用 `src/run_TCT.py` 或捆绑的 shell 脚本（e.g.、`scripts/cifar100.sh`）。乐谱文件夹必须符合命名约定，例如 `{dataset}_{topology}_{model}` (e.g., `cifar100_central_small_resnet14`)。
+- id: qdcp_eval
+  label: Q-DCP评估
+  description: 使用 `run_qdcp_mod.py` 或笔记本在准备好的乐谱文件夹上运行分阶段 Q-DCP 或 H-DCP 分析。报告 alpha 级别的覆盖范围和设置大小曲线以及拓扑比较。使用预先准备的 `experiments/` 树从 `/repo` 执行。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - torchvision (CIFAR-10, CIFAR-100, FashionMNIST, MNIST, SVHN)
+  - MedMNIST (PathMNIST, BloodMNIST, TissueMNIST, DermMNIST)
+  - Fitzpatrick-SM (requires separate staging)
+  notes:
+  - 公共数据集由 `src/run_TCT.py` 或笔记本加载程序自动获取。
+  - Fitzpatrick 和类似的实验期望单独暂存的本地文件或 CSV 路径。
+  - Q-DCP 分阶段路线使用预先计算的分数文件夹，而不是直接使用原始数据。
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 快照中未检测到显式数据集或 API 凭证变量。
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+    gpu_vram_gb: 0
+environment:
+  python: '3.11'
+  cuda: null
+  pytorch: null
+  flash_attn: null
+  key_packages:
+  - numpy
+  - torch
+  - matplotlib
+  - pandas
+  - tdigest
+  - ddsketch
+  - scipy
+  - notebook
+  notes:
+  - 仅 CPU 执行足以满足完整的基准测试路线。
+  - 捆绑的需求文件是针对 Windows py311 环境的 conda 导出。
+  - 核心校准逻辑位于`src/DCP_pinball_smooth.py`和`src/class_CP_QQ.py`中。
+  - 请参阅捆绑的自述文件/要求以获取完整的依赖项集。
+risk_flags:
+- route_caveat
+- hardcoded_path_dependency
+risk_notes:
+- 快照包含硬编码的 `/repo` 路径；执行需要挂载到该路径。
+- 分阶段的 Q-DCP 运行程序需要一个准备好的 `experiments/` 树，其中包含分数文件夹。
+- 乐谱文件夹必须遵循命名约定，否则 helpers.__MASK0__ 将失败。
+- 一些路由依赖于单独暂存的本地文件（e.g.，Fitzpatrick 实验）。
+- 在此打包过程中未执行任何基准测试；仅静态审核。
+recommended_when: 使用此基准对任意图拓扑上的分散设备进行通信感知的不确定性量化，或者在评估分布式设置中的覆盖保证、集大小和通信开销之间的权衡时。
+not_recommended_when: 如果您需要没有网络拓扑的集中式预测基准，或者需要在不预先暂存实验目录的情况下执行，请勿使用。
+paper:
+  title: Distributed Conformal Prediction via Message Passing
+  venue: ICML 2025
+  year: 2025
+  url: https://arxiv.org/abs/2501.14544
+  github: https://github.com/HaifengWen/Distributed-Conformal-Prediction
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.103_qdcp.zip
+  archive_type: zip
+  local_dir_name: paper-103-QDCP
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.103_qdcp.zip
+  sha256: f4c79a3d5e5a28a6b2d53f67023f6a15efd49b4ab2204e0f90812cc9f9f43e1c
+  size_bytes: 881452
+display:
+  palette_seed: teal-ivory-message
+  art_style: network-calibration
+  accent_priority: medium
+image_path: ../image/103_aisb.t3.103_qdcp.jpg
+capability_tags:
+- conformal_prediction
+- distributed_learning
+- uncertainty_quantification
+- message_passing
+- research_code_optimization
+track_fit:
+- paper_track
+- benchmark_track
+aisb_direction: T3

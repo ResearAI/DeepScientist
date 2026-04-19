@@ -1,0 +1,187 @@
+id: aisb.t3.068_sempo
+name: 'SEMPO: Lightweight Foundation Models for Time Series Forecasting'
+version: 0.1.0
+one_line: Lightweight 6.5M-parameter time-series foundation model with energy-aware
+  spectral decomposition and mixture-of-prompts experts, pretrainable on a single
+  GPU.
+task_description: 'This packaged benchmark covers SEMPO, a novel lightweight time-series
+  foundation model that achieves strong zero-shot and few-shot forecasting generalization
+  while requiring substantially reduced model size and pretraining scale. SEMPO comprises
+  two key modules: (1) Energy-aware SpEctral Decomposition (EASD), which models both
+  high-energy and low-energy frequency signals—addressing a bias in prior methods
+  that ignore low-energy yet informative spectral components; and (2) Mixture-of-PrOmpts
+  enabled Transformer (MoPFormer), which learns heterogeneous temporal patterns via
+  small dataset-specific prompts and adaptively routes time-series tokens to prompt-based
+  experts for parameter-efficient adaptation. With only 6.5M parameters pretrained
+  on 83M time points, SEMPO surpasses state-of-the-art time-series FMs with hundreds
+  of millions of parameters pretrained on billions of time points, achieving average
+  reductions of 12% and 22% in forecasting errors under zero-shot and few-shot scenarios
+  respectively. The benchmark supports single-GPU pretraining, fine-tuning, and zero-shot
+  evaluation across 16 datasets.
+
+  '
+capability_tags:
+- time_series_forecasting
+- foundation_models
+- lightweight_models
+- spectral_decomposition
+- mixture_of_experts
+- prompt_mixture_models
+- zero_shot_learning
+- few_shot_learning
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- mse
+- mae
+- rmse
+- mape
+- mspe
+- mse_96
+- mse_192
+- mse_336
+- mse_720
+- forecast_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: Quick Eval
+  description: 'Run zero-shot evaluation on one packaged benchmark route (e.g., ETTh1,
+    weather, electricity). Uses --is_pretraining 0 --is_training 0 --is_zeroshot 1.
+    Downloads and evaluates against pretrained checkpoint from ./checkpoints/.
+
+    '
+  hardware_notes: 'Single GPU with 16GB VRAM minimum; 24GB recommended for comfortable
+    execution.
+
+    '
+- id: pretrain_and_eval
+  label: Pretrain + Eval
+  description: 'Run the full lightweight foundation model workflow: pretrain on UTSD
+    data via sempo_utsd.sh, then evaluate with zero-shot or few-shot scripts.
+
+    '
+  hardware_notes: 'Supports single-GPU and multi-GPU execution on a single node. Single-GPU
+    pretraining is feasible due to compact 6.5M parameter model size. Multi-node distributed
+    training also supported via torch.distributed.
+
+    '
+- id: few_shot_eval
+  label: Few-Shot + Eval
+  description: 'Fine-tune with 5% or 10% dataset fractions using few-shot scripts.
+    Uses --is_pretraining 0 --is_training 1 --is_zeroshot 0.
+
+    '
+  hardware_notes: 'Fine-tuning is lightweight due to MoPFormer''s parameter-efficient
+    prompt-based adaptation.
+
+    '
+dataset_download:
+  primary_method: manual
+  sources:
+  - name: UTSD numpy format
+    url: https://cloud.tsinghua.edu.cn/f/93868e3a9fb144fe9719/
+    note: Primary pretraining dataset format
+  - name: Google Drive
+    url: https://drive.google.com/drive/my-drive?dmr=1&ec=wgc-drive-hero-goto
+    note: Download location for UTSD contents
+  notes:
+  - Place downloaded contents under ./dataset directory
+  - PEMS04 and PEMS07 use a separate format from other UTSD datasets
+  - Pretrained checkpoint is bundled in ./checkpoints/ for evaluation without retraining
+credential_requirements:
+  mode: optional
+  items:
+  - huggingface_api
+  notes:
+  - Required only if evaluating Chronos-Bolt comparison baselines
+  - Chronos pretrained weights from https://huggingface.co/collections/amazon/chronos-models-65f1791d630a8d57cb718444
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+    gpu_arch: any_cuda_11x
+    notes: Single GPU sufficient for pretraining due to 6.5M parameter compact architecture
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+    gpu_arch: any_cuda_11x
+    notes: 24GB VRAM provides comfortable headroom for larger batch sizes and future
+      experiments
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.1.2
+  flash_attn: null
+  key_packages:
+  - transformers==4.40.1
+  notes:
+  - Install via pip install -r requirements.txt
+  - PyTorch 2.1.2+cu118 required
+  - See bundled README/requirements.txt for full dependency set
+risk_flags:
+- single_point_of_failure
+- reproducibility_variance
+risk_notes:
+- Seed fixed at 2021 in run.py for reproducibility
+- Evaluation scripts support multiple benchmark datasets; results may vary across
+  domains
+- Chronos-Bolt evaluation requires manual weight download from HuggingFace
+recommended_when: 'Use this benchmark when you want to experiment with a compact foundation-model
+  forecasting approach that supports single-GPU pretraining and demonstrates strong
+  zero-shot/few-shot transfer to diverse time-series domains including energy, transportation,
+  weather, and traffic.
+
+  '
+not_recommended_when: 'Do not use this if your research requires large-cluster pretraining
+  scale as the main difficulty driver, or if you need models with hundreds of millions
+  of parameters.
+
+  '
+paper:
+  title: 'SEMPO: Lightweight Foundation Models for Time Series Forecasting'
+  venue: NeurIPS 2025 Poster
+  year: 2025
+  url: https://arxiv.org/abs/2510.19710
+  code_url: https://github.com/mala-lab/SEMPO
+  authors:
+  - Hui He
+  - Kun Yi
+  - Yuanchi Ma
+  - Qi Zhang
+  - Zhendong Niu
+  - Guansong Pang
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.068_sempo.zip
+  archive_type: zip
+  local_dir_name: paper-68-SEMPO
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.068_sempo.zip
+  sha256: efc7e945bebd2a61b437030d21ca2767951a4620edd5f923cbe73d7f7c457073
+  size_bytes: 485364
+display:
+  palette_seed: ivory-lime-spectrum
+  art_style: lightweight-foundation
+  accent_priority: medium
+commercial:
+  annual_fee: null
+image_path: ../image/068_aisb.t3.068_sempo.jpg

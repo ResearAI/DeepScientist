@@ -1,0 +1,189 @@
+schema_version: 1
+id: aisb.t3.002_pinet
+name: 'PINet: Optimizing hard-constrained neural networks with orthogonal projection
+  layers'
+version: 0.1.0
+one_line: 'Train and benchmark feasible-by-design neural networks that enforce convex
+  constraints via Douglas–Rachford projection layers in JAX, measuring inference speed,
+  constraint violation, and relative suboptimality on parametric QP and toy-MPC problems.
+
+  '
+task_description: 'This benchmark evaluates ΠNet (PINet), a neural-network output
+  layer that orthogonally projects onto convex constraint sets using operator splitting
+  (Douglas–Rachford) in the forward pass and the implicit function theorem for backpropagation.
+  The packaged task trains backbone + projection models on parametric constrained
+  optimization problems (QP benchmarks at two scales: d=100 and d=1000, plus a toy
+  MPC problem), then measures single- and batch-inference time, constraint violation
+  (CV), and relative suboptimality (RS) against optimal solutions from high-accuracy
+  solvers. The small QP dataset is bundled; the large QP dataset must be obtained
+  from the paper''s OpenReview supplementary material. All training and evaluation
+  code is self-contained in the snapshot and runs via `src/benchmarks/QP/run_QP.py`
+  and `src/benchmarks/toy_MPC/run_toy_MPC.py`. A Docker Compose setup is provided
+  for reproducible CPU and GPU execution.
+
+  '
+capability_tags:
+- research_code_optimization
+- constrained_optimization
+- jax
+- scientific_ml
+- systems_efficiency
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: turnkey
+cost_band: low
+time_band: 1-2h
+difficulty: medium
+data_access: public
+primary_outputs:
+- convex_small_batch_inference_time_s
+- nonconvex_small_batch_inference_time_s
+- relative_suboptimality
+- constraint_violation
+- benchmark_report
+launch_profiles:
+- id: quick_check
+  label: Quick Check
+  description: 'Run the smallest QP benchmark script (small dataset, single seed)
+    to verify projection layers compile, train, and produce feasibility metrics. Expect
+    ~10 min on CPU.
+
+    '
+- id: full_benchmark
+  label: Full Benchmark
+  description: 'Run the full QP benchmark suite via run_QP_batch.sh across all configs,
+    seeds, and projection methods (PINet, JAXopt, cvxpylayers). Produces comparative
+    RS, CV, and timing results matching the paper. Expect ~1-2 h on GPU, longer on
+    CPU.
+
+    '
+- id: toy_mpc
+  label: Toy MPC
+  description: 'Generate the toy MPC dataset and run end-to-end training + evaluation
+    with run_toy_MPC.py. Produces training logs, validation metrics, and saved parameters.
+
+    '
+dataset_download:
+  primary_method: bundled
+  sources:
+  - kind: bundled
+    url: https://deepscientist.cc/AISB/002_pinet
+    access: public
+    note: 'Small QP benchmark data is included in the snapshot archive.
+
+      '
+  - kind: external
+    url: https://openreview.net
+    access: public
+    note: 'Large QP dataset (d=1000, n_eq=500, n_ineq=500) must be obtained from the
+      paper''s OpenReview supplementary material. Not bundled.
+
+      '
+  notes:
+  - Small dataset is bundled and sufficient for the quick_check and full_benchmark
+    profiles at small scale.
+  - Toy MPC dataset can be generated locally via `python -m src.benchmarks.toy_MPC.generate_toy_MPC`.
+  - Total disk footprint including code and small data is under 1 GB.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - No API keys, tokens, or external accounts are required.
+  - Optional wandb integration exists in run_QP.py but is not mandatory.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+    gpu_vram_gb: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 40
+    gpu_count: 1
+    gpu_vram_gb: 16
+environment:
+  python: '3.10'
+  cuda: '12'
+  pytorch: 2.6.0
+  key_packages:
+  - jax==0.6.2
+  - optax==0.2.4
+  - cvxpy==1.6.6
+  - flax
+  - pinet-hcnn
+  notes:
+  - CPU-only execution is fully supported for the minimum route; install via `pip
+    install pinet-hcnn`.
+  - GPU mode requires NVIDIA CUDA 12; install via `pip install "pinet-hcnn[cuda12]"`.
+  - Docker Compose configs provided for both CPU (`pinet-cpu`) and GPU (`pinet-gpu`)
+    reproducibility.
+  - NVIDIA Container Toolkit required on host for GPU Docker route.
+  - PyTorch is used only for data loading (torch DataLoader); JAX is the primary compute
+    framework.
+risk_flags:
+- large_dataset_external
+- optional_wandb
+risk_notes:
+- 'The large QP benchmark dataset (d=1000) is not bundled and must be downloaded from
+  OpenReview supplementary material. Without it, only the small-scale QP experiments
+  can be reproduced.
+
+  '
+- 'wandb logging is referenced in run_QP.py but is optional; runs complete without
+  it.
+
+  '
+- 'GPU CUDA wheel availability is Linux-only (x86_64 and aarch64). Windows and macOS
+  are CPU-only.
+
+  '
+recommended_when: 'Use this benchmark when you need a constrained-learning task exercising
+  implicit-layer projection methods, when you want to compare feasible-by-design approaches
+  on parametric QPs, or when you want a reproducible JAX benchmark that can run on
+  CPU-only hardware in under two hours.
+
+  '
+not_recommended_when: 'Do not use this benchmark if you need large-scale vision, language,
+  or multimodal training workloads, or if you require non-convex constraint handling
+  beyond the objective function. Also not suitable if you cannot install JAX (e.g.,
+  non-Linux GPU environments).
+
+  '
+paper:
+  title: 'PINet: Optimizing hard-constrained neural networks with orthogonal projection
+    layers'
+  authors:
+  - Panagiotis D. Grontas
+  - Antonio Terpin
+  - Efe C. Balta
+  - Raffaello D'Andrea
+  - John Lygeros
+  venue: arXiv preprint
+  year: 2025
+  url: https://arxiv.org/abs/2508.10480
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.002_pinet.zip
+  archive_type: zip
+  local_dir_name: paper-2-PINet
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.002_pinet.zip
+  sha256: eb3944c02853116c2cf70f2213a7809eee8f0714143e5dac4f7e35876d187535
+  size_bytes: 180464
+commercial:
+  annual_fee: null
+display:
+  palette_seed: graphite-lime-precision
+  art_style: technical-minimal
+  accent_priority: medium
+image_path: ../image/002_aisb.t3.002_pinet.jpg

@@ -1,0 +1,107 @@
+id: aisb.t3.091_timeawarecausal
+name: 学习时间感知因果表示以实现不断发展的领域中的模型泛化
+version: 0.1.0
+one_line: 使用顺序 VAE 框架通过时间感知因果表示学习来进行演化域泛化，从而减少虚假相关性。
+task_description: 该打包基准测试涵盖通过 SYNC（静态-动态因果表示学习）的演化域泛化 (EDG)，SYNC 是一种时间感知因果方法，可学习对时间分布变化具有鲁棒性的表示。该方法引入了时间感知的结构因果模型（SCM），该模型明确地模拟动态因果因素和因果机制漂移。顺序 VAE 框架捕获不断变化的模式，而信息论目标则保持跨时域和时域内因果因素的类内紧凑性。该方法理论上保证了每个时域的最佳因果预测器。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: hard
+data_access: public
+primary_outputs:
+- average_accuracy
+- causal_representation_checkpoint
+launch_profiles:
+- id: quick_eval
+  label: 快速评估
+  description: 在捆绑套件中的单个演进域数据集上运行一个打包的 SYNC 评估路线。
+- id: full_train_eval
+  label: 完整训练+评估
+  description: 端到端运行完整的时间感知因果表示学习工作流程，涵盖所有捆绑数据集。
+dataset_download:
+  primary_method: mixed
+  sources:
+  - url: https://github.com/WonderSeven/LSSAE
+    note: Primary upstream source for bundled datasets
+  - url: https://deepscientist.cc/AISB/091_timeawarecausal
+    note: Local archive with prepackaged data splits
+  notes:
+  - 捆绑数据集：Circle、Sine（合成）、RMNIST、Portraits、Caltran、PowerSupply、ONP
+  - Caltran：车辆存在检测与时间照明混淆（白天/夜间杂散相关性）
+  - RMNIST：跨时域概念漂移的旋转 MNIST
+credential_requirements:
+  mode: none
+  items: []
+  notes: []
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+  notes:
+  - 在 NVIDIA GeForce RTX 4090 上测试
+  - 单GPU就足够了；不需要多GPU训练
+environment:
+  python: 3.8.18
+  cuda: '11.6'
+  pytorch: 1.12.1
+  flash_attn: null
+  key_packages:
+  - torch==1.12.1
+  - torchvision==0.13.1
+  - torchaudio==0.12.1
+  - DomainBed
+  - LSSAE
+  notes:
+  - 捆绑的 requirements.txt 中设置了完整的依赖项
+  - 通过安装： conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.6 -c pytorch -c conda-forge
+risk_flags:
+- spurious_correlation_risk
+- temporal_drift_risk
+risk_notes:
+- Caltran 包含基于照明的杂散相关性，必须明确缓解
+- 模型依赖于学习时间感知的因果特征而不是快捷特征
+recommended_when: 当您需要用于不断发展的领域的因果表示方法、时间分布变化中的杂散相关缓解或具有因果保证的基准 EDG 方法时，请使用此基准。
+not_recommended_when: 如果您需要小型静态域泛化任务、没有时间结构的即用型图像分类基准或不需要因果解开的方法，请不要使用此基准。
+paper:
+  title: Learning Time-Aware Causal Representation for Model Generalization in Evolving Domains
+  authors:
+  - Zhuo He
+  - Shuang Li
+  - Wenze Song
+  - Longhui Yuan
+  - Jian Liang
+  - Han Li
+  - Kun Gai
+  venue: ICML 2025
+  year: 2025
+  url: https://openreview.net/forum?id=KhCKypSaqx
+  note: 快手科技； PMLR 267
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.091_timeawarecausal.zip
+  archive_type: zip
+  local_dir_name: paper-91-TimeAwareCausal
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.091_timeawarecausal.zip
+  sha256: f135895ff69ff80efe2ba4f8752a8677949d0f078a2bff940425f43f6ab228d9
+  size_bytes: 187191114
+display:
+  palette_seed: navy-rose-causal
+  art_style: evolving-domain
+  accent_priority: high
+image_path: ../image/091_aisb.t3.091_timeawarecausal.jpg

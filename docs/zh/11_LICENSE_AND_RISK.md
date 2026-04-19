@@ -14,10 +14,14 @@ DeepScientist 采用 Apache 2.0 开源协议发布。
 你可以在仓库根目录查看完整协议文本：
 
 - [LICENSE](../../LICENSE)
+- [TRADEMARK.md](../../TRADEMARK.md)
+- [26 引用与致谢说明](./26_CITATION_AND_ATTRIBUTION.md)
 
 需要明确的是：
 
 - DeepScientist 按 Apache 2.0 协议发布
+- 软件许可证本身不授予 `DeepScientist` 名称或 Logo 的商标权
+- 引用与致谢说明属于独立的学术归因请求，不是额外的软件许可证条件
 - DeepScientist 按“现状”提供，不提供任何明示或暗示担保
 - 因使用、部署、修改、二次开发、共享或暴露 DeepScientist 而产生的任何直接或间接后果，项目作者与维护者概不负责
 - 你需要自行负责运行环境、权限设置、对外暴露、第三方账号绑定、结果审查、数据处理和合规问题

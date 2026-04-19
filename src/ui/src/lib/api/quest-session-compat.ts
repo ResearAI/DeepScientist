@@ -11,6 +11,7 @@ import type {
   ToolEventData,
 } from '@/lib/types/chat-events'
 import { deriveMcpIdentity } from '@/lib/mcpIdentity'
+import type { Effect } from '@/lib/types/ui-effects'
 import type { FeedEnvelope, SessionPayload } from '@/types'
 
 const QUEST_SESSION_PREFIX = 'quest:'
@@ -93,6 +94,24 @@ function parseStructuredValue(value: unknown) {
   return null
 }
 
+function parseToolEffects(rawOutput: unknown): Effect[] {
+  const parsedOutput = parseStructuredValue(rawOutput)
+  if (!parsedOutput || typeof parsedOutput !== 'object' || Array.isArray(parsedOutput)) {
+    return []
+  }
+  const record = parsedOutput as Record<string, unknown>
+  const rawEffects = Array.isArray(record.ui_effects)
+    ? record.ui_effects
+    : record.ui_effect
+      ? [record.ui_effect]
+      : []
+  return rawEffects.filter((item): item is Effect => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false
+    const candidate = item as Record<string, unknown>
+    return typeof candidate.name === 'string' && candidate.name.trim().length > 0 && typeof candidate.data === 'object' && candidate.data !== null
+  })
+}
+
 export function buildQuestSessionId(questId: string) {
   return `${QUEST_SESSION_PREFIX}${questId}`
 }
@@ -136,17 +155,47 @@ function snapshotBashRunningCount(snapshot: QuestSnapshot): number {
   return 0
 }
 
+function questSnapshotRuntimeStatus(snapshot: QuestSnapshot): string {
+  return asLowerString(snapshot.runtime_status) || asLowerString(snapshot.status)
+}
+
+function isQuestSnapshotTerminal(snapshot: QuestSnapshot): boolean {
+  if (asString(snapshot.active_run_id)) return false
+  const runtimeStatus = questSnapshotRuntimeStatus(snapshot)
+  if (runtimeStatus === 'failed' || runtimeStatus === 'error') return true
+  if (runtimeStatus === 'paused' || runtimeStatus === 'waiting' || runtimeStatus === 'waiting_for_user') return true
+  if (runtimeStatus === 'completed' || runtimeStatus === 'stopped') return true
+  return Boolean(snapshot.stop_reason)
+}
+
 function isCopilotSnapshotParkedForUser(snapshot: QuestSnapshot): boolean {
   const workspaceMode = asLowerString(snapshot.workspace_mode)
   const continuationPolicy = asLowerString((snapshot as Record<string, unknown>).continuation_policy)
   const activeRunId = asString(snapshot.active_run_id)
-  const runtimeStatus = asLowerString(snapshot.runtime_status) || asLowerString(snapshot.status)
+  const runtimeStatus = questSnapshotRuntimeStatus(snapshot)
   if (workspaceMode !== 'copilot') return false
   if (continuationPolicy !== 'wait_for_user_or_resume') return false
   if (activeRunId) return false
   if (snapshotBashRunningCount(snapshot) > 0) return false
   if (runtimeStatus === 'failed' || runtimeStatus === 'error') return false
   return true
+}
+
+function isStaleRunningSetupSnapshot(snapshot: QuestSnapshot): boolean {
+  const startupContract = asRecord(snapshot.startup_contract)
+  const startSetupSession = startupContract ? asRecord(startupContract.start_setup_session) : null
+  if (!startSetupSession) return false
+  const runtimeStatus = questSnapshotRuntimeStatus(snapshot)
+  if (runtimeStatus !== 'running') return false
+  if (asString(snapshot.active_run_id)) return false
+  if (snapshotBashRunningCount(snapshot) > 0) return false
+  const latestActivityRaw =
+    asString((snapshot as Record<string, unknown>).last_tool_activity_at) ||
+    asString((snapshot as Record<string, unknown>).updated_at)
+  if (!latestActivityRaw) return false
+  const latestActivityMs = Date.parse(latestActivityRaw)
+  if (!Number.isFinite(latestActivityMs)) return false
+  return Date.now() - latestActivityMs > 90_000
 }
 
 function buildEventMetadata(
@@ -392,6 +441,8 @@ function normalizeQuestToolEvent(
           : undefined,
   })
   const functionName = canonicalToolFunction(rawToolName, mcpServer, mcpTool)
+  const toolEffects =
+    asString(update.event_type) === 'runner.tool_result' ? parseToolEffects(dataRecord?.output) : []
   const toolData: ToolEventData = {
     event_id: eventId,
     timestamp,
@@ -403,6 +454,8 @@ function normalizeQuestToolEvent(
     status: asString(update.event_type) === 'runner.tool_call' ? 'calling' : 'called',
     args: buildToolArgs(functionName, dataRecord?.args, rawMetadata),
     metadata,
+    ...(toolEffects.length === 1 ? { ui_effect: toolEffects[0] } : {}),
+    ...(toolEffects.length > 0 ? { ui_effects: toolEffects } : {}),
     ...(asString(update.event_type) === 'runner.tool_result'
       ? { content: buildToolContent(functionName, asString(dataRecord?.status), dataRecord?.output, rawMetadata) }
       : {}),
@@ -598,6 +651,8 @@ function inferQuestSessionActive(snapshot: QuestSnapshot, events: AgentSSEEvent[
   // Copilot quests deliberately park after creation and after user-approved stops.
   // Trust the snapshot over stale tail events so the UI doesn't show a fake running state.
   if (isCopilotSnapshotParkedForUser(snapshot)) return false
+  if (isStaleRunningSetupSnapshot(snapshot)) return false
+  if (isQuestSnapshotTerminal(snapshot)) return false
   if (snapshot.active_run_id) return true
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]
@@ -624,6 +679,15 @@ function inferQuestSessionStatus(snapshot: QuestSnapshot, events: AgentSSEEvent[
   if (isCopilotSnapshotParkedForUser(snapshot)) {
     return events.length > 0 ? 'completed' : 'pending'
   }
+  if (isStaleRunningSetupSnapshot(snapshot)) {
+    return 'completed'
+  }
+  const runtimeStatus = questSnapshotRuntimeStatus(snapshot)
+  if (snapshot.active_run_id) return 'running'
+  if (runtimeStatus === 'failed' || runtimeStatus === 'error') return 'failed'
+  if (runtimeStatus === 'paused' || runtimeStatus === 'waiting' || runtimeStatus === 'waiting_for_user') return 'waiting'
+  if (runtimeStatus === 'completed' || runtimeStatus === 'stopped') return 'completed'
+  if (snapshot.stop_reason) return 'completed'
   const active = inferQuestSessionActive(snapshot, events)
   if (active) return 'running'
   for (let index = events.length - 1; index >= 0; index -= 1) {
@@ -632,11 +696,7 @@ function inferQuestSessionStatus(snapshot: QuestSnapshot, events: AgentSSEEvent[
     if (event.event === 'wait') return 'waiting'
     if (event.event === 'done') return 'completed'
   }
-  const runtimeStatus = asString(snapshot.runtime_status) || asString(snapshot.status) || ''
-  if (runtimeStatus === 'failed' || runtimeStatus === 'error') return 'failed'
-  if (runtimeStatus === 'paused' || runtimeStatus === 'waiting') return 'waiting'
   if (runtimeStatus === 'running') return 'running'
-  if (snapshot.stop_reason) return 'completed'
   return events.length > 0 ? 'completed' : 'pending'
 }
 

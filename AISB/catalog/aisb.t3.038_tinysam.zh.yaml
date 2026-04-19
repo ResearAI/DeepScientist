@@ -1,0 +1,240 @@
+id: aisb.t3.038_tinysam
+name: 'TinySAM：高效分割一切模型的研究突破'
+version: 0.1.0
+one_line: 通过知识蒸馏、后训练量化和分层推理实现SAM百倍加速的高效分割一切模型变体，专为零样本实例分割设计。
+task_description: |
+  TinySAM是一个压缩版的Segment Anything Model，在保持SAM风格的可提示分割能力的同时，显著降低了模型大小、推理延迟和计算成本。该基准涵盖了三种核心优化技术：
+  （1）全阶段知识蒸馏，采用硬掩码加权和在线硬提示采样，从SAM教师网络训练轻量级ViT-tiny学生网络；
+  （2）针对基于提示的分割的后训练INT8量化（Q-TinySAM），达到20.3 GFLOPs；
+  （3）分层"分割一切"推理策略，通过2倍加速基于网格的掩码生成，且精度损失可忽略不计。
+  评估目标是在COCO和LVIS数据集上进行零样本实例分割，按照原始SAM评估协议使用ViTDet生成的检测框作为提示。该基准包含用于点/框提示、量化推理和分层全分割模式的打包演示路由。
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+time_band: 6-24h
+cost_band: medium
+difficulty: medium
+data_access: public
+primary_outputs:
+- id: coco_ap
+  label: COCO Average Precision
+  description: Zero-shot instance segmentation AP on COCO val2017 using ViTDet boxes
+    as prompts
+  code_anchor: eval/eval_coco.sh
+  provenance: code-backed
+- id: coco_ap50
+  label: COCO AP at IoU=0.50
+  description: COCO instance segmentation AP at IoU threshold 0.50
+  code_anchor: eval/eval_coco.sh
+  provenance: code-backed
+- id: coco_ap75
+  label: COCO AP at IoU=0.75
+  description: COCO instance segmentation AP at IoU threshold 0.75
+  code_anchor: eval/eval_coco.sh
+  provenance: code-backed
+- id: lvis_ap
+  label: LVIS Average Precision
+  description: Zero-shot instance segmentation AP on LVIS v1 val using ViTDet boxes
+    as prompts
+  code_anchor: eval/tinysam_zero_shot_ins_eval.py
+  provenance: code-backed
+- id: segmentation_checkpoint
+  label: TinySAM Checkpoint
+  description: Trained or quantized model weights for deployment
+- id: latency_metrics
+  label: Inference Latency
+  description: Per-image inference time in ms (TensorRT on NVIDIA T4)
+launch_profiles:
+- id: quick_demo
+  label: 快速演示
+  description: |
+    在示例图像上运行基本TinySAM演示，支持点或框提示符。展示可提示分割功能，支持前景/背景点输入和边界框提示符。无需数据集下载。适用于模型加载和基础功能的定性验证。
+  entry_point: demo.py
+  requires_weights: true
+  dataset_download: false
+- id: quantized_demo
+  label: 量化演示
+  description: |
+    运行Q-TinySAM（INT8后训练量化变体）演示，实现超高效推理。加载预量化权重（w8a8），相比全精度模型降低50% FLOPs。非常适合分析量化推理性能。
+  entry_point: demo_quant.py
+  requires_weights: true
+  dataset_download: false
+- id: hierarchical_everything
+  label: 分层全分割
+  description: |
+    执行分层分割一切模式，通过两阶段网格采样策略生成全面的目标掩码。相比简单网格点提示实现2倍加速，质量下降可忽略不计。
+  entry_point: demo_hierachical_everything.py
+  requires_weights: true
+  dataset_download: false
+- id: coco_eval
+  label: COCO零样本评估
+  description: |
+    在COCO val2017（5000张图像）上运行完整的零样本实例分割评估。需要下载COCO检测框（ViTDet预测）和真实实例标注。计算COCO AP、AP50、AP75指标。预期结果：TinySAM 42.3% AP，Q-TinySAM 41.4% AP。标准基准评估流程。
+  entry_point: eval/eval_coco.sh
+  requires_weights: true
+  dataset_download: true
+  estimated_time: 2-4h
+- id: lvis_eval
+  label: LVIS零样本评估
+  description: |
+    在LVIS v1验证集上运行零样本实例分割评估。需要LVIS检测框和真实标注。计算LVIS AP。预期结果：TinySAM 38.6% AP，Q-TinySAM 37.2% AP。测试对目标类别长尾分布的泛化能力。
+  entry_point: eval/tinysam_zero_shot_ins_eval.py
+  requires_weights: true
+  dataset_download: true
+  estimated_time: 4-6h
+dataset_download:
+  primary_method: mixed
+  sources:
+  - id: checkpoints
+    label: Model Checkpoints
+    url: https://github.com/xinghaochen/TinySAM/releases
+    type: github_release
+    items:
+    - name: tinysam_42.3.pth
+      description: Full-precision TinySAM checkpoint (vit_tiny, 42.3 COCO AP)
+      sha256: null
+    - name: tinysam_w8a8.pth
+      description: INT8 quantized TinySAM checkpoint (Q-TinySAM, 41.4 COCO AP)
+      sha256: null
+  - id: coco_detection_boxes
+    label: COCO ViTDet Detection Boxes
+    url: https://github.com/xinghaochen/TinySAM/releases/download/2.0/coco_instances_results_vitdet.json
+    description: Pre-computed detection boxes from ViTDet used as prompts for zero-shot
+      evaluation
+    type: json
+  - id: coco_annotations
+    label: COCO Instance Annotations
+    url: https://cocodataset.org
+    description: Ground-truth instance segmentation annotations for val2017
+    type: dataset
+  - id: lvis_detection_boxes
+    label: LVIS ViTDet Detection Boxes
+    url: https://github.com/xinghaochen/TinySAM/releases/download/3.0/lvis_instances_results_vitdet.json
+    description: Pre-computed detection boxes from ViTDet for LVIS evaluation
+    type: json
+  - id: lvis_annotations
+    label: LVIS Instance Annotations
+    url: https://www.lvisdataset.org
+    description: Ground-truth annotations for LVIS v1 validation set
+    type: dataset
+  - id: huggingface
+    label: HuggingFace Hub
+    url: https://huggingface.co/merve/tinysam
+    description: Alternative checkpoint hosting with online demo
+    type: huggingface
+  notes:
+  - 运行评估前必须将检测框JSON文件放置在eval/json_files/目录中
+  - 完整评估需要COCO val2017图像集（约2.5GB）
+  - LVIS评估流程需要LVIS v1验证集图像
+  - 检查点URL来自GitHub releases，请确认可用性
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - 所有资源均可通过GitHub、HuggingFace和官方数据集网站公开获取
+  - 下载或执行无需身份验证
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 80
+    gpu_count: 1
+    gpu_vram_gb: 12
+    notes: 适合运行演示和Q-TinySAM量化推理
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 24
+    notes: |
+      推荐用于完整COCO/LVIS评估运行。更大的内存可容纳评估期间的批处理。24GB显存可轻松处理全精度TinySAM。
+environment:
+  python: '3.7'
+  cuda: null
+  pytorch: 1.10.2
+  torchvision: 0.11.3
+  flash_attn: null
+  key_packages:
+  - name: pycocotools
+    version: null
+    notes: Required for COCO evaluation metrics
+  - name: matplotlib
+    version: 3.5.1
+    notes: Required for visualization in demos
+  notes:
+  - 代码库明确要求torchvision 0.11.3与torch 1.10.2配对使用
+  - 未经验证不要升级到torch >=2.x；可能出现兼容性问题
+  - pycocotools是COCOeval指标计算所必需的
+  - matplotlib >=3.5.1是演示可视化必需的
+  - 请参阅附带的requirements.txt获取完整的依赖列表
+risk_flags:
+- version_lock
+- hardware_specific
+risk_notes:
+- Torch 1.10.2和torchvision 0.11.3已固定；升级可能导致模型加载失败或产生错误结果
+- 代码使用torch.load()时未设置weights_only参数；torch >=2.0可能发出警告或安全错误
+- 代码假设使用GPU推理；仅CPU执行将极其缓慢（不推荐）
+- 此代码库未明确测试混合精度（AMP）支持
+recommended_when: |
+  当您需要具有完善文档的检查点工件和标准化可提示分割评估的视觉效率任务时，请使用此基准。非常适合在基础模型任务上探索模型压缩技术（知识蒸馏、量化）。该基准为全精度和量化变体都提供了代码支持的指标，适合进行压缩-精度权衡研究。
+not_recommended_when: |
+  如果您的研究需要基于文本或语言基础任务，请不要使用此基准，因为TinySAM是纯视觉的。同样，如果您的工作流程需要开箱即用的PyTorch >=2.0或CUDA 12+兼容性，也应避免使用。这不是训练基准；蒸馏产物是预训练检查点，而非从头训练路径。
+paper:
+  title: 'TinySAM: Pushing the Envelope for Efficient Segment Anything Model'
+  venue: AAAI 2025
+  year: 2025
+  authors:
+  - Han Shu
+  - Wenshuo Li
+  - Yehui Tang
+  - Yiman Zhang
+  - Yihao Chen
+  - Houqiang Li
+  - Yunhe Wang
+  - Xinghao Chen
+  institution:
+  - University of Science and Technology of China
+  - Huawei Noah's Ark Lab
+  url: https://arxiv.org/abs/2312.13789
+  code_url: https://github.com/xinghaochen/TinySAM
+  license: Apache-2.0
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.038_tinysam.zip
+  archive_type: zip
+  local_dir_name: paper-38-TinySAM
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.038_tinysam.zip
+  sha256: 516538beacd620a9ebb4f55a3f1fb0e29f00c90b1d978da822727ba879a1caff
+  size_bytes: 101755926
+display:
+  palette_seed: sky-slate-mask
+  art_style: promptable-vision
+  accent_priority: medium
+  tags:
+  - segment-anything
+  - model-compression
+  - knowledge-distillation
+  - quantization
+  - zero-shot
+  - instance-segmentation
+  - efficient-inference
+capability_tags:
+- research_code_optimization
+- computer_vision
+- segmentation
+- model_compression
+- efficient_inference
+- vision_transformer
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+commercial:
+  annual_fee: null
+image_path: ../image/038_aisb.t3.038_tinysam.jpg

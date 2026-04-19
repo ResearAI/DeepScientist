@@ -1,0 +1,171 @@
+schema_version: 1
+id: aisb.t3.017_multimodalglp
+name: GLPN-LLM (Multimodal Fake News Detection)
+version: 0.1.0
+one_line: 'Train and evaluate a GCN-based multimodal fake-news classifier that integrates
+  GPT-4o pseudo labels via masked global label propagation on cross-modal similarity
+  graphs built from CLIP embeddings, across Twitter, PHEME, and Weibo datasets.
+
+  '
+task_description: 'This benchmark implements the GLPN-LLM framework (ACL 2025) for
+  multimodal fake-news detection. The pipeline has two stages: (1) graph construction
+  (`construction.py`) builds a cross-modal similarity graph from CLIP text+image embeddings
+  of social-media posts, and (2) training/evaluation (`main.py`) runs a GCN (or UniMP
+  TransformerConv variant) with a Global Random Mask mechanism that integrates ground-truth
+  labels and GPT-4o-generated pseudo labels into node features while preventing label
+  leakage. The task is to optimize classification accuracy and macro-F1 on three benchmark
+  datasets—Twitter (17k tweets), PHEME (2k tweets), and Weibo (5.3k posts)—under the
+  paper''s label-propagation framework. Pre-computed pseudo labels from GPT-4o are
+  bundled as CSV files; no LLM API calls are required at runtime. The agent should
+  improve upon the baseline accuracy reported in the paper while preserving the core
+  GLPN-LLM architecture.
+
+  '
+capability_tags:
+- research_code_optimization
+- multimodal_learning
+- fake_news_detection
+- graph_learning
+- classification
+- label_propagation
+- pseudo_labeling
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+cost_band: medium
+time_band: 6-24h
+difficulty: hard
+data_access: public
+snapshot_status: runnable
+support_level: advanced
+primary_outputs:
+- accuracy
+- f1_score
+- pseudo_label_artifacts
+- benchmark_report
+launch_profiles:
+- id: quick_check
+  label: Quick Check (single dataset)
+  description: 'Run construction.py then main.py on the Twitter dataset only to verify
+    the code path and produce accuracy/F1 on the 2k-tweet test split. Completes in
+    minutes on a single GPU.
+
+    '
+- id: full_train_eval
+  label: Full Train + Eval (all three datasets)
+  description: 'Run the full graph construction and GCN training/evaluation pipeline
+    across Twitter, PHEME, and Weibo datasets end-to-end, reproducing Table 1 from
+    the paper. Requires changing the dataset_name variable in main.py or parameterising
+    via run.sh.
+
+    '
+dataset_download:
+  primary_method: google_drive
+  sources:
+  - kind: google_drive
+    url: https://drive.google.com/file/d/1gPX-tAC1Vo6C8j8PV9IbAk8hbDhd1XMG/view?usp=drive_link
+    access: public
+    note: 'ZIP archive containing weibo/, twitter/, and pheme/ subdirectories with
+      CSV files, pre-computed CLIP embeddings (.pt), graph structures (.pt), and GPT-4o
+      pseudo-label CSVs. Extract into script/dataset/.
+
+      '
+  notes:
+  - Exact archive size is not documented; expect several GB after extraction given
+    17k+ tweet embeddings.
+  - Pre-computed GPT-4o pseudo labels are included as *_analysis_results.csv files;
+    no OpenAI API key needed at runtime.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - GPT-4o pseudo labels are pre-computed and bundled in the dataset download.
+  - No API keys or external service credentials are required for training or evaluation.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 1
+    gpu_vram_gb: 24
+environment:
+  python: '3.10'
+  cuda: '11.8'
+  pytorch: 2.7.1
+  flash_attn: null
+  key_packages:
+  - torch-geometric==2.6.1
+  - dgl==2.1.0
+  - openai-clip
+  - scikit-learn
+  - pandas
+  notes:
+  - The paper recommends installing CLIP directly from https://github.com/openai/CLIP.git.
+  - See script/requirements.txt for the full dependency list.
+  - Python and CUDA versions are estimated from PyTorch 2.7.1 compatibility; verify
+    against requirements.txt.
+risk_flags:
+- external_dataset_download
+- dataset_name_hardcoded
+- no_prior_execution
+risk_notes:
+- Dataset must be downloaded from Google Drive and extracted to script/dataset/ before
+  running.
+- main.py has dataset_name hardcoded to 'twitter'; must be changed manually for PHEME/Weibo
+  evaluation.
+- No benchmark execution was performed during the packaging pass; metric values are
+  unverified.
+- The pseudo-label CSV filename in main.py is hardcoded as 'twitter_analysis_results.csv'
+  even when dataset_name changes, which may need fixing for weibo/pheme datasets.
+- Graph construction (construction.py) may be slow on larger datasets due to pairwise
+  similarity computation.
+recommended_when: 'Use this benchmark when you want a multimodal graph-learning task
+  combining text, image, and graph-structured social-media data with LLM-derived pseudo-label
+  refinement. Good for evaluating agents on research code optimization involving GNNs,
+  label propagation, and multimodal feature fusion on moderately-sized social-media
+  datasets.
+
+  '
+not_recommended_when: 'Do not use this if you need a text-only benchmark, cannot download
+  multi-GB datasets from Google Drive, or want a benchmark with verified baseline
+  execution outputs. Also not suitable if you need end-to-end LLM inference as part
+  of the pipeline (pseudo labels are pre-computed).
+
+  '
+paper:
+  title: Synergizing LLMs with Global Label Propagation for Multimodal Fake News Detection
+  authors:
+  - Shuguo Hu
+  - Jun Hu
+  - Huaiwen Zhang
+  venue: ACL 2025
+  year: 2025
+  url: https://arxiv.org/abs/2506.00488
+commercial:
+  annual_fee: null
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.017_multimodalglp.zip
+  archive_type: zip
+  local_dir_name: paper-17-MultimodalGLP
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.017_multimodalglp.zip
+  sha256: 0f2ab3bc3b08fdb577994ecd08fbca2b2796342cebdf9c5f797bd6b327107350
+  size_bytes: 34225
+display:
+  palette_seed: ruby-graph-signal
+  art_style: social-graph
+  accent_priority: high
+image_path: ../image/017_aisb.t3.017_multimodalglp.jpg

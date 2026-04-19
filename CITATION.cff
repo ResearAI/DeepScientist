@@ -1,0 +1,43 @@
+cff-version: 1.2.0
+message: "If DeepScientist materially helped your research, please cite the DeepScientist paper."
+title: "DeepScientist"
+type: software
+license: Apache-2.0
+repository-code: "https://github.com/ResearAI/DeepScientist"
+url: "https://github.com/ResearAI/DeepScientist"
+authors:
+  - family-names: Weng
+    given-names: Yixuan
+  - family-names: Zhu
+    given-names: Minjun
+  - family-names: Xie
+    given-names: Qiujie
+  - family-names: Sun
+    given-names: QiYao
+  - family-names: Lin
+    given-names: Zhen
+  - family-names: Liu
+    given-names: Sifan
+  - family-names: Zhang
+    given-names: Yue
+preferred-citation:
+  type: paper-conference
+  title: "DeepScientist: Advancing Frontier-Pushing Scientific Findings Progressively"
+  authors:
+    - family-names: Weng
+      given-names: Yixuan
+    - family-names: Zhu
+      given-names: Minjun
+    - family-names: Xie
+      given-names: Qiujie
+    - family-names: Sun
+      given-names: QiYao
+    - family-names: Lin
+      given-names: Zhen
+    - family-names: Liu
+      given-names: Sifan
+    - family-names: Zhang
+      given-names: Yue
+  year: 2026
+  booktitle: "The Fourteenth International Conference on Learning Representations"
+  url: "https://openreview.net/forum?id=cZFgsLq8Gs"

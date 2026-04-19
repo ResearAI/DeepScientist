@@ -1,7 +1,14 @@
-Connector delivery is optional.
+This block is **optional**.
 
-DeepScientist is local-first by default, so this block is not required for the project to work. Use it only when you want progress, milestone, or interruption updates to reach you outside the web workspace.
+If you leave it empty, the run stays fully inside the web workspace.
 
-- Keep it empty for a fully local-first flow.
-- Bind one target only when you want milestone updates outside the web workspace.
-- This is especially useful for longer runs or when you do not want to keep the page open.
+Choose one delivery target only when you want messages outside the page, such as:
+
+- milestone updates
+- interruption notices
+- long-run progress
+
+**Good beginner choice**
+
+- for a tutorial or quick practice run: leave it empty
+- for a long autonomous run: bind one target

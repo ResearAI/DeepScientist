@@ -1,0 +1,206 @@
+schema_version: 1
+id: aisb.t3.011_osd
+name: Orthogonal Subspace Decomposition for Generalizable AI-Generated Image Detection
+version: 0.1.0
+one_line: Train and evaluate a CLIP-ViT-L/14 detector that uses SVD-based orthogonal
+  subspace decomposition (Effort) to generalize across deepfake and synthetic-image
+  forgery families on DeepfakeBench and GenImage benchmarks.
+task_description: 'This benchmark packages the "Effort" method for AI-generated image
+  detection. The core idea is to decompose CLIP-ViT-L/14 weight matrices via SVD into
+  frozen principal components (preserving pre-trained knowledge) and trainable residual
+  components (learning forgery patterns), enforcing orthogonality to prevent overfitting
+  to seen forgery types. The execution route involves: (1) downloading the CLIP-ViT-L/14
+  backbone and pre-trained Effort checkpoints from Google Drive, (2) obtaining deepfake
+  datasets externally from DeepfakeBench (FaceForensics++, Celeb-DF-v2, DF40) or GenImage/Chameleon
+  for synthetic-image evaluation, (3) training the Effort detector head on one source
+  dataset while keeping SVD-principal components frozen, and (4) evaluating cross-dataset
+  generalization accuracy across multiple unseen forgery methods. Two codebases are
+  bundled: DeepfakeBench (face deepfake detection, Table 1 results) and UniversalFakeDetect_Benchmark
+  (general synthetic image detection, Table 2 results). The primary metric is detection
+  accuracy on unseen forgery families (e.g., BigGAN, CycleGAN, SimSwap). Datasets
+  must be downloaded separately from external sources and are large (tens to hundreds
+  of GB). Checkpoints are hosted on Google Drive.
+
+  '
+capability_tags:
+- research_code_optimization
+- computer_vision
+- deepfake_detection
+- image_forensics
+- benchmark_evaluation
+- clip_finetuning
+aisb_direction: T3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: experiment_driven
+requires_execution: true
+requires_paper: true
+integrity_level: cas_plus_canary
+snapshot_status: runnable
+support_level: advanced
+cost_band: high
+time_band: 1d+
+difficulty: hard
+data_access: public
+primary_outputs:
+- biggan_accuracy
+- detection_scores
+- benchmark_report
+- cross_dataset_auc
+launch_profiles:
+- id: quick_check
+  label: Quick Check (Inference Only)
+  description: 'Download a pre-trained Effort checkpoint from Google Drive and run
+    DeepfakeBench/training/demo.py on a single image or folder to verify the inference
+    pipeline produces fake-probability scores.
+
+    '
+- id: single_dataset_train
+  label: Single-Dataset Train + Test
+  description: 'Train the Effort detector on one source dataset (e.g., FaceForensics++)
+    using a single GPU, then test on one held-out dataset (e.g., Celeb-DF-v2). Verifies
+    the training loop, SVD decomposition, orthogonal/KSV losses, and checkpoint saving.
+
+    '
+- id: cross_benchmark_eval
+  label: Cross-Benchmark Evaluation
+  description: 'Evaluate the trained or pre-trained Effort detector across multiple
+    unseen forgery datasets (SimSwap, BlendFace, DeepFaceLab, etc. via DF40) to reproduce
+    the cross-dataset generalization results from the paper.
+
+    '
+- id: univfd_benchmark
+  label: UniversalFakeDetect Benchmark
+  description: 'Use the UniversalFakeDetect_Benchmark/ codebase to reproduce Table
+    2 results on general synthetic image detection (GenImage, Chameleon).
+
+    '
+dataset_download:
+  primary_method: mixed
+  sources:
+  - kind: external_repo
+    url: https://github.com/SCLBD/DeepfakeBench
+    access: public
+    note: 'FaceForensics++, Celeb-DF-v2, and other face deepfake datasets. Pre-processed
+      frames and face crops available via DeepfakeBench.
+
+      '
+  - kind: external_repo
+    url: https://github.com/YZY-stack/DF40
+    access: public
+    note: 'DF40 dataset with 40 distinct forgery methods for broader evaluation.
+
+      '
+  - kind: google_drive
+    url: https://drive.google.com/drive/folders/19kQwGDjF18uk78EnnypxxOLaG4Aa4v1h?usp=sharing
+    access: public
+    note: Pre-trained Effort checkpoints (FF++, GenImage, Chameleon).
+  - kind: google_drive
+    url: https://drive.google.com/drive/folders/1fm3Jd8lFMiSP1qgdmsxfqlJZGpr_bXsx?usp=drive_link
+    access: public
+    note: CLIP-ViT-L/14 backbone weights required by effort_detector.py.
+  notes:
+  - Deepfake datasets are tens to hundreds of GB after extraction.
+  - GenImage and Chameleon datasets must be obtained separately for Table 2 reproduction.
+  - JSON index files for each dataset must be generated or obtained from DeepfakeBench/DF40.
+  - CLIP backbone path is hardcoded in effort_detector.py and must be adjusted to
+    local path.
+credential_requirements:
+  mode: none
+  items: []
+  notes:
+  - All datasets and checkpoints are publicly available but hosted externally on Google
+    Drive and GitHub repos.
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 150
+    gpu_count: 1
+    gpu_vram_gb: 16
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 300
+    gpu_count: 4
+    gpu_vram_gb: 24
+environment:
+  python: 3.7.2
+  cuda: '11.3'
+  pytorch: 1.12.0
+  flash_attn: null
+  key_packages:
+  - transformers
+  - loralib
+  - dlib==19.24.0
+  - opencv-python==4.6.0.66
+  - scikit-learn==1.0.2
+  - albumentations==1.1.0
+  - timm==0.6.12
+  - efficientnet-pytorch==0.7.1
+  - openai-clip (from git)
+  - kornia
+  - einops
+  notes:
+  - README specifies Python 3.7.2 and PyTorch 1.11, but install.sh installs torch==1.12.0+cu113;
+    use install.sh as the authoritative route.
+  - install.sh pins numpy==1.21.5, scipy==1.7.3 and many other specific versions.
+  - CLIP backbone uses HuggingFace transformers CLIPModel, not the OpenAI CLIP package
+    directly for the detector, but OpenAI CLIP is also installed.
+  - dlib is required for face landmark extraction during face-deepfake preprocessing.
+risk_flags:
+- external_dataset_dependency
+- external_checkpoint_dependency
+- hardcoded_paths
+- large_dataset_route
+- google_drive_download
+risk_notes:
+- Datasets (FaceForensics++, DF40, GenImage, Chameleon) are not bundled and must be
+  downloaded from external sources totaling potentially hundreds of GB.
+- CLIP backbone path is hardcoded as "../models--openai--clip-vit-large-patch14" in
+  effort_detector.py and must be manually adjusted.
+- Pre-trained checkpoints are hosted on Google Drive, which may rate-limit or require
+  manual browser download.
+- The benchmark was statically audited but no runtime execution was performed during
+  packaging; metric values are unverified.
+- install.sh installs torch 1.12 with CUDA 11.3 which may conflict with newer driver
+  setups.
+- JSON dataset index files must be generated via preprocessing scripts or obtained
+  from DeepfakeBench/DF40 repos.
+recommended_when: 'Use this benchmark when you want a realistic image-forensics optimization
+  task involving CLIP-based fine-tuning with SVD orthogonal decomposition, cross-dataset
+  generalization evaluation across many forgery families, and large-scale vision datasets.
+  Suitable for research into parameter-efficient tuning, deepfake detection robustness,
+  and foundation-model adaptation.
+
+  '
+not_recommended_when: 'Do not use this if you cannot provision 150+ GB of disk for
+  datasets and checkpoints, lack a CUDA GPU with at least 16 GB VRAM, need a lightweight
+  CPU-only benchmark, or cannot download large files from Google Drive and external
+  GitHub repositories.
+
+  '
+paper:
+  title: 'Effort: Efficient Orthogonal Modeling for Generalizable AI-Generated Image
+    Detection'
+  venue: ICML 2025 Oral
+  year: 2025
+  url: https://arxiv.org/abs/2411.15633
+download:
+  url: https://github.com/ResearAI/DeepScientist/releases/download/aisb-v0.0.1/aisb.t3.011_osd.zip
+  archive_type: zip
+  local_dir_name: paper-11-OSD
+  provider: github_release
+  repo: ResearAI/DeepScientist
+  tag: aisb-v0.0.1
+  asset_name: aisb.t3.011_osd.zip
+  sha256: db6c786efc3503420d8269cff59b8abd9ac07786364bc130a811615db99364d8
+  size_bytes: 29719270
+commercial:
+  annual_fee: null
+display:
+  palette_seed: obsidian-coral-vision
+  art_style: forensic-clean
+  accent_priority: high
+image_path: ../image/011_aisb.t3.011_osd.jpg

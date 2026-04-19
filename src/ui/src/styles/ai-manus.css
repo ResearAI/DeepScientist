@@ -1871,6 +1871,15 @@
   background: transparent;
 }
 
+.ai-manus-root.ai-manus-copilot .ai-manus-codeblock pre code.language-start_setup_patch,
+.ai-manus-root.ai-manus-copilot .ai-manus-codeblock pre code.language-start_setup_patch *,
+.ai-manus-root.ai-manus-copilot .prose pre code.language-start_setup_patch,
+.ai-manus-root.ai-manus-copilot .prose pre code.language-start_setup_patch *,
+.ai-manus-root.ai-manus-copilot .wmde-markdown pre code.language-start_setup_patch,
+.ai-manus-root.ai-manus-copilot .wmde-markdown pre code.language-start_setup_patch * {
+  color: #000 !important;
+}
+
 .ai-manus-thinking {
   display: flex;
   align-items: center;

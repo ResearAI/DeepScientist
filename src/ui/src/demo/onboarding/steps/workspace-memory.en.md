@@ -1,7 +1,13 @@
-Memory is what lets the project keep growing.
+Memory: Your research notebook
 
-Without a surface like this, each round risks becoming disposable. With it, successful paths remain available, and weak paths become explicit warnings that shape later decisions.
+Imagine playing a game with no save file—frustrating, right? Memory is your "research save file."
 
-- It remembers success.
-- It also remembers weak paths, so later rounds can avoid repeating them.
-- In longer projects, this is often the difference between steady accumulation and repetitive wandering.
+What does it remember?
+- Successful approaches: "This method worked, keep using it"
+- Failed attempts: "This path didn't work, don't retry"
+- Key findings: "These parameters gave the best results"
+
+Why does it matter?
+In long projects, it's the difference between steady progress and going in circles.
+
+Tip: Check Memory regularly to avoid repeating mistakes.

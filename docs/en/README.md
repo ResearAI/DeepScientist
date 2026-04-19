@@ -28,10 +28,16 @@ AI Scientist and AutoFigure projects worth exploring alongside DeepScientist:
 
 This page is the shortest path to the right document.
 
+Built-in runner status today:
+
+- `codex`: primary path
+- `claude`: supported experimental
+- `opencode`: supported experimental
+
 ## If you are new
 
 - [00 Quick Start](./00_QUICK_START.md)
-  Start here if you want to install DeepScientist, launch it locally, and create your first project.
+  Start here if you want to install DeepScientist, choose between Codex / Claude Code / OpenCode, launch it locally, and create your first project.
 - [20 Workspace Modes Guide](./20_WORKSPACE_MODES_GUIDE.md)
   Read this if you want to choose correctly between Copilot and Autonomous before creating a project.
 - [19 Local Browser Auth](./19_LOCAL_BROWSER_AUTH.md)
@@ -40,10 +46,14 @@ This page is the shortest path to the right document.
   Read this if your main surface is the terminal and you want one end-to-end path through `ds --tui`, quests, connectors, and cross-surface work.
 - [15 Codex Provider Setup](./15_CODEX_PROVIDER_SETUP.md)
   Read this when you want to run DeepScientist through MiniMax, GLM, Volcengine Ark, Alibaba Bailian Coding Plan, or another Codex profile.
+- [24 Claude Code Setup](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+  Read this when Claude Code already works on your machine and you want DeepScientist to reuse it directly.
+- [25 OpenCode Setup](./25_OPENCODE_PROVIDER_SETUP.md)
+  Read this when OpenCode already works on your machine and you want DeepScientist to reuse its provider/model configuration.
 - [21 Local Model Backends Guide](./21_LOCAL_MODEL_BACKENDS_GUIDE.md)
   Read this if you want to run DeepScientist through local OpenAI-compatible backends such as vLLM, Ollama, or SGLang.
-- [22 Windows + WSL2 Deployment Guide](./22_WINDOWS_WSL2_DEPLOYMENT_GUIDE.md)
-  Read this if you want a Windows-first local deployment path through WSL2, including npm user-prefix setup and Alibaba Bailian Coding Plan.
+- [26 Citation And Attribution](./26_CITATION_AND_ATTRIBUTION.md)
+  Read this if DeepScientist materially helped a paper or report and you want the preferred citation, acknowledgment wording, and attribution boundary.
 - [12 Guided Workflow Tour](./12_GUIDED_WORKFLOW_TOUR.md)
   Follow the real product flow from landing page to workspace, step by step.
 - [02 Start Research Guide](./02_START_RESEARCH_GUIDE.md)
@@ -59,6 +69,8 @@ This page is the shortest path to the right document.
   Use this when you need to configure runners, connectors, runtime defaults, or home paths.
 - [11 License And Risk Notice](./11_LICENSE_AND_RISK.md)
   Read this first if you care about the license boundary, server safety, fabricated outputs, connector leakage, and public exposure risk.
+- [26 Citation And Attribution](./26_CITATION_AND_ATTRIBUTION.md)
+  Use this when the question is not runtime risk but how to cite or acknowledge DeepScientist fairly in research outputs.
 
 ## If you want to collaborate through external surfaces
 
@@ -94,12 +106,18 @@ This page is the shortest path to the right document.
   Start here for diagnostics and common runtime problems.
 - [15 Codex Provider Setup](./15_CODEX_PROVIDER_SETUP.md)
   Check this if the problem is likely in your Codex profile, provider endpoint, API key, or model configuration.
+- [24 Claude Code Setup](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+  Check this if the problem is likely in your Claude Code login, config directory, permission mode, or Anthropic-compatible gateway setup.
+- [25 OpenCode Setup](./25_OPENCODE_PROVIDER_SETUP.md)
+  Check this if the problem is likely in your OpenCode provider login, config file, model selection, agent, or variant setup.
 - [21 Local Model Backends Guide](./21_LOCAL_MODEL_BACKENDS_GUIDE.md)
   Check this if the problem is specifically about local OpenAI-compatible backends and whether they support `/v1/responses`.
 - [01 Settings Reference](./01_SETTINGS_REFERENCE.md)
   Check this if the problem is likely caused by config, credentials, or connector setup.
 
 ## If you are developing DeepScientist
+- [23 BenchStore GitHub Releases Spec](./23_BENCHSTORE_GITHUB_RELEASES_SPEC.md)
+  Read this when you want to publish BenchStore benchmark source packages on GitHub Releases and make the frontend Download flow work for users.
 
 - [90 Architecture](./90_ARCHITECTURE.md)
   High-level system contracts and repository structure.
