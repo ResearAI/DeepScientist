@@ -32,11 +32,26 @@ function resolveManualChunk(id: string) {
 export default defineConfig(({ mode }) => {
   const proxyTarget =
     process.env.VITE_PROXY_TARGET || process.env.VITE_API_URL || 'http://127.0.0.1:20999'
+  const browserEnv = {
+    NODE_ENV: mode,
+    NEXT_PUBLIC_API_URL: process.env.VITE_API_URL || process.env.NEXT_PUBLIC_API_URL || '',
+    NEXT_PUBLIC_ENABLE_COPILOT_FILES: process.env.NEXT_PUBLIC_ENABLE_COPILOT_FILES || '',
+    NEXT_PUBLIC_CLI_ATTACH_ADDON: process.env.NEXT_PUBLIC_CLI_ATTACH_ADDON || '',
+    NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL || '',
+    NEXT_PUBLIC_APP_VERSION: process.env.NEXT_PUBLIC_APP_VERSION || '',
+    NEXT_PUBLIC_COMMIT_HASH: process.env.NEXT_PUBLIC_COMMIT_HASH || '',
+    NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA: process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || '',
+    NEXT_PUBLIC_GIT_COMMIT_SHA: process.env.NEXT_PUBLIC_GIT_COMMIT_SHA || '',
+    NEXT_PUBLIC_GIT_SHA: process.env.NEXT_PUBLIC_GIT_SHA || '',
+  }
 
   return {
     base: '/ui/',
     publicDir: false,
     plugins: [react()],
+    define: {
+      'process.env': browserEnv,
+    },
     build: {
       outDir: 'dist',
       emptyOutDir: true,

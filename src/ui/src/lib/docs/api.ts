@@ -1,6 +1,8 @@
 import type { DocsIndexResponse, DocsSearchResponse } from './types'
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || ''
+const env = import.meta.env as Record<string, string | undefined>
+
+export const API_BASE = env.VITE_API_URL || env.NEXT_PUBLIC_API_URL || ''
 
 export function encodePathSegments(path: string): string {
   return path
