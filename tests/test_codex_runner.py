@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from deepscientist.runners import ClaudeRunner, CodexRunner, OpenCodeRunner, RunRequest
 from deepscientist.runners.codex import _compact_tool_event_payload, _message_events, _tool_event
 from deepscientist.runners.runtime_overrides import apply_claude_runtime_overrides
-from deepscientist.shared import read_jsonl, write_yaml
+from deepscientist.shared import read_json, read_jsonl, write_yaml
 
 
 def test_codex_message_events_preserve_stream_identity() -> None:
@@ -958,6 +958,262 @@ def test_opencode_runner_translates_real_tool_use_payload_into_call_and_result()
     assert message_events[0]['text'] == 'DONE: hello'
     assert texts == ['DONE: hello']
 
+
+
+def test_opencode_runner_does_not_emit_result_for_running_tool_use() -> None:
+    runner = OpenCodeRunner(
+        home=Path('/tmp'),
+        repo_root=Path('/tmp'),
+        binary='opencode',
+        logger=SimpleNamespace(),
+        prompt_builder=SimpleNamespace(),
+        artifact_service=SimpleNamespace(),
+    )
+    state: dict[str, object] = {}
+
+    events, _ = runner._translate_event(
+        {
+            'type': 'tool_use',
+            'sessionID': 'ses-1',
+            'part': {
+                'type': 'tool',
+                'tool': 'artifact_get_quest_state',
+                'callID': 'call-running',
+                'messageID': 'msg-1',
+                'state': {
+                    'status': 'running',
+                    'input': {'detail': 'summary'},
+                },
+            },
+        },
+        raw_line='',
+        quest_id='q-001',
+        run_id='run-001',
+        skill_id='decision',
+        created_at='2026-04-14T00:00:00Z',
+        translation_state=state,
+    )
+
+    assert [event['type'] for event in events] == ['runner.tool_call']
+
+
+def test_opencode_runner_dedups_separate_tool_result_after_inline_terminal() -> None:
+    runner = OpenCodeRunner(
+        home=Path('/tmp'),
+        repo_root=Path('/tmp'),
+        binary='opencode',
+        logger=SimpleNamespace(),
+        prompt_builder=SimpleNamespace(),
+        artifact_service=SimpleNamespace(),
+    )
+    state: dict[str, object] = {}
+
+    inline_events, _ = runner._translate_event(
+        {
+            'type': 'tool_use',
+            'sessionID': 'ses-1',
+            'part': {
+                'type': 'tool',
+                'tool': 'artifact_get_quest_state',
+                'callID': 'call-dup',
+                'state': {'status': 'completed', 'output': 'inline-result'},
+            },
+        },
+        raw_line='',
+        quest_id='q-001',
+        run_id='run-001',
+        skill_id='decision',
+        created_at='2026-04-14T00:00:00Z',
+        translation_state=state,
+    )
+    separate_events, _ = runner._translate_event(
+        {
+            'type': 'tool_result',
+            'toolCallID': 'call-dup',
+            'output': 'separate-result',
+        },
+        raw_line='',
+        quest_id='q-001',
+        run_id='run-001',
+        skill_id='decision',
+        created_at='2026-04-14T00:00:01Z',
+        translation_state=state,
+    )
+
+    assert [event['type'] for event in inline_events] == ['runner.tool_call', 'runner.tool_result']
+    assert inline_events[1]['output'] == 'inline-result'
+    assert separate_events == []
+
+
+def test_opencode_runner_tool_result_empty_output_does_not_leak_record() -> None:
+    runner = OpenCodeRunner(
+        home=Path('/tmp'),
+        repo_root=Path('/tmp'),
+        binary='opencode',
+        logger=SimpleNamespace(),
+        prompt_builder=SimpleNamespace(),
+        artifact_service=SimpleNamespace(),
+    )
+    state: dict[str, object] = {}
+
+    runner._translate_event(
+        {'type': 'tool_call', 'id': 'call-empty', 'tool': 'artifact_x', 'input': {'k': 'v'}},
+        raw_line='',
+        quest_id='q-001',
+        run_id='run-001',
+        skill_id='decision',
+        created_at='2026-04-14T00:00:00Z',
+        translation_state=state,
+    )
+    result_events, _ = runner._translate_event(
+        {'type': 'tool_result', 'toolCallID': 'call-empty', 'output': None, 'sensitive_input': 'secret'},
+        raw_line='',
+        quest_id='q-001',
+        run_id='run-001',
+        skill_id='decision',
+        created_at='2026-04-14T00:00:01Z',
+        translation_state=state,
+    )
+
+    assert len(result_events) == 1
+    assert result_events[0]['output'] == ''
+    assert 'secret' not in result_events[0]['output']
+
+
+def test_opencode_runner_inline_terminal_empty_output_does_not_leak_state() -> None:
+    runner = OpenCodeRunner(
+        home=Path('/tmp'),
+        repo_root=Path('/tmp'),
+        binary='opencode',
+        logger=SimpleNamespace(),
+        prompt_builder=SimpleNamespace(),
+        artifact_service=SimpleNamespace(),
+    )
+    state: dict[str, object] = {}
+
+    events, _ = runner._translate_event(
+        {
+            'type': 'tool_use',
+            'part': {
+                'type': 'tool',
+                'tool': 'artifact_x',
+                'callID': 'call-inline-empty',
+                'state': {
+                    'status': 'completed',
+                    'input': {'very_long_secret_input': 'hunter2' * 100},
+                },
+            },
+        },
+        raw_line='',
+        quest_id='q-001',
+        run_id='run-001',
+        skill_id='decision',
+        created_at='2026-04-14T00:00:00Z',
+        translation_state=state,
+    )
+
+    assert [event['type'] for event in events] == ['runner.tool_call', 'runner.tool_result']
+    assert events[1]['output'] == ''
+
+
+def test_opencode_runner_retries_with_filesystem_reference_prompt_on_e2big(temp_home, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    quest_root = temp_home / 'quest-e2big'
+    quest_root.mkdir(parents=True, exist_ok=True)
+    (quest_root / 'brief.md').write_text('# Brief\nUse the quest brief as the task requirement.\n', encoding='utf-8')
+    write_yaml(
+        quest_root / 'quest.yaml',
+        {
+            'quest_id': 'q-e2big',
+            'title': 'E2BIG quest',
+            'active_anchor': 'baseline',
+        },
+    )
+
+    class _DummyWritable:
+        def __init__(self) -> None:
+            self.writes: list[str] = []
+
+        def write(self, text: str) -> None:
+            self.writes.append(text)
+
+        def close(self) -> None:
+            return None
+
+    class _DummyReadable:
+        def __iter__(self):
+            return iter(())
+
+    class _DummyProcess:
+        def __init__(self) -> None:
+            self.stdin = _DummyWritable()
+            self.stdout = _DummyReadable()
+            self.stderr = _DummyReadable()
+            self._returncode: int | None = None
+
+        def wait(self, timeout: float | None = None) -> int:
+            self._returncode = 0
+            return 0
+
+        def poll(self) -> int | None:
+            return self._returncode
+
+        def terminate(self) -> None:
+            self._returncode = 0
+
+        def kill(self) -> None:
+            self._returncode = 0
+
+    popen_commands: list[list[str]] = []
+
+    def fake_popen(command, **kwargs):  # noqa: ANN001
+        popen_commands.append(list(command))
+        if len(popen_commands) == 1:
+            raise OSError(7, 'Argument list too long')
+        return _DummyProcess()
+
+    monkeypatch.setattr('deepscientist.runners.simple_cli.subprocess.Popen', fake_popen)
+    monkeypatch.setattr('deepscientist.runners.simple_cli.export_git_graph', lambda *args, **kwargs: None)
+
+    artifact_service = SimpleNamespace(
+        quest_service=SimpleNamespace(schedule_projection_refresh=lambda *args, **kwargs: None),
+        record=lambda *args, **kwargs: {'ok': True},
+    )
+    runner = OpenCodeRunner(
+        home=temp_home,
+        repo_root=temp_home,
+        binary='opencode',
+        logger=SimpleNamespace(log=lambda *args, **kwargs: None),
+        prompt_builder=SimpleNamespace(build=lambda **kwargs: 'PROMPT\n' + ('x' * 500_000)),
+        artifact_service=artifact_service,
+    )
+
+    result = runner.run(
+        RunRequest(
+            quest_id='q-e2big',
+            quest_root=quest_root,
+            worktree_root=None,
+            run_id='run-e2big',
+            skill_id='experiment',
+            message='continue',
+            model='inherit',
+            approval_policy='never',
+            sandbox_mode='danger-full-access',
+        )
+    )
+
+    assert result.ok is True
+    assert len(popen_commands) == 2
+    assert popen_commands[0][-1] != popen_commands[1][-1]
+    assert 'brief.md' in popen_commands[1][-1]
+    assert 'prompt.md' in popen_commands[1][-1]
+
+    command_payload = read_json(quest_root / '.ds' / 'runs' / 'run-e2big' / 'command.json', {})
+    assert command_payload['prompt_strategy'] == 'argument_list_too_long'
+    assert str(command_payload['prompt_reference_path']).endswith('prompt.argv-fallback.md')
+
+    fallback_prompt = (quest_root / '.ds' / 'runs' / 'run-e2big' / 'prompt.argv-fallback.md').read_text(encoding='utf-8')
+    assert 'brief.md' in fallback_prompt
+    assert 'Do not ask the user to repeat the brief' in fallback_prompt
 
 
 def test_opencode_runner_prepare_runtime_uses_allow_permission_mode_by_default(temp_home) -> None:  # type: ignore[no-untyped-def]
