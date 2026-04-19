@@ -88,6 +88,23 @@ def diagnose_runner_failure(
             matched_text="tool-call arguments",
         )
 
+    if "argument list too long" in lower or "[errno 7]" in lower:
+        return FailureDiagnosis(
+            code="runner_argument_list_too_long",
+            problem="The runner command exceeded the OS argument-length limit.",
+            why=(
+                "This usually happens when a runner needs to receive a very large prompt through argv "
+                "instead of stdin or a file-backed prompt path."
+            ),
+            guidance=(
+                "Retry with a shorter fallback prompt that references the quest brief and saved prompt files.",
+                "Prefer stdin-capable runners such as Codex or Claude for very large turn prompts.",
+                "If the problem persists, inspect `.ds/runs/<run_id>/prompt.md` and reduce duplicated context.",
+            ),
+            retriable=False,
+            matched_text="argument list too long",
+        )
+
     if "missing environment variable" in lower:
         return FailureDiagnosis(
             code="provider_env_missing",

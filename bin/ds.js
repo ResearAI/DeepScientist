@@ -2881,7 +2881,9 @@ function syncUvProjectEnvironment(home, uvBinary, pythonTarget, editable) {
     args.splice(3, 0, '--compile-bytecode');
   }
   if (!editable) {
-    args.push('--no-editable');
+    // Force-refresh the local project package so same-version source installs
+    // don't reuse a stale cached wheel during runtime rebuilds.
+    args.push('--no-editable', '--reinstall-package', 'deepscientist');
   }
   step(2, 4, 'Syncing locked Python environment');
   const result = runSync(uvBinary, args, {

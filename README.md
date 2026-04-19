@@ -31,16 +31,15 @@
 </p>
 
 <p align="center">
-  <strong>Built-in runners: Codex (primary), Claude Code (supported experimental), OpenCode (supported experimental)</strong>
+  <strong>Supports Codex, Claude Code, and OpenCode as local-first runner backends</strong>
 </p>
 
 <p align="center">
   <a href="docs/en/00_QUICK_START.md">Quick Start</a> •
   <a href="docs/en/02_START_RESEARCH_GUIDE.md">Launch Your First Project</a> •
   <a href="docs/en/12_GUIDED_WORKFLOW_TOUR.md">Product Tour</a> •
-  <a href="docs/en/15_CODEX_PROVIDER_SETUP.md">Codex Setup</a> •
-  <a href="docs/en/24_CLAUDE_CODE_PROVIDER_SETUP.md">Claude Setup</a> •
-  <a href="docs/en/25_OPENCODE_PROVIDER_SETUP.md">OpenCode Setup</a>
+  <a href="docs/en/15_CODEX_PROVIDER_SETUP.md">Runner Setup</a> •
+  <a href="docs/en/22_WINDOWS_WSL2_DEPLOYMENT_GUIDE.md">Windows + WSL2 Setup</a>
 </p>
 
 ![deepscientist_install](https://github.com/user-attachments/assets/d8244944-4f70-4e08-94e3-002b74ce70fb)

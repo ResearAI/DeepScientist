@@ -19,6 +19,7 @@ from .base import RunRequest, RunResult
 
 class SimpleCliRunner:
     runner_name = "runner"
+    _COMMAND_ARGV_FALLBACK_REASON = "argument_list_too_long"
 
     def __init__(
         self,
@@ -107,28 +108,71 @@ class SimpleCliRunner:
         env.update(runtime_env)
         env = ensure_utf8_subprocess_env(env)
 
-        command = self._build_command(request, prompt, runner_config=runner_config)
-        write_json(
-            run_root / "command.json",
-            {
-                "command": command,
+        prompt_strategy = "full"
+        prompt_reference_path: str | None = None
+
+        def _write_command_metadata(active_command: list[str]) -> None:
+            payload: dict[str, Any] = {
+                "command": active_command,
                 "quest_root": str(request.quest_root),
                 "workspace_root": str(workspace_root),
                 "cwd": str(workspace_root),
                 "turn_reason": request.turn_reason,
                 "turn_intent": request.turn_intent,
                 "turn_mode": request.turn_mode,
+                "prompt_strategy": prompt_strategy,
                 **runtime_meta,
-            },
-        )
+            }
+            if prompt_reference_path:
+                payload["prompt_reference_path"] = prompt_reference_path
+            write_json(run_root / "command.json", payload)
+
+        command = self._build_command(request, prompt, runner_config=runner_config)
+        _write_command_metadata(command)
 
         popen_kwargs = self._subprocess_popen_kwargs(workspace_root=workspace_root, env=env)
-        process = subprocess.Popen(command, **popen_kwargs)
+        try:
+            process = subprocess.Popen(command, **popen_kwargs)
+        except OSError as exc:
+            fallback_prompt = None
+            if self._is_argument_list_too_long_error(exc):
+                fallback_prompt = self._build_argument_list_fallback_prompt(
+                    request,
+                    original_prompt=prompt,
+                    workspace_root=workspace_root,
+                )
+            if not fallback_prompt:
+                raise
+            prompt_strategy = self._COMMAND_ARGV_FALLBACK_REASON
+            fallback_prompt_path = run_root / "prompt.argv-fallback.md"
+            write_text(fallback_prompt_path, fallback_prompt)
+            prompt_reference_path = str(fallback_prompt_path)
+            command = self._build_command(request, fallback_prompt, runner_config=runner_config)
+            _write_command_metadata(command)
+            process = subprocess.Popen(command, **popen_kwargs)
         with self._process_lock:
             self._active_processes[request.quest_id] = process
         assert process.stdin is not None
         assert process.stdout is not None
         assert process.stderr is not None
+        stderr_chunks: list[str] = []
+
+        # Drain stderr concurrently so verbose CLIs cannot deadlock on a full
+        # stderr pipe while the main loop is still reading stdout.
+        def _drain_stderr() -> None:
+            try:
+                assert process.stderr is not None
+                for chunk in process.stderr:
+                    stderr_chunks.append(chunk)
+            except (OSError, ValueError):
+                pass
+
+        stderr_thread = threading.Thread(
+            target=_drain_stderr,
+            name=f"{self.runner_name}-stderr-{request.run_id}",
+            daemon=True,
+        )
+        stderr_thread.start()
         try:
             if self._command_uses_stdin_prompt():
                 process.stdin.write(prompt)
@@ -186,8 +230,9 @@ class SimpleCliRunner:
                     append_jsonl(quest_events, event)
                 output_parts.extend(part.strip() for part in text_parts if isinstance(part, str) and part.strip())
 
-            stderr_text = process.stderr.read()
             exit_code = process.wait()
+            stderr_thread.join(timeout=5)
+            stderr_text = "".join(stderr_chunks)
             output_text = next((part for part in reversed(output_parts) if part), "")
             self._emit_setup_tool_schema_warning_if_needed(
                 request=request,
@@ -270,6 +315,18 @@ class SimpleCliRunner:
                 stderr_text=stderr_text,
             )
         finally:
+            if process.poll() is None:
+                try:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                except OSError:
+                    pass
+            if stderr_thread.is_alive():
+                stderr_thread.join(timeout=2)
             with self._process_lock:
                 if self._active_processes.get(request.quest_id) is process:
                     self._active_processes.pop(request.quest_id, None)
@@ -359,6 +416,21 @@ class SimpleCliRunner:
 
     def _build_command(self, request: RunRequest, prompt: str, *, runner_config: dict[str, Any] | None = None) -> list[str]:
         raise NotImplementedError
+
+    @staticmethod
+    def _is_argument_list_too_long_error(exc: BaseException) -> bool:
+        if isinstance(exc, OSError) and getattr(exc, "errno", None) == 7:
+            return True
+        return "argument list too long" in str(exc).strip().lower()
+
+    def _build_argument_list_fallback_prompt(
+        self,
+        request: RunRequest,
+        *,
+        original_prompt: str,
+        workspace_root: Path,
+    ) -> str | None:
+        return None
 
     def _emit_setup_tool_schema_warning_if_needed(
         self,

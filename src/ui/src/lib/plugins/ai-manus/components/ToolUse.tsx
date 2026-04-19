@@ -284,7 +284,7 @@ function ToolUseDefault({
   const [verbSwapActive, setVerbSwapActive] = useState(false)
   const verbStatusRef = useRef<string | null>(null)
   const didJustComplete =
-    Boolean(verbSwap) && tool.status === 'called' && verbStatusRef.current === 'calling'
+    Boolean(verbSwap) && tool.status !== 'calling' && verbStatusRef.current === 'calling'
 
   useEffect(() => {
     if (!verbSwap) return
@@ -300,7 +300,7 @@ function ToolUseDefault({
 
   const shouldAnimateVerb = Boolean(verbSwap) && (verbSwapActive || didJustComplete)
   const verbCurrent = verbSwap
-    ? tool.status === 'called'
+    ? tool.status !== 'calling'
       ? verbSwap.verbEd
       : verbSwap.verbIng
     : ''
@@ -1132,7 +1132,13 @@ function ToolUseDefault({
     return (
       <div
         className="group flex items-start gap-2"
-        data-tool-status={tool.status === 'calling' ? 'calling' : undefined}
+        data-tool-status={
+          tool.status === 'calling'
+            ? 'calling'
+            : tool.status === 'failed'
+              ? 'failed'
+              : undefined
+        }
       >
         <div className="min-w-0 flex-1">
           {mcpDetailsEnabled ? (
@@ -1173,7 +1179,13 @@ function ToolUseDefault({
     return (
       <div
         className="group flex items-start gap-2"
-        data-tool-status={tool.status === 'calling' ? 'calling' : undefined}
+        data-tool-status={
+          tool.status === 'calling'
+            ? 'calling'
+            : tool.status === 'failed'
+              ? 'failed'
+              : undefined
+        }
       >
         <div className="min-w-0 flex-1">
           <div className={chipClasses}>
@@ -1232,7 +1244,13 @@ function ToolUseDefault({
     return (
       <div
         className="group flex items-start gap-2"
-        data-tool-status={tool.status === 'calling' ? 'calling' : undefined}
+        data-tool-status={
+          tool.status === 'calling'
+            ? 'calling'
+            : tool.status === 'failed'
+              ? 'failed'
+              : undefined
+        }
       >
         <div className="min-w-0 flex-1">
           <div
@@ -1278,7 +1296,13 @@ function ToolUseDefault({
   return (
     <div
       className="group flex items-start gap-2"
-      data-tool-status={tool.status === 'calling' ? 'calling' : undefined}
+      data-tool-status={
+        tool.status === 'calling'
+          ? 'calling'
+          : tool.status === 'failed'
+            ? 'failed'
+            : undefined
+      }
     >
       <div className="min-w-0 flex-1">
         <button

@@ -125,6 +125,7 @@
     "tiptap-markdown": "^0.8.10",
     "tunnel-rat": "^0.1.2",
     "unpdf": "^1.4.0",
+    "use-sync-external-store": "^1.2.2",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.29",
     "zustand": "^4.5.7"

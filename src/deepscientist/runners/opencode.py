@@ -11,6 +11,7 @@ from .simple_cli import SimpleCliRunner
 
 
 _OPENCODE_MCP_SERVERS = ("bash_exec", "artifact", "memory")
+_OPENCODE_TERMINAL_STATUSES = frozenset({"completed", "success", "done", "error", "failed"})
 
 
 def _normalize_opencode_tool_name(raw_name: str) -> tuple[str, str | None, str | None]:
@@ -152,6 +153,41 @@ class OpenCodeRunner(SimpleCliRunner):
         command.append(prompt)
         return command
 
+    def _build_argument_list_fallback_prompt(
+        self,
+        request: RunRequest,
+        *,
+        original_prompt: str,
+        workspace_root: Path,
+    ) -> str | None:
+        prompt_path = request.quest_root / ".ds" / "runs" / request.run_id / "prompt.md"
+        brief_path = workspace_root / "brief.md"
+        if not brief_path.exists():
+            brief_path = request.quest_root / "brief.md"
+        plan_path = workspace_root / "plan.md"
+        status_path = workspace_root / "status.md"
+        summary_path = workspace_root / "SUMMARY.md"
+
+        references = [brief_path, plan_path, status_path, summary_path]
+        existing_references = [path for path in references if path.exists()]
+        reference_lines = "\n".join(f"- {path}" for path in existing_references)
+        if not reference_lines:
+            reference_lines = f"- {brief_path}"
+
+        return (
+            "There is already a concrete DeepScientist research task in the current workspace.\n"
+            f"Primary requirement: read and follow `{brief_path}` first.\n"
+            "Also consult these quest documents when needed:\n"
+            f"{reference_lines}\n"
+            f"The full turn prompt that was too large for argv has been saved at `{prompt_path}`.\n"
+            "First read `brief.md`, then read the saved turn prompt file for system, skill, and execution constraints.\n"
+            "Treat `brief.md` as the task requirement and the saved turn prompt as the execution contract.\n"
+            "Do not ask the user to repeat the brief. Continue the task directly inside the current workspace.\n\n"
+            "中文说明：当前已经有一个明确的科研任务；任务要求以 `brief.md` 为准。"
+            "如果需要系统约束和本轮上下文，再读取上面保存的 `prompt.md`。"
+            "请直接继续执行，不要要求用户重复 brief 内容。"
+        )
+
     def _translate_event(
         self,
         payload: dict[str, Any],
@@ -235,9 +271,15 @@ class OpenCodeRunner(SimpleCliRunner):
 
             output = state.get("output") if isinstance(state, dict) else None
             state_status = str(state.get("status") or "").strip().lower()
-            has_result = output is not None or bool(state_status) or bool(record.get("error")) or bool(payload.get("error"))
-            if has_result:
-                rendered_output = output if isinstance(output, str) else json.dumps(output or state or record or payload, ensure_ascii=False)
+            has_error = bool(record.get("error")) or bool(payload.get("error"))
+            is_terminal = state_status in _OPENCODE_TERMINAL_STATUSES or state_status.startswith("fail") or has_error
+            if is_terminal:
+                if isinstance(output, str):
+                    rendered_output = output
+                elif output is None:
+                    rendered_output = ""
+                else:
+                    rendered_output = json.dumps(output, ensure_ascii=False)
                 result_event = {
                     "event_id": generate_id("evt"),
                     "type": "runner.tool_result",
@@ -247,7 +289,7 @@ class OpenCodeRunner(SimpleCliRunner):
                     "skill_id": skill_id,
                     "tool_call_id": tool_call_id,
                     "tool_name": tool_name,
-                    "status": "failed" if state_status.startswith("fail") or bool(record.get("error")) or bool(payload.get("error")) else "completed",
+                    "status": "failed" if state_status.startswith("fail") or state_status == "error" or has_error else "completed",
                     "args": json.dumps(args or {}, ensure_ascii=False),
                     "output": rendered_output,
                     "created_at": created_at,
@@ -257,16 +299,23 @@ class OpenCodeRunner(SimpleCliRunner):
                 if mcp_tool:
                     result_event["mcp_tool"] = mcp_tool
                 events.append(result_event)
+                known_tools[tool_call_id]["_result_emitted"] = True
             return events, texts
 
         if event_type in {"tool_result", "tool_output"}:
             tool_call_id = str(record.get("callID") or record.get("toolCallID") or payload.get("toolCallID") or record.get("tool_call_id") or payload.get("tool_call_id") or record.get("id") or payload.get("id") or generate_id("tool"))
             prior = known_tools.get(tool_call_id) if isinstance(known_tools, dict) else None
+            if isinstance(prior, dict) and prior.get("_result_emitted"):
+                return events, texts
             raw_tool_name = str(record.get("tool") or record.get("name") or payload.get("tool") or payload.get("name") or (prior or {}).get("tool_name") or "tool").strip() or "tool"
             tool_name, mcp_server, mcp_tool = _normalize_opencode_tool_name(raw_tool_name)
             output = record.get("output") if record.get("output") is not None else payload.get("output")
-            if not isinstance(output, str):
-                output = json.dumps(output or record or payload, ensure_ascii=False)
+            if isinstance(output, str):
+                pass
+            elif output is None:
+                output = ""
+            else:
+                output = json.dumps(output, ensure_ascii=False)
             event = {
                 "event_id": generate_id("evt"),
                 "type": "runner.tool_result",
@@ -290,6 +339,8 @@ class OpenCodeRunner(SimpleCliRunner):
             if mcp_tool:
                 event["mcp_tool"] = mcp_tool
             events.append(event)
+            if isinstance(prior, dict):
+                prior["_result_emitted"] = True
             return events, texts
 
         if event_type in {"thinking", "reasoning"}:

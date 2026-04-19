@@ -124,7 +124,7 @@ export interface AttachmentContextPayload {
 export interface ToolEventData extends BaseEventData {
   tool_call_id: string
   name: string
-  status: 'calling' | 'called'
+  status: 'calling' | 'called' | 'failed'
   function: string
   args: Record<string, unknown>
   content?: Record<string, unknown>

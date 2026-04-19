@@ -71,7 +71,7 @@ export type CopilotFixWithAIRequest = {
 export type CopilotToolEvent = {
   tool_call_id: string
   name: string
-  status: 'calling' | 'called'
+  status: 'calling' | 'called' | 'failed'
   function: string
   args?: Record<string, unknown>
   content?: Record<string, unknown>

@@ -20,6 +20,7 @@ from ..memory import MemoryService
 from ..quest import QuestService
 from ..shared import read_json
 from .context import McpContext
+from .schemas import MetricContractPayload, PrimaryMetricPayload
 
 DEFAULT_INLINE_BASH_LOG_LINE_LIMIT = 2000
 DEFAULT_INLINE_BASH_LOG_HEAD_LINES = 500
@@ -1476,7 +1477,9 @@ def build_artifact_server(context: McpContext) -> FastMCP:
         name="confirm_baseline",
         description=(
             "Confirm the active quest baseline and open the stage gate into idea work. "
-            "The baseline path must point at a quest-local baseline under baselines/local or baselines/imported."
+            "The baseline path must point at a quest-local baseline under baselines/local or baselines/imported. "
+            "Descriptions, derivations, and source refs must live on entries inside "
+            "`metric_contract.metrics`."
         ),
     )
     def confirm_baseline(
@@ -1485,10 +1488,10 @@ def build_artifact_server(context: McpContext) -> FastMCP:
         variant_id: str | None = None,
         summary: str | None = None,
         baseline_kind: str | None = None,
-        metric_contract: dict[str, Any] | None = None,
+        metric_contract: MetricContractPayload | None = None,
         metric_directions: dict[str, str] | None = None,
         metrics_summary: dict[str, Any] | None = None,
-        primary_metric: dict[str, Any] | None = None,
+        primary_metric: PrimaryMetricPayload | None = None,
         auto_advance: bool = True,
         comment: str | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -1501,10 +1504,10 @@ def build_artifact_server(context: McpContext) -> FastMCP:
                 variant_id=variant_id,
                 summary=summary,
                 baseline_kind=baseline_kind,
-                metric_contract=metric_contract,
+                metric_contract=metric_contract.model_dump(exclude_none=True) if metric_contract is not None else None,
                 metric_directions=metric_directions,
                 metrics_summary=metrics_summary,
-                primary_metric=primary_metric,
+                primary_metric=primary_metric.model_dump(exclude_none=True) if primary_metric is not None else None,
                 auto_advance=auto_advance,
                 strict_metric_contract=True,
             )

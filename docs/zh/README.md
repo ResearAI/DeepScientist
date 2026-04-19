@@ -86,6 +86,8 @@ DeepScientist 灵活且易于使用，支持：
   如果你主要在服务器或终端里工作，这篇会带你从 `ds --tui` 一路走到 quest、connector 和跨端协作跑通。
 - [15 Codex Provider 配置](./15_CODEX_PROVIDER_SETUP.md)
   如果你准备通过 MiniMax、GLM、火山方舟、阿里百炼 Coding Plan 或其他 Codex profile 来运行 DeepScientist，先看这一篇。
+- [23 Claude Runner 指南](./23_CLAUDE_RUNNER_GUIDE.md)
+  如果你拥有 Claude Max 订阅，想用 Claude Code CLI 驱动 DeepScientist，先看这一篇。
 - [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
   如果 Claude Code 在你的机器上已经能正常工作，并且你想让 DeepScientist 直接复用它，先看这一篇。
 - [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
@@ -146,6 +148,8 @@ DeepScientist 灵活且易于使用，支持：
   启动诊断、排查常见运行问题，先看这篇。
 - [15 Codex Provider 配置](./15_CODEX_PROVIDER_SETUP.md)
   如果问题更像出在 Codex profile、provider endpoint、API key 或模型配置上，优先看这篇。
+- [23 Claude Runner 指南](./23_CLAUDE_RUNNER_GUIDE.md)
+  如果问题出在 Claude runner 配置或 Claude Code CLI 上，优先看这篇。
 - [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
   如果问题更像出在 Claude Code 登录、配置目录、permission mode 或 Anthropic 兼容网关上，优先看这篇。
 - [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
