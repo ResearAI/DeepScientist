@@ -5,6 +5,15 @@ from pathlib import Path
 from ..shared import utc_now
 
 
+def default_active_anchor(startup_contract: dict | None = None) -> str:
+    workspace_mode = (
+        str((startup_contract or {}).get("workspace_mode") or "").strip().lower()
+        if isinstance(startup_contract, dict)
+        else ""
+    )
+    return "scout" if workspace_mode == "copilot" else "baseline"
+
+
 QUEST_DIRECTORIES = (
     "artifacts/approvals",
     "artifacts/baselines",
@@ -33,6 +42,8 @@ QUEST_DIRECTORIES = (
     ".codex/prompts",
     ".codex/skills",
     ".claude/agents",
+    ".kimi/skills",
+    ".opencode/skills",
     ".ds/bash_exec",
     ".ds/conversations",
     ".ds/codex_history",
@@ -63,7 +74,7 @@ def initial_quest_yaml(
         "title": title or goal,
         "quest_root": str(quest_root.resolve()),
         "status": initial_status_value,
-        "active_anchor": "baseline",
+        "active_anchor": default_active_anchor(startup_contract),
         "baseline_gate": "pending",
         "confirmed_baseline_ref": None,
         "requested_baseline_ref": requested_baseline_ref,

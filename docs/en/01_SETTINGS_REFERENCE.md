@@ -17,7 +17,7 @@ The `Settings` page writes directly to the following files:
 | File | UI category | Purpose |
 | --- | --- | --- |
 | `~/DeepScientist/config/config.yaml` | Runtime | Main runtime config: home path, daemon, UI, logging, Git, skill sync, cloud, ACP |
-| `~/DeepScientist/config/runners.yaml` | Models | Runner config: `codex` / `claude` binary path, model defaults, approval policy, sandbox, retries |
+| `~/DeepScientist/config/runners.yaml` | Models | Runner config for `codex` / `claude` / `kimi` / `opencode`: binary path, model defaults, permissions, sandbox, retries, env |
 | `~/DeepScientist/config/connectors.yaml` | Connectors | QQ, Telegram, Discord, Slack, Feishu, WhatsApp, Lingzhu connector config |
 | `~/DeepScientist/config/plugins.yaml` | Extensions | Plugin discovery, enable/disable overrides, trust policy |
 | `~/DeepScientist/config/mcp_servers.yaml` | MCP | External MCP servers only; not built-in `memory`, `artifact`, or `bash_exec` |
@@ -109,10 +109,10 @@ acp:
 
 - Type: `string`
 - Default: `codex`
-- Allowed values: currently `codex`, `claude`
+- Allowed values: `codex`, `claude`, `kimi`, `opencode`
 - UI label: `Default runner`
 - Meaning: runner used when a project does not override it.
-- Notes: `codex` is still the primary default path, while `claude` is an experimental secondary runner for Claude-compatible backends such as Kimi Code.
+- Notes: new quests inherit this default; existing quests may override it in project settings. Switch only to a runner that is enabled and already passes `ds doctor`.
 
 **`default_locale`**
 
@@ -413,10 +413,18 @@ These settings are compatibility knobs for ACP-style external consumers.
 
 ### Summary
 
-`runners.yaml` defines which runner executes projects and what its default model, approval policy, sandbox, and retry behavior should be. In the current open-source release:
+`runners.yaml` defines which CLI runner DeepScientist can launch, which model defaults it should use, how retries behave, and which runner-specific flags should be passed through.
 
-- `codex`: primary path, enabled by default
-- `claude`: experimental secondary path, disabled by default, runnable with a compatible Claude-style CLI/backend
+Current built-in runners:
+
+- `codex`
+  - OpenAI Codex CLI path, including Codex-compatible provider profiles
+- `claude`
+  - Claude Code CLI path, including Anthropic or compatible gateway setups that already work in Claude Code
+- `kimi`
+  - Official Kimi Code CLI path, including login state and config already working in `~/.kimi`
+- `opencode`
+  - OpenCode CLI path, including provider/model configurations managed directly by OpenCode
 
 ### Schema
 
@@ -426,15 +434,15 @@ codex:
   binary: codex
   config_dir: ~/.codex
   profile: ""
-  model: gpt-5.4
+  model: inherit
   model_reasoning_effort: xhigh
   approval_policy: never
   sandbox_mode: danger-full-access
   retry_on_failure: true
-  retry_max_attempts: 5
-  retry_initial_backoff_sec: 1.0
-  retry_backoff_multiplier: 2.0
-  retry_max_backoff_sec: 8.0
+  retry_max_attempts: 7
+  retry_initial_backoff_sec: 10.0
+  retry_backoff_multiplier: 6.0
+  retry_max_backoff_sec: 1800.0
   mcp_tool_timeout_sec: 180000
   env: {}
 claude:
@@ -442,9 +450,28 @@ claude:
   binary: claude
   config_dir: ~/.claude
   model: inherit
-  model_reasoning_effort: ""
+  permission_mode: bypassPermissions
+  retry_on_failure: true
+  retry_max_attempts: 4
+  retry_initial_backoff_sec: 10.0
+  retry_backoff_multiplier: 4.0
+  retry_max_backoff_sec: 600.0
   env: {}
-  status: reserved_todo
+  status: supported_experimental
+opencode:
+  enabled: false
+  binary: opencode
+  config_dir: ~/.config/opencode
+  model: inherit
+  default_agent: ""
+  variant: ""
+  retry_on_failure: true
+  retry_max_attempts: 4
+  retry_initial_backoff_sec: 10.0
+  retry_backoff_multiplier: 4.0
+  retry_max_backoff_sec: 600.0
+  env: {}
+  status: supported_experimental
 ```
 
 ### Editable fields
@@ -452,153 +479,165 @@ claude:
 **`enabled`**
 
 - Type: `boolean`
-- Default: `codex=true`, `claude=false`
 - UI label: `Enabled`
-- Meaning: whether this runner can be selected and used.
+- Meaning: whether the runner can be selected and executed.
+- Practical rule: enable only the runners whose CLI binary and auth path already work on this machine.
 
 **`binary`**
 
 - Type: `string`
-- Default: `codex` or `claude`
 - UI label: `Binary`
 - Meaning: command name or absolute path used to launch the runner.
-- `Test` behavior: checks whether the binary is on `PATH`.
-- Resolution order for `codex`: env override, explicit path, local `PATH`, then bundled fallback.
-- One-off note: you can temporarily override this with `ds --codex /absolute/path/to/codex`.
-- First-run note: DeepScientist does not finish Codex authentication for you. Before the first `ds`, make sure `codex login` (or just `codex`) has completed successfully.
-- Repair note: if the bundled dependency is missing after `npm install -g @researai/deepscientist`, install Codex explicitly with `npm install -g @openai/codex`.
+- Defaults:
+  - `codex -> codex`
+  - `claude -> claude`
+  - `opencode -> opencode`
+- `Test` behavior: checks whether the binary is available on `PATH` or at the configured path.
 
 **`config_dir`**
 
 - Type: `string`
-- Default: `~/.codex` or `~/.claude`
 - UI label: `Config directory`
-- Meaning: global runner home for auth and global config.
+- Meaning: global runner home used for auth and global settings.
+- Defaults:
+  - `codex -> ~/.codex`
+  - `claude -> ~/.claude`
+  - `opencode -> ~/.config/opencode`
 
 **`profile`**
 
 - Type: `string`
-- Default: `""`
 - UI label: `Codex profile`
-- Meaning: optional Codex profile name passed through as `codex --profile <name>`.
-- Use this when your Codex CLI is already configured for a provider-backed setup such as MiniMax, GLM, Volcengine Ark, or Alibaba Bailian.
-- One-off note: you can also leave this field empty and launch with `ds --codex-profile <name>`.
-- Combined note: one-off profile and binary overrides can be combined as `ds --codex /absolute/path/to/codex --codex-profile <name>`.
+- Runners: `codex`
+- Meaning: optional Codex profile passed as `codex --profile <name>`.
+- Use this when Codex itself is already configured for a provider-backed profile.
 
 **`model`**
 
 - Type: `string`
-- Default: `codex=gpt-5.4`, `claude=inherit`
 - UI label: `Default model`
-- Meaning: default model used when a project does not override it.
-- Startup note: DeepScientist's Codex readiness probe uses this configured model first. If your Codex account cannot access it, DeepScientist falls back to the current Codex default model and persists `model: inherit`.
-- Provider-profile note: when `profile` is set, `model: inherit` is usually the right choice so the Codex profile itself controls the provider model.
+- Meaning: default runner model when a quest or request does not override it.
+- Default: `inherit` for all four runners.
+- Recommended rule:
+  - keep `inherit` when the CLI should decide the provider/model itself
+  - set a fixed model only when you want DeepScientist to override every turn
 
 **`model_reasoning_effort`**
 
 - Type: `string`
-- Default: `codex=xhigh`
 - UI label: `Reasoning effort`
+- Runners: `codex`
+- Meaning: default Codex reasoning effort.
 - Allowed values: `""`, `minimal`, `low`, `medium`, `high`, `xhigh`
-- Meaning: default reasoning intensity.
-- Compatibility note: when DeepScientist detects a Codex CLI older than `0.63.0`, it automatically downgrades `xhigh` to `high` for the startup probe and runner command. This covers MiniMax's currently recommended `@openai/codex@0.57.0` path.
 
 **`approval_policy`**
 
 - Type: `string`
-- Default: `never`
 - UI label: `Approval policy`
+- Runners: `codex`
+- Meaning: Codex approval behavior for privileged actions.
 - Allowed values: `never`, `on-failure`, `on-request`, `untrusted`
-- Meaning: how the runner should ask for permission on privileged actions.
-- Runtime note: the launcher now starts Codex in YOLO mode by default. Passing `ds --yolo false` temporarily restores the non-YOLO pair `approval_policy=on-request` and `sandbox_mode=workspace-write`.
 
 **`sandbox_mode`**
 
 - Type: `string`
-- Default: `danger-full-access`
 - UI label: `Sandbox mode`
+- Runners: `codex`
+- Meaning: Codex filesystem / process sandbox mode.
 - Allowed values: `read-only`, `workspace-write`, `danger-full-access`
-- Meaning: filesystem / process access mode for the runner.
+
+**`permission_mode`**
+
+- Type: `string`
+- UI label: `Permission mode`
+- Runners: `claude`
+- Meaning: Claude Code permission mode passed through as `--permission-mode`.
+- Common values: `default`, `bypassPermissions`, `dontAsk`, `acceptEdits`, `delegate`, `plan`
+- Recommended local automation default: `bypassPermissions`
+
+**`agent`**
+
+- Type: `string`
+- UI label: `Kimi agent`
+- Runners: `kimi`
+- Meaning: optional Kimi agent name passed through as `kimi --agent <name>`.
+- Leave empty unless the same agent profile already works in direct Kimi CLI usage.
+
+**`thinking`**
+
+- Type: `boolean`
+- UI label: `Thinking mode`
+- Runners: `kimi`
+- Meaning: whether DeepScientist should pass `--thinking` to Kimi by default.
+
+**`yolo`**
+
+- Type: `boolean`
+- UI label: `Yolo mode`
+- Runners: `kimi`
+- Meaning: whether DeepScientist should pass `--yolo` so Kimi does not stop for interactive approval prompts.
+- Recommended unattended local automation default: `true`
+
+**`default_agent`**
+
+- Type: `string`
+- UI label: `Default agent`
+- Runners: `opencode`
+- Meaning: optional OpenCode agent name passed through as `opencode run --agent <name>`.
+- Leave empty unless the same agent name already works in direct OpenCode CLI usage.
+
+**`variant`**
+
+- Type: `string`
+- UI label: `Variant`
+- Runners: `opencode`
+- Meaning: optional OpenCode provider-specific variant passed through as `--variant`.
+- Use only when your OpenCode provider documents that flag.
 
 **`env`**
 
 - Type: `mapping<string, string>`
-- Default: `{}`
-- UI availability:
-  - global settings: editable in the `runners` structured form as `env`
-  - project settings: `Project settings -> Codex environment`
-- Project-settings behavior:
-  - click `Add` to create a new variable row
-  - `OPENAI_BASE_URL` and `OPENAI_API_KEY` are shown by default
-  - changes are not auto-saved; click `Save env vars`
-  - empty values are ignored and are not injected into the Codex process
-- Meaning: extra environment variables passed to Codex when DeepScientist starts a Codex run.
-- Common use: provider-backed Codex setups that need API keys or custom base URLs.
+- UI label: `Environment variables`
+- Meaning: extra environment variables injected only for this runner.
+- Common examples:
+  - Codex: `OPENAI_API_KEY`, `OPENAI_BASE_URL`
+  - Claude: `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_MAX_OUTPUT_TOKENS`
+  - Kimi: usually empty unless your local Kimi CLI path requires extra environment variables
+  - OpenCode: provider-specific environment variables only if your OpenCode provider setup requires them
 
-**`retry_on_failure`**
+**`retry_on_failure` / `retry_max_attempts` / `retry_initial_backoff_sec` / `retry_backoff_multiplier` / `retry_max_backoff_sec`**
 
-- Type: `boolean`
-- Default: `true`
-- UI label: `Retry on failure`
-- Meaning: retry a failed turn automatically.
-
-**`retry_max_attempts`**
-
-- Type: `number`
-- Default: `5`
-- UI label: `Max attempts`
-- Meaning: total allowed attempts for one turn.
-- Notes: runtime hard-caps this at `5`.
-
-**`retry_initial_backoff_sec`**
-
-- Type: `number`
-- Default: `1.0`
-- UI label: `Initial backoff (s)`
-- Meaning: delay before the first retry.
-
-**`retry_backoff_multiplier`**
-
-- Type: `number`
-- Default: `2.0`
-- UI label: `Backoff multiplier`
-- Meaning: exponential backoff multiplier.
-
-**`retry_max_backoff_sec`**
-
-- Type: `number`
-- Default: `8.0`
-- UI label: `Max backoff (s)`
-- Meaning: upper bound on retry delay after exponential growth.
-
-**`status`**
-
-- Type: `string`
-- Default: `claude=experimental`
-- UI label: `Status note`
-- Meaning: operator-facing note such as `reserved_todo` or `experimental`.
-
-### File-level companion fields
+- Type: `boolean` / `number`
+- Meaning: automatic turn retry policy for the runner.
+- Defaults:
+  - `codex`: more aggressive retry ladder
+  - `claude` / `kimi` / `opencode`: shorter ladder
 
 **`mcp_tool_timeout_sec`**
 
 - Type: `number`
-- Default: `180000`
-- Meaning: allow long-running MCP tool calls, especially durable `bash_exec` flows.
+- Runners: `codex`
+- Meaning: maximum MCP tool wait time, mainly for long `bash_exec` flows.
 
-**`env`**
+**`status`**
 
-- Type: `mapping[string, string]`
-- Default: `{}`
-- UI location: environment editor at the bottom of each runner card
-- Meaning: per-runner environment overrides.
+- Type: `string`
+- Meaning: operator-facing note.
+- Current practical meaning:
+  - `codex`: primary path
+  - `claude`, `kimi`, `opencode`: supported experimental paths
 
 ### Practical guidance
 
-- For most installs, keep `codex.enabled: true`. Enable `claude` only after its startup probe succeeds.
-- Switching `default_runner` to `claude` is supported, but only after `ds doctor` confirms the Claude-compatible runner is healthy.
-- Do not lower `mcp_tool_timeout_sec` casually if your workflow uses long-running tools.
-- Keep retry timing close to `1s / 2x / 8s max` unless you have a specific reason to slow recovery down.
+- Use `codex` if you want the most battle-tested DeepScientist path.
+- Use `claude` when Claude Code already works directly on the machine and you want Anthropic / Claude-native execution.
+- Use `kimi` when the official Kimi Code CLI already works directly on the machine and you want a separate Moonshot-native runner path.
+- Use `opencode` when your model/provider setup already works best through OpenCode.
+- `default_runner` can now be switched away from `codex` safely if the target runner is enabled and passes `ds doctor`.
+- New quests follow `config.default_runner`.
+- Existing quests can override the runner in project settings.
+- Do not lower `mcp_tool_timeout_sec` casually if your workflow uses long-running `bash_exec` sessions.
+
 
 ## `connectors.yaml`
 

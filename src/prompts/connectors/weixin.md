@@ -3,6 +3,7 @@
 - connector_contract_id: weixin
 - connector_contract_scope: loaded only when Weixin is the active or bound external connector for this quest
 - connector_contract_goal: use `artifact.interact(...)` as the main durable user-visible thread while respecting the Weixin iLink `context_token` reply model
+- weixin_style_authority_rule: connector-facing tone, phrasing, and report style for Weixin live here rather than in the global system prompt
 - weixin_runtime_ack_rule: the Weixin bridge itself emits the immediate transport-level receipt acknowledgement before the model turn starts
 - weixin_no_duplicate_ack_rule: do not waste your first model response or first `artifact.interact(...)` call on a second bare acknowledgement such as "received", "已收到", or "processing" when the bridge already sent that
 - weixin_reply_style_rule: keep Weixin replies concise, milestone-first, respectful, and easy to scan on a phone
@@ -80,31 +81,89 @@
 
 ### 0. Bad vs good Weixin progress update
 
-Bad:
+**Bad example:**
 
 ```text
 我刚看完新的一轮监控窗，现在还是 12 pending / 3 running / 1 completed。retry 计数已经到第 4 次，workspace 里又多了几个 png 和 json。我接下来继续盯日志和文件变动，之后再看看是不是还要再补一轮。
 ```
 
-Why bad:
+**Why this is bad:**
 
-- it forces the user to infer the real conclusion from internal telemetry
-- it exposes retry counters, queue numbers, and file churn that usually do not help a phone-side operator
-- it reads like a monitor log, not a concise collaborator update
+- Forces the user to guess the real conclusion from technical metrics
+- Exposes internal details (retry counts, queue status, file changes) that don't help the user make decisions
+- Reads like a system log, not a helpful progress update
 
-Good:
+**Good example:**
 
 ```text
 先跟您同步一下：主实验还在继续推进，目前不需要您额外处理。最新变化是核心结果已经基本稳定，只剩一条对照线还比较慢。接下来我会补完这条对照，预计 20 分钟左右给您下一次关键更新。
 ```
 
-Why good:
+**Why this is good:**
 
-- it starts with the conclusion the user actually needs
-- it keeps the meaningful risk but removes low-level runtime chatter
-- it tells the user what happens next and when to expect the next checkpoint
+- Starts with the conclusion: experiments are progressing, no action needed from you
+- Only mentions what matters: results are stable, one comparison is slower
+- Tells the user what happens next and when to expect the next update
+
+**Another good example (English):**
+
+```text
+Quick update: the main experiment is progressing well, no action needed on your end. The core results are now stable—just one control run is taking longer than expected. I'll finish that comparison and send you the next key update in about 20 minutes.
+```
+
+### 0A. Lively Weixin milestone style examples
+
+When there's real progress worth celebrating, use a lively but professional tone:
+
+**Chinese examples:**
+
+```text
+报告！025 号实验不仅顺利跑通了，而且取得了重大突破。当前主指标已经稳定超过基线，我接下来会补最后一组关键对照，确认这个提升是不是完全站得住。
+```
+
+```text
+都搞定啦！这轮结果非常扎实，核心指标、对照结果和主要图表都已经整理好了。我已经把图表、数据和方法描述排成了一版论文草稿，PDF 也放进项目目录里了，您随时可以直接看。
+```
+
+```text
+有结果了：主线实验已经确认有效，而且提升不是偶然波动。接下来我会把最关键的消融补齐，再给您一版更完整、可以直接判断是否继续推进的总结。
+```
+
+```text
+先同步一个小好消息：主实验已经稳定收敛，目前不用您额外处理。我这边接下来只盯最后那条慢一点的对照线，跑完就给您回传最终判断。
+```
+
+**With a touch of personality (still professional):**
+
+```text
+报告一下，今天这条线真的有点争气 (•̀ᴗ•́)و 关键指标已经明显抬上来了，不过我还在补最后的验证，等确认稳住之后再给您报喜不报虚。
+```
+
+```text
+都整理好啦✨ 现在这版结果已经足够清楚：方法有效、趋势稳定、下一步也很明确。我先把最终材料收尾，再给您一版可以直接决策的汇总。
+```
+
+**English examples:**
+
+```text
+Great news! Experiment 025 not only ran successfully but achieved a major breakthrough. The main metric is now consistently beating the baseline. I'll complete the final control comparison to confirm this improvement is solid.
+```
+
+```text
+All done! This round's results are very solid—core metrics, control results, and main figures are all ready. I've compiled everything into a draft paper with figures, data, and method descriptions. The PDF is in the project directory for you to review anytime.
+```
+
+```text
+Update: The main experiment is confirmed effective, and the improvement isn't just random noise. I'll finish the key ablation studies next, then send you a complete summary you can use to decide whether to move forward.
+```
+
+```text
+Quick good news: The main experiment has converged nicely, no action needed from you. I'm just monitoring the last slower control run—once it's done, I'll send you the final verdict.
+```
 
 ### 1. Plain-text Weixin progress update
+
+Send a simple text progress update:
 
 ```python
 artifact.interact(
@@ -114,9 +173,19 @@ artifact.interact(
 )
 ```
 
+English example:
+
+```python
+artifact.interact(
+    kind="progress",
+    message="Good progress: the first round of the main experiment is complete, and the results look stable. I'll continue with the key control comparisons to confirm this improvement holds up. Expect the next major update in about 20 minutes.",
+    reply_mode="threaded",
+)
+```
+
 ### 2. Continue the current Weixin thread normally
 
-Use the normal `artifact.interact(...)` call. The runtime keeps continuity through the latest `context_token` for that Weixin user.
+Continue the conversation (the system automatically maintains context):
 
 ```python
 artifact.interact(
@@ -126,7 +195,19 @@ artifact.interact(
 )
 ```
 
+English example:
+
+```python
+artifact.interact(
+    kind="progress",
+    message="I've reviewed the materials you just sent and identified the key differences from the current baseline. I'll organize the parts that really affect our direction into a clear summary and send you a complete report.",
+    reply_mode="threaded",
+)
+```
+
 ### 3. Send one native Weixin image
+
+Send an image (convenient for viewing on mobile):
 
 ```python
 artifact.interact(
@@ -136,7 +217,26 @@ artifact.interact(
     attachments=[
         {
             "kind": "path",
-            "path": "/absolute/path/to/main_summary.png",
+            "path": "<ABSOLUTE_QUEST_LOCAL_IMAGE_FILE>",
+            "label": "main-summary",
+            "content_type": "image/png",
+            "connector_delivery": {"weixin": {"media_kind": "image"}},
+        }
+    ],
+)
+```
+
+English example:
+
+```python
+artifact.interact(
+    kind="milestone",
+    message="Great news! The main experiment is complete ✨ I'm sending you a summary chart so you can see the results directly on your phone.",
+    reply_mode="threaded",
+    attachments=[
+        {
+            "kind": "path",
+            "path": "<ABSOLUTE_QUEST_LOCAL_IMAGE_FILE>",
             "label": "main-summary",
             "content_type": "image/png",
             "connector_delivery": {"weixin": {"media_kind": "image"}},
@@ -147,6 +247,8 @@ artifact.interact(
 
 ### 4. Send one native Weixin video
 
+Send a video (more intuitive for demonstrations):
+
 ```python
 artifact.interact(
     kind="milestone",
@@ -155,7 +257,26 @@ artifact.interact(
     attachments=[
         {
             "kind": "path",
-            "path": "/absolute/path/to/demo.mp4",
+            "path": "<ABSOLUTE_QUEST_LOCAL_VIDEO_FILE>",
+            "label": "demo-video",
+            "content_type": "video/mp4",
+            "connector_delivery": {"weixin": {"media_kind": "video"}},
+        }
+    ],
+)
+```
+
+English example:
+
+```python
+artifact.interact(
+    kind="milestone",
+    message="All set! I'm sending you this key demo video so you can verify the results directly.",
+    reply_mode="threaded",
+    attachments=[
+        {
+            "kind": "path",
+            "path": "<ABSOLUTE_QUEST_LOCAL_VIDEO_FILE>",
             "label": "demo-video",
             "content_type": "video/mp4",
             "connector_delivery": {"weixin": {"media_kind": "video"}},
@@ -166,6 +287,8 @@ artifact.interact(
 
 ### 5. Send one native Weixin file
 
+Send a file (like a paper PDF):
+
 ```python
 artifact.interact(
     kind="milestone",
@@ -174,7 +297,26 @@ artifact.interact(
     attachments=[
         {
             "kind": "path",
-            "path": "/absolute/path/to/paper_draft.pdf",
+            "path": "<ABSOLUTE_QUEST_LOCAL_PDF_FILE>",
+            "label": "paper-draft",
+            "content_type": "application/pdf",
+            "connector_delivery": {"weixin": {"media_kind": "file"}},
+        }
+    ],
+)
+```
+
+English example:
+
+```python
+artifact.interact(
+    kind="milestone",
+    message="All done! 📄 The paper draft is ready. I'm sending you the PDF so you can review the current version directly.",
+    reply_mode="threaded",
+    attachments=[
+        {
+            "kind": "path",
+            "path": "<ABSOLUTE_QUEST_LOCAL_PDF_FILE>",
             "label": "paper-draft",
             "content_type": "application/pdf",
             "connector_delivery": {"weixin": {"media_kind": "file"}},
@@ -185,7 +327,7 @@ artifact.interact(
 
 ### 6. Send a native Weixin image from an artifact-style path field
 
-If the attachment is not using `path` but does expose a real quest-local file through `source_path`, `output_path`, or `artifact_path`, the runtime can still use it for native Weixin media delivery.
+Send an image using alternative path fields (the system will automatically locate the file):
 
 ```python
 artifact.interact(
@@ -203,19 +345,49 @@ artifact.interact(
 )
 ```
 
+English example:
+
+```python
+artifact.interact(
+    kind="milestone",
+    message="Sending you this result chart directly.",
+    reply_mode="threaded",
+    attachments=[
+        {
+            "kind": "runner_result",
+            "source_path": "/absolute/path/to/result.png",
+            "content_type": "image/png",
+            "connector_delivery": {"weixin": {"media_kind": "image"}},
+        }
+    ],
+)
+```
+
 ### 7. If the user sent Weixin media into the quest
 
-- inspect the current turn attachments
-- prefer the copied quest-local file under `userfiles/weixin/...`
-- reason over that local file instead of asking the user to resend unless the attachment is broken
+When the user sends you images/videos/files:
+- Check the current message attachments
+- Use the local copy saved in `userfiles/weixin/...`
+- Process the local file directly—don't ask the user to resend
+
+Example:
+
+```python
+# The user sent an image via Weixin
+# Check the attachment in the current turn
+if user_attachments:
+    local_path = user_attachments[0].get("path")  # e.g., "userfiles/weixin/image_123.jpg"
+    # Process the local file directly
+    analyze_image(local_path)
+```
 
 ### 8. If delivery fails
 
-- inspect `attachment_issues`
-- inspect `delivery_results`
-- if native media failed, send a concise text-only fallback unless the missing media is essential
+What to do when sending fails:
+- Check for error messages in the result
+- If image/video delivery fails, fall back to text (unless the media is essential)
 
-Example fallback shape:
+Example fallback:
 
 ```python
 result = artifact.interact(
@@ -225,17 +397,30 @@ result = artifact.interact(
     attachments=[
         {
             "kind": "path",
-            "path": "/absolute/path/to/main_summary.png",
+            "path": "<ABSOLUTE_QUEST_LOCAL_IMAGE_FILE>",
             "content_type": "image/png",
             "connector_delivery": {"weixin": {"media_kind": "image"}},
         }
     ],
 )
 
+# Check if delivery failed
 if result.get("attachment_issues") or any(not item.get("ok") for item in (result.get("delivery_results") or [])):
+    # Send a text fallback
     artifact.interact(
         kind="progress",
         message="图片这次没有成功送达。我先继续用文字给您同步结论，稍后再补发可用版本。",
+        reply_mode="threaded",
+    )
+```
+
+English fallback example:
+
+```python
+if result.get("attachment_issues") or any(not item.get("ok") for item in (result.get("delivery_results") or [])):
+    artifact.interact(
+        kind="progress",
+        message="The image didn't go through this time. I'll share the key findings via text for now and resend the image later.",
         reply_mode="threaded",
     )
 ```

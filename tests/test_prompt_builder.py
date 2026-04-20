@@ -55,6 +55,7 @@ def test_prompt_builder_includes_layered_runtime_context(temp_home: Path) -> Non
     assert "Canonical stage skills root:" in prompt
     assert "Standard stage skill paths:" in prompt
     assert "Companion skill paths:" in prompt
+    assert "paper-plot" in prompt
     assert "figure-polish" in prompt
     assert "intake-audit" in prompt
     assert "review" in prompt
@@ -66,7 +67,7 @@ def test_prompt_builder_includes_layered_runtime_context(temp_home: Path) -> Non
     assert "plt.rcParams.update" in prompt
     assert "AutoFigure-Edit" in prompt
     assert len(prompt.splitlines()) < 1800
-    assert len(prompt) < 120000
+    assert len(prompt) < 125000
 
 
 def test_prompt_builder_includes_recovery_resume_packet_for_daemon_recovery(temp_home: Path) -> None:
@@ -376,6 +377,98 @@ def test_prompt_builder_includes_surface_and_attachment_summary_for_connector_tu
     assert "preferred_read_path=attachments/report.txt" in prompt
 
 
+def test_prompt_builder_hides_raw_binary_attachment_paths_without_readable_sidecars(temp_home: Path) -> None:
+    builder, snapshot = _make_builder(temp_home)
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest_service.append_message(
+        snapshot["quest_id"],
+        role="user",
+        content="Please inspect the attached image.",
+        source="qq:direct:openid-123",
+        attachments=[
+            {
+                "kind": "remote",
+                "name": "main-summary.png",
+                "content_type": "image/png",
+                "path": "/tmp/main-summary.png",
+            }
+        ],
+    )
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="decision",
+        user_message="Please inspect the attached image.",
+        model="gpt-5.4",
+    )
+
+    assert "label=main-summary.png" in prompt
+    assert "preferred_read_path=none" in prompt
+    assert "raw_binary_path=hidden" in prompt
+    assert "/tmp/main-summary.png" not in prompt
+
+
+def test_prompt_builder_omits_hardware_block_by_default_when_no_gpu_subset_is_selected(temp_home: Path) -> None:
+    builder, snapshot = _make_builder(temp_home)
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="decision",
+        user_message="Please decide the next step.",
+        model="gpt-5.4",
+    )
+
+    assert "## Local Runtime Hardware" not in prompt
+
+
+def test_prompt_builder_includes_selected_gpu_boundary_and_hardware_summary(temp_home: Path) -> None:
+    builder, snapshot = _make_builder(temp_home)
+    config_manager = ConfigManager(temp_home)
+    config = config_manager.load_runtime_config()
+    config["hardware"] = {
+        "gpu_selection_mode": "selected",
+        "selected_gpu_ids": ["1"],
+        "include_system_hardware_in_prompt": True,
+    }
+    config_manager.save_named_payload("config", config)
+    write_json(
+        Path(temp_home) / "runtime" / "admin" / "cache" / "system_hardware.json",
+        {
+            "ok": True,
+            "system": {
+                "cpu": {"model": "AMD EPYC Test", "logical_cores": 64},
+                "memory": {"total_gb": 256.0},
+                "disks": [{"mount": "/", "free_gb": 1536.0}],
+                "gpus": [
+                    {"gpu_id": "0", "name": "NVIDIA A100", "memory_total_gb": 80.0},
+                    {"gpu_id": "1", "name": "NVIDIA A100", "memory_total_gb": 80.0},
+                ],
+            },
+            "preferences": {
+                "gpu_selection_mode": "selected",
+                "selected_gpu_ids": ["1"],
+                "effective_gpu_ids": ["1"],
+                "cuda_visible_devices": "1",
+            },
+        },
+    )
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="experiment",
+        user_message="Launch the next local GPU run.",
+        model="gpt-5.4",
+    )
+
+    assert "## Local Runtime Hardware" in prompt
+    assert "gpu_selection_mode: selected" in prompt
+    assert "selected_gpu_ids: 1" in prompt
+    assert "effective_gpu_ids: 1" in prompt
+    assert "cuda_visible_devices_hint: 1" in prompt
+    assert "gpu_boundary_rule:" in prompt
+    assert "AMD EPYC Test" in prompt
+    assert "gpu_inventory: 0:NVIDIA A100 80.0GB; 1:NVIDIA A100 80.0GB" in prompt
+
+
 def test_prompt_builder_omits_connector_contract_without_external_connector(temp_home: Path) -> None:
     builder, snapshot = _make_builder(temp_home)
 
@@ -409,7 +502,7 @@ def test_prompt_builder_loads_qq_connector_contract_when_bound(temp_home: Path) 
     assert "do not waste your first model response" in prompt
     assert "connector_hints={\"qq\": {\"render_mode\": \"markdown\"}}" in prompt
     assert "automatically reuse the most recent inbound QQ message id" in prompt
-    assert "/absolute/path/to/main_summary.png" in prompt
+    assert "<ABSOLUTE_QUEST_LOCAL_IMAGE_FILE>" in prompt
 
 
 def test_prompt_builder_can_use_historical_connector_prompt_backup(temp_home: Path) -> None:
@@ -639,12 +732,28 @@ def test_prompt_builder_includes_active_user_requirements_for_auto_continue_turn
     assert "Keep going until the experiment, analysis, and paper draft are all complete." in prompt
     assert "(no new user message for this turn; continue from active user requirements and durable state)" in prompt
     assert "## Resume Context Spine" in prompt
+    assert "workspace_checklist_rule:" in prompt
+    assert "workspace_plan_rule:" in prompt
     assert "latest_assistant_checkpoint:" in prompt
     assert "latest_run_result:" in prompt
     assert "recent_memory_cues:" in prompt
     assert "auto_continue_interval_rule:" in prompt
-    assert "240 seconds" in prompt
-    assert "autonomous_prepare_rule:" in prompt
+
+
+def test_prompt_builder_explains_immediate_read_turns(temp_home: Path) -> None:
+    builder, snapshot = _make_builder(temp_home)
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="decision",
+        user_message="These are the latest user requirements in chronological order.\n\n1. Inspect config.\n2. Verify the entrypoint.",
+        model="gpt-5.4",
+        turn_reason="immediate_read",
+    )
+
+    assert "turn_reason: immediate_read" in prompt
+    assert "explicitly restarted because the user clicked immediate read" in prompt
+    assert "runtime-prepared queued-message bundle" in prompt
 
 
 def test_prompt_builder_includes_active_interactions(temp_home: Path) -> None:
@@ -673,6 +782,8 @@ def test_prompt_builder_includes_active_interactions(temp_home: Path) -> None:
 
     assert "quest_state_tool:" in prompt
     assert "artifact.get_quest_state" in prompt
+    assert "artifact.get_research_map_status" in prompt
+    assert "node history" in prompt
 
 
 def test_prompt_builder_includes_progress_interact_cadence_guidance(temp_home: Path) -> None:
@@ -963,7 +1074,7 @@ def test_prompt_builder_delegates_stage_specific_sop_to_skills(temp_home: Path) 
     for prompt in (experiment_prompt, idea_prompt, analysis_prompt, write_prompt):
         assert "stage_contract_protocol:" in prompt
         assert len(prompt.splitlines()) < 1800
-        assert len(prompt) < 120000
+        assert len(prompt) < 126000
 
     assert "RUN.md" not in experiment_prompt
     assert "problem-first vs solution-first" not in idea_prompt
@@ -1064,6 +1175,108 @@ def test_prompt_builder_includes_custom_existing_state_launch_guidance(temp_home
     assert "intake-audit" in prompt
 
 
+def test_prompt_builder_includes_admin_ops_contract_and_knowledge_for_copilot_repairs(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    snapshot = service.create(
+        "admin repair session",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "admin_ops",
+            "custom_brief": "Diagnose why the admin logs page is blank.",
+            "entry_state_summary": "Admin repair session `repair-test-001` from `/admin/logs`.",
+            "review_materials": ["/abs/path/to/logs"],
+            "admin_session": {
+                "repair_id": "repair-test-001",
+                "scope": "log",
+                "repair_policy": "diagnose_only",
+                "source_page": "/admin/logs",
+                "selected_paths": ["/abs/path/to/logs"],
+                "knowledge_refs": ["docs/en/09_DOCTOR.md", "src/deepscientist/daemon/api/handlers.py"],
+                "targets": {
+                    "log_sources": ["daemon_jsonl"],
+                },
+            },
+        },
+    )
+    quest_root = Path(snapshot["quest_root"])
+    service.update_research_state(quest_root, workspace_mode="copilot")
+    service.set_continuation_state(
+        quest_root,
+        policy="wait_for_user_or_resume",
+        anchor="decision",
+        reason="copilot_mode",
+    )
+    builder = PromptBuilder(repo_root(), temp_home)
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="decision",
+        user_message="Investigate the admin logging issue.",
+        model="gpt-5.4",
+    )
+
+    assert "# Admin Ops Contract" in prompt
+    assert "# Admin Ops Knowledge Base" in prompt
+    assert "## Admin Ops Session Packet" in prompt
+    assert "repair_id: repair-test-001" in prompt
+    assert "source_page: /admin/logs" in prompt
+    assert "local_daemon_api_base_url:" in prompt
+    assert "local_daemon_api_admin_endpoints:" in prompt
+    assert "GET /api/system/overview" in prompt
+    assert "local_repo_root:" in prompt
+    assert "launcher_entry:" in prompt
+    assert "github_origin: https://github.com/ResearAI/DeepScientist" in prompt
+    assert "command_forms_available: INSPECT, LOGS, SEARCH, REPRO, PATCH, VERIFY, ISSUE, PR" in prompt
+    assert "source_address_rule:" in prompt
+    assert "selected_paths_rule:" in prompt
+    assert "`PATCH <goal>`" in prompt
+    assert "`PR <summary>`" in prompt
+    assert "docs/en/09_DOCTOR.md" in prompt
+    assert "src/ui/src/components/settings/SettingsPage.tsx" in prompt
+    assert "/api/system/logs/tail" in prompt
+    assert "/api/admin/logs/tail" in prompt
+    assert "/api/quests/:quest_id/session" in prompt
+    assert "before any `git clone`, commit creation, branch publication, PR opening, or issue filing" in prompt
+    assert "src/ui/src/pages/Admin" not in prompt
+    assert "artifacts/reports/admin/" in prompt
+
+
+def test_prompt_builder_restricts_settings_issue_profile_to_issue_tool(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    snapshot = service.create(
+        "settings issue session",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "settings_issue",
+            "custom_brief": "Prepare a GitHub issue draft for the settings issue page.",
+        },
+    )
+    quest_root = Path(snapshot["quest_root"])
+    service.update_research_state(quest_root, workspace_mode="copilot")
+    service.set_continuation_state(
+        quest_root,
+        policy="wait_for_user_or_resume",
+        anchor="decision",
+        reason="copilot_mode",
+    )
+    prompt = PromptBuilder(repo_root(), temp_home).build(
+        quest_id=snapshot["quest_id"],
+        skill_id="decision",
+        user_message="Prepare the issue draft.",
+        model="gpt-5.4",
+    )
+
+    assert "built_in_mcp_namespaces: artifact, bash_exec" in prompt
+    assert "only `artifact.prepare_github_issue(...)` and `bash_exec(...)` are available in this session" in prompt
+    assert "built_in_mcp_namespaces: memory, artifact, bash_exec" not in prompt
+
+
 def test_prompt_builder_includes_revision_rebuttal_launch_guidance(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
@@ -1092,6 +1305,264 @@ def test_prompt_builder_includes_revision_rebuttal_launch_guidance(temp_home: Pa
     assert "rebuttal_entry_rule:" in prompt
     assert "rebuttal_routing_rule:" in prompt
     assert "rebuttal" in prompt
+
+
+def test_prompt_builder_start_setup_block_includes_local_daemon_api_context(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    write_json(
+        temp_home / "runtime" / "daemon.json",
+        {
+            "url": "http://127.0.0.1:20999",
+            "bind_url": "http://0.0.0.0:20999",
+            "auth_enabled": True,
+            "auth_token": "0123456789abcdef",
+        },
+    )
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    snapshot = service.create(
+        "setup session",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "freeform",
+            "start_setup_session": {
+                "source": "benchstore",
+                "locale": "zh",
+                "benchmark_context": {
+                    "entry_id": "bench.demo",
+                    "entry_name": "Bench Demo",
+                },
+                "suggested_form": {
+                    "title": "Bench Demo Autonomous Research",
+                },
+            },
+        },
+    )
+    builder = PromptBuilder(repo_root(), temp_home)
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="decision",
+        user_message="帮我整理启动信息。",
+        model="gpt-5.4",
+    )
+
+    assert "## Start Setup Session" in prompt
+    assert "local_daemon_api_base_url: http://127.0.0.1:20999" in prompt
+    assert "local_daemon_auth_enabled: True" in prompt
+    assert "local_daemon_auth_token: 0123456789abcdef" in prompt
+    assert "local_daemon_api_benchstore_endpoints:" in prompt
+    assert "GET /api/benchstore/entries/:entry_id/setup-packet" in prompt
+    assert "built_in_mcp_namespaces: artifact, bash_exec" in prompt
+    assert "artifact.prepare_start_setup_form(...)" in prompt
+
+
+def test_prompt_builder_claude_start_setup_notes_namespaced_mcp_tool_names(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    snapshot = service.create(
+        "claude setup session",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "freeform",
+            "start_setup_session": {
+                "source": "benchstore",
+                "locale": "zh",
+                "suggested_form": {
+                    "title": "Claude Setup",
+                },
+            },
+        },
+    )
+    prompt = PromptBuilder(repo_root(), temp_home).build(
+        quest_id=snapshot["quest_id"],
+        skill_id="scout",
+        user_message="帮我整理启动信息。",
+        model="inherit",
+        runner_name="claude",
+    )
+
+    assert "runner_tool_name_note:" in prompt
+    assert "mcp__artifact__prepare_start_setup_form" in prompt
+    assert "mcp__bash_exec__bash_exec" in prompt
+
+
+def test_prompt_builder_start_setup_prompt_avoids_unavailable_context_tools(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    snapshot = service.create(
+        "setup session without extra context tools",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "freeform",
+            "start_setup_session": {
+                "source": "benchstore",
+                "locale": "zh",
+                "suggested_form": {
+                    "title": "No extra context tools",
+                },
+            },
+        },
+    )
+
+    prompt = PromptBuilder(repo_root(), temp_home).build(
+        quest_id=snapshot["quest_id"],
+        skill_id="scout",
+        user_message="帮我整理启动信息。",
+        model="inherit",
+        runner_name="claude",
+    )
+
+    assert "artifact.prepare_start_setup_form(...)" in prompt
+    assert "bash_exec(...)" in prompt
+    assert "get_start_setup_context" not in prompt
+    assert "get_benchstore_catalog" not in prompt
+    assert "优先从现有 AISB / BenchStore 条目里挑选" in prompt
+    assert "不要先把“你想做什么任务”整个问题甩回给用户" in prompt
+    assert "mandatory_confirmation_rule" in prompt
+    assert "credential_confirmation_rule" in prompt
+    assert "gpu_confirmation_rule" in prompt
+    assert "critical_confirmation_rule" in prompt
+    assert "start_setup_prepare_schema_summary" in prompt
+    assert "\"required\": [" in prompt
+    assert "\"form_patch\"" in prompt
+    assert "\"runner_namespaced_tool\": \"mcp__artifact__prepare_start_setup_form\"" in prompt
+
+
+def test_prompt_builder_runner_namespaced_notes_cover_claude_and_opencode_profiles(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    builder = PromptBuilder(repo_root(), temp_home)
+
+    scenarios = [
+        (
+            "claude",
+            {
+                "workspace_mode": "copilot",
+                "launch_mode": "custom",
+                "custom_profile": "settings_issue",
+            },
+            "mcp__artifact__prepare_github_issue",
+        ),
+        (
+            "kimi",
+            {
+                "workspace_mode": "copilot",
+                "launch_mode": "custom",
+                "custom_profile": "settings_issue",
+            },
+            "mcp__artifact__prepare_github_issue",
+        ),
+        (
+            "opencode",
+            {
+                "workspace_mode": "copilot",
+                "launch_mode": "custom",
+                "custom_profile": "freeform",
+                "start_setup_session": {
+                    "source": "benchstore",
+                    "locale": "zh",
+                },
+            },
+            "mcp__artifact__prepare_start_setup_form",
+        ),
+    ]
+
+    for runner_name, startup_contract, expected_tool_name in scenarios:
+        snapshot = service.create(f"{runner_name} prompt scenario", startup_contract=startup_contract)
+        prompt = builder.build(
+            quest_id=snapshot["quest_id"],
+            skill_id="scout",
+            user_message="test",
+            model="inherit",
+            runner_name=runner_name,
+        )
+        assert "runner_tool_name_note:" in prompt
+        assert expected_tool_name in prompt
+        assert "mcp__bash_exec__bash_exec" in prompt
+
+
+def test_prompt_builder_settings_issue_includes_explicit_session_packet_and_message_history(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    write_json(
+        temp_home / "runtime" / "daemon.json",
+        {
+            "url": "http://127.0.0.1:20999",
+            "bind_url": "http://0.0.0.0:20999",
+            "auth_enabled": True,
+            "auth_token": "0123456789abcdef",
+        },
+    )
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    snapshot = service.create(
+        "settings issue prompt quest",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "settings_issue",
+        },
+    )
+    service.append_message(snapshot["quest_id"], "user", "第一条消息", source="web-react")
+    service.append_message(snapshot["quest_id"], "assistant", "第二条消息", source="deepscientist")
+
+    prompt = PromptBuilder(repo_root(), temp_home).build(
+        quest_id=snapshot["quest_id"],
+        skill_id="scout",
+        user_message="请整理 issue。",
+        model="inherit",
+        runner_name="claude",
+    )
+
+    assert "## Settings Issue Session Packet" in prompt
+    assert "local_daemon_api_base_url: http://127.0.0.1:20999" in prompt
+    assert "local_daemon_auth_enabled: True" in prompt
+    assert "local_daemon_auth_token: 0123456789abcdef" in prompt
+    assert "GET /api/system/overview" in prompt
+    assert "GET /api/benchstore/entries" in prompt
+    assert "第一条消息" in prompt
+    assert "第二条消息" in prompt
+    assert "settings_issue_tool_schema_summary" in prompt
+    assert "\"tool\": \"prepare_github_issue\"" in prompt
+    assert "\"runner_namespaced_tool\": \"mcp__artifact__prepare_github_issue\"" in prompt
+
+
+def test_prompt_builder_start_setup_expands_recent_messages(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    snapshot = service.create(
+        "expanded start setup messages",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "freeform",
+            "start_setup_session": {
+                "source": "benchstore",
+                "locale": "zh",
+            },
+        },
+    )
+    service.append_message(snapshot["quest_id"], "user", "我想让你直接从现有 AISB 里面帮我选。", source="web-react")
+    service.append_message(snapshot["quest_id"], "user", "机器性能一般，尽量选 API-only 和轻量一点。", source="web-react")
+
+    prompt = PromptBuilder(repo_root(), temp_home).build(
+        quest_id=snapshot["quest_id"],
+        skill_id="scout",
+        user_message="帮我整理启动信息。",
+        model="inherit",
+        runner_name="opencode",
+    )
+
+    assert "conversation_injection_rule:" in prompt
+    assert "我想让你直接从现有 AISB 里面帮我选。" in prompt
+    assert "机器性能一般，尽量选 API-only 和轻量一点。" in prompt
 
 
 def test_prompt_builder_includes_review_audit_launch_guidance(temp_home: Path) -> None:
@@ -1183,6 +1654,71 @@ def test_prompt_builder_includes_custom_baseline_execution_policy_guidance(temp_
     assert "do not spend time on baseline reruns by default" in prompt
 
 
+def test_prompt_builder_includes_baseline_source_and_plan_first_launch_guidance(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    snapshot = service.create(
+        "continue from local existing system with plan-first approval",
+        startup_contract={
+            "launch_mode": "custom",
+            "custom_profile": "freeform",
+            "baseline_source_mode": "verify_local_existing",
+            "execution_start_mode": "plan_then_execute",
+            "baseline_acceptance_target": "comparison_ready",
+            "custom_brief": "Verify the already running local system before source reproduction.",
+        },
+    )
+    builder = PromptBuilder(repo_root(), temp_home)
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="baseline",
+        user_message="Plan the cheapest trustworthy baseline route first.",
+        model="gpt-5.4",
+    )
+
+    assert "baseline_source_mode: verify_local_existing" in prompt
+    assert "execution_start_mode: plan_then_execute" in prompt
+    assert "baseline_acceptance_target: comparison_ready" in prompt
+    assert "plan_first_entry_rule:" in prompt
+    assert "baseline_source_rule:" in prompt
+    assert "baseline_acceptance_rule:" in prompt
+    assert "Prefer attach / import / verify-local-existing over full reproduction" in prompt
+
+
+def test_prompt_builder_includes_auto_baseline_reuse_guidance(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    snapshot = service.create(
+        "continue from provided sota",
+        startup_contract={
+            "launch_mode": "custom",
+            "custom_profile": "continue_existing_state",
+            "baseline_source_mode": "auto",
+            "execution_start_mode": "execute_immediately",
+            "baseline_acceptance_target": "comparison_ready",
+            "custom_brief": "A working local comparator and a provided SOTA should be reused before any full reproduction.",
+        },
+    )
+    builder = PromptBuilder(repo_root(), temp_home)
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="baseline",
+        user_message="Use the lightest trustworthy baseline path.",
+        model="gpt-5.4",
+    )
+
+    assert "baseline_source_mode: auto" in prompt
+    assert "baseline_source_rule: auto mode" in prompt
+    assert "verify/reuse/attach before source reproduction" in prompt
+    assert "baseline_acceptance_target: comparison_ready" in prompt
+    assert "trustworthy enough for the next scientific step" in prompt
+    assert "move forward immediately" in prompt
+
+
 def test_prompt_builder_includes_review_gate_rule_for_paper_like_quests(temp_home: Path) -> None:
     builder, snapshot = _make_builder(temp_home)
 
@@ -1194,7 +1730,7 @@ def test_prompt_builder_includes_review_gate_rule_for_paper_like_quests(temp_hom
     )
 
     assert "review_gate_rule:" in prompt
-    assert "open `review` for an independent skeptical audit" in prompt
+    assert "consider opening `review` for an independent skeptical audit" in prompt
 
 
 @pytest.mark.parametrize(("skill_id",), [("experiment",), ("analysis-campaign",)])
@@ -1380,6 +1916,8 @@ def test_prompt_builder_mentions_queued_user_message_mailbox(temp_home: Path) ->
     assert "pending_user_message_count: 1" in prompt
     assert "quest_state_tool:" in prompt
     assert "artifact.get_quest_state" in prompt
+    assert "artifact.get_research_map_status" in prompt
+    assert "research_map_usage_rule:" in prompt
 
 
 def test_prompt_builder_mentions_immediate_acknowledgement_after_mailbox_poll(temp_home: Path) -> None:
@@ -1410,10 +1948,54 @@ def test_prompt_builder_mentions_memory_contract_without_redundant_stage_playboo
     )
 
     assert "Use `memory` for reusable lessons, compact prior context, and cross-turn retrieval." in prompt
+    assert "Search memory before reopening a previously tested command path" in prompt
+    assert "If a smoke test, pilot, or cheap validation resolved a reusable fact" in prompt
+    assert "Maintain at least one compact checkpoint-style quest memory card" in prompt
+    assert "checkpoint_memory_lookup_rule:" in prompt
+    assert "current active node, node history" in prompt
     assert 'pass `tags` as a JSON array such as `["stage:baseline", "type:repro-lesson"]`' in prompt
     assert "## Priority Memory For This Turn" in prompt
     assert "memory_injection_rule:" in prompt
     assert "stage_contract_protocol:" in prompt
+
+
+def test_prompt_builder_can_pull_checkpoint_style_memory_for_continue_turns(temp_home: Path) -> None:
+    builder, snapshot = _make_builder(temp_home)
+    quest_root = Path(snapshot["quest_root"])
+    memory = MemoryService(temp_home)
+
+    memory.write_card(
+        scope="quest",
+        quest_root=quest_root,
+        kind="knowledge",
+        title="Checkpoint continue-later route",
+        body=(
+            "Current checkpoint: continue-later.\n"
+            "What not to reopen by default: old completion path.\n"
+            "Next resume step: reread status.md and SUMMARY.md first.\n"
+            "Reopen condition: only if a new evidence gap appears."
+        ),
+        metadata={"tags": ["stage:finalize", "type:checkpoint-memory"]},
+    )
+    memory.write_card(
+        scope="quest",
+        quest_root=quest_root,
+        kind="knowledge",
+        title="Irrelevant recent note",
+        body="This is a newer generic note without checkpoint guidance.",
+        metadata={"tags": ["stage:decision", "type:generic-note"]},
+    )
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="decision",
+        user_message="请继续当前任务。",
+        model="gpt-5.4",
+    )
+
+    assert "Checkpoint continue-later route" in prompt
+    assert "matched checkpoint-memory query" in prompt
+    assert "current node" in prompt
 
 
 def test_prompt_builder_prefers_beginner_friendly_abstract_user_updates(temp_home: Path) -> None:
@@ -1494,3 +2076,19 @@ def test_prompt_builder_deepxiv_capability_block_changes_with_config(temp_home: 
     assert "deepxiv_available: True" in configured_prompt
     assert "deepxiv_preferred_path:" in configured_prompt
     assert "deepxiv_fallback_rule:" in configured_prompt
+
+
+
+def test_prompt_builder_uses_selected_runner_name_in_runtime_context(temp_home: Path) -> None:
+    builder, snapshot = _make_builder(temp_home)
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="decision",
+        user_message="Please decide the next step.",
+        model="gpt-5.4",
+        runner_name="opencode",
+    )
+
+    assert "runner_name: opencode" in prompt
+    assert "runner_name: codex" not in prompt

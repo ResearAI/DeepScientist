@@ -17,7 +17,7 @@
 | 文件 | 页面分类 | 作用 |
 | --- | --- | --- |
 | `~/DeepScientist/config/config.yaml` | Runtime | 运行时主配置：主目录、daemon、UI、日志、Git、技能同步、云链接、ACP 等 |
-| `~/DeepScientist/config/runners.yaml` | Models | Runner 配置：`codex` / `claude` 的二进制、模型、审批策略、沙箱与重试策略 |
+| `~/DeepScientist/config/runners.yaml` | Models | Runner 配置：`codex` / `claude` / `kimi` / `opencode` 的二进制、模型默认值、权限/沙箱、重试与环境变量 |
 | `~/DeepScientist/config/connectors.yaml` | Connectors | QQ、Telegram、Discord、Slack、Feishu、WhatsApp、Lingzhu 等连接器配置 |
 | `~/DeepScientist/config/plugins.yaml` | Extensions | 插件发现、启用、禁用与信任策略 |
 | `~/DeepScientist/config/mcp_servers.yaml` | MCP | 外部 MCP 服务，不包含内置 `memory`、`artifact`、`bash_exec` |
@@ -109,11 +109,11 @@ acp:
 
 - 类型：`string`
 - 默认值：`codex`
-- 允许值：当前页面预设为 `codex`、`claude`
+- 允许值：`codex`、`claude`、`kimi`、`opencode`
 - 页面标签：`Default runner`
 - 作用：当项目没有单独覆盖 runner 时，默认走这里指定的 runner。
 - 何时修改：只有在你真的接通并启用了其他 runner 时才需要改。
-- 注意事项：`codex` 仍然是默认主路径；`claude` 现在是实验性的第二 runner，可用于兼容 Claude Code / Kimi Code 的后端。
+- 注意事项：新 quest 会继承这里的默认值；已有 quest 可以在项目设置里单独覆盖。只有当目标 runner 已启用并通过 `ds doctor` 时再切换。
 
 **`default_locale`**
 
@@ -427,10 +427,18 @@ acp:
 
 ### 摘要
 
-`runners.yaml` 定义项目实际由哪个 runner 执行，以及 runner 的模型默认值、审批策略、沙箱策略和失败重试策略。在当前开源版本中：
+`runners.yaml` 定义 DeepScientist 实际调用哪个 CLI runner、默认模型怎么选、失败后如何重试，以及不同 runner 的专属透传参数。
 
-- `codex`：主路径，默认启用。
-- `claude`：实验性第二路径，默认禁用；接好兼容的 Claude 风格 CLI / 后端后可以运行。
+当前内建 runner 有三种：
+
+- `codex`
+  - OpenAI Codex CLI 路径，也包括已经在 Codex 里配置好的 provider-backed profile
+- `claude`
+  - Claude Code CLI 路径，也包括已经能在 Claude Code 里工作的 Anthropic 或兼容网关配置
+- `kimi`
+  - 官方 Kimi Code CLI 路径，也包括已经在 `~/.kimi` 中工作的登录态和配置
+- `opencode`
+  - OpenCode CLI 路径，也包括直接在 OpenCode 里管理的 provider/model 配置
 
 ### 结构
 
@@ -440,15 +448,15 @@ codex:
   binary: codex
   config_dir: ~/.codex
   profile: ""
-  model: gpt-5.4
+  model: inherit
   model_reasoning_effort: xhigh
   approval_policy: never
   sandbox_mode: danger-full-access
   retry_on_failure: true
-  retry_max_attempts: 5
-  retry_initial_backoff_sec: 1.0
-  retry_backoff_multiplier: 2.0
-  retry_max_backoff_sec: 8.0
+  retry_max_attempts: 7
+  retry_initial_backoff_sec: 10.0
+  retry_backoff_multiplier: 6.0
+  retry_max_backoff_sec: 1800.0
   mcp_tool_timeout_sec: 180000
   env: {}
 claude:
@@ -456,9 +464,28 @@ claude:
   binary: claude
   config_dir: ~/.claude
   model: inherit
-  model_reasoning_effort: ""
+  permission_mode: bypassPermissions
+  retry_on_failure: true
+  retry_max_attempts: 4
+  retry_initial_backoff_sec: 10.0
+  retry_backoff_multiplier: 4.0
+  retry_max_backoff_sec: 600.0
   env: {}
-  status: reserved_todo
+  status: supported_experimental
+opencode:
+  enabled: false
+  binary: opencode
+  config_dir: ~/.config/opencode
+  model: inherit
+  default_agent: ""
+  variant: ""
+  retry_on_failure: true
+  retry_max_attempts: 4
+  retry_initial_backoff_sec: 10.0
+  retry_backoff_multiplier: 4.0
+  retry_max_backoff_sec: 600.0
+  env: {}
+  status: supported_experimental
 ```
 
 ### 页面可编辑字段
@@ -466,156 +493,166 @@ claude:
 **`enabled`**
 
 - 类型：`boolean`
-- 默认值：`codex=true`，`claude=false`
 - 页面标签：`Enabled`
-- 作用：决定这个 runner 是否可被选中与实际执行。
+- 作用：这个 runner 是否可被选中与执行。
+- 实际建议：只有当对应 CLI binary 和认证路径已经在这台机器上跑通时再启用。
 
 **`binary`**
 
 - 类型：`string`
-- 默认值：`codex` 或 `claude`
 - 页面标签：`Binary`
 - 作用：启动 runner 时使用的命令名或绝对路径。
-- `Test` 行为：检查该二进制是否在 `PATH` 上。
-- `codex` 的解析顺序：环境变量覆盖、显式路径、本机 `PATH`、最后才是 bundled fallback。
-- 临时使用说明：你也可以直接用 `ds --codex /absolute/path/to/codex` 临时覆盖这里的设置。
-- 首次使用说明：DeepScientist 不会替你完成 Codex 认证。第一次运行 `ds` 前，必须先确保 `codex login`（或直接运行 `codex`）已经成功完成。
-- 修复说明：如果执行 `npm install -g @researai/deepscientist` 之后 bundled Codex 依赖仍然缺失，请显式安装 `npm install -g @openai/codex`。
+- 默认值：
+  - `codex -> codex`
+  - `claude -> claude`
+  - `opencode -> opencode`
+- `Test` 行为：检查该 binary 是否真的存在于 `PATH` 或显式路径上。
 
 **`config_dir`**
 
 - 类型：`string`
-- 默认值：`~/.codex` 或 `~/.claude`
 - 页面标签：`Config directory`
-- 作用：runner 的全局配置目录，通常存放认证和全局配置。
+- 作用：runner 的全局配置目录，通常存放认证和全局设置。
+- 默认值：
+  - `codex -> ~/.codex`
+  - `claude -> ~/.claude`
+  - `kimi -> ~/.kimi`
+  - `opencode -> ~/.config/opencode`
 
 **`profile`**
 
 - 类型：`string`
-- 默认值：`""`
 - 页面标签：`Codex profile`
-- 作用：可选的 Codex profile 名称，会直接透传为 `codex --profile <name>`。
-- 当你的 Codex CLI 已经配置成 MiniMax、GLM、火山方舟、阿里百炼或其他 provider-backed 路径时，就在这里填写。
-- 临时使用说明：如果你不想持久化写配置，也可以保持这里为空，直接使用 `ds --codex-profile <name>` 启动。
-- 组合使用说明：如果你还想临时指定 Codex 可执行文件，也可以组合成 `ds --codex /absolute/path/to/codex --codex-profile <name>`。
+- 适用 runner：`codex`
+- 作用：可选的 Codex profile，会透传成 `codex --profile <name>`。
+- 适用场景：你已经在 Codex 自己那里配置好了 provider-backed profile。
 
 **`model`**
 
 - 类型：`string`
-- 默认值：`codex=gpt-5.4`，`claude=inherit`
 - 页面标签：`Default model`
-- 作用：项目和单次请求没有覆盖时的默认模型。
-- 启动说明：DeepScientist 的 Codex 就绪探测会优先使用这里配置的模型。如果你的 Codex 账号无法访问它，DeepScientist 会自动回退到当前 Codex 默认模型，并持久化为 `model: inherit`。
-- provider-profile 说明：当 `profile` 已设置时，通常推荐使用 `model: inherit`，让 Codex profile 自己决定 provider 侧模型。
+- 作用：当 quest 或单次请求没有覆盖时，默认使用哪个模型。
+- 默认值：四个 runner 都是 `inherit`。
+- 推荐规则：
+  - 如果希望 CLI 自己决定 provider/model，就保持 `inherit`
+  - 只有在你明确要让 DeepScientist 每次 turn 都强制指定模型时，才写死
 
 **`model_reasoning_effort`**
 
 - 类型：`string`
-- 默认值：`codex=xhigh`
 - 页面标签：`Reasoning effort`
+- 适用 runner：`codex`
+- 作用：Codex 默认推理强度。
 - 允许值：`""`、`minimal`、`low`、`medium`、`high`、`xhigh`
-- 作用：默认推理强度。
-- 推荐：当前仓库的 Codex 默认就是 `xhigh`。
-- 兼容性说明：当 DeepScientist 检测到 Codex CLI 低于 `0.63.0` 时，会在启动探测和实际 runner 命令里自动把 `xhigh` 降级成 `high`。这也覆盖了 MiniMax 当前推荐的 `@openai/codex@0.57.0` 路径。
 
 **`approval_policy`**
 
 - 类型：`string`
-- 默认值：`never`
 - 页面标签：`Approval policy`
+- 适用 runner：`codex`
+- 作用：Codex 的高权限审批策略。
 - 允许值：`never`、`on-failure`、`on-request`、`untrusted`
-- 作用：控制高权限动作如何申请许可。
-- 运行说明：launcher 现在默认以 YOLO 模式启动 Codex。若要临时关闭，可显式传 `ds --yolo false`，这会恢复到 `approval_policy=on-request` 与 `sandbox_mode=workspace-write`。
 
 **`sandbox_mode`**
 
 - 类型：`string`
-- 默认值：`danger-full-access`
 - 页面标签：`Sandbox mode`
+- 适用 runner：`codex`
+- 作用：Codex 的文件系统 / 进程沙箱模式。
 - 允许值：`read-only`、`workspace-write`、`danger-full-access`
-- 作用：控制 runner 的文件系统/进程访问权限。
+
+**`permission_mode`**
+
+- 类型：`string`
+- 页面标签：`Permission mode`
+- 适用 runner：`claude`
+- 作用：Claude Code 的 `--permission-mode`。
+- 常见值：`default`、`bypassPermissions`、`dontAsk`、`acceptEdits`、`delegate`、`plan`
+- 本地自动化的推荐默认值：`bypassPermissions`
+
+**`agent`**
+
+- 类型：`string`
+- 页面标签：`Kimi agent`
+- 适用 runner：`kimi`
+- 作用：可选的 Kimi agent，会透传成 `kimi --agent <name>`。
+- 只有当相同 agent 名在你直接运行 Kimi CLI 时已经确认有效，再填写这里。
+
+**`thinking`**
+
+- 类型：`boolean`
+- 页面标签：`Thinking mode`
+- 适用 runner：`kimi`
+- 作用：是否默认给 Kimi 追加 `--thinking`。
+
+**`yolo`**
+
+- 类型：`boolean`
+- 页面标签：`Yolo mode`
+- 适用 runner：`kimi`
+- 作用：是否默认给 Kimi 追加 `--yolo`，让它不要停下来等待交互式确认。
+- 本地无人值守自动化的推荐默认值：`true`
+
+**`default_agent`**
+
+- 类型：`string`
+- 页面标签：`Default agent`
+- 适用 runner：`opencode`
+- 作用：可选的 OpenCode agent，会透传成 `opencode run --agent <name>`。
+- 只有当相同 agent 名在你直接运行 OpenCode CLI 时已经确认有效，再填写这里。
+
+**`variant`**
+
+- 类型：`string`
+- 页面标签：`Variant`
+- 适用 runner：`opencode`
+- 作用：可选的 OpenCode provider-specific `--variant`。
+- 只有你的 OpenCode provider 官方明确支持时才填写。
 
 **`env`**
 
 - 类型：`mapping<string, string>`
-- 默认值：`{}`
-- 页面入口：
-  - 全局设置：可在 `runners` 结构化表单中直接编辑 `env`
-  - 项目设置：`Project settings -> Codex environment`
-- 项目设置行为：
-  - 点击 `Add` 新增一行环境变量
-  - 默认会显示 `OPENAI_BASE_URL` 和 `OPENAI_API_KEY`
-  - 修改后不会自动保存，需要手动点击 `Save env vars`
-  - 空值会被忽略，不会注入到 Codex 进程
-- 作用：DeepScientist 启动 Codex run 时，额外传入给 Codex 的环境变量。
-- 常见用途：需要 API Key 或自定义 Base URL 的 provider-backed Codex 配置。
+- 页面标签：`Environment variables`
+- 作用：只对该 runner 注入的额外环境变量。
+- 常见示例：
+  - Codex：`OPENAI_API_KEY`、`OPENAI_BASE_URL`
+  - Claude：`ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL`、`CLAUDE_CODE_MAX_OUTPUT_TOKENS`
+  - Kimi：通常保持为空；只有你的本地 Kimi CLI 路径明确需要额外环境变量时再填写
+  - OpenCode：只有当你的 OpenCode provider 配置需要额外环境变量时才填写
 
-**`retry_on_failure`**
+**`retry_on_failure` / `retry_max_attempts` / `retry_initial_backoff_sec` / `retry_backoff_multiplier` / `retry_max_backoff_sec`**
 
-- 类型：`boolean`
-- 默认值：`true`
-- 页面标签：`Retry on failure`
-- 作用：遇到失败时是否自动重试当前 turn。
-
-**`retry_max_attempts`**
-
-- 类型：`number`
-- 默认值：`5`
-- 页面标签：`Max attempts`
-- 作用：一个 turn 的最大尝试次数上限。
-- 注意事项：DeepScientist 运行时会把该值硬限制在最多 `5`。
-
-**`retry_initial_backoff_sec`**
-
-- 类型：`number`
-- 默认值：`1.0`
-- 页面标签：`Initial backoff (s)`
-- 作用：第一次重试前等待多久。
-
-**`retry_backoff_multiplier`**
-
-- 类型：`number`
-- 默认值：`2.0`
-- 页面标签：`Backoff multiplier`
-- 作用：指数退避倍数。例如 `1s -> 2s -> 4s -> 8s`。
-
-**`retry_max_backoff_sec`**
-
-- 类型：`number`
-- 默认值：`8.0`
-- 页面标签：`Max backoff (s)`
-- 作用：指数退避增长后的最大等待时间上限。
-
-**`status`**
-
-- 类型：`string`
-- 默认值：`claude=experimental`
-- 页面标签：`Status note`
-- 作用：写给操作者的备注，例如 `reserved_todo`、`experimental`、`disabled_by_policy`。
-
-### 配置文件补充字段
-
-这些字段存在于 `runners.yaml`，但不一定都在页面上显式强调。
+- 类型：`boolean` / `number`
+- 作用：runner 的自动重试策略。
+- 默认差异：
+  - `codex` 的退避更激进
+  - `claude` / `kimi` / `opencode` 的默认梯度更短
 
 **`mcp_tool_timeout_sec`**
 
 - 类型：`number`
-- 默认值：`180000`
-- 作用：允许 runner 等待较长时间的 MCP 工具调用，例如耗时较久的 `bash_exec(await)`。
+- 适用 runner：`codex`
+- 作用：MCP 工具最大等待时间，主要针对长时间 `bash_exec`。
 
-**`env`**
+**`status`**
 
-- 类型：`mapping[string, string]`
-- 默认值：`{}`
-- 页面位置：Runner 卡片底部的环境变量编辑器。
-- 作用：只对该 runner 注入的环境变量覆盖。
+- 类型：`string`
+- 作用：写给操作者的备注。
+- 当前实际含义：
+  - `codex`：主路径
+  - `claude`、`kimi`、`opencode`：supported experimental
 
 ### 常见建议
 
-- 大多数部署仍建议保持 `codex.enabled: true`；只有在 `ds doctor` 验证通过后再启用 `claude`。
-- 现在允许把 `default_runner` 改成 `claude`，但前提是对应 runner 已启用并且启动探测通过。
-- 如果你不希望任何自动审批，才把 `approval_policy` 调成更严格模式。
-- 如果项目经常需要长时间工具调用，不要随意把 `mcp_tool_timeout_sec` 改小。
+- 如果你想走最稳妥路径，用 `codex`。
+- 如果 Claude Code 在本机已经直接可用，且你希望走 Anthropic / Claude 原生路径，用 `claude`。
+- 如果官方 Kimi Code CLI 在本机已经直接可用，且你希望走独立的 Moonshot 原生路径，用 `kimi`。
+- 如果你的 provider/model 组合在 OpenCode 里已经工作最好，用 `opencode`。
+- 现在可以安全把 `default_runner` 从 `codex` 切走，只要目标 runner 已启用并且能通过 `ds doctor`。
+- 新 quest 会跟随 `config.default_runner`。
+- 老 quest 可以在项目设置里单独覆盖 runner。
+- 如果工作流依赖长时间 `bash_exec`，不要随意把 `mcp_tool_timeout_sec` 调小。
+
 
 ## `connectors.yaml`
 

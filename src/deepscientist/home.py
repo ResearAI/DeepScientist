@@ -6,6 +6,17 @@ from pathlib import Path
 from .shared import ensure_dir
 
 
+def _candidate_repo_root_from_launcher() -> Path | None:
+    launcher_path = str(os.environ.get("DEEPSCIENTIST_LAUNCHER_PATH") or "").strip()
+    if not launcher_path:
+        return None
+    launcher = Path(launcher_path).expanduser().resolve()
+    for candidate in (launcher.parent.parent, *launcher.parents):
+        if _looks_like_repo_root(candidate):
+            return candidate
+    return None
+
+
 def _looks_like_repo_root(path: Path) -> bool:
     return (
         (path / "pyproject.toml").exists()
@@ -21,14 +32,20 @@ def repo_root() -> Path:
         if _looks_like_repo_root(candidate):
             return candidate
 
+    launcher_candidate = _candidate_repo_root_from_launcher()
+    if launcher_candidate is not None:
+        return launcher_candidate
+
     cwd = Path.cwd().resolve()
     if _looks_like_repo_root(cwd):
         return cwd
 
-    candidate = Path(__file__).resolve().parents[2]
-    if _looks_like_repo_root(candidate):
-        return candidate
-    return candidate
+    module_path = Path(__file__).resolve()
+    for candidate in module_path.parents:
+        if _looks_like_repo_root(candidate):
+            return candidate
+
+    return module_path.parents[2]
 
 
 def default_home() -> Path:

@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .shared import ensure_dir, read_text, write_text
+from .shared import ensure_dir, read_text, utf8_text_subprocess_kwargs, write_text
 
 _MIN_XHIGH_SUPPORTED_VERSION = (0, 63, 0)
 _CHAT_WIRE_COMPAT_VERSION = (0, 57, 0)
@@ -43,8 +43,8 @@ def codex_cli_version(binary: str) -> tuple[int, int, int] | None:
             [normalized, "--version"],
             check=False,
             capture_output=True,
-            text=True,
             timeout=10,
+            **utf8_text_subprocess_kwargs(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return None

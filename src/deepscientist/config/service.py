@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 from copy import deepcopy
 from pathlib import Path
 from urllib.error import URLError
+from urllib.parse import urlencode
 from urllib.request import Request
 
-from ..claude_cli_compat import materialize_claude_runtime_home
 from ..codex_cli_compat import (
     active_provider_metadata_from_home,
     adapt_profile_only_provider_config,
@@ -22,6 +23,7 @@ from ..codex_cli_compat import (
     normalize_codex_reasoning_effort,
     provider_base_url_looks_local,
 )
+from ..kimi_cli_compat import materialize_kimi_runtime_home
 from ..connector.connector_profiles import PROFILEABLE_CONNECTOR_NAMES, list_connector_profiles, normalize_connector_config
 from ..connector_runtime import build_discovered_target, infer_connector_transport
 from ..home import repo_root
@@ -50,8 +52,9 @@ from ..connector.qq_profiles import (
 )
 from ..connector.weixin_support import normalize_weixin_base_url, normalize_weixin_cdn_base_url
 from ..network import urlopen_with_proxy as urlopen
+from ..runners.metadata import get_runner_metadata, list_builtin_runner_names
 from ..runners.runtime_overrides import apply_codex_runtime_overrides, apply_runners_runtime_overrides
-from ..shared import read_json, read_text, read_yaml, resolve_runner_binary, run_command, sha256_text, utc_now, which, write_text, write_yaml
+from ..shared import ensure_utf8_subprocess_env, read_json, read_text, read_yaml, resolve_runner_binary, run_command, sha256_text, utc_now, utf8_text_subprocess_kwargs, which, write_text, write_yaml
 from .models import (
     CONFIG_NAMES,
     OPTIONAL_CONFIG_NAMES,
@@ -191,9 +194,7 @@ class ConfigManager:
         previous = self.load_named_normalized(name) if name in CONFIG_NAMES and self.path_for(name).exists() else default_payload(name, self.home)
         result = self.save_named_text(name, self.render_named_payload(name, prepared))
         if result.get("ok") and name == "runners":
-            current = self.load_named_normalized("runners")
-            self._invalidate_runner_bootstrap_state_if_runner_changed(previous, current, runner_name="codex")
-            self._invalidate_runner_bootstrap_state_if_runner_changed(previous, current, runner_name="claude")
+            self._invalidate_codex_bootstrap_state_if_runner_changed(previous, self.load_named_normalized("runners"))
         return result
 
     def _prepare_payload_for_save(self, name: str, payload: dict) -> dict:
@@ -213,33 +214,76 @@ class ConfigManager:
         prepared["lingzhu"] = lingzhu
         return prepared
 
-    def _invalidate_runner_bootstrap_state_if_runner_changed(self, previous: dict, current: dict, *, runner_name: str) -> None:
-        normalized_runner = str(runner_name or "").strip().lower()
-        previous_runner = previous.get(normalized_runner) if isinstance(previous.get(normalized_runner), dict) else {}
-        current_runner = current.get(normalized_runner) if isinstance(current.get(normalized_runner), dict) else {}
-        tracked_keys = (
-            "binary",
-            "config_dir",
-            "profile",
-            "model",
-            "model_reasoning_effort",
-            "approval_policy",
-            "sandbox_mode",
-            "env",
-        )
-        if all(previous_runner.get(key) == current_runner.get(key) for key in tracked_keys):
+    def _invalidate_codex_bootstrap_state_if_runner_changed(self, previous: dict, current: dict) -> None:
+        tracked_keys_by_runner = {
+            "codex": (
+                "binary",
+                "config_dir",
+                "profile",
+                "model",
+                "model_reasoning_effort",
+                "approval_policy",
+                "sandbox_mode",
+                "env",
+                "mcp_tool_timeout_sec",
+            ),
+            "claude": (
+                "binary",
+                "config_dir",
+                "model",
+                "permission_mode",
+                "env",
+            ),
+            "kimi": (
+                "binary",
+                "config_dir",
+                "model",
+                "agent",
+                "thinking",
+                "yolo",
+                "env",
+            ),
+            "opencode": (
+                "binary",
+                "config_dir",
+                "model",
+                "permission_mode",
+                "default_agent",
+                "variant",
+                "env",
+            ),
+        }
+        changed_runners: list[str] = []
+        for runner_name, tracked_keys in tracked_keys_by_runner.items():
+            previous_runner = previous.get(runner_name) if isinstance(previous.get(runner_name), dict) else {}
+            current_runner = current.get(runner_name) if isinstance(current.get(runner_name), dict) else {}
+            if all(previous_runner.get(key) == current_runner.get(key) for key in tracked_keys):
+                continue
+            changed_runners.append(runner_name)
+        if not changed_runners:
             return
         config = self.load_named_normalized("config")
         bootstrap = config.get("bootstrap") if isinstance(config.get("bootstrap"), dict) else {}
-        bootstrap[f"{normalized_runner}_ready"] = False
-        bootstrap[f"{normalized_runner}_last_checked_at"] = utc_now()
-        bootstrap[f"{normalized_runner}_last_result"] = {
-            "ok": False,
-            "summary": f"{normalized_runner.title()} runner configuration changed. A new startup probe is required.",
-            "warnings": [],
-            "errors": [],
-            "guidance": [],
-        }
+        runner_readiness = bootstrap.get("runner_readiness") if isinstance(bootstrap.get("runner_readiness"), dict) else {}
+        checked_at = utc_now()
+        for runner_name in changed_runners:
+            summary = f"{runner_name} runner configuration changed. A new startup probe is required."
+            runner_readiness[runner_name] = {
+                "ready": False,
+                "last_checked_at": checked_at,
+                "last_result": {
+                    "ok": False,
+                    "summary": summary,
+                    "warnings": [],
+                    "errors": [],
+                    "guidance": [],
+                },
+            }
+        bootstrap["runner_readiness"] = runner_readiness
+        codex_state = runner_readiness.get("codex") if isinstance(runner_readiness.get("codex"), dict) else {}
+        bootstrap["codex_ready"] = bool(codex_state.get("ready", False))
+        bootstrap["codex_last_checked_at"] = codex_state.get("last_checked_at")
+        bootstrap["codex_last_result"] = codex_state.get("last_result") if isinstance(codex_state.get("last_result"), dict) else {}
         config["bootstrap"] = bootstrap
         self.save_named_text("config", self.render_named_payload("config", config))
 
@@ -501,15 +545,15 @@ This page edits `{home_text}/config/runners.yaml`.
 ## Recommended v1 choice
 
 - keep `codex.enabled: true`
-- keep `claude.enabled: false` unless you have a compatible Claude Code / Kimi Code CLI path ready
-- `claude` is available as an experimental runner and should be validated with `ds doctor` before you switch any quest to it
+- enable whichever runners you actually plan to use (`codex`, `claude`, `kimi`, `opencode`)
+- keep the others disabled if their local CLI or credentials are not ready yet
 - set `codex.profile` only when your Codex CLI uses a named provider profile such as `m27`
 - when you launch DeepScientist ad hoc with a provider profile, you can also use `ds --codex-profile <name>`
 - when you want a one-off Codex binary override, you can also use `ds --codex /absolute/path/to/codex`
 - keep `codex.model_reasoning_effort: xhigh` unless you explicitly want a lighter default
 - keep `codex.retry_on_failure: true` so transient Codex failures can resume automatically
-- keep retry timing near `10s / 6x / 1800s max` so Codex backs off exponentially and the last retry waits about 30 minutes
-- DeepScientist hard-limits one turn to at most `5` total attempts, even if the config says more
+- keep retry timing near `10s / 6x / 1800s max` so Codex backs off exponentially and the final retries sit at the 30-minute cap
+- DeepScientist hard-limits one turn to at most `7` total attempts, even if the config says more
 
 ## Test behavior
 
@@ -611,21 +655,154 @@ Use **Test** when the file exposes runtime dependencies.
         rendered = self.render_named_payload(name, payload)
         return self.test_named_text(name, rendered, live=live, delivery_targets=delivery_targets)
 
-    def probe_codex_bootstrap(self, *, persist: bool = False, payload: dict | None = None) -> dict:
+    def test_deepxiv_payload(self, payload: dict | None = None) -> dict:
+        normalized = self._normalize_named_payload("config", payload if isinstance(payload, dict) else self.load_named_normalized("config"))
+        literature = normalized.get("literature") if isinstance(normalized.get("literature"), dict) else {}
+        deepxiv = literature.get("deepxiv") if isinstance(literature.get("deepxiv"), dict) else {}
+        base_url = str(deepxiv.get("base_url") or "https://data.rag.ac.cn").strip() or "https://data.rag.ac.cn"
+        direct_token = str(deepxiv.get("token") or "").strip()
+        token_env_name = str(deepxiv.get("token_env") or "").strip()
+        env_token = str(os.environ.get(token_env_name) or "").strip() if token_env_name else ""
+        resolved_token = direct_token or env_token
+        query = "transformers"
+        result_size = max(1, int(deepxiv.get("default_result_size") or 20))
+        preview_characters = max(200, int(deepxiv.get("preview_characters") or 5000))
+        request_timeout_seconds = max(3, int(deepxiv.get("request_timeout_seconds") or 90))
+        details = {
+            "base_url": base_url,
+            "query": query,
+            "result_size": result_size,
+            "preview_characters": preview_characters,
+            "request_timeout_seconds": request_timeout_seconds,
+            "token_source": "direct_token" if direct_token else ("env" if env_token else "missing"),
+            "token_env": token_env_name or None,
+        }
+        if not resolved_token:
+            return {
+                "ok": False,
+                "summary": "DeepXiv test failed: token is missing.",
+                "warnings": [],
+                "errors": ["Provide a DeepXiv token before running the test."],
+                "details": details,
+                "results": [],
+                "preview": "",
+            }
+        url = f"{base_url.rstrip('/')}/arxiv/?{urlencode({'type': 'retrieve', 'query': query, 'size': str(result_size)})}"
+        request = Request(
+            url,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {resolved_token}",
+                "User-Agent": "DeepScientist/DeepXivTest",
+            },
+        )
+        try:
+            with urlopen(request, timeout=request_timeout_seconds) as response:  # noqa: S310
+                response_text = response.read().decode("utf-8", errors="replace")
+        except Exception as exc:
+            details["request_url"] = url
+            return {
+                "ok": False,
+                "summary": "DeepXiv test request failed.",
+                "warnings": [],
+                "errors": [str(exc)],
+                "details": details,
+                "results": [],
+                "preview": "",
+            }
+        try:
+            parsed = json.loads(response_text)
+        except json.JSONDecodeError:
+            preview = response_text[:preview_characters].rstrip()
+            if len(response_text) > preview_characters:
+                preview = f"{preview}\n...[truncated]"
+            details["request_url"] = url
+            return {
+                "ok": False,
+                "summary": "DeepXiv test returned invalid JSON.",
+                "warnings": [],
+                "errors": ["DeepXiv returned invalid JSON."],
+                "details": details,
+                "results": [],
+                "preview": preview,
+            }
+        results = parsed.get("results") if isinstance(parsed.get("results"), list) else []
+        preview_payload = {
+            "total": parsed.get("total"),
+            "took": parsed.get("took"),
+            "results": results[: min(3, len(results))],
+        }
+        preview = json.dumps(preview_payload, ensure_ascii=False, indent=2)
+        if len(preview) > preview_characters:
+            preview = f"{preview[:preview_characters].rstrip()}\n...[truncated]"
+        details.update(
+            {
+                "request_url": url,
+                "total": parsed.get("total"),
+                "result_count": len(results),
+                "first_title": str((results[0] or {}).get("title") or "").strip() if results else None,
+            }
+        )
+        ok = len(results) > 0
+        return {
+            "ok": ok,
+            "summary": "DeepXiv returned search results for `transformers`." if ok else "DeepXiv returned no search results for `transformers`.",
+            "warnings": [],
+            "errors": [] if ok else ["No results were returned for `transformers`."],
+            "details": details,
+            "results": results[:5],
+            "preview": preview,
+        }
+
+    def probe_runner_bootstrap(self, runner_name: str, *, persist: bool = False, payload: dict | None = None) -> dict:
+        normalized_runner = str(runner_name or "codex").strip().lower() or "codex"
         runners_payload = payload if isinstance(payload, dict) else self.load_named_normalized("runners")
-        codex_payload = runners_payload.get("codex") if isinstance(runners_payload.get("codex"), dict) else {}
-        result = self._probe_codex_runner(codex_payload)
+        runner_payload = runners_payload.get(normalized_runner) if isinstance(runners_payload.get(normalized_runner), dict) else {}
+        if normalized_runner == "codex":
+            result = self._probe_codex_runner(runner_payload)
+        elif normalized_runner == "claude":
+            result = self._probe_claude_runner(runner_payload)
+        elif normalized_runner == "kimi":
+            result = self._probe_kimi_runner(runner_payload)
+        elif normalized_runner == "opencode":
+            result = self._probe_opencode_runner(runner_payload)
+        else:
+            raise KeyError(f"Unknown runner `{normalized_runner}`.")
         if persist:
-            self._persist_codex_bootstrap_result(result)
+            self._persist_runner_bootstrap_result(normalized_runner, result)
         return result
 
-    def codex_bootstrap_state(self) -> dict:
+    def runner_bootstrap_state(self, runner_name: str) -> dict:
+        normalized_runner = str(runner_name or "codex").strip().lower() or "codex"
         config = self.load_named_normalized("config")
         bootstrap = config.get("bootstrap") if isinstance(config.get("bootstrap"), dict) else {}
+        runner_readiness = bootstrap.get("runner_readiness") if isinstance(bootstrap.get("runner_readiness"), dict) else {}
+        runner_state = runner_readiness.get(normalized_runner) if isinstance(runner_readiness.get(normalized_runner), dict) else {}
+        if normalized_runner == "codex" and not runner_state:
+            runner_state = {
+                "ready": bool(bootstrap.get("codex_ready", False)),
+                "last_checked_at": bootstrap.get("codex_last_checked_at"),
+                "last_result": bootstrap.get("codex_last_result") if isinstance(bootstrap.get("codex_last_result"), dict) else {},
+            }
         return {
-            "codex_ready": bool(bootstrap.get("codex_ready", False)),
-            "codex_last_checked_at": bootstrap.get("codex_last_checked_at"),
-            "codex_last_result": bootstrap.get("codex_last_result") if isinstance(bootstrap.get("codex_last_result"), dict) else {},
+            "runner": normalized_runner,
+            "ready": bool(runner_state.get("ready", False)),
+            "last_checked_at": runner_state.get("last_checked_at"),
+            "last_result": runner_state.get("last_result") if isinstance(runner_state.get("last_result"), dict) else {},
+        }
+
+    def runner_readiness_map(self) -> dict[str, dict[str, Any]]:
+        return {name: self.runner_bootstrap_state(name) for name in list_builtin_runner_names()}
+
+    def probe_codex_bootstrap(self, *, persist: bool = False, payload: dict | None = None) -> dict:
+        return self.probe_runner_bootstrap("codex", persist=persist, payload=payload)
+
+    def codex_bootstrap_state(self) -> dict:
+        state = self.runner_bootstrap_state("codex")
+        return {
+            "codex_ready": bool(state.get("ready")),
+            "codex_last_checked_at": state.get("last_checked_at"),
+            "codex_last_result": state.get("last_result") if isinstance(state.get("last_result"), dict) else {},
         }
 
     def git_readiness(self) -> dict:
@@ -1225,7 +1402,7 @@ Use **Test** when the file exposes runtime dependencies.
     def _codex_runner_env(config: dict) -> dict[str, str]:
         raw_env = config.get("env")
         if not isinstance(raw_env, dict):
-            return {}
+            return ensure_utf8_subprocess_env({})
         resolved: dict[str, str] = {}
         for key, value in raw_env.items():
             env_key = str(key or "").strip()
@@ -1235,87 +1412,7 @@ Use **Test** when the file exposes runtime dependencies.
             if env_value == "":
                 continue
             resolved[env_key] = env_value
-        return resolved
-
-    @staticmethod
-    def _claude_should_inherit_model(model: object) -> bool:
-        normalized = str(model or "").strip().lower()
-        return normalized in {"", "inherit", "default", "claude-default"}
-
-    @staticmethod
-    def _claude_requested_model(config: dict) -> str:
-        raw_model = config.get("model")
-        if raw_model is None:
-            return "inherit"
-        return str(raw_model).strip()
-
-    @staticmethod
-    def _claude_runner_env(config: dict) -> dict[str, str]:
-        return ConfigManager._codex_runner_env(config)
-
-    def _claude_missing_binary_guidance(self, config: dict) -> list[str]:
-        return [
-            "Install Claude Code CLI and confirm `claude` is available on PATH.",
-            "If you are using a custom binary path, set `runners.claude.binary` in `~/DeepScientist/config/runners.yaml`.",
-            "For Moonshot / Kimi Code, configure `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` under `runners.claude.env` before retrying.",
-        ]
-
-    def _claude_probe_failure_guidance(self, config: dict) -> list[str]:
-        model = self._claude_requested_model(config) or "inherit"
-        return [
-            "Run a plain headless Claude Code request from the same shell and confirm it can answer `HELLO`.",
-            "If you use Moonshot / Kimi Code, make sure `ANTHROPIC_BASE_URL=https://api.moonshot.ai/anthropic` is set.",
-            "Set `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY` in `runners.claude.env`, or export it before launching `ds`.",
-            f"If the selected model fails, retry with `model: inherit` before locking a fixed Claude-compatible model (current config: `{model}`).",
-        ]
-
-    def _build_claude_probe_command(
-        self,
-        *,
-        resolved_binary: str,
-        requested_model: str,
-    ) -> list[str]:
-        command = [
-            resolved_binary,
-            "-p",
-            "--input-format",
-            "text",
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--permission-mode",
-            "dontAsk",
-        ]
-        normalized_model = str(requested_model or "").strip().lower()
-        if normalized_model not in {"", "inherit", "default", "claude-default"}:
-            command.extend(["--model", str(requested_model).strip()])
-        return command
-
-    @staticmethod
-    def _claude_messages_url(base_url: str) -> str:
-        normalized = str(base_url or "").strip().rstrip("/")
-        if normalized.endswith("/messages"):
-            return normalized
-        if normalized.endswith("/v1"):
-            return f"{normalized}/messages"
-        return f"{normalized}/v1/messages"
-
-    def probe_claude_bootstrap(self, *, persist: bool = False, payload: dict | None = None) -> dict:
-        runners_payload = payload if isinstance(payload, dict) else self.load_named_normalized("runners")
-        claude_payload = runners_payload.get("claude") if isinstance(runners_payload.get("claude"), dict) else {}
-        result = self._probe_claude_runner(claude_payload)
-        if persist:
-            self._persist_claude_bootstrap_result(result)
-        return result
-
-    def claude_bootstrap_state(self) -> dict:
-        config = self.load_named_normalized("config")
-        bootstrap = config.get("bootstrap") if isinstance(config.get("bootstrap"), dict) else {}
-        return {
-            "claude_ready": bool(bootstrap.get("claude_ready", False)),
-            "claude_last_checked_at": bootstrap.get("claude_last_checked_at"),
-            "claude_last_result": bootstrap.get("claude_last_result") if isinstance(bootstrap.get("claude_last_result"), dict) else {},
-        }
+        return ensure_utf8_subprocess_env(resolved)
 
     def _prepare_codex_probe_home(
         self,
@@ -1617,8 +1714,8 @@ Use **Test** when the file exposes runtime dependencies.
         approval_policy = str(config.get("approval_policy") or "on-request").strip()
         sandbox_mode = str(config.get("sandbox_mode") or "workspace-write").strip()
 
-        env = os.environ.copy()
-        env.update(self._codex_runner_env(config))
+        env = ensure_utf8_subprocess_env(os.environ.copy())
+        env.update(self._claude_auth_runner_env(self._codex_runner_env(config)))
         config_dir = str(config.get("config_dir") or "~/.codex").strip()
         probe_home_handle: tempfile.TemporaryDirectory[str] | None = None
         compatibility_warnings: list[str] = []
@@ -1677,10 +1774,10 @@ Use **Test** when the file exposes runtime dependencies.
                     input=prompt,
                     cwd=str(repo_root()),
                     env=env,
-                    text=True,
                     capture_output=True,
                     timeout=90,
                     check=False,
+                    **utf8_text_subprocess_kwargs(),
                 )
             except subprocess.TimeoutExpired as exc:
                 return command, None, exc
@@ -1810,148 +1907,358 @@ Use **Test** when the file exposes runtime dependencies.
             "guidance": [] if ok else failure_guidance,
         }
 
-    def _persist_codex_bootstrap_result(self, result: dict) -> None:
+    def _persist_runner_bootstrap_result(self, runner_name: str, result: dict) -> None:
+        normalized_runner = str(runner_name or "codex").strip().lower() or "codex"
         config = self.load_named_normalized("config")
         bootstrap = config.get("bootstrap") if isinstance(config.get("bootstrap"), dict) else {}
         details = result.get("details") if isinstance(result.get("details"), dict) else {}
-        bootstrap["codex_ready"] = bool(result.get("ok"))
-        bootstrap["codex_last_checked_at"] = details.get("checked_at") or utc_now()
-        bootstrap["codex_last_result"] = {
-            "ok": bool(result.get("ok")),
-            "summary": result.get("summary"),
-            "warnings": list(result.get("warnings") or []),
-            "errors": list(result.get("errors") or []),
-            "guidance": list(result.get("guidance") or []),
-            "binary": details.get("binary"),
-            "resolved_binary": details.get("resolved_binary"),
-            "profile": details.get("profile"),
-            "model": details.get("model"),
-            "requested_model": details.get("requested_model"),
-            "effective_model": details.get("effective_model"),
-            "model_fallback_attempted": bool(details.get("model_fallback_attempted")),
-            "model_fallback_used": bool(details.get("model_fallback_used")),
-            "approval_policy": details.get("approval_policy"),
-            "sandbox_mode": details.get("sandbox_mode"),
-            "reasoning_effort": details.get("reasoning_effort"),
-            "exit_code": details.get("exit_code"),
-            "stdout_excerpt": details.get("stdout_excerpt"),
-            "stderr_excerpt": details.get("stderr_excerpt"),
+        runner_readiness = bootstrap.get("runner_readiness") if isinstance(bootstrap.get("runner_readiness"), dict) else {}
+        runner_readiness[normalized_runner] = {
+            "ready": bool(result.get("ok")),
+            "last_checked_at": details.get("checked_at") or utc_now(),
+            "last_result": {
+                "ok": bool(result.get("ok")),
+                "summary": result.get("summary"),
+                "warnings": list(result.get("warnings") or []),
+                "errors": list(result.get("errors") or []),
+                "guidance": list(result.get("guidance") or []),
+                "binary": details.get("binary"),
+                "resolved_binary": details.get("resolved_binary"),
+                "model": details.get("model"),
+                "requested_model": details.get("requested_model"),
+                "effective_model": details.get("effective_model"),
+                "exit_code": details.get("exit_code"),
+                "stdout_excerpt": details.get("stdout_excerpt"),
+                "stderr_excerpt": details.get("stderr_excerpt"),
+                "profile": details.get("profile"),
+                "permission_mode": details.get("permission_mode"),
+                "variant": details.get("variant"),
+            },
         }
+        bootstrap["runner_readiness"] = runner_readiness
+        if normalized_runner == "codex":
+            codex_state = runner_readiness["codex"]
+            bootstrap["codex_ready"] = bool(codex_state.get("ready"))
+            bootstrap["codex_last_checked_at"] = codex_state.get("last_checked_at")
+            bootstrap["codex_last_result"] = codex_state.get("last_result")
         config["bootstrap"] = bootstrap
         self.save_named_payload("config", config)
-        if bool(result.get("ok")) and bool(details.get("model_fallback_used")):
+        if normalized_runner == "codex" and bool(result.get("ok")) and bool(details.get("model_fallback_used")):
             self._persist_codex_model_inherit(details.get("requested_model"))
+
+    def _persist_codex_bootstrap_result(self, result: dict) -> None:
+        self._persist_runner_bootstrap_result("codex", result)
+
+    @staticmethod
+    def _copy_runner_file_if_exists(source: Path, target: Path) -> None:
+        if not source.exists() or not source.is_file():
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+    @staticmethod
+    def _claude_auth_runner_env(env: dict[str, str]) -> dict[str, str]:
+        resolved = dict(env)
+        auth_token = str(resolved.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
+        api_key = str(resolved.get("ANTHROPIC_API_KEY") or "").strip()
+        if auth_token and not api_key:
+            resolved["ANTHROPIC_API_KEY"] = auth_token
+        return resolved
+
+    def _runner_missing_binary_guidance(self, runner_name: str, config: dict) -> list[str]:
+        normalized_runner = str(runner_name or "").strip().lower()
+        binary = str(config.get("binary") or normalized_runner).strip() or normalized_runner
+        if normalized_runner == "codex":
+            return self._codex_missing_binary_guidance(config)
+        if normalized_runner == "claude":
+            return [
+                f"Install Claude Code and make sure `{binary} --version` works in the current shell.",
+                "If Claude Code is already installed elsewhere, set `runners.claude.binary` to the absolute path.",
+            ]
+        if normalized_runner == "opencode":
+            return [
+                f"Install OpenCode and make sure `{binary} --version` works in the current shell.",
+                "If OpenCode is already installed elsewhere, set `runners.opencode.binary` to the absolute path.",
+            ]
+        if normalized_runner == "kimi":
+            return [
+                f"Install Kimi Code and make sure `{binary} --version` works in the current shell.",
+                "Run `kimi login` (or just `kimi`) once to complete the first-run login flow.",
+                "If Kimi Code uses a custom home, point `runners.kimi.config_dir` at the correct `~/.kimi`-style directory that contains `config.toml` and `mcp.json`.",
+            ]
+        return [f"Install runner `{normalized_runner}` and ensure `{binary}` is on PATH."]
 
     def _probe_claude_runner(self, config: dict) -> dict:
         checked_at = utc_now()
         binary = str(config.get("binary") or "claude").strip() or "claude"
         resolved_binary = resolve_runner_binary(binary, runner_name="claude")
-        requested_model = self._claude_requested_model(config)
+        requested_model = str(config.get("model") or "inherit").strip() or "inherit"
+        permission_mode = str(config.get("permission_mode") or "bypassPermissions").strip() or "bypassPermissions"
         details: dict[str, object] = {
             "binary": binary,
             "resolved_binary": resolved_binary,
             "config_dir": str(config.get("config_dir") or "~/.claude"),
-            "model": requested_model or "inherit",
-            "requested_model": requested_model or "inherit",
+            "model": requested_model,
+            "requested_model": requested_model,
+            "effective_model": requested_model,
+            "permission_mode": permission_mode,
             "checked_at": checked_at,
         }
         if not resolved_binary:
             return {
                 "ok": False,
-                "summary": "Claude runner probe failed before execution.",
+                "summary": "Claude Code startup probe failed before execution.",
                 "warnings": [],
-                "errors": [
-                    "Claude runner binary is not installed or could not be resolved.",
-                ],
+                "errors": [f"Claude Code binary `{binary}` is not available."],
                 "details": details,
-                "guidance": self._claude_missing_binary_guidance(config),
+                "guidance": self._runner_missing_binary_guidance("claude", config),
             }
-
-        env = os.environ.copy()
-        env.update(self._claude_runner_env(config))
-        config_dir = str(config.get("config_dir") or "~/.claude").strip()
-        probe_home_handle: tempfile.TemporaryDirectory[str] | None = None
-        if config_dir:
-            probe_home_handle = tempfile.TemporaryDirectory(prefix="ds-claude-probe-")
-            materialize_claude_runtime_home(
-                source_home=config_dir,
-                target_home=probe_home_handle.name,
-            )
-            env["HOME"] = probe_home_handle.name
-            env["USERPROFILE"] = probe_home_handle.name
-        base_url = str(env.get("ANTHROPIC_BASE_URL") or "").strip()
-        auth_token = str(env.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
-        api_key = str(env.get("ANTHROPIC_API_KEY") or "").strip()
-        preflight_model = (
-            str(env.get("ANTHROPIC_MODEL") or "").strip()
-            or (requested_model if not self._claude_should_inherit_model(requested_model) else "")
-        )
-        if base_url and (auth_token or api_key) and preflight_model:
-            headers = {
-                "Content-Type": "application/json",
-                "anthropic-version": "2023-06-01",
-            }
-            if auth_token:
-                headers["Authorization"] = f"Bearer {auth_token}"
-            if api_key:
-                headers["x-api-key"] = api_key
-            request = Request(
-                self._claude_messages_url(base_url),
-                data=json.dumps(
-                    {
-                        "model": preflight_model,
-                        "max_tokens": 16,
-                        "messages": [{"role": "user", "content": "Reply with exactly HELLO."}],
-                    }
-                ).encode("utf-8"),
-                headers=headers,
-            )
-            try:
-                with urlopen(request, timeout=30) as response:
-                    details["preflight_status_code"] = response.status
-                    details["preflight_url"] = self._claude_messages_url(base_url)
-            except URLError as exc:
-                body = ""
-                code = getattr(exc, "code", None)
-                if hasattr(exc, "read"):
-                    try:
-                        body = exc.read().decode("utf-8", "replace")
-                    except Exception:
-                        body = ""
-                details["preflight_status_code"] = code
-                details["preflight_url"] = self._claude_messages_url(base_url)
-                details["stderr_excerpt"] = self._compact_probe_text(body or str(exc))
-                if probe_home_handle is not None:
-                    probe_home_handle.cleanup()
-                return {
-                    "ok": False,
-                    "summary": "Claude runner preflight request failed.",
-                    "warnings": [],
-                    "errors": [
-                        f"Claude-compatible backend preflight returned `{code}`."
-                        if code is not None
-                        else "Claude-compatible backend preflight did not succeed."
-                    ],
-                    "details": details,
-                    "guidance": self._claude_probe_failure_guidance(config),
-                }
-        prompt = "Reply with exactly HELLO."
-        command = self._build_claude_probe_command(
-            resolved_binary=resolved_binary,
-            requested_model=requested_model,
-        )
+        env = ensure_utf8_subprocess_env(os.environ.copy())
+        env.update(self._codex_runner_env(config))
+        temp_home_handle = tempfile.TemporaryDirectory()
         try:
+            temp_home = Path(temp_home_handle.name)
+            source_home = Path(str(config.get("config_dir") or Path.home() / ".claude")).expanduser()
+            for filename in (".credentials.json", "settings.json", "settings.local.json"):
+                self._copy_runner_file_if_exists(source_home / filename, temp_home / filename)
+            env["CLAUDE_CONFIG_DIR"] = str(temp_home)
+            command = [
+                resolved_binary,
+                "-p",
+                "--input-format",
+                "text",
+                "--output-format",
+                "json",
+                "--add-dir",
+                str(repo_root()),
+                "--no-session-persistence",
+                "--permission-mode",
+                permission_mode,
+                "--tools",
+                "",
+            ]
+            if requested_model.lower() not in {"", "inherit", "default", "claude-default"}:
+                command.extend(["--model", requested_model])
             result = subprocess.run(
                 command,
-                input=prompt,
+                input="Reply with exactly HELLO.",
                 cwd=str(repo_root()),
                 env=env,
-                text=True,
                 capture_output=True,
                 timeout=90,
                 check=False,
-                encoding="utf-8",
-                errors="replace",
+                **utf8_text_subprocess_kwargs(),
+            )
+        except subprocess.TimeoutExpired as exc:
+            details.update({
+                "exit_code": None,
+                "stdout_excerpt": self._compact_probe_text(exc.stdout or ""),
+                "stderr_excerpt": self._compact_probe_text(exc.stderr or ""),
+            })
+            return {
+                "ok": False,
+                "summary": "Claude Code startup probe timed out.",
+                "warnings": [],
+                "errors": ["Claude Code did not answer the startup probe within 90 seconds."],
+                "details": details,
+                "guidance": [
+                    "Run a small headless Claude Code request manually and confirm it can answer before starting DeepScientist.",
+                ],
+            }
+        finally:
+            temp_home_handle.cleanup()
+        stdout_text = (result.stdout or "").strip()
+        stderr_text = (result.stderr or "").strip()
+        ok = result.returncode == 0 and "HELLO" in f"{stdout_text}\n{stderr_text}".upper()
+        details.update({
+            "exit_code": result.returncode,
+            "stdout_excerpt": self._compact_probe_text(stdout_text),
+            "stderr_excerpt": self._compact_probe_text(stderr_text),
+            "probe_command": command,
+        })
+        return {
+            "ok": ok,
+            "summary": "Claude Code startup probe completed." if ok else "Claude Code startup probe failed.",
+            "warnings": ["Claude Code returned stderr during the startup probe."] if stderr_text else [],
+            "errors": [] if ok else ["Claude Code did not complete the startup hello probe successfully."],
+            "details": details,
+            "guidance": [] if ok else [
+                "Run `claude -p --output-format json --tools ""` manually and confirm it returns `HELLO`.",
+                "If Claude Code uses a custom account or credential path, point `runners.claude.config_dir` at the correct home.",
+            ],
+        }
+
+    def _probe_opencode_runner(self, config: dict) -> dict:
+        checked_at = utc_now()
+        binary = str(config.get("binary") or "opencode").strip() or "opencode"
+        resolved_binary = resolve_runner_binary(binary, runner_name="opencode")
+        requested_model = str(config.get("model") or "inherit").strip() or "inherit"
+        variant = str(config.get("variant") or "").strip() or None
+        permission_mode = str(config.get("permission_mode") or "allow").strip().lower() or "allow"
+        details: dict[str, object] = {
+            "binary": binary,
+            "resolved_binary": resolved_binary,
+            "config_dir": str(config.get("config_dir") or "~/.config/opencode"),
+            "model": requested_model,
+            "requested_model": requested_model,
+            "effective_model": requested_model,
+            "variant": variant,
+            "permission_mode": permission_mode,
+            "checked_at": checked_at,
+        }
+        if not resolved_binary:
+            return {
+                "ok": False,
+                "summary": "OpenCode startup probe failed before execution.",
+                "warnings": [],
+                "errors": [f"OpenCode binary `{binary}` is not available."],
+                "details": details,
+                "guidance": self._runner_missing_binary_guidance("opencode", config),
+            }
+        env = ensure_utf8_subprocess_env(os.environ.copy())
+        env.update(self._codex_runner_env(config))
+        temp_home_handle = tempfile.TemporaryDirectory()
+        try:
+            temp_home = Path(temp_home_handle.name)
+            config_root = temp_home / ".config" / "opencode"
+            config_root.mkdir(parents=True, exist_ok=True)
+            source_root = Path(str(config.get("config_dir") or Path.home() / ".config" / "opencode")).expanduser()
+            self._copy_runner_file_if_exists(source_root / "opencode.json", config_root / "opencode.json")
+            env["HOME"] = str(temp_home)
+            env["XDG_CONFIG_HOME"] = str(temp_home / ".config")
+            command = [
+                resolved_binary,
+                "run",
+                "--format",
+                "json",
+                "--pure",
+                "--dir",
+                str(repo_root()),
+            ]
+            if requested_model.lower() not in {"", "inherit", "default", "opencode-default"}:
+                command.extend(["--model", requested_model])
+            if variant:
+                command.extend(["--variant", variant])
+            command.append("Reply with exactly HELLO")
+            result = subprocess.run(
+                command,
+                cwd=str(repo_root()),
+                env=env,
+                capture_output=True,
+                timeout=90,
+                check=False,
+                **utf8_text_subprocess_kwargs(),
+            )
+        except subprocess.TimeoutExpired as exc:
+            details.update({
+                "exit_code": None,
+                "stdout_excerpt": self._compact_probe_text(exc.stdout or ""),
+                "stderr_excerpt": self._compact_probe_text(exc.stderr or ""),
+            })
+            return {
+                "ok": False,
+                "summary": "OpenCode startup probe timed out.",
+                "warnings": [],
+                "errors": ["OpenCode did not answer the startup probe within 90 seconds."],
+                "details": details,
+                "guidance": [
+                    "Run a small `opencode run --format json` request manually and confirm it can answer before starting DeepScientist.",
+                ],
+            }
+        finally:
+            temp_home_handle.cleanup()
+        stdout_text = (result.stdout or "").strip()
+        stderr_text = (result.stderr or "").strip()
+        ok = result.returncode == 0 and "HELLO" in f"{stdout_text}\n{stderr_text}".upper()
+        details.update({
+            "exit_code": result.returncode,
+            "stdout_excerpt": self._compact_probe_text(stdout_text),
+            "stderr_excerpt": self._compact_probe_text(stderr_text),
+            "probe_command": command,
+        })
+        return {
+            "ok": ok,
+            "summary": "OpenCode startup probe completed." if ok else "OpenCode startup probe failed.",
+            "warnings": ["OpenCode returned stderr during the startup probe."] if stderr_text else [],
+            "errors": [] if ok else ["OpenCode did not complete the startup hello probe successfully."],
+            "details": details,
+            "guidance": [] if ok else [
+                "Run `opencode run --format json \"Reply with exactly HELLO\"` manually and confirm it succeeds.",
+                "If OpenCode uses a custom config root, point `runners.opencode.config_dir` at the correct directory.",
+            ],
+        }
+
+    def _probe_kimi_runner(self, config: dict) -> dict:
+        checked_at = utc_now()
+        binary = str(config.get("binary") or "kimi").strip() or "kimi"
+        resolved_binary = resolve_runner_binary(binary, runner_name="kimi")
+        requested_model = str(config.get("model") or "inherit").strip() or "inherit"
+        agent_name = str(config.get("agent") or "").strip() or None
+        yolo_enabled = bool(config.get("yolo", True))
+        thinking_enabled = bool(config.get("thinking", False))
+        details: dict[str, object] = {
+            "binary": binary,
+            "resolved_binary": resolved_binary,
+            "config_dir": str(config.get("config_dir") or "~/.kimi"),
+            "model": requested_model,
+            "requested_model": requested_model,
+            "effective_model": requested_model,
+            "agent": agent_name,
+            "thinking": thinking_enabled,
+            "yolo": yolo_enabled,
+            "checked_at": checked_at,
+        }
+        if not resolved_binary:
+            return {
+                "ok": False,
+                "summary": "Kimi Code startup probe failed before execution.",
+                "warnings": [],
+                "errors": [f"Kimi Code binary `{binary}` is not available."],
+                "details": details,
+                "guidance": self._runner_missing_binary_guidance("kimi", config),
+            }
+        env = ensure_utf8_subprocess_env(os.environ.copy())
+        env.update(self._codex_runner_env(config))
+        temp_home_handle = tempfile.TemporaryDirectory()
+        try:
+            temp_home = Path(temp_home_handle.name)
+            kimi_home = materialize_kimi_runtime_home(
+                source_home=Path(str(config.get("config_dir") or Path.home() / ".kimi")).expanduser(),
+                target_home=temp_home,
+            )
+            mcp_config_path = kimi_home / "mcp.json"
+            write_json(mcp_config_path, {"mcpServers": {}})
+            env["HOME"] = str(temp_home)
+            env["USERPROFILE"] = str(temp_home)
+            command = [
+                resolved_binary,
+                "--print",
+                "--input-format",
+                "text",
+                "--output-format",
+                "stream-json",
+                "--work-dir",
+                str(repo_root()),
+                "--mcp-config-file",
+                str(mcp_config_path),
+            ]
+            if yolo_enabled:
+                command.append("--yolo")
+            if requested_model.lower() not in {"", "inherit", "default", "kimi-default"}:
+                command.extend(["--model", requested_model])
+            if agent_name:
+                command.extend(["--agent", agent_name])
+            if thinking_enabled:
+                command.append("--thinking")
+            result = subprocess.run(
+                command,
+                input="Reply with exactly HELLO.",
+                cwd=str(repo_root()),
+                env=env,
+                capture_output=True,
+                timeout=90,
+                check=False,
+                **utf8_text_subprocess_kwargs(),
             )
         except subprocess.TimeoutExpired as exc:
             details.update(
@@ -1959,26 +2266,23 @@ Use **Test** when the file exposes runtime dependencies.
                     "exit_code": None,
                     "stdout_excerpt": self._compact_probe_text(exc.stdout or ""),
                     "stderr_excerpt": self._compact_probe_text(exc.stderr or ""),
-                    "probe_command": command,
                 }
             )
-            if probe_home_handle is not None:
-                probe_home_handle.cleanup()
             return {
                 "ok": False,
-                "summary": "Claude runner startup probe timed out.",
+                "summary": "Kimi Code startup probe timed out.",
                 "warnings": [],
-                "errors": [
-                    "Claude-compatible CLI did not answer the startup hello probe within 90 seconds.",
-                ],
+                "errors": ["Kimi Code did not answer the startup probe within 90 seconds."],
                 "details": details,
-                "guidance": self._claude_probe_failure_guidance(config),
+                "guidance": [
+                    "Run a small `kimi --print --output-format stream-json` request manually and confirm it can answer before starting DeepScientist.",
+                ],
             }
-
+        finally:
+            temp_home_handle.cleanup()
         stdout_text = (result.stdout or "").strip()
         stderr_text = (result.stderr or "").strip()
-        hello_seen = "HELLO" in stdout_text.upper()
-        ok = result.returncode == 0 and hello_seen
+        ok = result.returncode == 0 and "HELLO" in f"{stdout_text}\n{stderr_text}".upper()
         details.update(
             {
                 "exit_code": result.returncode,
@@ -1987,49 +2291,18 @@ Use **Test** when the file exposes runtime dependencies.
                 "probe_command": command,
             }
         )
-        warnings: list[str] = []
-        errors: list[str] = []
-        if not ok:
-            errors.append("Claude-compatible runner did not complete the startup hello probe successfully.")
-            if result.returncode == 0 and not hello_seen:
-                errors.append("Claude-compatible runner responded, but the reply did not contain the expected `HELLO` marker.")
-            if stderr_text:
-                warnings.append("Claude-compatible runner returned stderr during the startup probe.")
-            if not str(env.get("ANTHROPIC_AUTH_TOKEN") or "").strip():
-                errors.append("Claude runner requires `ANTHROPIC_AUTH_TOKEN`, but DeepScientist did not receive it.")
-        if probe_home_handle is not None:
-            probe_home_handle.cleanup()
         return {
             "ok": ok,
-            "summary": "Claude runner startup probe completed." if ok else "Claude runner startup probe failed.",
-            "warnings": warnings,
-            "errors": errors,
+            "summary": "Kimi Code startup probe completed." if ok else "Kimi Code startup probe failed.",
+            "warnings": ["Kimi Code returned stderr during the startup probe."] if stderr_text else [],
+            "errors": [] if ok else ["Kimi Code did not complete the startup hello probe successfully."],
             "details": details,
-            "guidance": [] if ok else self._claude_probe_failure_guidance(config),
+            "guidance": [] if ok else [
+                "Run `kimi --print --input-format text --output-format stream-json --yolo` manually and confirm it returns `HELLO`.",
+                "Run `kimi login` first if this machine has not completed the Kimi Code login flow yet.",
+                "If Kimi Code uses a custom home, point `runners.kimi.config_dir` at the correct `~/.kimi`-style directory.",
+            ],
         }
-
-    def _persist_claude_bootstrap_result(self, result: dict) -> None:
-        config = self.load_named_normalized("config")
-        bootstrap = config.get("bootstrap") if isinstance(config.get("bootstrap"), dict) else {}
-        details = result.get("details") if isinstance(result.get("details"), dict) else {}
-        bootstrap["claude_ready"] = bool(result.get("ok"))
-        bootstrap["claude_last_checked_at"] = details.get("checked_at") or utc_now()
-        bootstrap["claude_last_result"] = {
-            "ok": bool(result.get("ok")),
-            "summary": result.get("summary"),
-            "warnings": list(result.get("warnings") or []),
-            "errors": list(result.get("errors") or []),
-            "guidance": list(result.get("guidance") or []),
-            "binary": details.get("binary"),
-            "resolved_binary": details.get("resolved_binary"),
-            "model": details.get("model"),
-            "requested_model": details.get("requested_model"),
-            "exit_code": details.get("exit_code"),
-            "stdout_excerpt": details.get("stdout_excerpt"),
-            "stderr_excerpt": details.get("stderr_excerpt"),
-        }
-        config["bootstrap"] = bootstrap
-        self.save_named_payload("config", config)
 
     @staticmethod
     def _compact_probe_text(value: str, *, limit: int = 1200) -> str:
@@ -2286,10 +2559,25 @@ Use **Test** when the file exposes runtime dependencies.
         if name == "runners":
             normalized = self._deep_merge(defaults, prepared)
             codex = normalized.get("codex")
-            if isinstance(codex, dict) and self._looks_like_legacy_codex_retry_profile(codex):
-                codex["retry_initial_backoff_sec"] = 10.0
-                codex["retry_backoff_multiplier"] = 6.0
-                codex["retry_max_backoff_sec"] = 1800.0
+            if isinstance(codex, dict):
+                if self._looks_like_legacy_codex_retry_profile(codex):
+                    codex["retry_initial_backoff_sec"] = 10.0
+                    codex["retry_backoff_multiplier"] = 6.0
+                    codex["retry_max_backoff_sec"] = 1800.0
+                if self._looks_like_preupgrade_codex_retry_attempt_profile(codex):
+                    codex["retry_max_attempts"] = 7
+            claude = normalized.get("claude")
+            if isinstance(claude, dict):
+                legacy_approval_policy = str(claude.get("approval_policy") or "").strip().lower()
+                if legacy_approval_policy and not str(claude.get("permission_mode") or "").strip():
+                    if legacy_approval_policy == "never":
+                        claude["permission_mode"] = "bypassPermissions"
+                    elif legacy_approval_policy in {"on-request", "default"}:
+                        claude["permission_mode"] = "default"
+                if "approval_policy" in claude:
+                    claude.pop("approval_policy", None)
+                if "sandbox_mode" in claude:
+                    claude.pop("sandbox_mode", None)
             return normalized
         if name == "connectors":
             normalized = deepcopy(defaults)
@@ -2337,6 +2625,11 @@ Use **Test** when the file exposes runtime dependencies.
     def _normalize_config_payload(self, payload: dict) -> dict:
         defaults = default_payload("config", self.home)
         normalized = self._deep_merge(defaults, payload)
+        default_runner_override = str(
+            os.environ.get("DEEPSCIENTIST_DEFAULT_RUNNER") or os.environ.get("DS_DEFAULT_RUNNER") or ""
+        ).strip().lower()
+        if default_runner_override:
+            normalized["default_runner"] = default_runner_override
         bootstrap = normalized.get("bootstrap") if isinstance(normalized.get("bootstrap"), dict) else {}
         raw_bootstrap = payload.get("bootstrap") if isinstance(payload.get("bootstrap"), dict) else {}
         connectors = normalized.get("connectors") if isinstance(normalized.get("connectors"), dict) else {}
@@ -2363,6 +2656,25 @@ Use **Test** when the file exposes runtime dependencies.
         bootstrap["locale_initialized_from_browser"] = locale_initialized_from_browser
         bootstrap["locale_initialized_at"] = bootstrap.get("locale_initialized_at")
         bootstrap["locale_initialized_browser_locale"] = bootstrap.get("locale_initialized_browser_locale")
+        runner_readiness = bootstrap.get("runner_readiness") if isinstance(bootstrap.get("runner_readiness"), dict) else {}
+        normalized_runner_readiness: dict[str, dict[str, Any]] = {}
+        for runner_name in list_builtin_runner_names():
+            state = runner_readiness.get(runner_name) if isinstance(runner_readiness.get(runner_name), dict) else {}
+            if runner_name == "codex" and not state:
+                state = {
+                    "ready": bool(bootstrap.get("codex_ready", False)),
+                    "last_checked_at": bootstrap.get("codex_last_checked_at"),
+                    "last_result": bootstrap.get("codex_last_result") if isinstance(bootstrap.get("codex_last_result"), dict) else {},
+                }
+            normalized_runner_readiness[runner_name] = {
+                "ready": bool(state.get("ready", False)),
+                "last_checked_at": state.get("last_checked_at"),
+                "last_result": state.get("last_result") if isinstance(state.get("last_result"), dict) else {},
+            }
+        bootstrap["runner_readiness"] = normalized_runner_readiness
+        bootstrap["codex_ready"] = bool(normalized_runner_readiness.get("codex", {}).get("ready", False))
+        bootstrap["codex_last_checked_at"] = normalized_runner_readiness.get("codex", {}).get("last_checked_at")
+        bootstrap["codex_last_result"] = normalized_runner_readiness.get("codex", {}).get("last_result") if isinstance(normalized_runner_readiness.get("codex", {}).get("last_result"), dict) else {}
         normalized["bootstrap"] = bootstrap
         raw_system_enabled = raw_connectors.get("system_enabled") if isinstance(raw_connectors.get("system_enabled"), dict) else {}
         default_system_enabled = (
@@ -2383,6 +2695,33 @@ Use **Test** when the file exposes runtime dependencies.
             for name in SYSTEM_CONNECTOR_NAMES
         }
         normalized["connectors"] = connectors
+        hardware = normalized.get("hardware") if isinstance(normalized.get("hardware"), dict) else {}
+        raw_hardware = payload.get("hardware") if isinstance(payload.get("hardware"), dict) else {}
+        gpu_selection_mode = str(raw_hardware.get("gpu_selection_mode") or hardware.get("gpu_selection_mode") or "all").strip().lower()
+        if gpu_selection_mode not in {"all", "selected"}:
+            gpu_selection_mode = "all"
+        raw_selected_gpu_ids = raw_hardware.get("selected_gpu_ids", hardware.get("selected_gpu_ids", []))
+        selected_gpu_ids: list[str] = []
+        if isinstance(raw_selected_gpu_ids, list):
+            for item in raw_selected_gpu_ids:
+                normalized_id = str(item or "").strip()
+                if normalized_id and normalized_id not in selected_gpu_ids:
+                    selected_gpu_ids.append(normalized_id)
+        elif isinstance(raw_selected_gpu_ids, str):
+            for item in raw_selected_gpu_ids.split(","):
+                normalized_id = item.strip()
+                if normalized_id and normalized_id not in selected_gpu_ids:
+                    selected_gpu_ids.append(normalized_id)
+        hardware["gpu_selection_mode"] = gpu_selection_mode
+        hardware["selected_gpu_ids"] = selected_gpu_ids
+        hardware["include_system_hardware_in_prompt"] = self._coerce_bool(
+            raw_hardware.get(
+                "include_system_hardware_in_prompt",
+                hardware.get("include_system_hardware_in_prompt", True),
+            ),
+            default=True,
+        )
+        normalized["hardware"] = hardware
         literature = normalized.get("literature") if isinstance(normalized.get("literature"), dict) else {}
         raw_literature = payload.get("literature") if isinstance(payload.get("literature"), dict) else {}
         default_literature = defaults.get("literature") if isinstance(defaults.get("literature"), dict) else {}
@@ -2401,35 +2740,17 @@ Use **Test** when the file exposes runtime dependencies.
             raw_deepxiv.get("token_env", deepxiv.get("token_env", deepxiv_defaults.get("token_env", "DEEPXIV_TOKEN"))) or ""
         ).strip() or None
         try:
-            default_result_size = raw_deepxiv.get(
-                "default_result_size",
-                deepxiv.get("default_result_size", deepxiv_defaults.get("default_result_size", 10)),
-            )
-            if default_result_size is None or default_result_size == "":
-                default_result_size = deepxiv_defaults.get("default_result_size", 10)
-            deepxiv["default_result_size"] = max(1, int(default_result_size))
+            deepxiv["default_result_size"] = max(1, int(raw_deepxiv.get("default_result_size", deepxiv.get("default_result_size", deepxiv_defaults.get("default_result_size", 20))) or 90))
         except (TypeError, ValueError):
-            deepxiv["default_result_size"] = int(deepxiv_defaults.get("default_result_size", 10) or 10)
+            deepxiv["default_result_size"] = int(deepxiv_defaults.get("default_result_size", 20) or 10)
         try:
-            preview_characters = raw_deepxiv.get(
-                "preview_characters",
-                deepxiv.get("preview_characters", deepxiv_defaults.get("preview_characters", 1200)),
-            )
-            if preview_characters is None or preview_characters == "":
-                preview_characters = deepxiv_defaults.get("preview_characters", 1200)
-            deepxiv["preview_characters"] = max(200, int(preview_characters))
+            deepxiv["preview_characters"] = max(200, int(raw_deepxiv.get("preview_characters", deepxiv.get("preview_characters", deepxiv_defaults.get("preview_characters", 5000))) or 5000))
         except (TypeError, ValueError):
-            deepxiv["preview_characters"] = int(deepxiv_defaults.get("preview_characters", 1200) or 1200)
+            deepxiv["preview_characters"] = int(deepxiv_defaults.get("preview_characters", 5000) or 1200)
         try:
-            request_timeout_seconds = raw_deepxiv.get(
-                "request_timeout_seconds",
-                deepxiv.get("request_timeout_seconds", deepxiv_defaults.get("request_timeout_seconds", 20)),
-            )
-            if request_timeout_seconds is None or request_timeout_seconds == "":
-                request_timeout_seconds = deepxiv_defaults.get("request_timeout_seconds", 20)
-            deepxiv["request_timeout_seconds"] = max(3, int(request_timeout_seconds))
+            deepxiv["request_timeout_seconds"] = max(3, int(raw_deepxiv.get("request_timeout_seconds", deepxiv.get("request_timeout_seconds", deepxiv_defaults.get("request_timeout_seconds", 90))) or 20))
         except (TypeError, ValueError):
-            deepxiv["request_timeout_seconds"] = int(deepxiv_defaults.get("request_timeout_seconds", 20) or 20)
+            deepxiv["request_timeout_seconds"] = int(deepxiv_defaults.get("request_timeout_seconds", 90) or 20)
         literature["deepxiv"] = deepxiv
         normalized["literature"] = literature
         return normalized
@@ -2443,6 +2764,22 @@ Use **Test** when the file exposes runtime dependencies.
         except (TypeError, ValueError):
             return False
         return abs(initial - 1.0) < 1e-9 and abs(multiplier - 2.0) < 1e-9 and abs(max_backoff - 8.0) < 1e-9
+
+    @staticmethod
+    def _looks_like_preupgrade_codex_retry_attempt_profile(payload: dict) -> bool:
+        try:
+            max_attempts = int(payload.get("retry_max_attempts"))
+            initial = float(payload.get("retry_initial_backoff_sec"))
+            multiplier = float(payload.get("retry_backoff_multiplier"))
+            max_backoff = float(payload.get("retry_max_backoff_sec"))
+        except (TypeError, ValueError):
+            return False
+        return (
+            max_attempts == 5
+            and abs(initial - 10.0) < 1e-9
+            and abs(multiplier - 6.0) < 1e-9
+            and abs(max_backoff - 1800.0) < 1e-9
+        )
 
     @staticmethod
     def _coerce_bool(value: object, *, default: bool = False) -> bool:

@@ -4,12 +4,13 @@ import json
 import shutil
 from pathlib import Path
 
+import deepscientist.home as home_module
 from deepscientist.config import ConfigManager
 from deepscientist.cli import _local_ui_url, init_command, pause_command
 from deepscientist.home import ensure_home_layout, repo_root
 from deepscientist.mcp.context import McpContext
 from deepscientist.quest import QuestService
-from deepscientist.shared import append_jsonl, ensure_dir, write_json, write_text
+from deepscientist.shared import append_jsonl, ensure_dir, read_yaml, write_json, write_text, write_yaml
 from deepscientist.skills import SkillInstaller
 
 
@@ -32,8 +33,6 @@ def test_init_creates_required_files(temp_home: Path) -> None:
     assert config["ui"]["auto_open_browser"] is True
     assert config["bootstrap"]["codex_ready"] is False
     assert config["bootstrap"]["codex_last_checked_at"] is None
-    assert config["bootstrap"]["claude_ready"] is False
-    assert config["bootstrap"]["claude_last_checked_at"] is None
     assert config["bootstrap"]["locale_source"] == "default"
     assert config["bootstrap"]["locale_initialized_from_browser"] is False
     assert config["bootstrap"]["locale_initialized_at"] is None
@@ -49,12 +48,10 @@ def test_init_creates_required_files(temp_home: Path) -> None:
     assert runners["codex"]["profile"] == ""
     assert runners["codex"]["model"] == "inherit"
     assert runners["codex"]["model_reasoning_effort"] == "xhigh"
+    assert runners["codex"]["retry_max_attempts"] == 7
     assert runners["codex"]["retry_initial_backoff_sec"] == 10.0
     assert runners["codex"]["retry_backoff_multiplier"] == 6.0
     assert runners["codex"]["retry_max_backoff_sec"] == 1800.0
-    assert runners["claude"]["enabled"] is False
-    assert runners["claude"]["binary"] == "claude"
-    assert runners["claude"]["status"] == "experimental"
 
 
 def test_legacy_codex_retry_profile_is_upgraded_when_loading_normalized_runners(temp_home: Path) -> None:
@@ -81,9 +78,31 @@ def test_legacy_codex_retry_profile_is_upgraded_when_loading_normalized_runners(
 
     runners = manager.load_named_normalized("runners")
 
+    assert runners["codex"]["retry_max_attempts"] == 7
     assert runners["codex"]["retry_initial_backoff_sec"] == 10.0
     assert runners["codex"]["retry_backoff_multiplier"] == 6.0
     assert runners["codex"]["retry_max_backoff_sec"] == 1800.0
+
+
+def test_repo_root_falls_back_to_launcher_path_when_env_repo_root_is_missing(tmp_path: Path, monkeypatch) -> None:
+    fake_repo_root = tmp_path / 'cli-runtime'
+    (fake_repo_root / 'src' / 'deepscientist').mkdir(parents=True)
+    (fake_repo_root / 'src' / 'skills').mkdir(parents=True)
+    (fake_repo_root / 'pyproject.toml').write_text('[build-system]\n', encoding='utf-8')
+    (fake_repo_root / 'bin').mkdir(parents=True)
+    launcher_path = fake_repo_root / 'bin' / 'ds.js'
+    launcher_path.write_text('// launcher\n', encoding='utf-8')
+
+    packaged_module = tmp_path / 'runtime' / 'python-env' / 'lib' / 'python3.13' / 'site-packages' / 'deepscientist' / 'home.py'
+    packaged_module.parent.mkdir(parents=True)
+    packaged_module.write_text('# placeholder\n', encoding='utf-8')
+
+    monkeypatch.delenv('DEEPSCIENTIST_REPO_ROOT', raising=False)
+    monkeypatch.setenv('DEEPSCIENTIST_LAUNCHER_PATH', str(launcher_path))
+    monkeypatch.setattr(home_module, '__file__', str(packaged_module))
+    monkeypatch.chdir(tmp_path)
+
+    assert repo_root() == fake_repo_root.resolve()
 
 
 def test_new_creates_standalone_git_repo(temp_home: Path) -> None:
@@ -102,6 +121,8 @@ def test_new_creates_standalone_git_repo(temp_home: Path) -> None:
     assert (quest_root / ".codex" / "skills").exists()
     assert (quest_root / ".claude" / "agents").exists()
     assert (quest_root / ".claude" / "agents" / "deepscientist-decision.md").exists()
+    assert (quest_root / ".kimi" / "skills").exists()
+    assert (quest_root / ".kimi" / "skills" / "deepscientist-decision" / "SKILL.md").exists()
     assert (quest_root / ".codex" / "skills" / "deepscientist-finalize" / "SKILL.md").exists()
     assert snapshot["quest_id"] == "001"
     assert snapshot["runner"] == "codex"
@@ -109,18 +130,39 @@ def test_new_creates_standalone_git_repo(temp_home: Path) -> None:
     assert snapshot["summary"]["status_line"] == "Quest created. Waiting for baseline setup or reuse."
 
 
-def test_quest_settings_accept_claude_as_default_runner(temp_home: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_copilot_quest_defaults_to_scout_anchor(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
     service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
-    snapshot = service.create("claude runner quest")
-    monkeypatch.setattr("deepscientist.runners.list_runner_names", lambda: ["codex", "claude"])
 
-    updated = service.update_settings(snapshot["quest_id"], default_runner="claude")
+    snapshot = service.create("copilot quest", startup_contract={"workspace_mode": "copilot"})
+    quest_root = Path(snapshot["quest_root"])
+    quest_yaml = read_yaml(quest_root / "quest.yaml", {})
 
-    assert updated["runner"] == "claude"
-    quest_yaml = service.read_quest_yaml(Path(updated["quest_root"]))
-    assert quest_yaml["default_runner"] == "claude"
+    assert quest_yaml["active_anchor"] == "scout"
+    assert snapshot["active_anchor"] == "scout"
+
+
+def test_legacy_copilot_baseline_anchor_is_normalized_to_scout_when_no_baseline_context_exists(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    service = QuestService(temp_home)
+
+    snapshot = service.create("legacy copilot quest", startup_contract={"workspace_mode": "copilot"})
+    quest_root = Path(snapshot["quest_root"])
+    write_yaml(
+        quest_root / "quest.yaml",
+        {
+            **read_yaml(quest_root / "quest.yaml", {}),
+            "active_anchor": "baseline",
+            "requested_baseline_ref": None,
+            "confirmed_baseline_ref": None,
+        },
+    )
+
+    normalized = service.read_quest_yaml(quest_root)
+
+    assert normalized["active_anchor"] == "scout"
 
 
 def test_sync_quest_prompts_backs_up_previous_active_tree(temp_home: Path) -> None:
@@ -184,6 +226,79 @@ def test_auto_generated_quest_ids_are_sequential(temp_home: Path) -> None:
     third = service.create("third quest")
 
     assert [first["quest_id"], second["quest_id"], third["quest_id"]] == ["001", "002", "003"]
+
+
+def test_system_prefixed_quest_ids_are_preserved_and_consume_numeric_sequence(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    service = QuestService(temp_home)
+
+    settings_snapshot = service.create(
+        "settings quest",
+        quest_id="S-001",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "admin_ops",
+        },
+    )
+    bench_snapshot = service.create(
+        "benchstore quest",
+        quest_id="B-002",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "freeform",
+            "start_setup_session": {"source": "benchstore"},
+        },
+    )
+    research_snapshot = service.create(
+        "research quest",
+        startup_contract={"workspace_mode": "autonomous"},
+    )
+
+    assert settings_snapshot["quest_id"] == "S-001"
+    assert bench_snapshot["quest_id"] == "B-002"
+    assert research_snapshot["quest_id"] == "003"
+
+
+def test_summary_compact_marks_system_quests_hidden_from_projects(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    service = QuestService(temp_home)
+
+    settings_snapshot = service.create(
+        "settings quest",
+        quest_id="S-001",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "admin_ops",
+        },
+    )
+    bench_snapshot = service.create(
+        "benchstore quest",
+        quest_id="B-002",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "freeform",
+            "benchstore_context": {"entry_id": "bench.sample"},
+        },
+    )
+    research_snapshot = service.create(
+        "research quest",
+        startup_contract={"workspace_mode": "copilot"},
+    )
+
+    settings_summary = service.summary_compact(settings_snapshot["quest_id"])
+    bench_summary = service.summary_compact(bench_snapshot["quest_id"])
+    research_summary = service.summary_compact(research_snapshot["quest_id"])
+
+    assert settings_summary["quest_class"] == "settings"
+    assert settings_summary["listed_in_projects"] is False
+    assert bench_summary["quest_class"] == "benchstore"
+    assert bench_summary["listed_in_projects"] is False
+    assert research_summary["quest_class"] == "research"
+    assert research_summary["listed_in_projects"] is True
 
 
 def test_events_slice_uses_placeholder_for_oversized_event_lines(temp_home: Path) -> None:
@@ -545,7 +660,7 @@ def test_init_command_syncs_global_skills(temp_home: Path, monkeypatch) -> None:
 
     def _record_sync(self):  # type: ignore[no-untyped-def]
         calls.append("sync_global")
-        return {"codex": [], "claude": [], "notes": []}
+        return {"codex": [], "claude": [], "kimi": [], "opencode": [], "notes": []}
 
     monkeypatch.setattr(SkillInstaller, "sync_global", _record_sync)
     exit_code = init_command(temp_home)
@@ -610,3 +725,21 @@ def test_repo_root_prefers_explicit_env(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("DEEPSCIENTIST_REPO_ROOT", str(install_root))
 
     assert repo_root() == install_root.resolve()
+
+
+
+def test_quest_create_uses_configured_default_runner(temp_home) -> None:  # type: ignore[no-untyped-def]
+    from deepscientist.config import ConfigManager
+    from deepscientist.shared import read_yaml, write_yaml
+
+    manager = ConfigManager(temp_home)
+    config = manager.load_named('config')
+    config['default_runner'] = 'claude'
+    write_yaml(manager.path_for('config'), config)
+
+    service = QuestService(temp_home)
+    snapshot = service.create('runner-default quest')
+
+    quest_yaml = read_yaml(temp_home / 'quests' / snapshot['quest_id'] / 'quest.yaml', {})
+    assert quest_yaml['default_runner'] == 'claude'
+    assert snapshot['runner'] == 'claude'

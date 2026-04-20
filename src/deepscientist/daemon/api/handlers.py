@@ -316,6 +316,389 @@ npm --prefix src/ui run build</pre>
             }
         return self.app.request_shutdown(source=source)
 
+    def admin_doctor(self) -> dict:
+        cached = self.app.admin_task_service.cached_result("doctor.json")
+        latest_task = next(
+            (
+                item
+                for item in self.app.admin_task_service.list_tasks(kind="doctor", limit=10)
+                if str(item.get("status") or "").strip().lower() in {"queued", "running"}
+            ),
+            None,
+        )
+        return {
+            "ok": True,
+            "cached": cached,
+            "latest_task": latest_task,
+        }
+
+    def admin_overview(self) -> dict:
+        return self.app.admin_service.overview()
+
+    def admin_quests(self, path: str) -> dict:
+        query = self.parse_query(path)
+        limit_raw = ((query.get("limit") or ["100"])[0] or "100").strip()
+        try:
+            limit = max(1, min(int(limit_raw), 500))
+        except ValueError:
+            limit = 100
+        return self.app.admin_service.quests(limit=limit)
+
+    def admin_quest_summary(self, quest_id: str) -> dict | tuple[int, dict]:
+        try:
+            return self.app.admin_service.quest_summary(quest_id)
+        except FileNotFoundError:
+            return 404, {"ok": False, "message": f"Unknown quest `{quest_id}`."}
+
+    def admin_runtime_sessions(self, path: str) -> dict:
+        query = self.parse_query(path)
+        limit_raw = ((query.get("limit") or ["200"])[0] or "200").strip()
+        try:
+            limit = max(1, min(int(limit_raw), 1000))
+        except ValueError:
+            limit = 200
+        return self.app.admin_service.runtime_sessions(limit=limit)
+
+    def admin_log_sources(self) -> dict:
+        return self.app.admin_service.log_sources()
+
+    def admin_log_tail(self, path: str) -> dict | tuple[int, dict]:
+        query = self.parse_query(path)
+        source = ((query.get("source") or [""])[0] or "").strip()
+        if not source:
+            return 400, {"ok": False, "message": "`source` is required."}
+        line_count_raw = ((query.get("line_count") or ["200"])[0] or "200").strip()
+        try:
+            line_count = max(1, min(int(line_count_raw), 2000))
+        except ValueError:
+            line_count = 200
+        try:
+            return self.app.admin_service.log_tail(source, line_count=line_count)
+        except FileNotFoundError as exc:
+            return 404, {"ok": False, "message": str(exc)}
+
+    def admin_failures(self, path: str) -> dict:
+        query = self.parse_query(path)
+        limit_raw = ((query.get("limit") or ["100"])[0] or "100").strip()
+        try:
+            limit = max(1, min(int(limit_raw), 500))
+        except ValueError:
+            limit = 100
+        return self.app.admin_service.failures(limit=limit)
+
+    def admin_errors(self, path: str) -> dict:
+        query = self.parse_query(path)
+        limit_raw = ((query.get("limit") or ["100"])[0] or "100").strip()
+        try:
+            limit = max(1, min(int(limit_raw), 500))
+        except ValueError:
+            limit = 100
+        return self.app.admin_service.error_console(limit=limit)
+
+    def admin_runtime_tools(self) -> dict:
+        return self.app.admin_service.runtime_tools()
+
+    def admin_system_hardware(self) -> dict:
+        return self.app.admin_service.system_hardware(refresh=False)
+
+    def admin_system_hardware_update(self, body: dict | None = None) -> dict | tuple[int, dict]:
+        payload = body if isinstance(body, dict) else {}
+        selection_mode = payload.get("gpu_selection_mode")
+        selected_gpu_ids_raw = payload.get("selected_gpu_ids")
+        selected_gpu_ids = (
+            [str(item) for item in selected_gpu_ids_raw]
+            if isinstance(selected_gpu_ids_raw, list)
+            else None
+        )
+        include_in_prompt_raw = payload.get("include_system_hardware_in_prompt")
+        result = self.app.admin_service.update_system_hardware_preferences(
+            gpu_selection_mode=str(selection_mode) if selection_mode is not None else None,
+            selected_gpu_ids=selected_gpu_ids,
+            include_system_hardware_in_prompt=(
+                bool(include_in_prompt_raw) if include_in_prompt_raw is not None else None
+            ),
+        )
+        self.app.admin_service.write_audit(
+            action="system.hardware.update",
+            gpu_selection_mode=((result.get("preferences") or {}) if isinstance(result.get("preferences"), dict) else {}).get("gpu_selection_mode"),
+            selected_gpu_ids=((result.get("preferences") or {}) if isinstance(result.get("preferences"), dict) else {}).get("selected_gpu_ids"),
+            effective_gpu_ids=((result.get("preferences") or {}) if isinstance(result.get("preferences"), dict) else {}).get("effective_gpu_ids"),
+        )
+        return result
+
+    def admin_chart_catalog(self) -> dict:
+        return self.app.admin_service.chart_catalog()
+
+    def admin_chart_query(self, body: dict | None = None) -> dict | tuple[int, dict]:
+        payload = body if isinstance(body, dict) else {}
+        items = payload.get("items")
+        if not isinstance(items, list) or not items:
+            return 400, {"ok": False, "message": "`items` must be a non-empty list."}
+        normalized_items = [dict(item) for item in items if isinstance(item, dict)]
+        if not normalized_items:
+            return 400, {"ok": False, "message": "`items` must contain query objects."}
+        try:
+            return self.app.admin_service.chart_query(normalized_items)
+        except FileNotFoundError as exc:
+            return 404, {"ok": False, "message": str(exc)}
+
+    def admin_audit(self, path: str) -> dict:
+        query = self.parse_query(path)
+        limit_raw = ((query.get("limit") or ["200"])[0] or "200").strip()
+        try:
+            limit = max(1, min(int(limit_raw), 1000))
+        except ValueError:
+            limit = 200
+        return self.app.admin_service.audit(limit=limit)
+
+    def admin_stats_summary(self) -> dict:
+        return self.app.admin_service.stats_summary()
+
+    def admin_search(self, path: str) -> dict | tuple[int, dict]:
+        query = self.parse_query(path)
+        term = ((query.get("q") or [""])[0] or "").strip()
+        if not term:
+            return 400, {"ok": False, "message": "`q` is required."}
+        limit_raw = ((query.get("limit") or ["100"])[0] or "100").strip()
+        try:
+            limit = max(1, min(int(limit_raw), 500))
+        except ValueError:
+            limit = 100
+        return self.app.admin_service.search(term, limit=limit)
+
+    def admin_issue_draft(self, body: dict | None = None) -> dict:
+        payload = body if isinstance(body, dict) else {}
+        return self.app.admin_service.issue_draft(
+            summary=str(payload.get("summary") or "").strip() or None,
+            user_notes=str(payload.get("user_notes") or "").strip() or None,
+            include_doctor=payload.get("include_doctor") is not False,
+            include_logs=payload.get("include_logs") is not False,
+        )
+
+    def admin_controllers(self) -> dict:
+        return self.app.admin_service.controllers()
+
+    def admin_controller_run(self, controller_id: str, body: dict | None = None) -> dict | tuple[int, dict]:
+        _unused = body or {}
+        try:
+            result = self.app.admin_service.controller_run(controller_id)
+        except FileNotFoundError:
+            return 404, {"ok": False, "message": f"Unknown controller `{controller_id}`."}
+        self.app.admin_service.write_audit(
+            action="controller.run",
+            controller_id=controller_id,
+            result=result,
+        )
+        return {"ok": True, "controller_id": controller_id, "result": result}
+
+    def admin_controller_toggle(self, controller_id: str, body: dict | None = None) -> dict | tuple[int, dict]:
+        payload = body if isinstance(body, dict) else {}
+        if "enabled" not in payload:
+            return 400, {"ok": False, "message": "`enabled` is required."}
+        try:
+            controller = self.app.admin_service.controller_toggle(controller_id, enabled=bool(payload.get("enabled")))
+        except StopIteration:
+            return 404, {"ok": False, "message": f"Unknown controller `{controller_id}`."}
+        self.app.admin_service.write_audit(
+            action="controller.toggle",
+            controller_id=controller_id,
+            enabled=bool(payload.get("enabled")),
+        )
+        return {"ok": True, "controller": controller}
+
+    def admin_repairs(self, path: str) -> dict:
+        query = self.parse_query(path)
+        limit_raw = ((query.get("limit") or ["50"])[0] or "50").strip()
+        try:
+            limit = max(1, min(int(limit_raw), 200))
+        except ValueError:
+            limit = 50
+        return {
+            "ok": True,
+            "items": self.app.admin_repair_service.list_repairs(limit=limit),
+        }
+
+    def admin_repair_create(self, body: dict | None = None) -> dict | tuple[int, dict]:
+        payload = body if isinstance(body, dict) else {}
+        request_text = str(payload.get("request_text") or payload.get("message") or "").strip()
+        if not request_text:
+            return 400, {"ok": False, "message": "`request_text` is required."}
+        try:
+            repair = self.app.admin_repair_service.create_repair(
+                request_text=request_text,
+                source_page=str(payload.get("source_page") or "").strip() or None,
+                scope=str(payload.get("scope") or "system").strip() or "system",
+                targets=dict(payload.get("targets") or {}) if isinstance(payload.get("targets"), dict) else None,
+                repair_policy=str(payload.get("repair_policy") or "diagnose_only").strip() or "diagnose_only",
+                selected_paths=[str(item) for item in payload.get("selected_paths") or []] if isinstance(payload.get("selected_paths"), list) else None,
+            )
+        except ValueError as exc:
+            return 400, {"ok": False, "message": str(exc)}
+        self.app.admin_service.write_audit(
+            action="repair.create",
+            repair_id=repair.get("repair_id"),
+            ops_quest_id=repair.get("ops_quest_id"),
+            scope=repair.get("scope"),
+        )
+        return {"ok": True, "repair": repair}
+
+    def admin_repair_detail(self, repair_id: str) -> dict | tuple[int, dict]:
+        try:
+            repair = self.app.admin_repair_service.get_repair(repair_id)
+        except FileNotFoundError:
+            return 404, {"ok": False, "message": f"Unknown repair `{repair_id}`."}
+        return {"ok": True, "repair": repair}
+
+    def admin_repair_close(self, repair_id: str, body: dict | None = None) -> dict | tuple[int, dict]:
+        _unused = body or {}
+        try:
+            repair = self.app.admin_repair_service.close_repair(repair_id)
+        except FileNotFoundError:
+            return 404, {"ok": False, "message": f"Unknown repair `{repair_id}`."}
+        self.app.admin_service.write_audit(
+            action="repair.close",
+            repair_id=repair.get("repair_id"),
+            ops_quest_id=repair.get("ops_quest_id"),
+        )
+        return {"ok": True, "repair": repair}
+
+    def admin_tasks(self, path: str) -> dict:
+        query = self.parse_query(path)
+        kind = ((query.get("kind") or [""])[0] or "").strip() or None
+        limit_raw = ((query.get("limit") or ["50"])[0] or "50").strip()
+        try:
+            limit = max(1, min(int(limit_raw), 200))
+        except ValueError:
+            limit = 50
+        return {
+            "ok": True,
+            "items": self.app.admin_task_service.list_tasks(kind=kind, limit=limit),
+        }
+
+    def admin_task_doctor_start(self, body: dict | None = None) -> dict:
+        _unused = body or {}
+        task = self.app.admin_task_service.start_doctor_task()
+        return {"ok": True, "task": task}
+
+    def admin_task_system_update_check_start(self, body: dict | None = None) -> dict:
+        _unused = body or {}
+        task = self.app.admin_task_service.start_system_update_check_task()
+        return {"ok": True, "task": task}
+
+    def admin_task_system_update_action_start(self, body: dict | None = None) -> dict | tuple[int, dict]:
+        payload = body if isinstance(body, dict) else {}
+        action = str(payload.get("action") or "").strip().lower()
+        if not action:
+            return 400, {"ok": False, "message": "`action` is required."}
+        try:
+            task = self.app.admin_task_service.start_system_update_action_task(action=action)
+        except ValueError as exc:
+            return 400, {"ok": False, "message": str(exc)}
+        return {"ok": True, "task": task}
+
+    def admin_task_detail(self, task_id: str) -> dict | tuple[int, dict]:
+        try:
+            task = self.app.admin_task_service.get_task(task_id)
+        except FileNotFoundError:
+            return 404, {"ok": False, "message": f"Unknown admin task `{task_id}`."}
+        return {
+            "ok": True,
+            "task": task,
+        }
+
+    def system_shutdown(self, body: dict | None = None) -> dict:
+        return self.admin_shutdown(body if isinstance(body, dict) else {})
+
+    def system_doctor(self) -> dict:
+        return self.admin_doctor()
+
+    def system_overview(self) -> dict:
+        return self.admin_overview()
+
+    def system_quests(self, path: str) -> dict:
+        return self.admin_quests(path)
+
+    def system_quest_summary(self, quest_id: str) -> dict | tuple[int, dict]:
+        return self.admin_quest_summary(quest_id)
+
+    def system_runtime_sessions(self, path: str) -> dict:
+        return self.admin_runtime_sessions(path)
+
+    def system_log_sources(self) -> dict:
+        return self.admin_log_sources()
+
+    def system_log_tail(self, path: str) -> dict | tuple[int, dict]:
+        return self.admin_log_tail(path)
+
+    def system_failures(self, path: str) -> dict:
+        return self.admin_failures(path)
+
+    def system_errors(self, path: str) -> dict:
+        return self.admin_errors(path)
+
+    def system_runtime_tools(self) -> dict:
+        return self.admin_runtime_tools()
+
+    def system_hardware(self) -> dict:
+        return self.admin_system_hardware()
+
+    def system_hardware_update(self, body: dict | None = None) -> dict | tuple[int, dict]:
+        return self.admin_system_hardware_update(body)
+
+    def system_chart_catalog(self) -> dict:
+        return self.admin_chart_catalog()
+
+    def system_chart_query(self, body: dict | None = None) -> dict | tuple[int, dict]:
+        return self.admin_chart_query(body)
+
+    def system_audit(self, path: str) -> dict:
+        return self.admin_audit(path)
+
+    def system_stats_summary(self) -> dict:
+        return self.admin_stats_summary()
+
+    def system_search(self, path: str) -> dict | tuple[int, dict]:
+        return self.admin_search(path)
+
+    def system_issue_draft(self, body: dict | None = None) -> dict:
+        return self.admin_issue_draft(body)
+
+    def system_controllers(self) -> dict:
+        return self.admin_controllers()
+
+    def system_controller_run(self, controller_id: str, body: dict | None = None) -> dict | tuple[int, dict]:
+        return self.admin_controller_run(controller_id, body)
+
+    def system_controller_toggle(self, controller_id: str, body: dict | None = None) -> dict | tuple[int, dict]:
+        return self.admin_controller_toggle(controller_id, body)
+
+    def system_repairs(self, path: str) -> dict:
+        return self.admin_repairs(path)
+
+    def system_repair_create(self, body: dict | None = None) -> dict | tuple[int, dict]:
+        return self.admin_repair_create(body)
+
+    def system_repair_detail(self, repair_id: str) -> dict | tuple[int, dict]:
+        return self.admin_repair_detail(repair_id)
+
+    def system_repair_close(self, repair_id: str, body: dict | None = None) -> dict | tuple[int, dict]:
+        return self.admin_repair_close(repair_id, body)
+
+    def system_tasks(self, path: str) -> dict:
+        return self.admin_tasks(path)
+
+    def system_task_doctor_start(self, body: dict | None = None) -> dict:
+        return self.admin_task_doctor_start(body)
+
+    def system_task_system_update_check_start(self, body: dict | None = None) -> dict:
+        return self.admin_task_system_update_check_start(body)
+
+    def system_task_system_update_action_start(self, body: dict | None = None) -> dict | tuple[int, dict]:
+        return self.admin_task_system_update_action_start(body)
+
+    def system_task_detail(self, task_id: str) -> dict | tuple[int, dict]:
+        return self.admin_task_detail(task_id)
+
     def acp_status(self) -> dict:
         return get_acp_bridge_status().as_dict()
 
@@ -350,6 +733,108 @@ npm --prefix src/ui run build</pre>
         except ValueError as exc:
             return 400, {"ok": False, "message": str(exc), "baseline_id": baseline_id}
 
+    def benchstore_entries(self, path: str = "") -> dict:
+        try:
+            hardware = self.app.admin_service.system_hardware(refresh=False)
+        except Exception:
+            hardware = {}
+        return self.app.benchstore_service.list_entries(hardware_payload=hardware, locale=self._locale_from_path(path))
+
+    def benchstore_entry(self, entry_id: str, path: str = "") -> dict | tuple[int, dict]:
+        try:
+            hardware = self.app.admin_service.system_hardware(refresh=False)
+        except Exception:
+            hardware = {}
+        try:
+            return self.app.benchstore_service.get_entry(entry_id, hardware_payload=hardware, locale=self._locale_from_path(path))
+        except FileNotFoundError as exc:
+            return 404, {"ok": False, "message": str(exc), "entry_id": entry_id}
+
+    def benchstore_entry_image(self, entry_id: str, path: str = "") -> tuple[int, dict, bytes]:
+        try:
+            path = self.app.benchstore_service.entry_image_asset_path(entry_id, locale=self._locale_from_path(path))
+        except FileNotFoundError as exc:
+            return 404, {"Content-Type": "text/plain; charset=utf-8"}, str(exc).encode("utf-8")
+        mime_type = self._guess_static_mime_type(path)
+        return 200, self._asset_headers(mime_type), path.read_bytes()
+
+    def benchstore_entry_install(self, entry_id: str, body: dict | None = None) -> dict | tuple[int, dict]:
+        _unused = body or {}
+        try:
+            task = self.app.start_benchstore_install(entry_id)
+        except FileNotFoundError as exc:
+            return 404, {"ok": False, "message": str(exc), "entry_id": entry_id}
+        except ValueError as exc:
+            return 400, {"ok": False, "message": str(exc), "entry_id": entry_id}
+        return {"ok": True, "entry_id": entry_id, "task": task}
+
+    def benchstore_entry_setup_packet(self, entry_id: str, path: str = "") -> dict | tuple[int, dict]:
+        try:
+            hardware = self.app.admin_service.system_hardware(refresh=False)
+        except Exception:
+            hardware = {}
+        try:
+            setup_packet = self.app.benchstore_service.build_setup_packet(
+                entry_id=entry_id,
+                hardware_payload=hardware,
+                locale=self._locale_from_path(path, default="zh"),
+            )
+        except FileNotFoundError as exc:
+            return 404, {"ok": False, "message": str(exc), "entry_id": entry_id}
+        except ValueError as exc:
+            return 409, {"ok": False, "message": str(exc), "entry_id": entry_id}
+        return {"ok": True, "entry_id": entry_id, "setup_packet": setup_packet}
+
+    def benchstore_entry_launch(self, entry_id: str, path: str = "", body: dict | None = None) -> dict | tuple[int, dict]:
+        _unused = body or {}
+        try:
+            hardware = self.app.admin_service.system_hardware(refresh=False)
+        except Exception:
+            hardware = {}
+        try:
+            setup_packet = self.app.benchstore_service.build_setup_packet(
+                entry_id=entry_id,
+                hardware_payload=hardware,
+                locale=self._locale_from_path(path, default="zh"),
+            )
+        except FileNotFoundError as exc:
+            return 404, {"ok": False, "message": str(exc), "entry_id": entry_id}
+        except ValueError as exc:
+            return 409, {"ok": False, "message": str(exc), "entry_id": entry_id}
+
+        launch_payload = setup_packet.get("launch_payload") if isinstance(setup_packet.get("launch_payload"), dict) else {}
+        goal = str(launch_payload.get("goal") or "").strip()
+        title = str(launch_payload.get("title") or "").strip() or None
+        initial_message = str(launch_payload.get("initial_message") or goal).strip() or goal
+        startup_contract = launch_payload.get("startup_contract") if isinstance(launch_payload.get("startup_contract"), dict) else None
+        if not goal:
+            return 400, {"ok": False, "message": "BenchStore launch payload is missing `goal`.", "entry_id": entry_id}
+
+        snapshot = self.app.create_quest(
+            goal=goal,
+            title=title,
+            quest_id=f"B-{self.app.quest_service.preview_next_numeric_quest_id()}",
+            source="benchstore",
+            startup_contract=startup_contract,
+            auto_bind_latest_connectors=False,
+        )
+        workspace_mode = str((startup_contract or {}).get("workspace_mode") or "").strip().lower()
+        if workspace_mode in {"copilot", "autonomous"}:
+            quest_root = self.app.quest_service._quest_root(snapshot["quest_id"])
+            self.app.quest_service.update_research_state(quest_root, workspace_mode=workspace_mode)
+        startup = self.app.submit_user_message(
+            snapshot["quest_id"],
+            text=initial_message,
+            source="benchstore",
+        )
+        return {
+            "ok": True,
+            "entry_id": entry_id,
+            "setup_packet": setup_packet,
+            "startup": startup,
+            "snapshot": self.app.quest_service.snapshot(snapshot["quest_id"]),
+        }
+
     def qq_bindings(self) -> list[dict]:
         return self.app.list_qq_bindings()
 
@@ -365,8 +850,13 @@ npm --prefix src/ui run build</pre>
     def connector_inbound(self, connector: str, body: dict) -> dict:
         return self.app.handle_connector_inbound(connector, body)
 
-    def quests(self) -> list[dict]:
-        return self.app.quest_service.list_quests()
+    def quests(self, path: str | None = None) -> list[dict]:
+        hidden_prefixes = ('b-', 's-')
+        return [
+            item
+            for item in self.app.quest_service.list_quests()
+            if not str(item.get('quest_id') or '').strip().lower().startswith(hidden_prefixes)
+        ]
 
     def quest_next_id(self) -> dict:
         return {
@@ -678,6 +1168,10 @@ npm --prefix src/ui run build</pre>
             limit=limit,
             tail=tail,
         )
+        payload["events"] = [
+            self.app.quest_service.enrich_conversation_message_event(quest_id, event)
+            for event in payload["events"]
+        ]
         if format_name in {"acp", "both"}:
             payload["acp_updates"] = [
                 build_session_update(
@@ -947,6 +1441,24 @@ npm --prefix src/ui run build</pre>
             return {"ok": False, "message": "Quest control action must be `pause`, `stop` or `resume`."}
         return self.app.control_quest(quest_id, action=action, source=source)
 
+    def quest_message_read_now(self, quest_id: str, body: dict) -> dict:
+        source = str(body.get("source") or "local-ui").strip() or "local-ui"
+        message_id = str(body.get("message_id") or "").strip() or None
+        return self.app.read_queued_user_messages_now(
+            quest_id,
+            message_id=message_id,
+            source=source,
+        )
+
+    def quest_message_withdraw(self, quest_id: str, body: dict) -> dict:
+        source = str(body.get("source") or "local-ui").strip() or "local-ui"
+        message_id = str(body.get("message_id") or "").strip() or None
+        return self.app.withdraw_queued_user_message(
+            quest_id,
+            message_id=message_id or "",
+            source=source,
+        )
+
     def workflow(self, quest_id: str) -> dict:
         payload = self.app.quest_service.workflow(quest_id)
         projection_state = str(((payload or {}).get("projection_status") or {}).get("state") or "").strip().lower()
@@ -1014,194 +1526,7 @@ npm --prefix src/ui run build</pre>
 
     def git_branches(self, quest_id: str) -> dict:
         quest_root = self._fresh_quest_service()._quest_root(quest_id)
-        payload = self.app.quest_service.git_branch_canvas(quest_id)
-        research_state = self.app.quest_service.read_research_state(quest_root)
-        active_workspace_branch = str(research_state.get("current_workspace_branch") or "").strip() or None
-        research_head_branch = str(research_state.get("research_head_branch") or "").strip() or None
-        payload["active_workspace_ref"] = active_workspace_branch
-        payload["research_head_ref"] = research_head_branch
-        payload["workspace_mode"] = str(research_state.get("workspace_mode") or "quest").strip() or "quest"
-        projection_state = str(((payload or {}).get("projection_status") or {}).get("state") or "").strip().lower()
-        if projection_state and projection_state != "ready" and not (payload.get("nodes") or []):
-            return payload
-        quest_data = self.app.quest_service.read_quest_yaml(quest_root)
-        active_anchor = str(quest_data.get("active_anchor") or "").strip().lower()
-        active_analysis_campaign_id = str(research_state.get("active_analysis_campaign_id") or "").strip() or None
-        current_workspace_branch = str(research_state.get("current_workspace_branch") or "").strip() or None
-        workspace_mode = str(research_state.get("workspace_mode") or "").strip().lower() or "quest"
-        paper_parent_branch = str(research_state.get("paper_parent_branch") or "").strip() or None
-        paper_parent_run_id = str(research_state.get("paper_parent_run_id") or "").strip() or None
-        next_pending_slice_id = str(research_state.get("next_pending_slice_id") or "").strip() or None
-        try:
-            branch_summary = self.app.artifact_service.list_research_branches(quest_root)
-        except Exception:
-            branch_summary = {"branches": []}
-        try:
-            optimization_frontier = self.app.artifact_service.get_optimization_frontier(quest_root)
-        except Exception:
-            optimization_frontier = {"ok": False}
-        branch_summary_by_name = {
-            str(item.get("branch_name") or "").strip(): item
-            for item in (branch_summary.get("branches") or [])
-            if str(item.get("branch_name") or "").strip()
-        }
-        frontier_payload = (
-            dict(optimization_frontier.get("optimization_frontier") or {})
-            if isinstance(optimization_frontier, dict)
-            and isinstance(optimization_frontier.get("optimization_frontier"), dict)
-            else {}
-        )
-        best_branch_name = str(((frontier_payload.get("best_branch") or {}) if isinstance(frontier_payload.get("best_branch"), dict) else {}).get("branch_name") or "").strip() or None
-        stagnant_branch_names = {
-            str(item.get("branch_name") or "").strip()
-            for item in (frontier_payload.get("stagnant_branches") or [])
-            if isinstance(item, dict) and str(item.get("branch_name") or "").strip()
-        }
-        fusion_candidate_names = {
-            str(item.get("branch_name") or "").strip()
-            for item in (frontier_payload.get("fusion_candidates") or [])
-            if isinstance(item, dict) and str(item.get("branch_name") or "").strip()
-        }
-        candidate_count_by_branch: dict[str, int] = {}
-        for item in frontier_payload.get("implementation_candidates") or []:
-            if not isinstance(item, dict):
-                continue
-            branch_name = str(item.get("branch") or "").strip()
-            if not branch_name:
-                continue
-            candidate_count_by_branch[branch_name] = candidate_count_by_branch.get(branch_name, 0) + 1
-        active_campaign = {}
-        if active_analysis_campaign_id:
-            try:
-                active_campaign = self.app.artifact_service.get_analysis_campaign(
-                    quest_root,
-                    campaign_id=active_analysis_campaign_id,
-                )
-            except Exception:
-                active_campaign = {}
-        campaign_parent_branch = (
-            str(active_campaign.get("parent_branch") or "").strip() or None
-            if isinstance(active_campaign, dict)
-            else None
-        )
-        campaign_paper_line_branch = (
-            str(active_campaign.get("paper_line_branch") or "").strip() or None
-            if isinstance(active_campaign, dict)
-            else None
-        )
-        campaign_slices = [
-            dict(item)
-            for item in ((active_campaign or {}).get("slices") or [])
-            if isinstance(item, dict)
-        ]
-        campaign_total_slices = len(campaign_slices)
-        campaign_completed_slices = sum(
-            1 for item in campaign_slices if str(item.get("status") or "").strip().lower() == "completed"
-        )
-        slice_by_branch = {
-            str(item.get("branch") or "").strip(): item
-            for item in campaign_slices
-            if str(item.get("branch") or "").strip()
-        }
-
-        def resolve_workflow_state(ref: str, summary: dict[str, object] | None) -> dict[str, object]:
-            branch_kind = self.app.artifact_service._branch_kind_from_name(ref)
-            has_main_result = bool((summary or {}).get("has_main_result"))
-            workflow_state: dict[str, object] = {
-                "analysis_state": "none",
-                "writing_state": "not_ready",
-                "analysis_campaign_id": active_analysis_campaign_id,
-                "total_slices": campaign_total_slices or None,
-                "completed_slices": campaign_completed_slices or None,
-                "next_pending_slice_id": next_pending_slice_id,
-                "paper_parent_branch": paper_parent_branch,
-                "paper_parent_run_id": paper_parent_run_id,
-                "status_reason": None,
-            }
-            if branch_kind == "analysis":
-                slice_entry = slice_by_branch.get(ref)
-                slice_status = str((slice_entry or {}).get("status") or "pending").strip().lower() or "pending"
-                if slice_status == "completed":
-                    workflow_state["analysis_state"] = "completed"
-                    workflow_state["status_reason"] = "Analysis slice completed."
-                elif ref == current_workspace_branch or str((slice_entry or {}).get("slice_id") or "").strip() == next_pending_slice_id:
-                    workflow_state["analysis_state"] = "active"
-                    workflow_state["status_reason"] = (
-                        f"Analysis {campaign_completed_slices}/{campaign_total_slices} done"
-                        if campaign_total_slices
-                        else "Analysis slice active."
-                    )
-                else:
-                    workflow_state["analysis_state"] = "pending"
-                    workflow_state["status_reason"] = "Analysis slice pending."
-                return workflow_state
-            if branch_kind == "paper":
-                if campaign_paper_line_branch and ref == campaign_paper_line_branch and next_pending_slice_id is not None:
-                    workflow_state["analysis_state"] = "active"
-                    workflow_state["writing_state"] = "blocked_by_analysis"
-                    workflow_state["status_reason"] = (
-                        f"Analysis {campaign_completed_slices}/{campaign_total_slices} done"
-                        + (f" · next: {next_pending_slice_id}" if next_pending_slice_id else "")
-                    )
-                    return workflow_state
-                if ref == current_workspace_branch and workspace_mode == "paper":
-                    workflow_state["writing_state"] = "completed" if active_anchor == "finalize" else "active"
-                    workflow_state["status_reason"] = (
-                        "Writing finalized." if active_anchor == "finalize" else "Writing workspace active."
-                    )
-                else:
-                    workflow_state["writing_state"] = "ready"
-                    workflow_state["status_reason"] = "Writing workspace prepared."
-                return workflow_state
-            if campaign_parent_branch and not campaign_paper_line_branch and ref == campaign_parent_branch:
-                workflow_state["analysis_state"] = "completed" if next_pending_slice_id is None else "active"
-                if has_main_result:
-                    workflow_state["writing_state"] = "ready" if next_pending_slice_id is None else "blocked_by_analysis"
-                workflow_state["status_reason"] = (
-                    "Analysis complete. Ready for writing."
-                    if next_pending_slice_id is None
-                    else (
-                        f"Analysis {campaign_completed_slices}/{campaign_total_slices} done"
-                        + (f" · next: {next_pending_slice_id}" if next_pending_slice_id else "")
-                    )
-                )
-                return workflow_state
-            if has_main_result:
-                workflow_state["writing_state"] = "ready"
-                workflow_state["status_reason"] = "Main experiment recorded. Ready for writing."
-                return workflow_state
-            workflow_state["status_reason"] = "Awaiting main experiment result."
-            return workflow_state
-
-        for node in payload.get("nodes", []):
-            ref = str(node.get("ref") or "").strip()
-            if not ref:
-                continue
-            summary = branch_summary_by_name.get(ref)
-            node["active_workspace"] = ref == active_workspace_branch
-            node["research_head"] = ref == research_head_branch
-            node["workflow_state"] = resolve_workflow_state(ref, summary if isinstance(summary, dict) else None)
-            if not isinstance(summary, dict):
-                continue
-            node["branch_no"] = summary.get("branch_no")
-            node["idea_title"] = summary.get("idea_title")
-            node["idea_problem"] = summary.get("idea_problem")
-            node["next_target"] = summary.get("next_target")
-            node["lineage_intent"] = summary.get("lineage_intent")
-            node["parent_branch"] = summary.get("parent_branch")
-            node["foundation_ref"] = summary.get("foundation_ref")
-            node["foundation_reason"] = summary.get("foundation_reason")
-            node["idea_md_path"] = summary.get("idea_md_path")
-            node["idea_draft_path"] = summary.get("idea_draft_path")
-            node["latest_main_experiment"] = summary.get("latest_main_experiment")
-            node["experiment_count"] = summary.get("experiment_count")
-            node["has_main_result"] = summary.get("has_main_result")
-            node["optimization_mode"] = frontier_payload.get("mode")
-            node["optimization_best"] = ref == best_branch_name
-            node["optimization_stagnant"] = ref in stagnant_branch_names
-            node["optimization_fusion_candidate"] = ref in fusion_candidate_names
-            node["optimization_candidate_count"] = candidate_count_by_branch.get(ref, 0)
-        return payload
+        return self.app.artifact_service.get_research_canvas(quest_root)
 
     def git_canvas(self, quest_id: str) -> dict:
         quest_root = self._fresh_quest_service()._quest_root(quest_id)
@@ -1714,6 +2039,39 @@ npm --prefix src/ui run build</pre>
         except FileNotFoundError:
             return 404, {"ok": False, "message": f"Unknown quest `{quest_id}`."}
 
+    def chat_upload_create(self, quest_id: str, body: dict) -> dict:
+        file_name = str(body.get("file_name") or "").strip()
+        mime_type = str(body.get("mime_type") or "").strip()
+        content_base64 = str(body.get("content_base64") or "").strip()
+        draft_id = str(body.get("draft_id") or "").strip() or None
+        if not file_name:
+            return {"ok": False, "message": "`file_name` is required."}
+        if not content_base64:
+            return {"ok": False, "message": "`content_base64` is required."}
+        try:
+            content = base64.b64decode(content_base64, validate=True)
+        except (ValueError, TypeError):
+            return {"ok": False, "message": "Invalid `content_base64` payload."}
+        try:
+            return self.app.quest_service.save_chat_attachment_draft(
+                quest_id,
+                file_name=file_name,
+                mime_type=mime_type or None,
+                content=content,
+                draft_id=draft_id,
+            )
+        except FileNotFoundError:
+            return 404, {"ok": False, "message": f"Unknown quest `{quest_id}`."}
+
+    def chat_upload_delete(self, quest_id: str, draft_id: str, body: dict | None = None) -> dict:
+        try:
+            return self.app.quest_service.delete_chat_attachment_draft(
+                quest_id,
+                draft_id=draft_id,
+            )
+        except FileNotFoundError:
+            return 404, {"ok": False, "message": f"Unknown quest `{quest_id}`."}
+
     def latex_init(self, project_id: str, body: dict) -> dict:
         return self.app.latex_service.init_project(
             project_id,
@@ -1767,17 +2125,35 @@ npm --prefix src/ui run build</pre>
 
     def chat(self, quest_id: str, body: dict) -> dict:
         text = body.get("text", "").strip()
-        if not text:
+        attachment_draft_ids = [
+            str(item or "").strip()
+            for item in (body.get("attachment_draft_ids") or [])
+            if str(item or "").strip()
+        ]
+        if not text and not attachment_draft_ids:
             return {"ok": False, "message": "Empty message."}
         source = body.get("source", "api")
         self.app.sessions.bind(quest_id, source)
-        payload = self.app.submit_user_message(
-            quest_id,
-            text=text,
-            source=source,
-            reply_to_interaction_id=body.get("reply_to_interaction_id"),
-            client_message_id=body.get("client_message_id"),
-        )
+        try:
+            if attachment_draft_ids:
+                payload = self.app.submit_web_user_message(
+                    quest_id,
+                    text=text,
+                    source=source,
+                    attachment_draft_ids=attachment_draft_ids,
+                    reply_to_interaction_id=body.get("reply_to_interaction_id"),
+                    client_message_id=body.get("client_message_id"),
+                )
+            else:
+                payload = self.app.submit_user_message(
+                    quest_id,
+                    text=text,
+                    source=source,
+                    reply_to_interaction_id=body.get("reply_to_interaction_id"),
+                    client_message_id=body.get("client_message_id"),
+                )
+        except FileNotFoundError as exc:
+            return 404, {"ok": False, "message": str(exc)}
         return {
             "ok": True,
             "ack": f"Received for {quest_id}. Stored and queued for execution.",
@@ -1962,8 +2338,22 @@ npm --prefix src/ui run build</pre>
         config = self.app.config_manager.load_named("config")
         runners = self.app.config_manager.load_runners_config()
         snapshot = self.app.quest_service.snapshot(quest_id)
-        runner_name = str(body.get("runner") or snapshot.get("runner") or config.get("default_runner", "codex")).strip().lower()
-        runner_cfg = runners.get(runner_name, {})
+        requested_runner = str(body.get("runner") or "").strip().lower()
+        snapshot_runner = str(snapshot.get("runner") or snapshot.get("default_runner") or "").strip().lower()
+        configured_runner = str(config.get("default_runner", "codex")).strip().lower() or "codex"
+        candidate_runners = [requested_runner, snapshot_runner, configured_runner, "codex"]
+        runner_name = configured_runner
+        runner_cfg = runners.get(runner_name, {}) if isinstance(runners.get(runner_name), dict) else {}
+        for candidate in candidate_runners:
+            normalized = str(candidate or "").strip().lower()
+            if not normalized:
+                continue
+            current_cfg = runners.get(normalized, {}) if isinstance(runners.get(normalized), dict) else {}
+            if current_cfg.get("enabled") is False:
+                continue
+            runner_name = normalized
+            runner_cfg = current_cfg
+            break
         if runner_cfg.get("enabled") is False:
             return {
                 "ok": False,
@@ -2162,6 +2552,10 @@ npm --prefix src/ui run build</pre>
             return {"ok": False, "summary": "Config test requires `name` and `content`."}
         return self.app.config_manager.test_named_text(body["name"], body["content"], live=bool(body.get("live", True)))
 
+    def config_deepxiv_test(self, body: dict | None = None) -> dict:
+        payload = body.get("structured") if isinstance((body or {}).get("structured"), dict) else None
+        return self.app.config_manager.test_deepxiv_payload(payload)
+
     def asset(self, asset_path: str) -> tuple[int, dict, bytes]:
         candidate_roots = [
             self.app.repo_root / "src" / "ui" / "public" / "assets",
@@ -2184,6 +2578,12 @@ npm --prefix src/ui run build</pre>
             return {}
         return parse_qs(path.split("?", 1)[1], keep_blank_values=True)
 
+
+    @staticmethod
+    def _locale_from_path(path: str, *, default: str = "en") -> str:
+        query = ApiHandlers.parse_query(path)
+        locale = ((query.get("locale") or [default])[0] or default).strip().lower()
+        return "zh" if locale.startswith("zh") else "en"
 
     @staticmethod
     def parse_body(raw: bytes) -> dict:

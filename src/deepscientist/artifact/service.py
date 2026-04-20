@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from ..arxiv_library import ArxivLibraryService
+from ..benchstore import BenchStoreService
 from ..bridges import register_builtin_connector_bridges
 from ..channels import get_channel_factory, register_builtin_channels
 from ..config import ConfigManager
@@ -109,6 +110,7 @@ class ArtifactService:
         self.home = home
         self.baselines = BaselineRegistry(home)
         self.quest_service = QuestService(home)
+        self.benchstore_service = BenchStoreService(home, repo_root=repo_root())
         self.arxiv_library = ArxivLibraryService()
         self._optimization_frontier_cache_lock = threading.Lock()
         self._optimization_frontier_cache: dict[str, dict[str, Any]] = {}
@@ -5124,6 +5126,480 @@ class ArtifactService:
             "default_reply_interaction_id": str(snapshot.get("default_reply_interaction_id") or "").strip() or None,
         }
 
+    @staticmethod
+    def _node_activation_ref(node: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not isinstance(node, dict):
+            return None
+        ref = str(node.get("ref") or "").strip()
+        if not ref:
+            return None
+        return {
+            "ref": ref,
+            "branch_kind": str(node.get("branch_kind") or "").strip() or None,
+            "idea_id": str(node.get("idea_id") or "").strip() or None,
+            "run_id": str(
+                node.get("run_id")
+                or ((node.get("latest_main_experiment") or {}) if isinstance(node.get("latest_main_experiment"), dict) else {}).get("run_id")
+                or ((node.get("latest_result") or {}) if isinstance(node.get("latest_result"), dict) else {}).get("run_id")
+                or ""
+            ).strip() or None,
+            "paper_line_id": str(node.get("paper_line_id") or "").strip() or None,
+            "worktree_root": str(node.get("worktree_root") or "").strip() or None,
+            "compare_base": str(node.get("compare_base") or "").strip() or None,
+            "head_commit": str(node.get("head") or "").strip() or None,
+        }
+
+    @staticmethod
+    def _node_history_payload(
+        node: dict[str, Any] | None,
+        *,
+        node_by_ref: dict[str, dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        if not isinstance(node, dict):
+            return None
+        ref = str(node.get("ref") or "").strip()
+        if not ref:
+            return None
+        parent_chain: list[str] = []
+        cursor = str(node.get("parent_ref") or "").strip() or None
+        seen: set[str] = {ref}
+        while cursor and cursor not in seen and len(parent_chain) < 12:
+            parent_chain.append(cursor)
+            seen.add(cursor)
+            parent_node = node_by_ref.get(cursor)
+            cursor = str((parent_node or {}).get("parent_ref") or "").strip() or None
+        source_refs = [
+            item
+            for item in [
+                str(node.get("parent_ref") or "").strip() or None,
+                str(node.get("parent_branch") or "").strip() or None,
+                str(node.get("source_branch") or "").strip() or None,
+                str(node.get("compare_base") or "").strip() or None,
+                str(((node.get("foundation_ref") or {}) if isinstance(node.get("foundation_ref"), dict) else {}).get("branch") or "").strip() or None,
+            ]
+            if item
+        ]
+        deduped_source_refs: list[str] = []
+        seen_source: set[str] = set()
+        for item in source_refs:
+            if item in seen_source:
+                continue
+            seen_source.add(item)
+            deduped_source_refs.append(item)
+        return {
+            "current_ref": ref,
+            "branch_no": str(node.get("branch_no") or "").strip() or None,
+            "branch_kind": str(node.get("branch_kind") or "").strip() or None,
+            "tier": str(node.get("tier") or "").strip() or None,
+            "parent_ref": str(node.get("parent_ref") or "").strip() or None,
+            "ancestor_refs": parent_chain,
+            "compare_base": str(node.get("compare_base") or "").strip() or None,
+            "source_refs": deduped_source_refs,
+            "idea_id": str(node.get("idea_id") or "").strip() or None,
+            "run_id": str(
+                node.get("run_id")
+                or ((node.get("latest_main_experiment") or {}) if isinstance(node.get("latest_main_experiment"), dict) else {}).get("run_id")
+                or ((node.get("latest_result") or {}) if isinstance(node.get("latest_result"), dict) else {}).get("run_id")
+                or ""
+            ).strip() or None,
+            "paper_line_id": str(node.get("paper_line_id") or "").strip() or None,
+            "foundation_ref": dict(node.get("foundation_ref") or {}) if isinstance(node.get("foundation_ref"), dict) else None,
+            "latest_metric": dict(node.get("latest_metric") or {}) if isinstance(node.get("latest_metric"), dict) else None,
+            "latest_result_summary": str(
+                node.get("latest_summary")
+                or ((node.get("latest_result") or {}) if isinstance(node.get("latest_result"), dict) else {}).get("summary")
+                or ""
+            ).strip() or None,
+            "workflow_state": dict(node.get("workflow_state") or {}) if isinstance(node.get("workflow_state"), dict) else None,
+        }
+
+    @staticmethod
+    def _recommended_activation_ref(
+        *,
+        current_node: dict[str, Any] | None,
+        research_head_node: dict[str, Any] | None,
+        current_ref: dict[str, Any] | None,
+        research_head_ref: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if current_ref is None and research_head_ref is None:
+            return None
+        if current_ref and research_head_ref and str(current_ref.get("ref") or "") == str(research_head_ref.get("ref") or ""):
+            return {
+                **dict(current_ref),
+                "reason": "Current workspace ref and research head already agree; continue on the same durable node.",
+                "why_now": "No branch switch is needed unless a later route decision explicitly changes foundation.",
+            }
+        if current_ref:
+            branch_kind = str(((current_node or {}).get("branch_kind") or current_ref.get("branch_kind") or "")).strip().lower()
+            reason = (
+                "The runtime's active workspace differs from the newest durable research head; prefer the active workspace for immediate continuation and branch-local actions."
+            )
+            if branch_kind == "paper":
+                reason = "The active workspace is the paper line; continue there for writing/finalize work unless a route decision explicitly reactivates another branch."
+            elif branch_kind == "analysis":
+                reason = "The active workspace is an analysis branch; continue there for slice-local work unless the analysis route is being closed or superseded."
+            return {
+                **dict(current_ref),
+                "reason": reason,
+                "why_now": "This ref is the safest activation target for immediate continuation because it matches the runtime's current workspace.",
+                "alternate_research_head_ref": dict(research_head_ref or {}),
+            }
+        return {
+            **dict(research_head_ref or {}),
+            "reason": "No active workspace ref is available, so fall back to the newest durable research head.",
+            "why_now": "This is the best available durable activation target when runtime workspace state is incomplete.",
+        }
+
+    def _resolve_canvas_workflow_state(
+        self,
+        *,
+        ref: str,
+        summary: dict[str, Any] | None,
+        active_anchor: str,
+        active_analysis_campaign_id: str | None,
+        current_workspace_branch: str | None,
+        workspace_mode: str,
+        paper_parent_branch: str | None,
+        paper_parent_run_id: str | None,
+        next_pending_slice_id: str | None,
+        campaign_parent_branch: str | None,
+        campaign_paper_line_branch: str | None,
+        campaign_total_slices: int,
+        campaign_completed_slices: int,
+        slice_by_branch: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        branch_kind = self._branch_kind_from_name(ref)
+        has_main_result = bool((summary or {}).get("has_main_result"))
+        workflow_state: dict[str, Any] = {
+            "analysis_state": "none",
+            "writing_state": "not_ready",
+            "analysis_campaign_id": active_analysis_campaign_id,
+            "total_slices": campaign_total_slices or None,
+            "completed_slices": campaign_completed_slices or None,
+            "next_pending_slice_id": next_pending_slice_id,
+            "paper_parent_branch": paper_parent_branch,
+            "paper_parent_run_id": paper_parent_run_id,
+            "status_reason": None,
+        }
+        if branch_kind == "analysis":
+            slice_entry = slice_by_branch.get(ref)
+            slice_status = str((slice_entry or {}).get("status") or "pending").strip().lower() or "pending"
+            if slice_status == "completed":
+                workflow_state["analysis_state"] = "completed"
+                workflow_state["status_reason"] = "Analysis slice completed."
+            elif ref == current_workspace_branch or str((slice_entry or {}).get("slice_id") or "").strip() == next_pending_slice_id:
+                workflow_state["analysis_state"] = "active"
+                workflow_state["status_reason"] = (
+                    f"Analysis {campaign_completed_slices}/{campaign_total_slices} done"
+                    if campaign_total_slices
+                    else "Analysis slice active."
+                )
+            else:
+                workflow_state["analysis_state"] = "pending"
+                workflow_state["status_reason"] = "Analysis slice pending."
+            return workflow_state
+        if branch_kind == "paper":
+            if campaign_paper_line_branch and ref == campaign_paper_line_branch and next_pending_slice_id is not None:
+                workflow_state["analysis_state"] = "active"
+                workflow_state["writing_state"] = "blocked_by_analysis"
+                workflow_state["status_reason"] = (
+                    f"Analysis {campaign_completed_slices}/{campaign_total_slices} done"
+                    + (f" · next: {next_pending_slice_id}" if next_pending_slice_id else "")
+                )
+                return workflow_state
+            if ref == current_workspace_branch and workspace_mode == "paper":
+                workflow_state["writing_state"] = "completed" if active_anchor == "finalize" else "active"
+                workflow_state["status_reason"] = (
+                    "Writing finalized." if active_anchor == "finalize" else "Writing workspace active."
+                )
+            else:
+                workflow_state["writing_state"] = "ready"
+                workflow_state["status_reason"] = "Writing workspace prepared."
+            return workflow_state
+        if campaign_parent_branch and not campaign_paper_line_branch and ref == campaign_parent_branch:
+            workflow_state["analysis_state"] = "completed" if next_pending_slice_id is None else "active"
+            if has_main_result:
+                workflow_state["writing_state"] = "ready" if next_pending_slice_id is None else "blocked_by_analysis"
+            workflow_state["status_reason"] = (
+                "Analysis complete. Ready for writing."
+                if next_pending_slice_id is None
+                else (
+                    f"Analysis {campaign_completed_slices}/{campaign_total_slices} done"
+                    + (f" · next: {next_pending_slice_id}" if next_pending_slice_id else "")
+                )
+            )
+            return workflow_state
+        if has_main_result:
+            workflow_state["writing_state"] = "ready"
+            workflow_state["status_reason"] = "Main experiment recorded. Ready for writing."
+            return workflow_state
+        workflow_state["status_reason"] = "Awaiting main experiment result."
+        return workflow_state
+
+    def get_research_canvas(self, quest_root: Path) -> dict[str, Any]:
+        quest_id = self._quest_id(quest_root)
+        payload = self.quest_service.git_branch_canvas(quest_id)
+        research_state = self.quest_service.read_research_state(quest_root)
+        active_workspace_branch = str(research_state.get("current_workspace_branch") or "").strip() or None
+        research_head_branch = str(research_state.get("research_head_branch") or "").strip() or None
+        payload["active_workspace_ref"] = active_workspace_branch
+        payload["research_head_ref"] = research_head_branch
+        payload["workspace_mode"] = str(research_state.get("workspace_mode") or "quest").strip() or "quest"
+        projection_state = str(((payload or {}).get("projection_status") or {}).get("state") or "").strip().lower()
+        if projection_state and projection_state != "ready" and not (payload.get("nodes") or []):
+            payload["current_node"] = None
+            payload["research_head_node"] = None
+            payload["activation_refs"] = {"current": None, "research_head": None}
+            payload["node_count"] = 0
+            payload["edge_count"] = 0
+            return payload
+
+        quest_data = self.quest_service.read_quest_yaml(quest_root)
+        active_anchor = str(quest_data.get("active_anchor") or "").strip().lower()
+        active_analysis_campaign_id = str(research_state.get("active_analysis_campaign_id") or "").strip() or None
+        current_workspace_branch = str(research_state.get("current_workspace_branch") or "").strip() or None
+        workspace_mode = str(research_state.get("workspace_mode") or "").strip().lower() or "quest"
+        paper_parent_branch = str(research_state.get("paper_parent_branch") or "").strip() or None
+        paper_parent_run_id = str(research_state.get("paper_parent_run_id") or "").strip() or None
+        next_pending_slice_id = str(research_state.get("next_pending_slice_id") or "").strip() or None
+        try:
+            branch_summary = self.list_research_branches(quest_root)
+        except Exception:
+            branch_summary = {"branches": []}
+        try:
+            optimization_frontier = self.get_optimization_frontier(quest_root)
+        except Exception:
+            optimization_frontier = {"ok": False}
+        branch_summary_by_name = {
+            str(item.get("branch_name") or "").strip(): item
+            for item in (branch_summary.get("branches") or [])
+            if isinstance(item, dict) and str(item.get("branch_name") or "").strip()
+        }
+        frontier_payload = (
+            dict(optimization_frontier.get("optimization_frontier") or {})
+            if isinstance(optimization_frontier, dict)
+            and isinstance(optimization_frontier.get("optimization_frontier"), dict)
+            else {}
+        )
+        best_branch_name = str(((frontier_payload.get("best_branch") or {}) if isinstance(frontier_payload.get("best_branch"), dict) else {}).get("branch_name") or "").strip() or None
+        stagnant_branch_names = {
+            str(item.get("branch_name") or "").strip()
+            for item in (frontier_payload.get("stagnant_branches") or [])
+            if isinstance(item, dict) and str(item.get("branch_name") or "").strip()
+        }
+        fusion_candidate_names = {
+            str(item.get("branch_name") or "").strip()
+            for item in (frontier_payload.get("fusion_candidates") or [])
+            if isinstance(item, dict) and str(item.get("branch_name") or "").strip()
+        }
+        candidate_count_by_branch: dict[str, int] = {}
+        for item in frontier_payload.get("implementation_candidates") or []:
+            if not isinstance(item, dict):
+                continue
+            branch_name = str(item.get("branch") or "").strip()
+            if not branch_name:
+                continue
+            candidate_count_by_branch[branch_name] = candidate_count_by_branch.get(branch_name, 0) + 1
+        active_campaign: dict[str, Any] = {}
+        if active_analysis_campaign_id:
+            try:
+                active_campaign = self.get_analysis_campaign(
+                    quest_root,
+                    campaign_id=active_analysis_campaign_id,
+                )
+            except Exception:
+                active_campaign = {}
+        campaign_parent_branch = str(active_campaign.get("parent_branch") or "").strip() or None if isinstance(active_campaign, dict) else None
+        campaign_paper_line_branch = str(active_campaign.get("paper_line_branch") or "").strip() or None if isinstance(active_campaign, dict) else None
+        campaign_slices = [dict(item) for item in ((active_campaign or {}).get("slices") or []) if isinstance(item, dict)]
+        campaign_total_slices = len(campaign_slices)
+        campaign_completed_slices = sum(1 for item in campaign_slices if str(item.get("status") or "").strip().lower() == "completed")
+        slice_by_branch = {
+            str(item.get("branch") or "").strip(): item
+            for item in campaign_slices
+            if str(item.get("branch") or "").strip()
+        }
+
+        for node in payload.get("nodes", []):
+            ref = str(node.get("ref") or "").strip()
+            if not ref:
+                continue
+            summary = branch_summary_by_name.get(ref)
+            node["active_workspace"] = ref == active_workspace_branch
+            node["research_head"] = ref == research_head_branch
+            node["workflow_state"] = self._resolve_canvas_workflow_state(
+                ref=ref,
+                summary=summary if isinstance(summary, dict) else None,
+                active_anchor=active_anchor,
+                active_analysis_campaign_id=active_analysis_campaign_id,
+                current_workspace_branch=current_workspace_branch,
+                workspace_mode=workspace_mode,
+                paper_parent_branch=paper_parent_branch,
+                paper_parent_run_id=paper_parent_run_id,
+                next_pending_slice_id=next_pending_slice_id,
+                campaign_parent_branch=campaign_parent_branch,
+                campaign_paper_line_branch=campaign_paper_line_branch,
+                campaign_total_slices=campaign_total_slices,
+                campaign_completed_slices=campaign_completed_slices,
+                slice_by_branch=slice_by_branch,
+            )
+            if not isinstance(summary, dict):
+                continue
+            node["branch_no"] = summary.get("branch_no")
+            node["idea_title"] = summary.get("idea_title")
+            node["idea_problem"] = summary.get("idea_problem")
+            node["next_target"] = summary.get("next_target")
+            node["lineage_intent"] = summary.get("lineage_intent")
+            node["parent_branch"] = summary.get("parent_branch")
+            node["foundation_ref"] = summary.get("foundation_ref")
+            node["foundation_reason"] = summary.get("foundation_reason")
+            node["idea_md_path"] = summary.get("idea_md_path")
+            node["idea_draft_path"] = summary.get("idea_draft_path")
+            node["latest_main_experiment"] = summary.get("latest_main_experiment")
+            node["experiment_count"] = summary.get("experiment_count")
+            node["has_main_result"] = summary.get("has_main_result")
+            node["optimization_mode"] = frontier_payload.get("mode")
+            node["optimization_best"] = ref == best_branch_name
+            node["optimization_stagnant"] = ref in stagnant_branch_names
+            node["optimization_fusion_candidate"] = ref in fusion_candidate_names
+            node["optimization_candidate_count"] = candidate_count_by_branch.get(ref, 0)
+
+        node_by_ref = {
+            str(item.get("ref") or "").strip(): item
+            for item in (payload.get("nodes") or [])
+            if isinstance(item, dict) and str(item.get("ref") or "").strip()
+        }
+        current_node_ref = active_workspace_branch or str(payload.get("current_ref") or "").strip() or None
+        research_head_ref = research_head_branch or current_node_ref
+        current_node = node_by_ref.get(current_node_ref or "")
+        research_head_node = node_by_ref.get(research_head_ref or "")
+        payload["current_node"] = current_node
+        payload["research_head_node"] = research_head_node
+        current_activation_ref = self._node_activation_ref(current_node)
+        research_head_activation_ref = self._node_activation_ref(research_head_node)
+        payload["activation_refs"] = {
+            "current": current_activation_ref,
+            "research_head": research_head_activation_ref,
+            "recommended": self._recommended_activation_ref(
+                current_node=current_node,
+                research_head_node=research_head_node,
+                current_ref=current_activation_ref,
+                research_head_ref=research_head_activation_ref,
+            ),
+        }
+        payload["node_history"] = {
+            "current": self._node_history_payload(current_node, node_by_ref=node_by_ref),
+            "research_head": self._node_history_payload(research_head_node, node_by_ref=node_by_ref),
+        }
+        payload["node_count"] = len(payload.get("nodes") or [])
+        payload["edge_count"] = len(payload.get("edges") or [])
+        return payload
+
+    def get_research_map_status(
+        self,
+        quest_root: Path,
+        *,
+        detail: str = "summary",
+        locale: str = "zh",
+    ) -> dict[str, Any]:
+        normalized_detail = str(detail or "summary").strip().lower() or "summary"
+        if normalized_detail not in {"summary", "full"}:
+            raise ValueError("get_research_map_status detail must be `summary` or `full`.")
+        normalized_locale = str(locale or "zh").strip().lower() or "zh"
+        quest_id = self._quest_id(quest_root)
+        canvas = self.get_research_canvas(quest_root)
+        git_canvas = self.quest_service.git_commit_canvas(quest_id)
+        runtime_refs = self.resolve_runtime_refs(quest_root)
+        quest_state = self.get_quest_state(
+            quest_root,
+            detail="full" if normalized_detail == "full" else "summary",
+        )
+        global_status = self.get_global_status(
+            quest_root,
+            detail="full" if normalized_detail == "full" else "brief",
+            locale=normalized_locale,
+        )
+        scoreboard = self.refresh_method_scoreboard(quest_root)
+        scoreboard_payload = dict(scoreboard.get("scoreboard") or {}) if isinstance(scoreboard.get("scoreboard"), dict) else {}
+        current_node = dict(canvas.get("current_node") or {}) if isinstance(canvas.get("current_node"), dict) else None
+        head_node = dict(canvas.get("research_head_node") or {}) if isinstance(canvas.get("research_head_node"), dict) else None
+        quest_state_payload = dict(quest_state.get("quest_state") or {}) if isinstance(quest_state.get("quest_state"), dict) else {}
+        global_status_payload = dict(global_status.get("global_status") or {}) if isinstance(global_status.get("global_status"), dict) else {}
+
+        summary_zh = (
+            f"当前节点进展以 `{str((canvas.get('active_workspace_ref') or canvas.get('current_ref') or 'none'))}` 为主。"
+            f" 研究头是 `{str((canvas.get('research_head_ref') or 'none'))}`。"
+            f" 当前阶段 `{str(quest_state_payload.get('active_anchor') or 'unknown')}`。"
+            f"{(' 当前 incumbent 是 `' + str(scoreboard_payload.get('incumbent_title') or '') + '`。' if str(scoreboard_payload.get('incumbent_title') or '').strip() else '')}"
+        ).strip()
+        summary_en = (
+            f"Current node progress is anchored on `{str((canvas.get('active_workspace_ref') or canvas.get('current_ref') or 'none'))}`."
+            f" Research head: `{str((canvas.get('research_head_ref') or 'none'))}`."
+            f" Current stage: `{str(quest_state_payload.get('active_anchor') or 'unknown')}`."
+            f"{(' Current incumbent: `' + str(scoreboard_payload.get('incumbent_title') or '') + '`.' if str(scoreboard_payload.get('incumbent_title') or '').strip() else '')}"
+        ).strip()
+
+        payload: dict[str, Any] = {
+            "quest_id": quest_id,
+            "title": quest_state_payload.get("title"),
+            "summary_text": summary_zh if normalized_locale.startswith("zh") else summary_en,
+            "usage_notes": {
+                "summary_mode": "Use detail='summary' for ordinary recovery, status answers, and branch-switch checks.",
+                "full_mode": "Use detail='full' only when you need the full node list, edge payload, or optimization frontier details.",
+                "activation_rule": "Prefer `recommended_activation_ref` when reactivating a durable node unless a later route decision explicitly points elsewhere.",
+                "dedupe_rule": "If current node, research head, and blocker/route state did not change, continue the current action instead of repeatedly re-reading the research map.",
+            },
+            "active_ids": {
+                "active_idea_id": runtime_refs.get("active_idea_id"),
+                "latest_main_run_id": runtime_refs.get("latest_main_run_id"),
+                "active_analysis_campaign_id": runtime_refs.get("active_analysis_campaign_id"),
+                "selected_outline_ref": runtime_refs.get("selected_outline_ref"),
+            },
+            "git": {
+                "head_commit": canvas.get("head"),
+                "current_ref": canvas.get("current_ref"),
+                "active_workspace_ref": canvas.get("active_workspace_ref"),
+                "research_head_ref": canvas.get("research_head_ref"),
+                "workspace_mode": canvas.get("workspace_mode"),
+            },
+            "activation_refs": dict(canvas.get("activation_refs") or {}),
+            "current_node": current_node,
+            "research_head_node": head_node,
+            "node_history": dict(canvas.get("node_history") or {}),
+            "recommended_activation_ref": dict(((canvas.get("activation_refs") or {}) if isinstance(canvas.get("activation_refs"), dict) else {}).get("recommended") or {}) or None,
+            "projection_status": {
+                "canvas": canvas.get("projection_status"),
+                "git_canvas": git_canvas.get("projection_status"),
+            },
+            "quest_state": quest_state_payload,
+            "runtime_refs": runtime_refs,
+            "global_status": global_status_payload,
+            "method_scoreboard": scoreboard_payload,
+            "canvas_summary": {
+                "node_count": int(canvas.get("node_count") or len(canvas.get("nodes") or [])),
+                "edge_count": int(canvas.get("edge_count") or len(canvas.get("edges") or [])),
+                "default_ref": canvas.get("default_ref"),
+                "views": canvas.get("views"),
+            },
+            "git_canvas_summary": {
+                "node_count": len(git_canvas.get("nodes") or []),
+                "edge_count": len(git_canvas.get("edges") or []),
+                "head": git_canvas.get("head"),
+                "current_ref": git_canvas.get("current_ref"),
+            },
+        }
+        if normalized_detail == "full":
+            payload["canvas"] = canvas
+            payload["git_canvas"] = git_canvas
+            payload["branch_summary"] = self.list_research_branches(quest_root)
+            payload["optimization_frontier"] = self.get_optimization_frontier(quest_root)
+        return {
+            "ok": True,
+            "detail": normalized_detail,
+            "locale": normalized_locale,
+            "research_map_status": payload,
+        }
+
     def get_paper_contract_health(
         self,
         quest_root: Path,
@@ -5334,6 +5810,116 @@ class ArtifactService:
             "detail": normalized_detail,
             "locale": normalized_locale,
             "global_status": payload,
+        }
+
+    def get_benchstore_catalog(
+        self,
+        quest_root: Path,
+        *,
+        detail: str = "summary",
+    ) -> dict[str, Any]:
+        normalized_detail = str(detail or "summary").strip().lower() or "summary"
+        if normalized_detail not in {"summary", "full"}:
+            raise ValueError("get_benchstore_catalog detail must be `summary` or `full`.")
+        hardware_payload = read_json(self.home / "runtime" / "admin" / "cache" / "system_hardware.json", {})
+        catalog = self.benchstore_service.list_entries(hardware_payload=hardware_payload if isinstance(hardware_payload, dict) else {})
+        if normalized_detail == "full":
+            return catalog
+        items = catalog.get("items") if isinstance(catalog.get("items"), list) else []
+        summarized_items = []
+        for item in items[:20]:
+            if not isinstance(item, dict):
+                continue
+            summarized_items.append(
+                {
+                    "id": item.get("id"),
+                    "name": item.get("name"),
+                    "one_line": item.get("one_line"),
+                    "task_description": item.get("task_description"),
+                    "aisb_direction": item.get("aisb_direction"),
+                    "task_mode": item.get("task_mode"),
+                    "cost_band": item.get("cost_band"),
+                    "time_band": item.get("time_band"),
+                    "difficulty": item.get("difficulty"),
+                    "paper": item.get("paper"),
+                    "download": item.get("download"),
+                    "resources": item.get("resources"),
+                    "environment": item.get("environment"),
+                    "capability_tags": item.get("capability_tags"),
+                    "track_fit": item.get("track_fit"),
+                    "image_path": item.get("image_path"),
+                    "image_url": item.get("image_url"),
+                    "source_file": item.get("source_file"),
+                    "compatibility": item.get("compatibility"),
+                    "recommendation": item.get("recommendation"),
+                    "install_state": item.get("install_state"),
+                }
+            )
+        return {
+            "ok": True,
+            "device_summary": catalog.get("device_summary"),
+            "device_capacity": catalog.get("device_capacity"),
+            "filter_options": catalog.get("filter_options"),
+            "shelves": catalog.get("shelves"),
+            "items": summarized_items,
+            "total": catalog.get("total"),
+        }
+
+    def get_start_setup_context(self, quest_root: Path) -> dict[str, Any]:
+        quest_data = self.quest_service.read_quest_yaml(quest_root)
+        startup_contract = quest_data.get("startup_contract") if isinstance(quest_data.get("startup_contract"), dict) else {}
+        payload = startup_contract.get("start_setup_session") if isinstance(startup_contract, dict) and isinstance(startup_contract.get("start_setup_session"), dict) else {}
+        return {
+            "ok": True,
+            "quest_id": quest_root.name,
+            "start_setup_session": payload,
+            "suggested_form": payload.get("suggested_form") if isinstance(payload.get("suggested_form"), dict) else {},
+            "benchmark_context": payload.get("benchmark_context") if isinstance(payload.get("benchmark_context"), dict) else {},
+            "locale": payload.get("locale"),
+            "source": payload.get("source"),
+        }
+
+    def apply_start_setup_form_patch(
+        self,
+        quest_root: Path,
+        *,
+        form_patch: dict[str, Any],
+        message: str | None = None,
+    ) -> dict[str, Any]:
+        quest_data = self.quest_service.read_quest_yaml(quest_root)
+        startup_contract = (
+            dict(quest_data.get("startup_contract") or {})
+            if isinstance(quest_data.get("startup_contract"), dict)
+            else {}
+        )
+        start_setup_session = (
+            dict(startup_contract.get("start_setup_session") or {})
+            if isinstance(startup_contract.get("start_setup_session"), dict)
+            else {}
+        )
+        previous_suggested_form = (
+            dict(start_setup_session.get("suggested_form") or {})
+            if isinstance(start_setup_session.get("suggested_form"), dict)
+            else {}
+        )
+        next_suggested_form = {**previous_suggested_form, **dict(form_patch)}
+        start_setup_session["suggested_form"] = next_suggested_form
+        startup_contract["start_setup_session"] = start_setup_session
+        updated_quest = self.quest_service.update_startup_context(
+            quest_root,
+            startup_contract=startup_contract,
+        )
+        return {
+            "ok": True,
+            "quest_id": quest_root.name,
+            "form_patch": dict(form_patch),
+            "suggested_form": next_suggested_form,
+            "message": str(message or "").strip() or None,
+            "start_setup_session": (
+                updated_quest.get("startup_contract", {}).get("start_setup_session")
+                if isinstance(updated_quest.get("startup_contract"), dict)
+                else start_setup_session
+            ),
         }
 
     def refresh_method_scoreboard(self, quest_root: Path) -> dict[str, Any]:
@@ -11488,7 +12074,23 @@ class ArtifactService:
             for item in self._connector_bound_conversations(quest_id)
             if conversation_identity_key(item) in authoritative_keys
         ]
-        return self._dedupe_targets([*sources, *connector_sources])
+        connector_by_identity = {
+            conversation_identity_key(item): item
+            for item in connector_sources
+        }
+        resolved: list[str] = []
+        for item in sources:
+            identity = conversation_identity_key(item)
+            channel = self._normalize_channel_name(item)
+            if channel == "local":
+                resolved.append(item)
+                continue
+            resolved.append(connector_by_identity.get(identity, item))
+        for item in connector_sources:
+            identity = conversation_identity_key(item)
+            if identity not in {conversation_identity_key(existing) for existing in resolved}:
+                resolved.append(item)
+        return self._dedupe_targets(resolved)
 
     def _connector_bound_conversations(self, quest_id: str) -> list[str]:
         root = self.home / "logs" / "connectors"
@@ -11510,10 +12112,14 @@ class ArtifactService:
 
     def _connectors_config(self) -> dict[str, Any]:
         manager = ConfigManager(self.home)
+        raw_connectors = manager.load_named("connectors")
         connectors = manager.load_named_normalized("connectors")
         for name, config in list(connectors.items()):
             if str(name).startswith("_") or not isinstance(config, dict):
                 continue
+            raw_config = raw_connectors.get(name) if isinstance(raw_connectors.get(name), dict) else {}
+            if "enabled" in raw_config:
+                config["enabled"] = bool(raw_config.get("enabled"))
             if not manager.is_connector_system_enabled(str(name)):
                 config["enabled"] = False
         return connectors

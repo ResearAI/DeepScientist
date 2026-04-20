@@ -32,6 +32,7 @@ from ..skills import SkillInstaller
 from ..web_search import extract_web_search_payload
 from .layout import (
     QUEST_DIRECTORIES,
+    default_active_anchor,
     gitignore,
     initial_brief,
     initial_plan,
@@ -44,6 +45,7 @@ from .stage_views import QuestStageViewBuilder
 
 _UNSET = object()
 _NUMERIC_QUEST_ID_PATTERN = re.compile(r"^\d{1,10}$")
+_SYSTEM_NUMERIC_QUEST_ID_PATTERN = re.compile(r"^(?P<prefix>[SB])-(?P<number>\d{1,10})$", re.IGNORECASE)
 _MAX_NUMERIC_QUEST_ID_VALUE = 9_999_999_999
 _NUMERIC_QUEST_ID_PAD_WIDTH = 3
 _CRASH_AUTO_RESUME_WINDOW = timedelta(hours=24)
@@ -59,6 +61,9 @@ _EVENT_TYPE_BYTES_RE = re.compile(rb'"(?:type|event_type)"\s*:\s*"([^"]+)"')
 _EVENT_TOOL_NAME_BYTES_RE = re.compile(rb'"tool_name"\s*:\s*"([^"]+)"')
 _EVENT_RUN_ID_BYTES_RE = re.compile(rb'"run_id"\s*:\s*"([^"]+)"')
 CONTINUATION_POLICIES = {"auto", "when_external_progress", "wait_for_user_or_resume", "none"}
+_CHAT_ATTACHMENT_TEXT_EXTENSIONS = {".txt", ".md", ".markdown", ".mdx", ".json", ".csv", ".log", ".yaml", ".yml"}
+_CHAT_ATTACHMENT_TEXT_MIME_PREFIXES = ("text/",)
+_CHAT_ATTACHMENT_TEXT_MIME_TYPES = {"application/json", "application/x-yaml", "text/csv"}
 
 
 def _oversized_event_placeholder(*, prefix: bytes, line_bytes: int) -> dict[str, Any]:
@@ -320,6 +325,10 @@ class QuestService:
         self._quest_projection_refresh_lock = threading.Lock()
         self._quest_projection_refresh_at: dict[str, float] = {}
 
+    def _configured_default_runner(self) -> str:
+        config = ConfigManager(self.home).load_named("config")
+        return str(config.get("default_runner") or "codex").strip().lower() or "codex"
+
     def _quest_root(self, quest_id: str) -> Path:
         return self.quests_root / quest_id
 
@@ -331,31 +340,33 @@ class QuestService:
 
     def _normalized_binding_sources(self, sources: list[Any] | None) -> list[str]:
         local_present = False
-        external_source: str | None = None
+        external_sources: list[str] = []
+        external_index: dict[str, int] = {}
         for raw in sources or []:
             normalized = self._normalize_binding_source(raw)
             if not normalized:
                 continue
-            if normalized == "local:default":
-                local_present = True
-                continue
             parsed = parse_conversation_id(normalized)
             connector = str((parsed or {}).get("connector") or "").strip().lower()
-            if connector == "local":
+            if normalized == "local:default" or connector == "local":
                 local_present = True
                 continue
-            external_source = normalized
-        if external_source:
-            return ["local:default", external_source]
+            identity = conversation_identity_key(normalized)
+            existing_index = external_index.get(identity)
+            if existing_index is None:
+                external_index[identity] = len(external_sources)
+                external_sources.append(normalized)
+            else:
+                external_sources[existing_index] = normalized
         if local_present:
-            return ["local:default"]
-        return ["local:default"]
+            return ["local:default", *external_sources]
+        return external_sources
 
     def _binding_sources_payload(self, quest_root: Path) -> dict[str, list[str]]:
         bindings_path = quest_root / ".ds" / "bindings.json"
-        payload = read_json(bindings_path, {"sources": ["local:default"]})
-        raw_sources = payload.get("sources") if isinstance(payload, dict) else ["local:default"]
-        sources = self._normalized_binding_sources(raw_sources if isinstance(raw_sources, list) else ["local:default"])
+        payload = read_json(bindings_path, {"sources": []})
+        raw_sources = payload.get("sources") if isinstance(payload, dict) else []
+        sources = self._normalized_binding_sources(raw_sources if isinstance(raw_sources, list) else [])
         return {"sources": sources}
 
     def preferred_locale(self, quest_root: Path | None = None) -> str:
@@ -401,11 +412,21 @@ class QuestService:
         if not isinstance(payload, dict):
             payload = {}
         normalized = dict(payload)
-        normalized.setdefault("active_anchor", "baseline")
+        startup_contract = dict(normalized.get("startup_contract") or {}) if isinstance(normalized.get("startup_contract"), dict) else None
+        normalized.setdefault("startup_contract", startup_contract)
         normalized.setdefault("baseline_gate", "pending")
         normalized.setdefault("confirmed_baseline_ref", None)
         normalized.setdefault("requested_baseline_ref", None)
-        normalized.setdefault("startup_contract", None)
+        active_anchor = str(normalized.get("active_anchor") or "").strip()
+        if not active_anchor:
+            normalized["active_anchor"] = default_active_anchor(startup_contract)
+        elif (
+            active_anchor == "baseline"
+            and str((startup_contract or {}).get("workspace_mode") or "").strip().lower() == "copilot"
+            and not isinstance(normalized.get("confirmed_baseline_ref"), dict)
+            and not isinstance(normalized.get("requested_baseline_ref"), dict)
+        ):
+            normalized["active_anchor"] = "scout"
         return normalized
 
     @staticmethod
@@ -883,7 +904,7 @@ class QuestService:
             if not artifacts_root.exists():
                 continue
             for folder in sorted(artifacts_root.iterdir()):
-                if not folder.is_dir():
+                if not folder.is_dir() or folder.name == "graphs":
                     continue
                 for path in sorted(folder.glob("*.json")):
                     item = self._read_cached_json(path, {})
@@ -2636,6 +2657,40 @@ class QuestService:
             return text
         return text.zfill(_NUMERIC_QUEST_ID_PAD_WIDTH)
 
+    @staticmethod
+    def _parse_reserved_numeric_quest_id(value: str | None) -> int | None:
+        numeric_value = QuestService._parse_numeric_quest_id(value)
+        if numeric_value is not None:
+            return numeric_value
+        raw = str(value or "").strip()
+        match = _SYSTEM_NUMERIC_QUEST_ID_PATTERN.fullmatch(raw)
+        if match is None:
+            return None
+        return QuestService._parse_numeric_quest_id(match.group("number"))
+
+    @staticmethod
+    def _quest_class_for(
+        *,
+        quest_id: str | None,
+        startup_contract: dict[str, Any] | None = None,
+    ) -> str:
+        normalized_quest_id = str(quest_id or "").strip()
+        match = _SYSTEM_NUMERIC_QUEST_ID_PATTERN.fullmatch(normalized_quest_id)
+        if match is not None:
+            prefix = str(match.group("prefix") or "").strip().upper()
+            if prefix == "S":
+                return "settings"
+            if prefix == "B":
+                return "benchstore"
+
+        contract = startup_contract if isinstance(startup_contract, dict) else {}
+        custom_profile = str(contract.get("custom_profile") or "").strip().lower()
+        if custom_profile in {"admin_ops", "settings_issue"}:
+            return "settings"
+        if isinstance(contract.get("benchstore_context"), dict) or isinstance(contract.get("start_setup_session"), dict):
+            return "benchstore"
+        return "research"
+
     @contextmanager
     def _quest_id_state_lock(self):
         lock_path = self._quest_id_lock_path()
@@ -2721,7 +2776,7 @@ class QuestService:
             return self._format_numeric_quest_id(next_numeric_id)
 
     def _reserve_numeric_quest_id(self, quest_id: str) -> None:
-        numeric_value = self._parse_numeric_quest_id(quest_id)
+        numeric_value = self._parse_reserved_numeric_quest_id(quest_id)
         if numeric_value is None:
             return
         with self._quest_id_state_lock():
@@ -2731,24 +2786,28 @@ class QuestService:
                 self._write_quest_id_state_locked(next_numeric_id)
 
     def _normalize_quest_id(self, quest_id: str | None) -> tuple[str, bool]:
-        raw = str(quest_id or "").strip().lower()
+        raw = str(quest_id or "").strip()
         if not raw:
             return self._allocate_next_numeric_quest_id(), True
-        slug = re.sub(r"[^a-z0-9._-]+", "-", raw).strip("._-")
+        slug = re.sub(r"[^A-Za-z0-9._-]+", "-", raw).strip("._-")
         if not slug:
             return self._allocate_next_numeric_quest_id(), True
+        system_match = _SYSTEM_NUMERIC_QUEST_ID_PATTERN.fullmatch(slug)
+        if system_match is not None:
+            slug = f"{str(system_match.group('prefix') or '').upper()}-{system_match.group('number')}"
         return slug[:80], False
 
     def create(
         self,
         goal: str,
         quest_id: str | None = None,
-        runner: str = "codex",
+        runner: str | None = None,
         title: str | None = None,
         *,
         requested_baseline_ref: dict[str, Any] | None = None,
         startup_contract: dict[str, Any] | None = None,
     ) -> dict:
+        resolved_runner = str(runner or self._configured_default_runner()).strip().lower() or "codex"
         quest_id, auto_generated = self._normalize_quest_id(quest_id)
         quest_root = self._quest_root(quest_id)
         if quest_root.exists():
@@ -2764,7 +2823,7 @@ class QuestService:
                 quest_id,
                 goal,
                 quest_root,
-                runner,
+                resolved_runner,
                 title=title,
                 requested_baseline_ref=dict(requested_baseline_ref) if isinstance(requested_baseline_ref, dict) else None,
                 startup_contract=dict(startup_contract) if isinstance(startup_contract, dict) else None,
@@ -2795,8 +2854,9 @@ class QuestService:
         *,
         title: str | None = None,
         goal: str | None = None,
-        runner: str = "codex",
+        runner: str | None = None,
     ) -> dict[str, Any]:
+        resolved_runner = str(runner or self._configured_default_runner()).strip().lower() or "codex"
         quest_root = self._quest_root(quest_id)
         if not quest_root.exists():
             raise FileNotFoundError(f"Unknown quest `{quest_id}`.")
@@ -2816,7 +2876,7 @@ class QuestService:
                 quest_id,
                 restored_goal,
                 quest_root,
-                runner,
+                resolved_runner,
                 title=restored_title,
             ),
         )
@@ -3022,6 +3082,12 @@ class QuestService:
 
         bash_summary = BashExecService(self.home).summary(quest_root)
         interaction_watchdog = self.artifact_interaction_watchdog_status(quest_root)
+        quest_class = self._quest_class_for(
+            quest_id=str(quest_yaml.get("quest_id") or quest_id).strip(),
+            startup_contract=quest_yaml.get("startup_contract") if isinstance(quest_yaml.get("startup_contract"), dict) else None,
+        )
+        workspace_mode = str(research_state.get("workspace_mode") or "quest").strip().lower() or "quest"
+        listed_in_projects = quest_class == "research" and workspace_mode in {"copilot", "autonomous"}
         payload = {
             "quest_id": quest_yaml.get("quest_id", quest_id),
             "title": quest_yaml.get("title", quest_id),
@@ -3040,7 +3106,9 @@ class QuestService:
             "research_head_worktree_root": research_state.get("research_head_worktree_root"),
             "current_workspace_branch": research_state.get("current_workspace_branch"),
             "current_workspace_root": research_state.get("current_workspace_root"),
-            "workspace_mode": research_state.get("workspace_mode") or "quest",
+            "workspace_mode": workspace_mode,
+            "quest_class": quest_class,
+            "listed_in_projects": listed_in_projects,
             "active_idea_id": research_state.get("active_idea_id"),
             "active_baseline_id": active_baseline_id,
             "active_baseline_variant_id": active_baseline_variant_id,
@@ -3853,9 +3921,12 @@ class QuestService:
     def bind_source(self, quest_id: str, source: str) -> dict:
         quest_root = self._quest_root(quest_id)
         bindings_path = quest_root / ".ds" / "bindings.json"
+        existing_payload = read_json(bindings_path, {"sources": []})
+        existing_sources = existing_payload.get("sources") if isinstance(existing_payload, dict) else []
         bindings = self._binding_sources_payload(quest_root)
         normalized_source = self._normalize_binding_source(source)
-        next_sources = self._normalized_binding_sources([*(bindings.get("sources") or []), normalized_source])
+        seed_sources = list(existing_sources) if isinstance(existing_sources, list) else list(bindings.get("sources") or [])
+        next_sources = self._normalized_binding_sources([*seed_sources, normalized_source])
         changed = list(bindings.get("sources") or []) != next_sources
         if changed:
             bindings["sources"] = next_sources
@@ -4877,6 +4948,200 @@ class QuestService:
             "saved_at": utc_now(),
         }
 
+    def save_chat_attachment_draft(
+        self,
+        quest_id: str,
+        *,
+        file_name: str,
+        mime_type: str | None,
+        content: bytes,
+        draft_id: str | None = None,
+    ) -> dict[str, Any]:
+        quest_root = self._quest_root(quest_id)
+        normalized_draft_id = slugify(str(draft_id or generate_id("draft")), default=generate_id("draft"))
+        draft_root = self._chat_attachment_draft_root(quest_root, normalized_draft_id)
+        original_name = Path(file_name).name or "attachment.bin"
+        suffix = Path(original_name).suffix.lower()
+        if not suffix:
+            guessed_suffix = mimetypes.guess_extension(mime_type or "", strict=False) or ""
+            suffix = ".jpg" if guessed_suffix == ".jpe" else guessed_suffix
+        safe_stem = slugify(Path(original_name).stem or "attachment", default="attachment")
+        stored_name = f"{safe_stem}{suffix or '.bin'}"
+        asset_path = resolve_within(draft_root, stored_name)
+        if draft_root.exists():
+            for child in draft_root.iterdir():
+                if child.is_file():
+                    child.unlink(missing_ok=True)
+                elif child.is_dir():
+                    shutil.rmtree(child, ignore_errors=True)
+        ensure_dir(draft_root)
+        asset_path.write_bytes(content)
+        quest_relative_path = asset_path.relative_to(quest_root).as_posix()
+        asset_document_id = f"path::{quest_relative_path}"
+        attachment = self._chat_attachment_payload(
+            quest_id=quest_id,
+            name=original_name,
+            stored_name=stored_name,
+            mime_type=mime_type,
+            asset_path=asset_path,
+            draft_id=normalized_draft_id,
+        )
+        attachment["status"] = "success"
+        write_json(
+            draft_root / "manifest.json",
+            {
+                "draft_id": normalized_draft_id,
+                "quest_id": quest_id,
+                "created_at": utc_now(),
+                "attachment": attachment,
+                "asset_document_id": asset_document_id,
+            },
+        )
+        return {
+            "ok": True,
+            "quest_id": quest_id,
+            "draft_id": normalized_draft_id,
+            **attachment,
+        }
+
+    def delete_chat_attachment_draft(self, quest_id: str, *, draft_id: str) -> dict[str, Any]:
+        self._quest_root(quest_id)
+        normalized_draft_id = slugify(str(draft_id or "").strip(), default="")
+        if not normalized_draft_id:
+            return {"ok": False, "message": "`draft_id` is required."}
+        draft_root = self._chat_attachment_draft_root(self._quest_root(quest_id), normalized_draft_id)
+        if not draft_root.exists():
+            return {
+                "ok": True,
+                "status": "already_deleted",
+                "quest_id": quest_id,
+                "draft_id": normalized_draft_id,
+            }
+        shutil.rmtree(draft_root, ignore_errors=True)
+        return {
+            "ok": True,
+            "status": "deleted",
+            "quest_id": quest_id,
+            "draft_id": normalized_draft_id,
+        }
+
+    def finalize_chat_attachment_drafts(
+        self,
+        quest_id: str,
+        *,
+        draft_ids: list[str],
+        client_message_id: str | None,
+    ) -> list[dict[str, Any]]:
+        quest_root = self._quest_root(quest_id)
+        normalized_draft_ids = [
+            slugify(str(item or "").strip(), default="")
+            for item in draft_ids
+            if str(item or "").strip()
+        ]
+        if not normalized_draft_ids:
+            return []
+        batch_slug = slugify(
+            str(client_message_id or generate_id("userfile")).strip(),
+            default=generate_id("userfile"),
+        )
+        batch_root = ensure_dir(quest_root / "userfiles" / "web" / batch_slug)
+        materialized: list[dict[str, Any]] = []
+        for index, normalized_draft_id in enumerate(normalized_draft_ids, start=1):
+            draft_root = self._chat_attachment_draft_root(quest_root, normalized_draft_id)
+            manifest = read_json(draft_root / "manifest.json", {})
+            attachment = dict(manifest.get("attachment") or {})
+            source_path = Path(str(attachment.get("path") or "").strip())
+            if not draft_root.exists() or not source_path.exists():
+                raise FileNotFoundError(f"Unknown chat attachment draft `{normalized_draft_id}`.")
+            target_name = self._dedupe_attachment_filename(
+                batch_root,
+                str(attachment.get("stored_name") or source_path.name or f"attachment-{index:03d}.bin"),
+            )
+            target_path = resolve_within(batch_root, target_name)
+            ensure_dir(target_path.parent)
+            shutil.move(str(source_path), str(target_path))
+            finalized = self._chat_attachment_payload(
+                quest_id=quest_id,
+                name=str(attachment.get("name") or target_name),
+                stored_name=target_name,
+                mime_type=str(attachment.get("content_type") or "").strip() or None,
+                asset_path=target_path,
+                draft_id=None,
+            )
+            finalized["source_path"] = str(source_path)
+            finalized["materialized"] = True
+            finalized["uploaded_at"] = str(attachment.get("uploaded_at") or utc_now())
+            materialized.append(finalized)
+            shutil.rmtree(draft_root, ignore_errors=True)
+        write_json(
+            batch_root / "manifest.json",
+            {
+                "quest_id": quest_id,
+                "client_message_id": str(client_message_id or "").strip() or None,
+                "materialized_at": utc_now(),
+                "attachments": materialized,
+            },
+        )
+        return materialized
+
+    @staticmethod
+    def _chat_attachment_draft_root(quest_root: Path, draft_id: str) -> Path:
+        return quest_root / "userfiles" / "web" / "_staging" / draft_id
+
+    @staticmethod
+    def _dedupe_attachment_filename(batch_root: Path, file_name: str) -> str:
+        base_name = Path(file_name).name or "attachment.bin"
+        stem = Path(base_name).stem or "attachment"
+        suffix = Path(base_name).suffix
+        candidate = base_name
+        counter = 2
+        while (batch_root / candidate).exists():
+            candidate = f"{stem}-{counter}{suffix}"
+            counter += 1
+        return candidate
+
+    @staticmethod
+    def _is_readable_chat_attachment(path: Path, mime_type: str | None) -> bool:
+        normalized_mime = str(mime_type or "").strip().lower()
+        if any(normalized_mime.startswith(prefix) for prefix in _CHAT_ATTACHMENT_TEXT_MIME_PREFIXES):
+            return True
+        if normalized_mime in _CHAT_ATTACHMENT_TEXT_MIME_TYPES:
+            return True
+        return path.suffix.lower() in _CHAT_ATTACHMENT_TEXT_EXTENSIONS
+
+    def _chat_attachment_payload(
+        self,
+        *,
+        quest_id: str,
+        name: str,
+        stored_name: str,
+        mime_type: str | None,
+        asset_path: Path,
+        draft_id: str | None,
+    ) -> dict[str, Any]:
+        quest_root = self._quest_root(quest_id)
+        resolved_path = asset_path.resolve()
+        content_type = mimetypes.guess_type(resolved_path.name)[0] or mime_type or "application/octet-stream"
+        quest_relative_path = resolved_path.relative_to(quest_root).as_posix()
+        payload: dict[str, Any] = {
+            "kind": "image" if str(content_type).startswith("image/") else "path",
+            "name": name,
+            "file_name": stored_name,
+            "content_type": content_type,
+            "path": str(resolved_path),
+            "quest_relative_path": quest_relative_path,
+            "asset_document_id": f"path::{quest_relative_path}",
+            "asset_url": f"/api/quests/{quest_id}/documents/asset?document_id={quote(f'path::{quest_relative_path}', safe='')}",
+            "size_bytes": resolved_path.stat().st_size if resolved_path.exists() else 0,
+            "uploaded_at": utc_now(),
+            "upload_origin": "web",
+        }
+        if draft_id:
+            payload["draft_id"] = draft_id
+        if self._is_readable_chat_attachment(resolved_path, content_type):
+            payload["extracted_text_path"] = quest_relative_path
+        return payload
+
     @staticmethod
     def _normalize_workspace_relative_path(
         relative: str | None,
@@ -5292,9 +5557,10 @@ class QuestService:
     @staticmethod
     def _default_message_queue() -> dict[str, Any]:
         return {
-            "version": 1,
+            "version": 2,
             "pending": [],
             "completed": [],
+            "message_states": {},
         }
 
     def _default_runtime_state(
@@ -5336,6 +5602,7 @@ class QuestService:
             "last_delivered_batch_id": None,
             "last_delivered_at": None,
             "retry_state": None,
+            "turn_message_override": None,
         }
 
     def _default_agent_status(self, quest_root: Path) -> dict[str, Any]:
@@ -5376,9 +5643,11 @@ class QuestService:
         payload = self._read_cached_json(self._message_queue_path(quest_root), self._default_message_queue())
         if not isinstance(payload, dict):
             payload = self._default_message_queue()
-        payload.setdefault("version", 1)
+        payload.setdefault("version", 2)
         payload.setdefault("pending", [])
         payload.setdefault("completed", [])
+        message_states = payload.get("message_states")
+        payload["message_states"] = dict(message_states) if isinstance(message_states, dict) else {}
         return payload
 
     def _write_message_queue(self, quest_root: Path, payload: dict[str, Any]) -> None:
@@ -5414,6 +5683,11 @@ class QuestService:
         merged["last_stage_fingerprint_at"] = str(merged.get("last_stage_fingerprint_at") or "").strip() or None
         merged["same_fingerprint_auto_turn_count"] = int(merged.get("same_fingerprint_auto_turn_count") or 0)
         merged["retry_state"] = dict(merged.get("retry_state") or {}) if isinstance(merged.get("retry_state"), dict) else None
+        merged["turn_message_override"] = (
+            dict(merged.get("turn_message_override") or {})
+            if isinstance(merged.get("turn_message_override"), dict)
+            else None
+        )
         return merged
 
     def _write_runtime_state(self, quest_root: Path, payload: dict[str, Any]) -> None:
@@ -5448,6 +5722,7 @@ class QuestService:
         last_delivered_at: str | None | object = _UNSET,
         display_status: str | None | object = _UNSET,
         retry_state: dict[str, Any] | None | object = _UNSET,
+        turn_message_override: dict[str, Any] | None | object = _UNSET,
     ) -> dict[str, Any]:
         with self._runtime_state_lock(quest_root):
             state = self._read_runtime_state(quest_root)
@@ -5526,6 +5801,12 @@ class QuestService:
                 state["last_delivered_at"] = last_delivered_at
             if retry_state is not _UNSET:
                 state["retry_state"] = dict(retry_state) if isinstance(retry_state, dict) else None
+            if turn_message_override is not _UNSET:
+                state["turn_message_override"] = (
+                    dict(turn_message_override)
+                    if isinstance(turn_message_override, dict)
+                    else None
+                )
             if last_transition_at is not _UNSET:
                 state["last_transition_at"] = last_transition_at
             elif status_changed or run_changed:
@@ -5567,11 +5848,369 @@ class QuestService:
             continuation_reason=reason,
         )
 
+    @staticmethod
+    def _normalize_message_read_state(value: object, *, default: str = "read") -> str:
+        normalized = str(value or "").strip().lower() or default
+        return normalized if normalized in {"read", "unread"} else default
+
+    def _update_message_read_state(
+        self,
+        queue_payload: dict[str, Any],
+        *,
+        message_id: str | None,
+        client_message_id: str | None = None,
+        source: str | None = None,
+        conversation_id: str | None = None,
+        created_at: str | None = None,
+        read_state: str,
+        read_reason: str | None = None,
+        read_at: str | None = None,
+        read_interaction_id: str | None = None,
+        read_run_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        normalized_message_id = str(message_id or "").strip()
+        normalized_client_message_id = str(client_message_id or "").strip() or None
+        if not normalized_message_id and not normalized_client_message_id:
+            return None
+        states = dict(queue_payload.get("message_states") or {})
+        key = normalized_message_id or f"client:{normalized_client_message_id}"
+        current = dict(states.get(key) or {})
+        current["message_id"] = normalized_message_id or current.get("message_id")
+        if normalized_client_message_id:
+            current["client_message_id"] = normalized_client_message_id
+        if source:
+            current["source"] = str(source)
+        if conversation_id:
+            current["conversation_id"] = str(conversation_id)
+        if created_at:
+            current["created_at"] = str(created_at)
+        current["read_state"] = self._normalize_message_read_state(read_state)
+        current["read_reason"] = str(read_reason or "").strip() or None
+        current["read_at"] = str(read_at or "").strip() or None
+        current["read_interaction_id"] = str(read_interaction_id or "").strip() or None
+        current["read_run_id"] = str(read_run_id or "").strip() or None
+        current["updated_at"] = utc_now()
+        states[key] = current
+        if normalized_message_id:
+            for existing_key, item in list(states.items()):
+                if existing_key == key or not isinstance(item, dict):
+                    continue
+                if str(item.get("message_id") or "").strip() == normalized_message_id:
+                    states.pop(existing_key, None)
+            if normalized_client_message_id:
+                states[normalized_message_id] = current
+                if key != normalized_message_id:
+                    states.pop(key, None)
+                key = normalized_message_id
+        queue_payload["message_states"] = states
+        return dict(states.get(key) or current)
+
+    def _message_read_state(
+        self,
+        quest_root: Path,
+        *,
+        message_id: str | None = None,
+        client_message_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        queue_payload = self._read_message_queue(quest_root)
+        states = queue_payload.get("message_states")
+        if not isinstance(states, dict):
+            return None
+        normalized_message_id = str(message_id or "").strip()
+        normalized_client_message_id = str(client_message_id or "").strip()
+        if normalized_message_id:
+            direct = states.get(normalized_message_id)
+            if isinstance(direct, dict):
+                return dict(direct)
+        for item in states.values():
+            if not isinstance(item, dict):
+                continue
+            if normalized_message_id and str(item.get("message_id") or "").strip() == normalized_message_id:
+                return dict(item)
+            if normalized_client_message_id and str(item.get("client_message_id") or "").strip() == normalized_client_message_id:
+                return dict(item)
+        return None
+
+    @staticmethod
+    def _find_message_queue_entry(
+        items: list[dict[str, Any]],
+        *,
+        message_id: str | None = None,
+        client_message_id: str | None = None,
+    ) -> tuple[int, dict[str, Any]] | tuple[None, None]:
+        normalized_message_id = str(message_id or "").strip()
+        normalized_client_message_id = str(client_message_id or "").strip()
+        if not normalized_message_id and not normalized_client_message_id:
+            return None, None
+        for index in range(len(items) - 1, -1, -1):
+            item = items[index]
+            if normalized_message_id and str(item.get("message_id") or "").strip() == normalized_message_id:
+                return index, dict(item)
+            if normalized_client_message_id and str(item.get("client_message_id") or "").strip() == normalized_client_message_id:
+                return index, dict(item)
+        return None, None
+
+    def pending_user_message_status(
+        self,
+        quest_root: Path,
+        *,
+        message_id: str | None = None,
+        client_message_id: str | None = None,
+    ) -> dict[str, Any]:
+        queue_payload = self._read_message_queue(quest_root)
+        pending = [dict(item) for item in (queue_payload.get("pending") or []) if isinstance(item, dict)]
+        completed = [dict(item) for item in (queue_payload.get("completed") or []) if isinstance(item, dict)]
+        pending_index, pending_item = self._find_message_queue_entry(
+            pending,
+            message_id=message_id,
+            client_message_id=client_message_id,
+        )
+        state_record = self._message_read_state(
+            quest_root,
+            message_id=message_id,
+            client_message_id=client_message_id,
+        )
+        completed_index, completed_item = self._find_message_queue_entry(
+            completed,
+            message_id=message_id,
+            client_message_id=client_message_id,
+        )
+        queue_state = "missing"
+        if pending_index is not None and pending_item is not None:
+            queue_state = "pending"
+        elif state_record:
+            read_reason = str(state_record.get("read_reason") or "").strip()
+            queue_state = "withdrawn" if read_reason == "withdrawn_by_user" else "read"
+        elif completed_index is not None and completed_item is not None:
+            completed_status = str(completed_item.get("status") or "").strip()
+            queue_state = "withdrawn" if completed_status == "withdrawn_by_user" else "read"
+        return {
+            "queue_state": queue_state,
+            "pending_index": pending_index,
+            "pending_item": pending_item,
+            "completed_index": completed_index,
+            "completed_item": completed_item,
+            "message_state": state_record,
+        }
+
+    def latest_pending_user_message(self, quest_id: str) -> dict[str, Any] | None:
+        quest_root = self._quest_root(quest_id)
+        queue_payload = self._read_message_queue(quest_root)
+        pending = [dict(item) for item in (queue_payload.get("pending") or []) if isinstance(item, dict)]
+        if not pending:
+            return None
+        latest = dict(pending[-1])
+        return {
+            "id": latest.get("message_id"),
+            "message_id": latest.get("message_id"),
+            "client_message_id": latest.get("client_message_id"),
+            "role": "user",
+            "source": latest.get("source"),
+            "content": latest.get("content") or "",
+            "created_at": latest.get("created_at"),
+            "reply_to_interaction_id": latest.get("reply_to_interaction_id"),
+            "attachments": [dict(item) for item in (latest.get("attachments") or []) if isinstance(item, dict)],
+        }
+
+    def withdraw_pending_user_message(
+        self,
+        quest_id: str,
+        *,
+        message_id: str | None,
+        source: str,
+    ) -> dict[str, Any]:
+        normalized_message_id = str(message_id or "").strip()
+        if not normalized_message_id:
+            return {
+                "ok": False,
+                "status": "invalid_request",
+                "message": "Message id is required.",
+            }
+        quest_root = self._quest_root(quest_id)
+        queue_payload = self._read_message_queue(quest_root)
+        status_payload = self.pending_user_message_status(
+            quest_root,
+            message_id=normalized_message_id,
+        )
+        pending_index = status_payload.get("pending_index")
+        pending_item = dict(status_payload.get("pending_item") or {}) if isinstance(status_payload.get("pending_item"), dict) else None
+        if pending_index is None or pending_item is None:
+            queue_state = str(status_payload.get("queue_state") or "missing")
+            message_state = (
+                dict(status_payload.get("message_state") or {})
+                if isinstance(status_payload.get("message_state"), dict)
+                else None
+            )
+            if queue_state == "read":
+                return {
+                    "ok": False,
+                    "status": "already_read",
+                    "message": "Withdrawal failed because this message was already sent to the agent.",
+                    "message_id": normalized_message_id,
+                    "current_message_state": message_state,
+                }
+            if queue_state == "withdrawn":
+                return {
+                    "ok": True,
+                    "status": "already_withdrawn",
+                    "message": "This message was already withdrawn from the waiting queue.",
+                    "message_id": normalized_message_id,
+                    "current_message_state": message_state,
+                }
+            return {
+                "ok": False,
+                "status": "missing",
+                "message": f"Message `{normalized_message_id}` is not waiting in the queue.",
+                "message_id": normalized_message_id,
+                "current_message_state": message_state,
+            }
+
+        pending = [dict(item) for item in (queue_payload.get("pending") or []) if isinstance(item, dict)]
+        completed = [dict(item) for item in (queue_payload.get("completed") or []) if isinstance(item, dict)]
+        withdrawn_at = utc_now()
+        withdrawn = {
+            **pending.pop(int(pending_index)),
+            "status": "withdrawn_by_user",
+            "withdrawn_at": withdrawn_at,
+            "withdrawn_by_source": source,
+        }
+        queue_payload["pending"] = pending
+        queue_payload["completed"] = [*completed, withdrawn][-200:]
+        state_record = self._update_message_read_state(
+            queue_payload,
+            message_id=str(withdrawn.get("message_id") or "").strip() or None,
+            client_message_id=str(withdrawn.get("client_message_id") or "").strip() or None,
+            source=str(withdrawn.get("source") or "").strip() or None,
+            conversation_id=str(withdrawn.get("conversation_id") or "").strip() or None,
+            created_at=str(withdrawn.get("created_at") or "").strip() or None,
+            read_state="read",
+            read_reason="withdrawn_by_user",
+            read_at=withdrawn_at,
+        )
+        self._write_message_queue(quest_root, queue_payload)
+        self.update_runtime_state(
+            quest_root=quest_root,
+            pending_user_message_count=len(pending),
+        )
+        self.append_message_read_state_event(
+            quest_id,
+            message_id=str(withdrawn.get("message_id") or "").strip() or None,
+            client_message_id=str(withdrawn.get("client_message_id") or "").strip() or None,
+            read_state=str((state_record or {}).get("read_state") or "read"),
+            read_reason=str((state_record or {}).get("read_reason") or "withdrawn_by_user"),
+            read_at=str((state_record or {}).get("read_at") or withdrawn_at),
+        )
+        append_jsonl(
+            self._interaction_journal_path(quest_root),
+            {
+                "event_id": generate_id("evt"),
+                "type": "user_message_withdrawn",
+                "quest_id": quest_id,
+                "message_id": normalized_message_id,
+                "source": source,
+                "created_at": withdrawn_at,
+            },
+        )
+        self._write_active_user_requirements(quest_root, latest_requirement=None)
+        return {
+            "ok": True,
+            "status": "withdrawn",
+            "message": "The message was removed from the waiting queue.",
+            "message_id": normalized_message_id,
+            "pending_user_message_count": len(pending),
+            "current_message_state": state_record,
+        }
+
+    def enrich_conversation_message_event(self, quest_id: str, event: dict[str, Any]) -> dict[str, Any]:
+        if str(event.get("type") or "").strip() != "conversation.message":
+            return dict(event)
+        quest_root = self._quest_root(quest_id)
+        read_state = self._message_read_state(
+            quest_root,
+            message_id=str(event.get("message_id") or "").strip() or None,
+            client_message_id=str(event.get("client_message_id") or "").strip() or None,
+        )
+        enriched = dict(event)
+        if read_state:
+            enriched["read_state"] = read_state.get("read_state")
+            enriched["read_reason"] = read_state.get("read_reason")
+            enriched["read_at"] = read_state.get("read_at")
+        return enriched
+
+    def append_message_read_state_event(
+        self,
+        quest_id: str,
+        *,
+        message_id: str | None,
+        client_message_id: str | None = None,
+        read_state: str,
+        read_reason: str | None = None,
+        read_at: str | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "event_id": generate_id("evt"),
+            "type": "conversation.message_state",
+            "quest_id": quest_id,
+            "message_id": str(message_id or "").strip() or None,
+            "client_message_id": str(client_message_id or "").strip() or None,
+            "read_state": self._normalize_message_read_state(read_state),
+            "read_reason": str(read_reason or "").strip() or None,
+            "read_at": str(read_at or "").strip() or None,
+            "created_at": utc_now(),
+        }
+        append_jsonl(self._quest_root(quest_id) / ".ds" / "events.jsonl", payload)
+        return payload
+
+    def set_turn_message_override(
+        self,
+        quest_root: Path,
+        *,
+        turn_reason: str,
+        message: str,
+        message_ids: list[str] | None = None,
+        delivery_batch_id: str | None = None,
+        source: str | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "turn_reason": str(turn_reason or "").strip() or "user_message",
+            "message": str(message or "").strip(),
+            "message_ids": [str(item).strip() for item in (message_ids or []) if str(item).strip()],
+            "delivery_batch_id": str(delivery_batch_id or "").strip() or None,
+            "source": str(source or "").strip() or None,
+            "created_at": utc_now(),
+        }
+        self.update_runtime_state(
+            quest_root=quest_root,
+            turn_message_override=payload,
+        )
+        return payload
+
+    def consume_turn_message_override(
+        self,
+        quest_root: Path,
+        *,
+        expected_turn_reason: str | None = None,
+    ) -> dict[str, Any] | None:
+        with self._runtime_state_lock(quest_root):
+            state = self._read_runtime_state(quest_root)
+            override = dict(state.get("turn_message_override") or {}) if isinstance(state.get("turn_message_override"), dict) else None
+            if not override:
+                return None
+            if expected_turn_reason:
+                normalized_expected = str(expected_turn_reason or "").strip()
+                normalized_actual = str(override.get("turn_reason") or "").strip()
+                if normalized_expected and normalized_actual != normalized_expected:
+                    return None
+            state["turn_message_override"] = None
+            self._write_runtime_state(quest_root, state)
+            return override
+
     def _enqueue_user_message(self, quest_root: Path, record: dict[str, Any]) -> dict[str, Any]:
         queue_payload = self._read_message_queue(quest_root)
         source = str(record.get("source") or "local")
         queue_record = {
             "message_id": record.get("id"),
+            "client_message_id": str(record.get("client_message_id") or "").strip() or None,
             "source": source,
             "conversation_id": self._normalize_binding_source(source),
             "content": record.get("content") or "",
@@ -5581,6 +6220,17 @@ class QuestService:
             "status": "queued",
         }
         queue_payload["pending"] = [*list(queue_payload.get("pending") or []), queue_record]
+        self._update_message_read_state(
+            queue_payload,
+            message_id=str(queue_record.get("message_id") or "").strip() or None,
+            client_message_id=str(queue_record.get("client_message_id") or "").strip() or None,
+            source=source,
+            conversation_id=str(queue_record.get("conversation_id") or "").strip() or None,
+            created_at=str(queue_record.get("created_at") or "").strip() or None,
+            read_state="unread",
+            read_reason="queued",
+            read_at=None,
+        )
         self._write_message_queue(quest_root, queue_payload)
         self.update_runtime_state(
             quest_root=quest_root,
@@ -5610,7 +6260,27 @@ class QuestService:
             for item in read_jsonl(quest_root / ".ds" / "conversations" / "main.jsonl")
             if str(item.get("role") or "") == "user"
         ]
-        latest = latest_requirement or (user_messages[-1] if user_messages else None)
+        filtered_user_messages = []
+        for item in user_messages:
+            state = self._message_read_state(
+                quest_root,
+                message_id=str(item.get("id") or "").strip() or None,
+                client_message_id=str(item.get("client_message_id") or "").strip() or None,
+            )
+            if str((state or {}).get("read_reason") or "").strip() == "withdrawn_by_user":
+                continue
+            filtered_user_messages.append(item)
+        latest = latest_requirement
+        if latest is not None:
+            latest_state = self._message_read_state(
+                quest_root,
+                message_id=str(latest.get("id") or "").strip() or None,
+                client_message_id=str(latest.get("client_message_id") or "").strip() or None,
+            )
+            if str((latest_state or {}).get("read_reason") or "").strip() == "withdrawn_by_user":
+                latest = None
+        if latest is None:
+            latest = filtered_user_messages[-1] if filtered_user_messages else None
         lines = [
             "# Active User Requirements",
             "",
@@ -5629,12 +6299,17 @@ class QuestService:
             "",
         ]
         if latest:
+            latest_rendered = self._agent_visible_user_message_content(
+                quest_root,
+                content=str(latest.get("content") or ""),
+                attachments=[dict(item) for item in (latest.get("attachments") or []) if isinstance(item, dict)],
+            )
             lines.extend(
                 [
                     f"- source: {latest.get('source') or 'local'}",
                     f"- created_at: {latest.get('created_at') or utc_now()}",
                     "",
-                    str(latest.get("content") or "").strip() or "No latest requirement text was captured.",
+                    latest_rendered or "No latest requirement text was captured.",
                     "",
                 ]
             )
@@ -5651,11 +6326,15 @@ class QuestService:
                 "",
             ]
         )
-        if user_messages:
-            for index, item in enumerate(user_messages[-12:], start=1):
+        if filtered_user_messages:
+            for index, item in enumerate(filtered_user_messages[-12:], start=1):
                 source = str(item.get("source") or "local").strip() or "local"
                 created_at = str(item.get("created_at") or "").strip() or "unknown"
-                content = str(item.get("content") or "").strip() or "(empty)"
+                content = self._agent_visible_user_message_content(
+                    quest_root,
+                    content=str(item.get("content") or ""),
+                    attachments=[dict(value) for value in (item.get("attachments") or []) if isinstance(value, dict)],
+                ) or "(empty)"
                 lines.append(f"{index}. [{source}] [{created_at}] {content}")
         else:
             lines.append("1. No user messages yet.")
@@ -5697,10 +6376,30 @@ class QuestService:
         }
         queue_payload["pending"] = pending
         queue_payload["completed"] = [*list(queue_payload.get("completed") or []), claimed][-200:]
+        state_record = self._update_message_read_state(
+            queue_payload,
+            message_id=str(claimed.get("message_id") or "").strip() or None,
+            client_message_id=str(claimed.get("client_message_id") or "").strip() or None,
+            source=str(claimed.get("source") or "").strip() or None,
+            conversation_id=str(claimed.get("conversation_id") or "").strip() or None,
+            created_at=str(claimed.get("created_at") or "").strip() or None,
+            read_state="read",
+            read_reason="accepted_by_run",
+            read_at=now,
+            read_run_id=run_id,
+        )
         self._write_message_queue(quest_root, queue_payload)
         self.update_runtime_state(
             quest_root=quest_root,
             pending_user_message_count=len(pending),
+        )
+        self.append_message_read_state_event(
+            quest_id,
+            message_id=str(claimed.get("message_id") or "").strip() or None,
+            client_message_id=str(claimed.get("client_message_id") or "").strip() or None,
+            read_state=str((state_record or {}).get("read_state") or "read"),
+            read_reason=str((state_record or {}).get("read_reason") or "accepted_by_run"),
+            read_at=str((state_record or {}).get("read_at") or now),
         )
         append_jsonl(
             self._interaction_journal_path(quest_root),
@@ -5751,6 +6450,26 @@ class QuestService:
         ]
         queue_payload["pending"] = []
         queue_payload["completed"] = [*list(queue_payload.get("completed") or []), *cancelled][-200:]
+        for item in cancelled:
+            self._update_message_read_state(
+                queue_payload,
+                message_id=str(item.get("message_id") or "").strip() or None,
+                client_message_id=str(item.get("client_message_id") or "").strip() or None,
+                source=str(item.get("source") or "").strip() or None,
+                conversation_id=str(item.get("conversation_id") or "").strip() or None,
+                created_at=str(item.get("created_at") or "").strip() or None,
+                read_state="read",
+                read_reason=reason,
+                read_at=now,
+            )
+            self.append_message_read_state_event(
+                quest_id,
+                message_id=str(item.get("message_id") or "").strip() or None,
+                client_message_id=str(item.get("client_message_id") or "").strip() or None,
+                read_state="read",
+                read_reason=reason,
+                read_at=now,
+            )
         self._write_message_queue(quest_root, queue_payload)
         append_jsonl(
             self._interaction_journal_path(quest_root),
@@ -5910,6 +6629,7 @@ class QuestService:
         *,
         interaction_id: str | None,
         limit: int = 10,
+        delivery_reason: str = "artifact_mailbox",
     ) -> dict[str, Any]:
         queue_payload = self._read_message_queue(quest_root)
         pending = [dict(item) for item in (queue_payload.get("pending") or [])]
@@ -5931,6 +6651,27 @@ class QuestService:
                 delivered_messages.append(delivered)
             queue_payload["pending"] = []
             queue_payload["completed"] = [*list(queue_payload.get("completed") or []), *delivered_messages][-200:]
+            for item in delivered_messages:
+                state_record = self._update_message_read_state(
+                    queue_payload,
+                    message_id=str(item.get("message_id") or "").strip() or None,
+                    client_message_id=str(item.get("client_message_id") or "").strip() or None,
+                    source=str(item.get("source") or "").strip() or None,
+                    conversation_id=str(item.get("conversation_id") or "").strip() or None,
+                    created_at=str(item.get("created_at") or "").strip() or None,
+                    read_state="read",
+                    read_reason=delivery_reason,
+                    read_at=now,
+                    read_interaction_id=interaction_id,
+                )
+                self.append_message_read_state_event(
+                    quest_root.name,
+                    message_id=str(item.get("message_id") or "").strip() or None,
+                    client_message_id=str(item.get("client_message_id") or "").strip() or None,
+                    read_state=str((state_record or {}).get("read_state") or "read"),
+                    read_reason=str((state_record or {}).get("read_reason") or delivery_reason),
+                    read_at=str((state_record or {}).get("read_at") or now),
+                )
             self._write_message_queue(quest_root, queue_payload)
             append_jsonl(
                 self._interaction_journal_path(quest_root),
@@ -5968,7 +6709,11 @@ class QuestService:
                 "sender": "user",
                 "created_at": item.get("created_at"),
                 "text": item.get("content") or "",
-                "content": item.get("content") or "",
+                "content": self._agent_visible_user_message_content(
+                    quest_root,
+                    content=str(item.get("content") or ""),
+                    attachments=[dict(attachment) for attachment in (item.get("attachments") or []) if isinstance(attachment, dict)],
+                ),
                 "attachments": [dict(attachment) for attachment in (item.get("attachments") or []) if isinstance(attachment, dict)],
                 "reply_to_interaction_id": item.get("reply_to_interaction_id"),
             }
@@ -6016,7 +6761,12 @@ class QuestService:
             ]
             for index, item in enumerate(delivered_messages, start=1):
                 source = str(item.get("conversation_id") or item.get("source") or "local")
-                lines.append(f"{index}. [{source}] {item.get('content') or ''}")
+                rendered_content = self._agent_visible_user_message_content(
+                    quest_root,
+                    content=str(item.get("content") or ""),
+                    attachments=[dict(attachment) for attachment in (item.get("attachments") or []) if isinstance(attachment, dict)],
+                )
+                lines.append(f"{index}. [{source}] {rendered_content}")
             agent_instruction = "\n".join(lines).strip()
         else:
             lines = [
@@ -6062,6 +6812,53 @@ class QuestService:
             "queued_message_count_before_delivery": len(pending),
             "queued_message_count_after_delivery": len(queue_payload.get("pending") or []),
         }
+
+    def _agent_visible_user_message_content(
+        self,
+        quest_root: Path,
+        *,
+        content: str,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> str:
+        base = str(content or "").strip()
+        normalized_attachments = [dict(item) for item in (attachments or []) if isinstance(item, dict)]
+        if not normalized_attachments:
+            return base
+        lines: list[str] = []
+        if base:
+            lines.extend([base, ""])
+        lines.append(
+            self.localized_copy(
+                quest_root=quest_root,
+                zh="系统提示：用户刚刚发送了附件。请优先阅读这些 quest 本地文件，再继续处理这条请求：",
+                en="System note: the user just sent attachments. Read these quest-local files first before continuing this request:",
+            )
+        )
+        for index, item in enumerate(normalized_attachments, start=1):
+            label = str(
+                item.get("name")
+                or item.get("file_name")
+                or item.get("quest_relative_path")
+                or item.get("path")
+                or item.get("url")
+                or f"attachment-{index}"
+            ).strip()
+            content_type = str(item.get("content_type") or item.get("mime_type") or "").strip()
+            location = str(
+                item.get("extracted_text_path")
+                or item.get("ocr_text_path")
+                or item.get("archive_manifest_path")
+                or item.get("quest_relative_path")
+                or item.get("url")
+                or ("hidden" if str(item.get("path") or "").strip() else "unavailable")
+            ).strip()
+            error = str(item.get("download_error") or item.get("path_error") or "").strip()
+            suffix = f" ({content_type})" if content_type else ""
+            if error:
+                lines.append(f"- {label}{suffix}: {location} | attachment_error={error}")
+            else:
+                lines.append(f"- {label}{suffix}: {location}")
+        return "\n".join(lines).strip()
 
     @staticmethod
     def _document_resolution_root(quest_root: Path, workspace_root: Path, document_id: str) -> Path:
@@ -6436,7 +7233,7 @@ class QuestService:
             return False
         parts = PurePosixPath(normalized).parts
         top = parts[0] if parts else normalized
-        if top in {".codex", ".claude", ".ds", "tmp", "userfiles", "artifacts"}:
+        if top in {".codex", ".claude", ".kimi", ".opencode", ".ds", "tmp", "userfiles", "artifacts"}:
             return True
         if top.startswith(".") and normalized not in {".gitignore"}:
             return True

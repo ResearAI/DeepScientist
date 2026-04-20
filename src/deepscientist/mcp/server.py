@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import argparse
 from collections import deque
+import json
 from pathlib import Path
 import shlex
+import sys
 from typing import Any
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -14,7 +18,9 @@ from ..artifact.metrics import MetricContractValidationError
 from ..bash_exec import BashExecService
 from ..memory import MemoryService
 from ..quest import QuestService
+from ..shared import read_json
 from .context import McpContext
+from .schemas import MetricContractPayload, PrimaryMetricPayload
 
 DEFAULT_INLINE_BASH_LOG_LINE_LIMIT = 2000
 DEFAULT_INLINE_BASH_LOG_HEAD_LINES = 500
@@ -27,6 +33,115 @@ LONG_BASH_LOG_HINT = (
     "Use `bash_exec(mode='read', id=..., start=..., tail=...)` to inspect a specific log window, "
     "or `bash_exec(mode='read', id=..., tail=...)` to inspect the latest rendered lines."
 )
+
+
+def _attach_bash_log_truncation_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    result = dict(payload)
+
+    log_line_count = result.get("log_line_count")
+    latest_seq = result.get("latest_seq")
+    tail_start_seq = result.get("tail_start_seq")
+    line_start = result.get("line_start")
+    line_end = result.get("line_end")
+
+    def _as_int(value: object) -> int | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value
+        try:
+            return int(str(value))
+        except (TypeError, ValueError):
+            return None
+
+    total_lines = _as_int(log_line_count) or 0
+    latest_seq_value = _as_int(latest_seq)
+    tail_start_seq_value = _as_int(tail_start_seq)
+    line_start_value = _as_int(line_start)
+    line_end_value = _as_int(line_end)
+
+    if result.get("log_truncated") is True:
+        head_lines = _as_int(result.get("log_preview_head_lines")) or 0
+        tail_lines = _as_int(result.get("log_preview_tail_lines")) or 0
+        omitted_lines = _as_int(result.get("log_preview_omitted_lines")) or max(total_lines - head_lines - tail_lines, 0)
+        after_preview_lines = tail_lines
+        before_preview_lines = head_lines
+        result["log_is_partial"] = True
+        result["log_visible_line_start"] = 1 if total_lines else 0
+        result["log_visible_line_end"] = total_lines if total_lines and total_lines <= head_lines + tail_lines else head_lines + tail_lines
+        result["log_lines_before_window"] = 0
+        result["log_lines_after_window"] = max(total_lines - tail_lines, 0) if total_lines else 0
+        result["seq_has_more_before"] = False
+        result["seq_has_more_after"] = omitted_lines > 0
+        result["seqs_before_window"] = 0
+        result["seqs_after_window"] = omitted_lines
+        result["log_truncation_notice"] = (
+            "This log payload is truncated to a preview window rather than the full output. "
+            f"It shows the first {head_lines} line(s) and the last {tail_lines} line(s), omitting {omitted_lines} middle line(s). "
+            "Do not treat this preview as exhaustive evidence. "
+            "Use bash_exec(mode='read', id=..., start=..., tail=...) for a specific line window, "
+            "or bash_exec(mode='read', id=..., tail_limit=..., before_seq=..., after_seq=...) for seq-based continuation."
+        )
+        return result
+
+    if result.get("log_windowed") is True:
+        if line_start_value is None:
+            line_start_value = 1 if total_lines else 0
+        if line_end_value is None:
+            line_end_value = line_start_value - 1 if line_start_value else 0
+        lines_before = max((line_start_value - 1) if line_start_value else 0, 0)
+        lines_after = max(total_lines - max(line_end_value or 0, 0), 0)
+        result["log_is_partial"] = bool(result.get("has_more_before")) or bool(result.get("has_more_after"))
+        result["log_lines_before_window"] = lines_before
+        result["log_lines_after_window"] = lines_after
+        result["log_visible_line_start"] = line_start_value
+        result["log_visible_line_end"] = line_end_value
+
+        if tail_start_seq_value is not None:
+            seq_window_start = tail_start_seq_value
+            seq_window_end = (
+                tail_start_seq_value + (_as_int(result.get("returned_line_count")) or 0) - 1
+                if (_as_int(result.get("returned_line_count")) or 0) > 0
+                else tail_start_seq_value - 1
+            )
+        else:
+            seq_window_start = line_start_value
+            seq_window_end = line_end_value
+        seqs_before = max((seq_window_start or 0) - 1, 0)
+        seqs_after = (
+            max(latest_seq_value - max(seq_window_end or 0, 0), 0)
+            if latest_seq_value is not None
+            else lines_after
+        )
+        result["seq_window_start"] = seq_window_start
+        result["seq_window_end"] = seq_window_end
+        result["seq_has_more_before"] = seqs_before > 0
+        result["seq_has_more_after"] = seqs_after > 0
+        result["seqs_before_window"] = seqs_before
+        result["seqs_after_window"] = seqs_after
+
+        if result["log_is_partial"]:
+            result["log_truncation_notice"] = (
+                "This log payload is only a partial window, not the full output. "
+                f"It currently covers lines {line_start_value} to {line_end_value} out of {total_lines}, "
+                f"with {lines_before} line(s) before and {lines_after} line(s) after this window. "
+                "If you need adjacent output, continue with bash_exec(mode='read', id=..., start=..., tail=...) "
+                "or use the seq-based before_seq / after_seq parameters."
+            )
+        return result
+
+    if total_lines > 0:
+        result["log_is_partial"] = False
+        result["log_lines_before_window"] = 0
+        result["log_lines_after_window"] = 0
+        if latest_seq_value is not None:
+            result["seq_has_more_before"] = False
+            result["seq_has_more_after"] = False
+            result["seqs_before_window"] = 0
+            result["seqs_after_window"] = 0
+            result["seq_window_start"] = 1
+            result["seq_window_end"] = latest_seq_value
+    return result
 ARTIFACT_STATE_CHANGE_WATCHDOG_NOTES = {
     "confirm_baseline": (
         "Baseline confirmation changed durable quest state and this tool does not send a user-visible "
@@ -54,6 +169,46 @@ ARTIFACT_STATE_CHANGE_WATCHDOG_NOTES = {
         "received an equivalent completion summary."
     ),
 }
+START_SETUP_FORM_FIELDS: tuple[str, ...] = (
+    "title",
+    "goal",
+    "baseline_id",
+    "baseline_variant_id",
+    "baseline_source_mode",
+    "execution_start_mode",
+    "baseline_acceptance_target",
+    "baseline_urls",
+    "paper_urls",
+    "runtime_constraints",
+    "objectives",
+    "need_research_paper",
+    "research_intensity",
+    "decision_policy",
+    "launch_mode",
+    "standard_profile",
+    "custom_profile",
+    "review_followup_policy",
+    "baseline_execution_policy",
+    "manuscript_edit_mode",
+    "entry_state_summary",
+    "review_summary",
+    "review_materials",
+    "custom_brief",
+    "user_language",
+)
+
+
+def _normalize_bash_exec_command_input(raw_command: Any) -> str:
+    if isinstance(raw_command, str):
+        return raw_command
+    if isinstance(raw_command, (list, tuple)):
+        items = [str(item).strip() for item in raw_command if str(item).strip()]
+        if not items:
+            return ""
+        if len(items) == 1:
+            return items[0]
+        return shlex.join(items)
+    return str(raw_command or "")
 
 
 def _normalize_bash_exec_command_input(raw_command: Any) -> str:
@@ -164,6 +319,134 @@ def _attach_interaction_watchdog(
         elif kind == "state_change":
             enriched["state_change_watchdog_note"] = message
     return enriched
+
+
+def _local_daemon_api_base_url(home: Path) -> tuple[str | None, dict[str, Any]]:
+    state = read_json(home / "runtime" / "daemon.json", {})
+    if not isinstance(state, dict):
+        return None, {}
+    for key in ("url", "bind_url"):
+        value = str(state.get(key) or "").strip()
+        if value:
+            return value.rstrip("/"), state
+    return None, state
+
+
+def _issue_draft_route_effect(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": "route:navigate",
+        "data": {
+            "to": "/settings/issues",
+            "issueDraft": {
+                "ok": True,
+                "title": str(payload.get("title") or "").strip(),
+                "body_markdown": str(payload.get("body_markdown") or "").strip(),
+                "issue_url_base": str(payload.get("issue_url_base") or "").strip(),
+                "repo_url": str(payload.get("repo_url") or "").strip(),
+                "generated_at": payload.get("generated_at"),
+            },
+        },
+    }
+
+
+def _coerce_prepare_bool(value: Any, *, field_name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    raise ValueError(f"`{field_name}` must be a boolean.")
+
+
+def _sanitize_start_setup_form_patch(form_patch: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(form_patch, dict):
+        raise ValueError("`form_patch` must be an object.")
+    patch: dict[str, Any] = {}
+    for key in START_SETUP_FORM_FIELDS:
+        if key not in form_patch:
+            continue
+        value = form_patch.get(key)
+        if value is None:
+            continue
+        if key == "need_research_paper":
+            patch[key] = _coerce_prepare_bool(value, field_name=key)
+            continue
+        if isinstance(value, (str, int, float, bool)):
+            patch[key] = str(value).strip() if not isinstance(value, bool) else value
+            continue
+        raise ValueError(f"`form_patch.{key}` must be a string or boolean.")
+    if not patch:
+        raise ValueError("`form_patch` must include at least one supported field.")
+    return patch
+
+
+def _start_setup_patch_effect(form_patch: dict[str, Any], *, message: str | None = None) -> dict[str, Any]:
+    return {
+        "name": "start_setup:patch",
+        "data": {
+            "patch": dict(form_patch),
+            "message": str(message or "").strip() or None,
+        },
+    }
+
+
+def _prepare_github_issue_payload_via_daemon(
+    home: Path,
+    *,
+    summary: str | None = None,
+    user_notes: str | None = None,
+    include_doctor: bool = True,
+    include_logs: bool = True,
+) -> dict[str, Any]:
+    base_url, daemon_state = _local_daemon_api_base_url(home)
+    if not base_url:
+        raise ValueError("The local daemon URL is unavailable. Start DeepScientist before preparing a GitHub issue draft.")
+
+    token = str((daemon_state or {}).get("auth_token") or "").strip()
+    auth_enabled = bool((daemon_state or {}).get("auth_enabled"))
+    if auth_enabled and not token:
+        raise ValueError("Browser auth is enabled for the local daemon, but no auth token was found in runtime/daemon.json.")
+
+    body = {
+        "summary": str(summary or "").strip() or None,
+        "user_notes": str(user_notes or "").strip() or None,
+        "include_doctor": bool(include_doctor),
+        "include_logs": bool(include_logs),
+    }
+    headers = {
+        "Content-Type": "application/json",
+    }
+    if auth_enabled and token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    request = urllib_request.Request(
+        f"{base_url}/api/system/issues/draft",
+        data=json.dumps(body).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib_request.urlopen(request, timeout=15) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+    except urllib_error.HTTPError as exc:  # pragma: no cover - exercised via unit monkeypatching
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        message = detail or getattr(exc, "reason", "") or "request failed"
+        raise ValueError(f"Local daemon issue draft request failed with HTTP {exc.code}: {message}") from exc
+    except OSError as exc:
+        raise ValueError(f"Unable to reach the local daemon at `{base_url}`: {exc}") from exc
+
+    try:
+        payload = json.loads(raw or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError("The local daemon returned an invalid issue draft payload.") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("The local daemon returned a non-object issue draft payload.")
+    if payload.get("ok") is False:
+        raise ValueError(str(payload.get("message") or "The local daemon rejected the issue draft request."))
+    return payload
 
 
 def _split_bash_log_lines(log_text: str) -> list[str]:
@@ -483,6 +766,9 @@ def build_memory_server(context: McpContext) -> FastMCP:
 def build_artifact_server(context: McpContext) -> FastMCP:
     service = ArtifactService(context.home)
     quest_service = service.quest_service
+    custom_profile = str(context.custom_profile or "").strip().lower()
+    issue_only_profile = custom_profile == "settings_issue"
+    start_setup_prepare_profile = custom_profile == "start_setup_prepare"
     server = FastMCP(
         "artifact",
         instructions=(
@@ -493,7 +779,12 @@ def build_artifact_server(context: McpContext) -> FastMCP:
         log_level="ERROR",
     )
 
-    def finalize_state_changing_artifact_tool(payload: dict[str, Any], *, tool_name: str) -> dict[str, Any]:
+    def finalize_artifact_tool(
+        payload: dict[str, Any],
+        *,
+        tool_name: str,
+        state_change_note: str | None = None,
+    ) -> dict[str, Any]:
         quest_root = context.require_quest_root().resolve()
         quest_service.record_tool_activity(
             quest_root,
@@ -503,8 +794,68 @@ def build_artifact_server(context: McpContext) -> FastMCP:
         return _attach_interaction_watchdog(
             payload,
             watchdog,
+            state_change_note=state_change_note,
+        )
+
+    def finalize_state_changing_artifact_tool(payload: dict[str, Any], *, tool_name: str) -> dict[str, Any]:
+        return finalize_artifact_tool(
+            payload,
+            tool_name=tool_name,
             state_change_note=ARTIFACT_STATE_CHANGE_WATCHDOG_NOTES.get(tool_name),
         )
+
+    if issue_only_profile:
+        @server.tool(
+            name="prepare_github_issue",
+            description=(
+                "Generate a prefilled GitHub issue draft from the live local daemon's settings diagnostics. "
+                "By default this also asks the browser UI to navigate to `/settings/issues` and preload the generated draft."
+            ),
+        )
+        def prepare_github_issue(
+            summary: str = "",
+            user_notes: str = "",
+            include_doctor: bool = True,
+            include_logs: bool = True,
+            open_settings_page: bool = True,
+            comment: str | dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            result = _prepare_github_issue_payload_via_daemon(
+                context.home,
+                summary=summary,
+                user_notes=user_notes,
+                include_doctor=include_doctor,
+                include_logs=include_logs,
+            )
+            if open_settings_page:
+                result["ui_effects"] = [_issue_draft_route_effect(result)]
+            return finalize_artifact_tool(result, tool_name="prepare_github_issue")
+
+        return server
+
+    if start_setup_prepare_profile:
+        @server.tool(
+            name="prepare_start_setup_form",
+            description=(
+                "Prepare and apply a structured patch for the autonomous start form. "
+                "Use this when the setup agent has enough information to fill or refine the form automatically."
+            ),
+        )
+        def prepare_start_setup_form(
+            form_patch: dict[str, Any],
+            message: str = "",
+            comment: str | dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            sanitized_patch = _sanitize_start_setup_form_patch(form_patch)
+            result = service.apply_start_setup_form_patch(
+                context.require_quest_root(),
+                form_patch=sanitized_patch,
+                message=message,
+            )
+            result["ui_effects"] = [_start_setup_patch_effect(sanitized_patch, message=message)]
+            return finalize_artifact_tool(result, tool_name="prepare_start_setup_form")
+
+        return server
 
     @server.tool(name="record", description="Write a structured artifact record under the current quest.")
     def record(payload: dict[str, Any], comment: str | dict[str, Any] | None = None) -> dict[str, Any]:
@@ -760,6 +1111,52 @@ def build_artifact_server(context: McpContext) -> FastMCP:
             detail=detail,
             locale=locale,
         )
+
+    @server.tool(
+        name="get_research_map_status",
+        description=(
+            "Read the current research-node progress state that corresponds to the quest canvas. "
+            "Returns the active workspace node, research head node, node history, runtime refs, canvas freshness, recommended activation ref, and Git identifiers so agents can recover progress or switch branches without guessing."
+        ),
+        annotations=_read_only_tool_annotations(title="Get research map status"),
+    )
+    def get_research_map_status(
+        detail: str = "summary",
+        locale: str = "zh",
+        comment: str | dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return service.get_research_map_status(
+            context.require_quest_root(),
+            detail=detail,
+            locale=locale,
+        )
+
+    @server.tool(
+        name="get_benchstore_catalog",
+        description=(
+            "Read the BenchStore catalog with current-device recommendation hints. "
+            "Use detail='summary' for compact recommendations or detail='full' for the full structured catalog."
+        ),
+        annotations=_read_only_tool_annotations(title="Get BenchStore catalog"),
+    )
+    def get_benchstore_catalog(
+        detail: str = "summary",
+        comment: str | dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return service.get_benchstore_catalog(
+            context.require_quest_root(),
+            detail=detail,
+        )
+
+    @server.tool(
+        name="get_start_setup_context",
+        description=(
+            "Read the current autonomous start-setup context, including the suggested form and selected benchmark context when present."
+        ),
+        annotations=_read_only_tool_annotations(title="Get start setup context"),
+    )
+    def get_start_setup_context(comment: str | dict[str, Any] | None = None) -> dict[str, Any]:
+        return service.get_start_setup_context(context.require_quest_root())
 
     @server.tool(
         name="get_method_scoreboard",
@@ -1080,7 +1477,9 @@ def build_artifact_server(context: McpContext) -> FastMCP:
         name="confirm_baseline",
         description=(
             "Confirm the active quest baseline and open the stage gate into idea work. "
-            "The baseline path must point at a quest-local baseline under baselines/local or baselines/imported."
+            "The baseline path must point at a quest-local baseline under baselines/local or baselines/imported. "
+            "Descriptions, derivations, and source refs must live on entries inside "
+            "`metric_contract.metrics`."
         ),
     )
     def confirm_baseline(
@@ -1089,10 +1488,10 @@ def build_artifact_server(context: McpContext) -> FastMCP:
         variant_id: str | None = None,
         summary: str | None = None,
         baseline_kind: str | None = None,
-        metric_contract: dict[str, Any] | None = None,
+        metric_contract: MetricContractPayload | None = None,
         metric_directions: dict[str, str] | None = None,
         metrics_summary: dict[str, Any] | None = None,
-        primary_metric: dict[str, Any] | None = None,
+        primary_metric: PrimaryMetricPayload | None = None,
         auto_advance: bool = True,
         comment: str | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -1105,10 +1504,10 @@ def build_artifact_server(context: McpContext) -> FastMCP:
                 variant_id=variant_id,
                 summary=summary,
                 baseline_kind=baseline_kind,
-                metric_contract=metric_contract,
+                metric_contract=metric_contract.model_dump(exclude_none=True) if metric_contract is not None else None,
                 metric_directions=metric_directions,
                 metrics_summary=metrics_summary,
-                primary_metric=primary_metric,
+                primary_metric=primary_metric.model_dump(exclude_none=True) if primary_metric is not None else None,
                 auto_advance=auto_advance,
                 strict_metric_contract=True,
             )
@@ -1371,7 +1770,7 @@ def build_bash_exec_server(context: McpContext) -> FastMCP:
                         tail=tail if tail is not None else tail_limit,
                     )
                 )
-                return finalize(payload)
+                return finalize(_attach_bash_log_truncation_metadata(payload))
             use_tail = tail_limit is not None or before_seq is not None or after_seq is not None or normalized_order != "asc"
             if use_tail:
                 resolved_tail_limit = max(1, min(int(tail_limit or 200), 1000))
@@ -1398,6 +1797,39 @@ def build_bash_exec_server(context: McpContext) -> FastMCP:
                 payload["after_seq"] = tail_meta.get("after_seq")
                 payload["before_seq"] = tail_meta.get("before_seq")
                 payload["order"] = normalized_order
+                visible_seqs = [int(entry.get("seq") or 0) for entry in entries if int(entry.get("seq") or 0) > 0]
+                seq_window_start = min(visible_seqs) if visible_seqs else None
+                seq_window_end = max(visible_seqs) if visible_seqs else None
+                latest_seq_value = tail_meta.get("latest_seq")
+                seqs_before_window = max(int(seq_window_start or 0) - 1, 0) if seq_window_start is not None else None
+                seqs_after_window = (
+                    max(int(latest_seq_value or 0) - int(seq_window_end or 0), 0)
+                    if seq_window_end is not None and latest_seq_value is not None
+                    else None
+                )
+                payload["seq_window_start"] = seq_window_start
+                payload["seq_window_end"] = seq_window_end
+                payload["seq_has_more_before"] = bool(seqs_before_window and seqs_before_window > 0)
+                payload["seq_has_more_after"] = bool(seqs_after_window and seqs_after_window > 0)
+                payload["seqs_before_window"] = seqs_before_window
+                payload["seqs_after_window"] = seqs_after_window
+                payload["tail_is_partial"] = payload["seq_has_more_before"] or payload["seq_has_more_after"]
+                if payload["tail_is_partial"]:
+                    before_text = (
+                        f"{seqs_before_window} seq(s) before"
+                        if seqs_before_window is not None
+                        else "some earlier seqs outside this filtered window"
+                    )
+                    after_text = (
+                        f"{seqs_after_window} seq(s) after"
+                        if seqs_after_window is not None
+                        else "some later seqs outside this filtered window"
+                    )
+                    payload["log_truncation_notice"] = (
+                        "This seq-based bash_exec read is only a partial window, not the full log. "
+                        f"It currently covers seq {seq_window_start} to {seq_window_end}; there are {before_text} and {after_text}. "
+                        "Continue with before_seq / after_seq or adjust tail_limit if you need more surrounding output."
+                    )
                 return finalize(payload)
             payload = service.build_tool_result(
                 context,
@@ -1407,7 +1839,7 @@ def build_bash_exec_server(context: McpContext) -> FastMCP:
                 export_log_to=export_log_to,
             )
             payload.update(_build_default_bash_log_payload_from_path(service.terminal_log_path(quest_root, bash_id)))
-            return finalize(payload)
+            return finalize(_attach_bash_log_truncation_metadata(payload))
         if normalized_mode == "kill":
             bash_id = service.resolve_session_id(quest_root, id)
             session = service.request_stop(
@@ -1473,7 +1905,19 @@ def _resolve_search_scope(context: McpContext, scope: str) -> str:
     return normalized
 
 
+def _ensure_utf8_stdio() -> None:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+
 def main() -> int:
+    _ensure_utf8_stdio()
     parser = argparse.ArgumentParser(description="DeepScientist built-in MCP server")
     parser.add_argument("--namespace", choices=("memory", "artifact", "bash_exec"), required=True)
     args = parser.parse_args()

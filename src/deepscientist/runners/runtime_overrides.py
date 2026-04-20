@@ -64,8 +64,36 @@ def apply_codex_runtime_overrides(config: dict[str, Any] | None) -> dict[str, An
     return resolved
 
 
+def claude_runtime_overrides() -> dict[str, str]:
+    binary = _as_text(os.environ.get("DEEPSCIENTIST_CLAUDE_BINARY") or os.environ.get("DS_CLAUDE_BINARY"))
+    model = _as_text(os.environ.get("DEEPSCIENTIST_CLAUDE_MODEL") or os.environ.get("DS_CLAUDE_MODEL"))
+    max_turns = _as_text(os.environ.get("DEEPSCIENTIST_CLAUDE_MAX_TURNS"))
+    yolo_enabled = _as_optional_bool_env("DEEPSCIENTIST_CLAUDE_YOLO")
+
+    overrides: dict[str, str] = {}
+    if binary:
+        overrides["binary"] = binary
+    if model:
+        overrides["model"] = model
+    if max_turns:
+        overrides["max_turns"] = max_turns
+    if yolo_enabled is True:
+        overrides["permission_mode"] = "bypassPermissions"
+    elif yolo_enabled is False:
+        overrides["permission_mode"] = "default"
+    return overrides
+
+
+def apply_claude_runtime_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
+    resolved = deepcopy(config or {})
+    resolved.update(claude_runtime_overrides())
+    return resolved
+
+
 def apply_runners_runtime_overrides(runners_config: dict[str, Any] | None) -> dict[str, Any]:
     resolved = deepcopy(runners_config or {})
     codex = resolved.get("codex")
     resolved["codex"] = apply_codex_runtime_overrides(codex if isinstance(codex, dict) else {})
+    claude = resolved.get("claude")
+    resolved["claude"] = apply_claude_runtime_overrides(claude if isinstance(claude, dict) else {})
     return resolved

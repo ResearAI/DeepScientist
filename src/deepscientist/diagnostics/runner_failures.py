@@ -88,14 +88,30 @@ def diagnose_runner_failure(
             matched_text="tool-call arguments",
         )
 
+    if "argument list too long" in lower or "[errno 7]" in lower:
+        return FailureDiagnosis(
+            code="runner_argument_list_too_long",
+            problem="The runner command exceeded the OS argument-length limit.",
+            why=(
+                "This usually happens when a runner needs to receive a very large prompt through argv "
+                "instead of stdin or a file-backed prompt path."
+            ),
+            guidance=(
+                "Retry with a shorter fallback prompt that references the quest brief and saved prompt files.",
+                "Prefer stdin-capable runners such as Codex or Claude for very large turn prompts.",
+                "If the problem persists, inspect `.ds/runs/<run_id>/prompt.md` and reduce duplicated context.",
+            ),
+            retriable=False,
+            matched_text="argument list too long",
+        )
+
     if "missing environment variable" in lower:
-        env_path = f"`runners.{normalized_runner}.env`" if normalized_runner else "`runners.<runner>.env`"
         return FailureDiagnosis(
             code="provider_env_missing",
             problem="A required provider environment variable is missing.",
             why="The configured model provider expects an API key or env var that was not present in the runner environment.",
             guidance=(
-                f"Set the required key in `~/DeepScientist/config/runners.yaml` under {env_path}.",
+                "Set the required key in `~/DeepScientist/config/runners.yaml` under `runners.codex.env`.",
                 "If you launch from a shell, export the provider key in that same shell before starting `ds`.",
             ),
             retriable=False,
@@ -126,6 +142,32 @@ def diagnose_runner_failure(
             ),
             retriable=False,
             matched_text="invalid params",
+        )
+
+    if normalized_runner == "codex" and (
+        "unknown file extension" in lower
+        or ("file extension" in lower and ".png" in lower)
+        or ("file extension" in lower and ".jpg" in lower)
+        or ("file extension" in lower and ".jpeg" in lower)
+        or ("file extension" in lower and ".gif" in lower)
+        or ("file extension" in lower and ".webp" in lower)
+        or ("file extension" in lower and ".bmp" in lower)
+        or ("file extension" in lower and ".mp4" in lower)
+    ):
+        return FailureDiagnosis(
+            code="runner_binary_attachment_path_unsupported",
+            problem="Codex rejected a binary attachment path from the prompt.",
+            why=(
+                "The request exposed an image, video, or other binary file path that the Codex CLI tried to treat "
+                "as an inline readable input, but that extension is not supported on stdin-driven prompt parsing."
+            ),
+            guidance=(
+                "Prefer OCR text, extracted text, or archive manifests over raw binary attachment paths in the runner prompt.",
+                "If a milestone needs binary delivery, keep the binary path inside the tool call payload instead of embedding it directly in prompt guidance.",
+                "Do not keep retrying the same turn until the prompt or attachment summary no longer exposes the unsupported binary path.",
+            ),
+            retriable=False,
+            matched_text="unknown file extension",
         )
 
     return None

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..runners.metadata import get_runner_metadata, list_builtin_runner_names
+
 CONFIG_NAMES = ("config", "runners", "connectors", "plugins", "mcp_servers")
 REQUIRED_CONFIG_NAMES = ("config", "runners", "connectors")
 OPTIONAL_CONFIG_NAMES = ("plugins", "mcp_servers")
@@ -47,15 +49,20 @@ def default_config(home: Path) -> dict:
             "console": True,
             "keep_days": 30,
         },
+        "hardware": {
+            "gpu_selection_mode": "all",
+            "selected_gpu_ids": [],
+            "include_system_hardware_in_prompt": False,
+        },
         "literature": {
             "deepxiv": {
                 "enabled": False,
                 "base_url": "https://data.rag.ac.cn",
                 "token": None,
                 "token_env": "DEEPXIV_TOKEN",
-                "default_result_size": 10,
-                "preview_characters": 1200,
-                "request_timeout_seconds": 20,
+                "default_result_size": 20,
+                "preview_characters": 5000,
+                "request_timeout_seconds": 90,
             },
         },
         "git": {
@@ -70,12 +77,17 @@ def default_config(home: Path) -> dict:
             "sync_quest_on_open": True,
         },
         "bootstrap": {
+            "runner_readiness": {
+                name: {
+                    "ready": False,
+                    "last_checked_at": None,
+                    "last_result": {},
+                }
+                for name in list_builtin_runner_names()
+            },
             "codex_ready": False,
             "codex_last_checked_at": None,
             "codex_last_result": {},
-            "claude_ready": False,
-            "claude_last_checked_at": None,
-            "claude_last_result": {},
             "locale_source": "default",
             "locale_initialized_from_browser": False,
             "locale_initialized_at": None,
@@ -105,35 +117,73 @@ def default_config(home: Path) -> dict:
 
 
 def default_runners() -> dict:
+    codex = get_runner_metadata("codex")
+    claude = get_runner_metadata("claude")
+    kimi = get_runner_metadata("kimi")
+    opencode = get_runner_metadata("opencode")
     return {
         "codex": {
             "enabled": True,
-            "binary": "codex",
-            "config_dir": "~/.codex",
+            "binary": codex.default_binary,
+            "config_dir": codex.default_config_dir,
             "profile": "",
             "model": "inherit",
             "model_reasoning_effort": "xhigh",
             "approval_policy": "never",
             "sandbox_mode": "danger-full-access",
             "retry_on_failure": True,
-            "retry_max_attempts": 5,
+            "retry_max_attempts": 7,
             "retry_initial_backoff_sec": 10.0,
             "retry_backoff_multiplier": 6.0,
             "retry_max_backoff_sec": 1800.0,
-            # Increase MCP tool timeout so codex can wait for long `bash_exec(mode='await', ...)`
-            # or other durable MCP calls without prematurely timing out.
-            # Mirrors DS_2027's `codex.mcp_tool_timeout_sec` default.
             "mcp_tool_timeout_sec": 180000,
             "env": {},
         },
         "claude": {
             "enabled": False,
-            "binary": "claude",
-            "config_dir": "~/.claude",
+            "binary": claude.default_binary,
+            "config_dir": claude.default_config_dir,
             "model": "inherit",
-            "model_reasoning_effort": "",
+            "permission_mode": "bypassPermissions",
+            "retry_on_failure": True,
+            "retry_max_attempts": 4,
+            "retry_initial_backoff_sec": 10.0,
+            "retry_backoff_multiplier": 4.0,
+            "retry_max_backoff_sec": 600.0,
             "env": {},
-            "status": "experimental",
+            "status": "supported_experimental",
+        },
+        "kimi": {
+            "enabled": False,
+            "binary": kimi.default_binary,
+            "config_dir": kimi.default_config_dir,
+            "model": "inherit",
+            "agent": "",
+            "thinking": False,
+            "yolo": True,
+            "retry_on_failure": True,
+            "retry_max_attempts": 4,
+            "retry_initial_backoff_sec": 10.0,
+            "retry_backoff_multiplier": 4.0,
+            "retry_max_backoff_sec": 600.0,
+            "env": {},
+            "status": "supported_experimental",
+        },
+        "opencode": {
+            "enabled": False,
+            "binary": opencode.default_binary,
+            "config_dir": opencode.default_config_dir,
+            "model": "inherit",
+            "permission_mode": "allow",
+            "default_agent": "",
+            "variant": "",
+            "retry_on_failure": True,
+            "retry_max_attempts": 4,
+            "retry_initial_backoff_sec": 10.0,
+            "retry_backoff_multiplier": 4.0,
+            "retry_max_backoff_sec": 600.0,
+            "env": {},
+            "status": "supported_experimental",
         },
     }
 

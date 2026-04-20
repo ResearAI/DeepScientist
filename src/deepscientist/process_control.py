@@ -69,7 +69,14 @@ def terminate_process_ids(
             taskkill_args = ["taskkill", "/PID", str(process_pid), "/T"]
             if force:
                 taskkill_args.append("/F")
-            subprocess.run(taskkill_args, check=False, capture_output=True, text=True)
+            subprocess.run(
+                taskkill_args,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
             if not force and is_process_alive(process_pid):
                 try:
                     os.kill(process_pid, signal.SIGTERM)

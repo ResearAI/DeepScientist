@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ..config import ConfigManager
 from ..mcp.context import McpContext
 from ..process_control import is_process_alive, process_session_popen_kwargs, terminate_process_ids
 from ..shared import append_jsonl, ensure_dir, generate_id, iter_jsonl, read_json, read_jsonl, read_jsonl_tail, utc_now
@@ -182,6 +183,20 @@ class BashExecService:
 
     def _quest_root(self, quest_id: str) -> Path:
         return self.home / "quests" / quest_id
+
+    def _hardware_env_overrides(self) -> dict[str, str]:
+        config = ConfigManager(self.home).load_runtime_config()
+        hardware = config.get("hardware") if isinstance(config.get("hardware"), dict) else {}
+        mode = str(hardware.get("gpu_selection_mode") or "all").strip().lower() or "all"
+        if mode != "selected":
+            return {}
+        selected_gpu_ids = [str(item).strip() for item in (hardware.get("selected_gpu_ids") or []) if str(item).strip()]
+        value = ",".join(selected_gpu_ids)
+        return {
+            "CUDA_VISIBLE_DEVICES": value,
+            "NVIDIA_VISIBLE_DEVICES": value,
+            "ROCR_VISIBLE_DEVICES": value,
+        }
 
     def sessions_root(self, quest_root: Path) -> Path:
         return ensure_dir(quest_root / ".ds" / "bash_exec")
@@ -1035,6 +1050,7 @@ class BashExecService:
         session_dir = self.session_dir(quest_root, bash_id)
         ensure_dir(session_dir)
         env_payload = {str(key): str(value) for key, value in (env or {}).items() if value is not None}
+        env_payload.update(self._hardware_env_overrides())
         launch = build_exec_shell_launch(command)
         meta = self._build_initial_meta(
             context=context,
@@ -1206,6 +1222,7 @@ class BashExecService:
         env_payload = {
             "DS_TERMINAL_PROMPT_PATH": str(self.prompt_events_path(resolved_quest_root, bash_id)),
         }
+        env_payload.update(self._hardware_env_overrides())
         if os.name != "nt":
             terminal_script_path.write_text(
                 "\n".join(
