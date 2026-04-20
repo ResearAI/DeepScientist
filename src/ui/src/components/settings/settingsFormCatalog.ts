@@ -47,6 +47,7 @@ export const configSections: SettingsSection[] = [
         options: [
           { label: 'Codex', value: 'codex' },
           { label: 'Claude', value: 'claude' },
+          { label: 'Kimi', value: 'kimi' },
           { label: 'OpenCode', value: 'opencode' },
         ],
       },
@@ -536,6 +537,11 @@ export const runnerCatalog: RunnerCatalogEntry[] = [
     description: 'Anthropic Claude Code runner. Uses headless Claude Code CLI with DeepScientist MCP injection and dangerous bypassPermissions defaults.',
   },
   {
+    name: 'kimi',
+    label: 'Kimi',
+    description: 'Moonshot Kimi Code runner. Uses the official Kimi CLI with isolated ~/.kimi runtime materialization, explicit MCP injection, and optional `--yolo` automation.',
+  },
+  {
     name: 'opencode',
     label: 'OpenCode',
     description: 'OpenCode runner. Uses the OpenCode CLI / JSON event path with DeepScientist MCP injection and permission allow defaults.',
@@ -641,6 +647,31 @@ export const runnerFields: SettingsField[] = [
       { label: 'Plan', value: 'plan' },
     ],
     runners: ['claude'],
+  },
+  {
+    key: 'agent',
+    label: 'Kimi agent',
+    kind: 'text',
+    placeholder: 'research',
+    description: 'Optional Kimi agent name passed through as `kimi --agent <name>`.',
+    whereToGet: 'Leave empty to use the Kimi default agent. Fill this only when your local Kimi setup defines a specific agent profile for DeepScientist turns.',
+    runners: ['kimi'],
+  },
+  {
+    key: 'thinking',
+    label: 'Thinking mode',
+    kind: 'boolean',
+    description: 'Whether DeepScientist should enable `kimi --thinking` for this runner by default.',
+    whereToGet: 'Enable this only when your Kimi path supports thinking mode and you want it on for most turns.',
+    runners: ['kimi'],
+  },
+  {
+    key: 'yolo',
+    label: 'Yolo mode',
+    kind: 'boolean',
+    description: 'Whether DeepScientist should pass `--yolo` so Kimi runs without interactive approval prompts.',
+    whereToGet: 'Keep enabled for unattended local automation. Disable it only when you intentionally want Kimi to stop for confirmations.',
+    runners: ['kimi'],
   },
   {
     key: 'default_agent',

@@ -42,6 +42,7 @@ QUEST_DIRECTORIES = (
     ".codex/prompts",
     ".codex/skills",
     ".claude/agents",
+    ".kimi/skills",
     ".opencode/skills",
     ".ds/bash_exec",
     ".ds/conversations",

@@ -1,7 +1,5 @@
 # 24 Claude Code Setup
 
-DeepScientist does not wrap Claude Code behind a private adapter.
-
 It reuses the `claude` CLI that already works on your machine, then injects DeepScientist MCP servers and quest-local skills at runtime.
 
 The right order is:
@@ -10,8 +8,6 @@ The right order is:
 2. confirm `claude` works directly in a terminal
 3. run `ds doctor`
 4. only then switch DeepScientist to the `claude` runner
-
-If `claude` itself is not working yet, fixing DeepScientist first is the wrong order.
 
 ## Official docs to read first
 
@@ -217,6 +213,20 @@ claude:
 ```
 
 If your direct Claude Code install uses the default account and settings under `~/.claude`, keep `config_dir` unchanged.
+
+### Settings-first path after launch
+
+If DeepScientist is already running, use the visual `Models` page first:
+
+- route: `/settings/runners`
+
+Use it to:
+
+- switch the global default runner to `Claude`
+- enable the Claude runner
+- fill `binary`, `config_dir`, `model`, `permission_mode`, and `env`
+
+![Models settings page](../images/settings/settings-runners-en.png)
 
 ### Settings page mapping
 

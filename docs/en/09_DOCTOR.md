@@ -2,6 +2,16 @@
 
 Use `ds doctor` when DeepScientist does not start cleanly after installation.
 
+If DeepScientist already launches and you can reach the web UI, do not start from raw logs first. Start from the visual operator path:
+
+1. open [30 Settings Control Center Guide](./30_SETTINGS_CONTROL_CENTER_GUIDE.md)
+2. check `Summary`, `Runtime`, `Diagnostics`, and `Errors`
+3. only then fall back to `ds doctor` or raw config edits if the visual surface is not enough
+
+The `Diagnostics` page is the operator-facing surface that pairs best with `ds doctor`:
+
+![Settings diagnostics page](../images/admin/admin-diagnostics-en.png)
+
 ## Recommended flow
 
 1. Install DeepScientist:
@@ -234,7 +244,7 @@ git config --global user.email "you@example.com"
 
 ### Runner switching and enablement
 
-Current releases support `codex`, `claude`, and `opencode`.
+Current releases support `codex`, `claude`, `kimi`, and `opencode`.
 
 If a non-default runner was enabled by mistake, check:
 

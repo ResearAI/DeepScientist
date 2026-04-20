@@ -309,6 +309,14 @@ Stage-end requirement:
 
 - if the campaign produced a durable cross-slice lesson, failure pattern, or comparability caveat, write at least one `memory.write(...)` before leaving the stage
 
+## Connector-facing campaign chart requirements
+
+- When a campaign result is promoted into a connector-facing chart, prefer restrained palettes such as `sage-clay` and `mist-stone`.
+- A useful `sage-clay` anchor for campaign visuals is `#7F8F84`.
+- Use color to separate campaign-critical slices from background slices, not to decorate every slice equally.
+- Keep the palette consistent with the system prompt instead of improvising a fresh theme per campaign.
+- Campaign visuals should make the main boundary change obvious even in compressed connector previews.
+
 ## Exit criteria
 
 Exit once one of these is durably true:

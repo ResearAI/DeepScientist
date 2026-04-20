@@ -1,10 +1,12 @@
-For this tutorial, continue with **Autonomous**.
+For this tutorial, click **Autonomous**.
 
-This is the normal “start the mission” path:
+This opens the real project launch form.
 
-- fill the essential fields
-- check the generated launch prompt
-- create the workspace
-- let DeepScientist begin from there
+After that, the normal path is:
+
+1. fill the essential fields such as `Project title` and `Primary research request`
+2. review the generated launch prompt on the right
+3. click `Create project`
+4. enter the real workspace that DeepScientist just created
 
 The form stays beginner-friendly because deeper options are pushed behind advanced sections.

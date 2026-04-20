@@ -1,8 +1,12 @@
 Open one benchmark detail card.
 
-The tutorial chooses a featured card on purpose, because that is where the decision becomes concrete:
+This is the first moment where your choice becomes concrete.
+
+You are not just browsing anymore. You are checking:
 
 - can this machine run it
-- what paper it comes from
+- what task it will actually ask you to do
 - what risk it carries
-- whether it is ready to launch
+- whether it is ready to launch now, or needs `Download` first
+
+If the detail page looks promising, the next step is simple: stay on that page and decide whether to `Start`, `Download`, or leave it.

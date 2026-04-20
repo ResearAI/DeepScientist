@@ -243,7 +243,7 @@ def _check_runner_support(config_manager: ConfigManager) -> dict[str, Any]:
 
     if not enabled_runners:
         errors.append("At least one runner must be enabled.")
-        guidance.append("Enable one of `codex`, `claude`, or `opencode` in `~/DeepScientist/config/runners.yaml`.")
+        guidance.append("Enable one of `codex`, `claude`, `kimi`, or `opencode` in `~/DeepScientist/config/runners.yaml`.")
     if default_runner not in runners_payload:
         errors.append(f"Configured default runner `{default_runner}` does not exist in `runners.yaml`.")
     elif default_runner not in enabled_runners:
@@ -272,7 +272,12 @@ def _check_runner(config_manager: ConfigManager, runner_name: str) -> dict[str, 
     runner_cfg = runners_payload.get(normalized_runner) if isinstance(runners_payload.get(normalized_runner), dict) else {}
     binary = str(runner_cfg.get("binary") or normalized_runner).strip() or normalized_runner
     resolved_binary = resolve_runner_binary(binary, runner_name=normalized_runner)
-    label = {"codex": "Codex CLI", "claude": "Claude Code CLI", "opencode": "OpenCode CLI"}.get(normalized_runner, normalized_runner)
+    label = {
+        "codex": "Codex CLI",
+        "claude": "Claude Code CLI",
+        "kimi": "Kimi Code CLI",
+        "opencode": "OpenCode CLI",
+    }.get(normalized_runner, normalized_runner)
 
     if not resolved_binary:
         guidance = config_manager._runner_missing_binary_guidance(normalized_runner, runner_cfg)

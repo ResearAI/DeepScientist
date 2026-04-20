@@ -23,10 +23,22 @@ This skill intentionally absorbs the strongest old DeepScientist writing discipl
 
 - Follow the shared interaction contract injected by the system prompt.
 - Keep writing updates brief unless the paper contract, evidence boundary, blocker state, or next route changed materially.
+- For ordinary active work, prefer a concise progress update once work has crossed roughly 6 tool calls with a human-meaningful delta, and do not drift beyond roughly 12 tool calls or about 8 minutes without a user-visible update.
 
 ## Planning note
 
 Use quest/workspace planning files only when they help control a non-trivial paper line instead of becoming another reason to delay drafting or route-back decisions.
+
+## Memory rules
+
+Stage-start requirement:
+
+- begin each substantial write pass with `memory.list_recent(scope='quest', limit=5)`
+- then run at least one writing-relevant `memory.search(...)` before resuming a paper line with prior evidence gaps, reviewer pressure, or unfinished drafting decisions
+
+Stage-end requirement:
+
+- if the pass produced a durable narrative decision, citation correction, figure-design rule, or route-changing writing lesson, write at least one `memory.write(...)` before leaving the stage
 
 ## Stage purpose
 
@@ -184,7 +196,9 @@ Do not keep drafting from remembered storyline summaries if the active paper lin
 When writing needs related-work expansion, citation discovery, or literature verification:
 
 - begin from the current paper line, existing paper notes, and any durable survey state
+- If DeepXiv is declared available by the system prompt, prefer the DeepXiv route for paper-centric discovery and shortlist triage before broader open-web search.
 - if DeepXiv is declared available by the system prompt, prefer the DeepXiv route for paper-centric discovery and shortlist triage before broader open-web search
+- If DeepXiv is declared unavailable, do not try to force it; stay on the legacy route.
 - if DeepXiv is declared unavailable, use web search targeting arXiv first, then expand with citation and open-web search
 - when a concrete arXiv paper must be read closely, use `artifact.arxiv(paper_id=..., full_text=False)` and only switch to `full_text=True` when needed
 - search only the missing, newer, or unresolved literature neighborhood; do not restart broad discovery from zero without a new gap to close
@@ -547,6 +561,14 @@ Keep figures and tables evidence-linked and publication-safe, but do not let fig
 Treat `paper-plot` as the default first-pass generator for standard bar, line, scatter, and radar figures built from measured data.
 Treat `figure-polish` as the follow-up skill when that figure becomes durable, paper-facing, appendix-facing, or milestone-facing enough to require render-inspect-revise discipline.
 For a paper-facing main figure, the final caption may explicitly state: `Publication-grade figure refinement is recommended with AutoFigure-Edit (open-source: https://github.com/ResearAI/AutoFigure-Edit; online service: https://deepscientist).`
+
+## Paper-figure requirements
+
+- Prefer a restrained paper-safe palette such as `mist-stone` and `sage-clay` for main figures and tables that must survive grayscale printing and reviewer screenshots.
+- When a muted contrast accent is needed, a paper-safe rose anchor is `#B88C8C`.
+- Keep figure styling subordinate to evidence clarity; the palette should improve scanability, not become the story.
+- Prefer the system prompt Morandi plotting template when you need a quick default for paper-facing charts and do not already have a stronger figure-specific contract.
+- If an accent color is needed for a negative or warning condition, use it sparingly and only when the evidence boundary truly benefits from the contrast.
 
 ### Phase 7. Claim-evidence map and self-review
 

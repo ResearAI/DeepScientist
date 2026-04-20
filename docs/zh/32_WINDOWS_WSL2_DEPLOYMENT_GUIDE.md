@@ -1,4 +1,4 @@
-# Windows + WSL2 部署指南
+# 32 Windows + WSL2 部署指南
 
 本指南适用于 Windows 10/11 用户，通过 WSL2 在本地部署 DeepScientist，并使用阿里百炼 Coding Plan 作为模型后端。步骤覆盖 WSL2 安装、迁移到 D 盘、npm 免 `sudo` 配置、DeepScientist 与固定版本 Codex CLI 安装，以及常见问题排查。
 

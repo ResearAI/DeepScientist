@@ -1,11 +1,16 @@
-BenchStore: Your research task library
+BenchStore is where you choose a benchmark before starting a project.
 
-Think of this as a task marketplace:
+Use it like this:
 
-**Store** — Browse research tasks and find what interests you
+1. start in **Recommended**
+2. open one benchmark detail card
+3. decide whether it fits your machine and your interests
+4. if it looks right, use `Start` to send it into the project launch form
 
-**Library** — View tasks you've bookmarked or started
+Read the sections like this:
 
-**Recommended** — Tasks picked for your machine configuration
+- **Store** = browse available benchmarks
+- **Library** = revisit tasks you already saved or started
+- **Recommended** = the fastest place for a first choice
 
-Tip: Don't browse everything—start with the recommended section.
+Tip: do not try to read everything. Pick one recommended task, open its detail page, and make one concrete decision.

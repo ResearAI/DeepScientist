@@ -1,4 +1,4 @@
-# Windows + WSL2 Deployment Guide
+# 32 Windows + WSL2 Deployment Guide
 
 This guide helps Windows 10/11 users deploy DeepScientist through WSL2, keep the Linux image on drive `D:`, configure npm global installs without `sudo`, and use Alibaba Bailian Coding Plan as the Codex backend.
 

@@ -178,17 +178,21 @@ def test_quest_creation_syncs_all_stage_skills(temp_home: Path) -> None:
 
     codex_skills = sorted((quest_root / ".codex" / "skills").glob("deepscientist-*"))
     claude_skills = sorted((quest_root / ".claude" / "agents").glob("deepscientist-*.md"))
+    kimi_skills = sorted((quest_root / ".kimi" / "skills").glob("deepscientist-*"))
     opencode_skills = sorted((quest_root / ".opencode" / "skills").glob("deepscientist-*"))
 
     synced_codex = {path.name.removeprefix("deepscientist-") for path in codex_skills}
     synced_claude = {path.stem.removeprefix("deepscientist-") for path in claude_skills}
+    synced_kimi = {path.name.removeprefix("deepscientist-") for path in kimi_skills}
     synced_opencode = {path.name.removeprefix("deepscientist-") for path in opencode_skills}
 
     assert EXPECTED_STAGE_SKILLS.issubset(synced_codex)
     assert EXPECTED_STAGE_SKILLS.issubset(synced_claude)
+    assert EXPECTED_STAGE_SKILLS.issubset(synced_kimi)
     assert EXPECTED_STAGE_SKILLS.issubset(synced_opencode)
     assert EXPECTED_COMPANION_SKILLS.issubset(synced_codex)
     assert EXPECTED_COMPANION_SKILLS.issubset(synced_claude)
+    assert EXPECTED_COMPANION_SKILLS.issubset(synced_kimi)
     assert EXPECTED_COMPANION_SKILLS.issubset(synced_opencode)
     assert (quest_root / ".codex" / "prompts" / "system.md").exists()
     assert (quest_root / ".codex" / "prompts" / "contracts" / "shared_interaction.md").exists()
@@ -206,12 +210,15 @@ def test_skill_resync_repairs_frontmatter_and_removes_stale_files(temp_home: Pat
     stale_file = quest_root / ".codex" / "skills" / "deepscientist-idea" / "stale.tmp"
     stale_removed_codex = quest_root / ".codex" / "skills" / "deepscientist-alpharxiv-paper-loopup"
     stale_removed_claude = quest_root / ".claude" / "agents" / "deepscientist-alpharxiv-paper-loopup.md"
+    stale_removed_kimi = quest_root / ".kimi" / "skills" / "deepscientist-alpharxiv-paper-loopup"
 
     installed_skill.write_text("broken skill body\n", encoding="utf-8")
     stale_file.write_text("remove me\n", encoding="utf-8")
     stale_removed_codex.mkdir(parents=True)
     (stale_removed_codex / "SKILL.md").write_text("legacy skill\n", encoding="utf-8")
     stale_removed_claude.write_text("legacy claude skill\n", encoding="utf-8")
+    stale_removed_kimi.mkdir(parents=True)
+    (stale_removed_kimi / "SKILL.md").write_text("legacy kimi skill\n", encoding="utf-8")
 
     installer.sync_quest(quest_root)
 
@@ -221,6 +228,7 @@ def test_skill_resync_repairs_frontmatter_and_removes_stale_files(temp_home: Pat
     assert not stale_file.exists()
     assert not stale_removed_codex.exists()
     assert not stale_removed_claude.exists()
+    assert not stale_removed_kimi.exists()
 
 
 def test_paper_reading_stage_skills_use_artifact_arxiv_and_legacy_skill_is_removed() -> None:

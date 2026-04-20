@@ -439,6 +439,7 @@ If you are developing or maintaining DeepScientist, continue with:
 
 - [Architecture](docs/en/90_ARCHITECTURE.md)
 - [Development Guide](docs/en/91_DEVELOPMENT.md)
+- [BenchStore YAML Guide](docs/en/22_BENCHSTORE_YAML_REFERENCE.md)
 - [CONTRIBUTING](CONTRIBUTING.md)
 
 ## Citation

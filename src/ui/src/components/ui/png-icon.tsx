@@ -36,7 +36,6 @@ export function PngIcon({
         height={size}
         className={cn('object-contain', useInverted && 'dark:hidden', className)}
         loading={priority ? 'eager' : 'lazy'}
-        fetchPriority={priority ? 'high' : 'auto'}
         decoding="async"
         draggable={false}
         onError={() => setFailed(true)}
@@ -49,7 +48,6 @@ export function PngIcon({
           height={size}
           className={cn('object-contain hidden dark:block', className)}
           loading={priority ? 'eager' : 'lazy'}
-          fetchPriority={priority ? 'high' : 'auto'}
           decoding="async"
           draggable={false}
           onError={() => setFailed(true)}

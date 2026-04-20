@@ -62,6 +62,15 @@ export type SettingsSectionName =
   | 'search'
 
 const CONFIG_ORDER: ConfigDocumentName[] = ['config', 'runners', 'connectors', 'baselines', 'plugins', 'mcp_servers']
+const SETTINGS_ORDER: Array<Extract<SettingsSectionName, ConfigDocumentName | 'deepxiv'>> = [
+  'config',
+  'runners',
+  'connectors',
+  'baselines',
+  'deepxiv',
+  'plugins',
+  'mcp_servers',
+]
 const OPERATIONS_ORDER: Array<
   Extract<
     SettingsSectionName,
@@ -243,7 +252,11 @@ const SYNTHETIC_DEEPXIV_FILE: ConfigFileEntry = {
 }
 
 function compareSettings(a: ConfigFileEntry, b: ConfigFileEntry) {
-  return SETTINGS_ORDER.indexOf(a.name as SettingsSectionName) - SETTINGS_ORDER.indexOf(b.name as SettingsSectionName)
+  const indexA = SETTINGS_ORDER.indexOf(a.name as (typeof SETTINGS_ORDER)[number])
+  const indexB = SETTINGS_ORDER.indexOf(b.name as (typeof SETTINGS_ORDER)[number])
+  const normalizedIndexA = indexA >= 0 ? indexA : Number.MAX_SAFE_INTEGER
+  const normalizedIndexB = indexB >= 0 ? indexB : Number.MAX_SAFE_INTEGER
+  return normalizedIndexA - normalizedIndexB
 }
 
 function configLabel(name: SettingsSectionName, locale: Locale) {
@@ -728,7 +741,7 @@ export function SettingsPage({
       : selectedName && selectedName in SPECIAL_META
         ? SPECIAL_META[selectedName as keyof typeof SPECIAL_META]
         : selectedName
-          ? CONFIG_META[selectedName as ConfigDocumentName]
+          ? SETTINGS_META[selectedName as keyof typeof SETTINGS_META]
           : null
   const helpMarkdown = translateSettingsHelpMarkdown(
     locale,

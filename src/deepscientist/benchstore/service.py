@@ -828,6 +828,7 @@ class BenchStoreService:
         hardware_payload: dict[str, Any] | None = None,
         locale: str = "zh",
     ) -> dict[str, Any]:
+        is_zh = str(locale or "").strip().lower().startswith("zh")
         entry = self._find_entry(entry_id, locale=locale)
         install_state = self.install_state(entry["id"])
         device_profile = self._device_profile(hardware_payload)
@@ -847,67 +848,154 @@ class BenchStoreService:
         paper = entry.get("paper") if isinstance(entry.get("paper"), dict) else {}
         dataset_download = entry.get("dataset_download") if isinstance(entry.get("dataset_download"), dict) else {}
         credential_requirements = entry.get("credential_requirements") if isinstance(entry.get("credential_requirements"), dict) else {}
-        project_title = f"{entry['name']} Autonomous Research"
+        project_title = f"{entry['name']} 全自动研究" if is_zh else f"{entry['name']} Autonomous Research"
         one_line = str(entry.get("one_line") or "").strip()
         task_description = str(entry.get("task_description") or "").strip()
         venue = str(paper.get("venue") or "").strip()
         year = paper.get("year")
         requires_paper = bool(entry.get("requires_paper")) if entry.get("requires_paper") is not None else True
+        recommendation_tier = str(compatibility.get("recommendation_tier") or "").strip() or "unknown"
+        unknown_text = "未知" if is_zh else "unknown"
+        not_available_text = "不可用" if is_zh else "not available"
+        none_text = "无" if is_zh else "none"
+        unspecified_text = "未说明" if is_zh else "unspecified"
+        localized_device_fit = (
+            {
+                "recommended": "推荐配置",
+                "minimum": "满足最低配置",
+                "unsupported": "低于最低配置",
+                "unknown": "未知",
+            }.get(recommendation_tier, recommendation_tier)
+            if is_zh
+            else recommendation_tier
+        )
 
-        benchmark_goal = task_description or one_line or f"Run the benchmark `{entry['name']}` faithfully and produce the strongest justified autonomous result."
+        benchmark_goal = task_description or one_line or (
+            f"忠实运行 benchmark `{entry['name']}`，并在当前证据下产出最强、最合理的全自动结果。"
+            if is_zh
+            else f"Run the benchmark `{entry['name']}` faithfully and produce the strongest justified autonomous result."
+        )
         fit_lines = compatibility.get("recommended_reasons") or compatibility.get("minimum_reasons") or []
         constraints = [
-            f"- benchmark_local_path: {local_path or 'not available'}",
-            f"- device_summary: {device_summary}",
-            f"- device_fit: {compatibility.get('recommendation_tier') or 'unknown'}",
-            "- device_boundary_rule: do not plan around compute outside the current effective local device boundary.",
+            (
+                f"- 基准本地路径: {local_path or not_available_text}"
+                if is_zh
+                else f"- benchmark_local_path: {local_path or not_available_text}"
+            ),
+            (
+                f"- 设备摘要: {device_summary}"
+                if is_zh
+                else f"- device_summary: {device_summary}"
+            ),
+            (
+                f"- 设备适配: {localized_device_fit or unknown_text}"
+                if is_zh
+                else f"- device_fit: {localized_device_fit or unknown_text}"
+            ),
+            (
+                "- 设备边界规则: 不要围绕当前本机有效设备边界之外的算力做计划。"
+                if is_zh
+                else "- device_boundary_rule: do not plan around compute outside the current effective local device boundary."
+            ),
         ]
         if fit_lines:
-            constraints.append("- compatibility_notes:")
+            constraints.append("- 设备兼容性说明:" if is_zh else "- compatibility_notes:")
             constraints.extend([f"  - {item}" for item in fit_lines[:6]])
         if local_dataset_paths:
-            constraints.append("- local_dataset_paths:")
+            constraints.append("- 本地数据路径:" if is_zh else "- local_dataset_paths:")
             constraints.extend([f"  - {item}" for item in local_dataset_paths[:8]])
         if latex_markdown_path:
-            constraints.append(f"- latex_markdown_path: {latex_markdown_path}")
+            constraints.append(
+                f"- LaTeX Markdown 路径: {latex_markdown_path}"
+                if is_zh
+                else f"- latex_markdown_path: {latex_markdown_path}"
+            )
         credential_mode = str(credential_requirements.get("mode") or "").strip()
         credential_items = [str(item).strip() for item in (credential_requirements.get("items") or []) if str(item).strip()]
         if credential_mode or credential_items:
             constraints.append(
-                f"- credential_requirements: mode={credential_mode or 'unspecified'} items={', '.join(credential_items) or 'none'}"
+                (
+                    f"- 凭证要求: 模式={credential_mode or unspecified_text}；项目={', '.join(credential_items) or none_text}"
+                    if is_zh
+                    else f"- credential_requirements: mode={credential_mode or unspecified_text} items={', '.join(credential_items) or none_text}"
+                )
             )
         resources = entry.get("resources") if isinstance(entry.get("resources"), dict) else {}
         minimum_resources = resources.get("minimum") if isinstance(resources.get("minimum"), dict) else {}
         recommended_resources = resources.get("recommended") if isinstance(resources.get("recommended"), dict) else {}
         if minimum_resources:
-            constraints.append(f"- minimum_resources: {json.dumps(minimum_resources, ensure_ascii=False)}")
+            constraints.append(
+                f"- 最低资源需求: {json.dumps(minimum_resources, ensure_ascii=False)}"
+                if is_zh
+                else f"- minimum_resources: {json.dumps(minimum_resources, ensure_ascii=False)}"
+            )
         if recommended_resources:
-            constraints.append(f"- recommended_resources: {json.dumps(recommended_resources, ensure_ascii=False)}")
-        if compatibility.get("recommendation_tier") == "unsupported":
-            constraints.append("- launch_warning: current device is below the benchmark minimum target, but launch remains allowed.")
-            constraints.append("- launch_warning_rule: if local compute becomes the bottleneck, stay within the benchmark scope and degrade gracefully instead of expanding hardware assumptions.")
+            constraints.append(
+                f"- 推荐资源需求: {json.dumps(recommended_resources, ensure_ascii=False)}"
+                if is_zh
+                else f"- recommended_resources: {json.dumps(recommended_resources, ensure_ascii=False)}"
+            )
+        if recommendation_tier == "unsupported":
+            constraints.append(
+                "- 启动提醒: 当前设备低于 benchmark 的最低目标，但仍允许启动。"
+                if is_zh
+                else "- launch_warning: current device is below the benchmark minimum target, but launch remains allowed."
+            )
+            constraints.append(
+                "- 启动提醒规则: 如果本地算力成为瓶颈，应在 benchmark 边界内保守降级，而不是假设额外硬件。"
+                if is_zh
+                else "- launch_warning_rule: if local compute becomes the bottleneck, stay within the benchmark scope and degrade gracefully instead of expanding hardware assumptions."
+            )
         if venue:
-            constraints.append(f"- paper_venue: {venue}")
+            constraints.append(f"- 论文场地: {venue}" if is_zh else f"- paper_venue: {venue}")
         if year:
-            constraints.append(f"- paper_year: {year}")
+            constraints.append(f"- 论文年份: {year}" if is_zh else f"- paper_year: {year}")
         if requires_paper:
-            constraints.append("- delivery_rule: paper-facing output remains in scope unless the user later narrows scope.")
+            constraints.append(
+                "- 交付规则: 除非用户后续主动收窄范围，否则论文级交付仍然在 scope 内。"
+                if is_zh
+                else "- delivery_rule: paper-facing output remains in scope unless the user later narrows scope."
+            )
         else:
-            constraints.append("- delivery_rule: optimize for the strongest justified benchmark result rather than paper-first packaging.")
+            constraints.append(
+                "- 交付规则: 当前以 benchmark 结果优先，不默认进入论文打包。"
+                if is_zh
+                else "- delivery_rule: optimize for the strongest justified benchmark result rather than paper-first packaging."
+            )
 
-        objectives = [
-            "1. 建立一个与 benchmark 保持一致的可信起点。",
-            "2. 在当前设备范围内，生成一版可直接进入全自动模式的启动项。",
-            "3. 启动后优先保持 benchmark faithful，而不是无边界扩展任务。",
-        ]
+        objectives = (
+            [
+                "1. 建立一个与 benchmark 保持一致的可信起点。",
+                "2. 在当前设备范围内，生成一版可直接进入全自动模式的启动项。",
+                "3. 启动后优先保持 benchmark faithful，而不是无边界扩展任务。",
+            ]
+            if is_zh
+            else [
+                "1. Establish a credible starting point that stays faithful to the benchmark.",
+                "2. Prepare a launch-ready autonomous start form within the current device boundary.",
+                "3. After launch, keep the work benchmark-faithful instead of expanding scope without limits.",
+            ]
+        )
         if requires_paper:
-            objectives.append("4. 保持论文级交付仍然在 scope 内。")
+            objectives.append("4. 保持论文级交付仍然在 scope 内。" if is_zh else "4. Keep paper-facing delivery in scope.")
         else:
-            objectives.append("4. 当前以结果优先，不默认进入论文写作。")
-        if compatibility.get("recommendation_tier") == "unsupported":
-            objectives.append("5. 允许直接启动，但要先识别当前设备不足会影响哪些环节，并优先选择在本机可落地的 faithful 路径。")
+            objectives.append(
+                "4. 当前以结果优先，不默认进入论文写作。"
+                if is_zh
+                else "4. Optimize for benchmark results first without defaulting into paper writing."
+            )
+        if recommendation_tier == "unsupported":
+            objectives.append(
+                "5. 允许直接启动，但要先识别当前设备不足会影响哪些环节，并优先选择在本机可落地的 faithful 路径。"
+                if is_zh
+                else "5. Launch is still allowed, but first identify which steps are limited by the current device and prefer a faithful path that can actually run locally."
+            )
         if credential_items:
-            objectives.append("6. 启动前确认可用的 API Key / 资源凭证，并根据可用资源收窄执行路线。")
+            objectives.append(
+                "6. 启动前确认可用的 API Key / 资源凭证，并根据可用资源收窄执行路线。"
+                if is_zh
+                else "6. Confirm available API keys / resource credentials before launch and narrow the execution path accordingly."
+            )
 
         baseline_url_lines: list[str] = []
         download_url = str(entry.get("download", {}).get("url") or "").strip() if isinstance(entry.get("download"), dict) else ""
@@ -949,9 +1037,27 @@ class BenchStoreService:
                 [
                     item
                     for item in [
-                        f"benchmark_local_path: {local_path}" if local_path else "",
-                        f"local_dataset_paths: {', '.join(local_dataset_paths)}" if local_dataset_paths else "",
-                        f"latex_markdown_path: {latex_markdown_path}" if latex_markdown_path else "",
+                        (
+                            f"基准本地路径: {local_path}"
+                            if is_zh and local_path
+                            else f"benchmark_local_path: {local_path}"
+                            if local_path
+                            else ""
+                        ),
+                        (
+                            f"本地数据路径: {', '.join(local_dataset_paths)}"
+                            if is_zh and local_dataset_paths
+                            else f"local_dataset_paths: {', '.join(local_dataset_paths)}"
+                            if local_dataset_paths
+                            else ""
+                        ),
+                        (
+                            f"LaTeX Markdown 路径: {latex_markdown_path}"
+                            if is_zh and latex_markdown_path
+                            else f"latex_markdown_path: {latex_markdown_path}"
+                            if latex_markdown_path
+                            else ""
+                        ),
                     ]
                     if item
                 ]
@@ -959,30 +1065,48 @@ class BenchStoreService:
             "review_summary": "",
             "review_materials": "",
             "custom_brief": (
-                f"Benchmark source: {entry['name']} ({entry['id']}). "
-                f"Local path: {local_path or 'unknown'}. "
-                f"Device fit: {compatibility.get('recommendation_tier') or 'unknown'}. "
-                f"Latex path: {latex_markdown_path or 'none'}. "
-                f"Need user confirmation for credentials/resources: {', '.join(credential_items) if credential_items else 'maybe runtime/API specifics only'}."
+                (
+                    f"基准来源: {entry['name']} ({entry['id']})。"
+                    f"本地路径: {local_path or unknown_text}。"
+                    f"设备适配: {localized_device_fit or unknown_text}。"
+                    f"LaTeX 路径: {latex_markdown_path or none_text}。"
+                    f"是否需要用户确认凭证/资源: {', '.join(credential_items) if credential_items else '可能仅剩少量运行时 / API 细节'}。"
+                )
+                if is_zh
+                else (
+                    f"Benchmark source: {entry['name']} ({entry['id']}). "
+                    f"Local path: {local_path or unknown_text}. "
+                    f"Device fit: {localized_device_fit or unknown_text}. "
+                    f"Latex path: {latex_markdown_path or none_text}. "
+                    f"Need user confirmation for credentials/resources: {', '.join(credential_items) if credential_items else 'maybe runtime/API specifics only'}."
+                )
             ),
-            "user_language": "zh" if locale == "zh" else "en",
+            "user_language": "zh" if is_zh else "en",
         }
 
         startup_instruction = "\n".join(
             [
-                "BenchStore Autonomous Launch",
-                f"- benchmark_id: {entry['id']}",
-                f"- benchmark_name: {entry['name']}",
-                f"- benchmark_local_path: {local_path or 'unknown'}",
-                f"- device_fit: {compatibility.get('recommendation_tier') or 'unknown'}",
+                "BenchStore 全自动启动" if is_zh else "BenchStore Autonomous Launch",
+                f"- 基准 ID: {entry['id']}" if is_zh else f"- benchmark_id: {entry['id']}",
+                f"- 基准名称: {entry['name']}" if is_zh else f"- benchmark_name: {entry['name']}",
+                (
+                    f"- 基准本地路径: {local_path or unknown_text}"
+                    if is_zh
+                    else f"- benchmark_local_path: {local_path or unknown_text}"
+                ),
+                (
+                    f"- 设备适配: {localized_device_fit or unknown_text}"
+                    if is_zh
+                    else f"- device_fit: {localized_device_fit or unknown_text}"
+                ),
                 "",
-                "Primary Benchmark Goal",
+                "核心 benchmark 目标" if is_zh else "Primary Benchmark Goal",
                 benchmark_goal,
                 "",
-                "Operational Constraints",
+                "运行约束" if is_zh else "Operational Constraints",
                 "\n".join(constraints),
                 "",
-                "Setup Agent Guidance",
+                "Setup Agent 指引" if is_zh else "Setup Agent Guidance",
                 self.prompt_builder.build_setup_prompt(
                     entry=entry,
                     hardware_payload=hardware_payload,

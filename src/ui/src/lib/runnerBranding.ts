@@ -1,4 +1,4 @@
-export type BuiltinRunnerName = "codex" | "claude" | "opencode"
+export type BuiltinRunnerName = "codex" | "claude" | "kimi" | "opencode"
 
 export type RunnerBranding = {
   name: BuiltinRunnerName
@@ -29,6 +29,15 @@ export const RUNNER_BRANDING: Record<BuiltinRunnerName, RunnerBranding> = {
     accentClassName: "from-amber-500 via-amber-400 to-yellow-300 text-[#1f1302]",
     chipClassName: "bg-amber-100 text-amber-700",
   },
+  kimi: {
+    name: "kimi",
+    label: "Kimi Code",
+    shortLabel: "Kimi",
+    description: "Moonshot Kimi Code CLI with isolated ~/.kimi runtime materialization and DeepScientist MCP injection.",
+    logoSrc: "/assets/branding/runner-kimi.svg",
+    accentClassName: "from-sky-500 via-cyan-400 to-lime-300 text-[#07223b]",
+    chipClassName: "bg-cyan-100 text-cyan-700",
+  },
   opencode: {
     name: "opencode",
     label: "OpenCode",
@@ -43,6 +52,7 @@ export const RUNNER_BRANDING: Record<BuiltinRunnerName, RunnerBranding> = {
 export function normalizeBuiltinRunnerName(value: unknown): BuiltinRunnerName {
   const normalized = String(value || "").trim().toLowerCase()
   if (normalized === "claude") return "claude"
+  if (normalized === "kimi") return "kimi"
   if (normalized === "opencode") return "opencode"
   return "codex"
 }

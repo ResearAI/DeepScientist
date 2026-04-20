@@ -32,22 +32,27 @@ Built-in runner status today:
 
 - `codex`: primary path
 - `claude`: supported experimental
+- `kimi`: supported experimental
 - `opencode`: supported experimental
 
 ## If you are new
 
 - [00 Quick Start](./00_QUICK_START.md)
-  Start here if you want to install DeepScientist, choose between Codex / Claude Code / OpenCode, launch it locally, and create your first project.
+  Start here if you want to install DeepScientist, choose between Codex / Claude Code / Kimi Code / OpenCode, launch it locally, and create your first project.
 - [20 Workspace Modes Guide](./20_WORKSPACE_MODES_GUIDE.md)
   Read this if you want to choose correctly between Copilot and Autonomous before creating a project.
-- [19 Local Browser Auth](./19_LOCAL_BROWSER_AUTH.md)
+- [31 Local Browser Auth](./31_LOCAL_BROWSER_AUTH.md)
   Read this if you want to understand the local password prompt, where to find the password, and how to disable it.
+- [32 Windows + WSL2 Deployment Guide](./32_WINDOWS_WSL2_DEPLOYMENT_GUIDE.md)
+  Read this if you are on Windows and want the recommended WSL2-based deployment path instead of guessing the environment setup.
 - [05 TUI Guide](./05_TUI_GUIDE.md)
   Read this if your main surface is the terminal and you want one end-to-end path through `ds --tui`, quests, connectors, and cross-surface work.
 - [15 Codex Provider Setup](./15_CODEX_PROVIDER_SETUP.md)
   Read this when you want to run DeepScientist through MiniMax, GLM, Volcengine Ark, Alibaba Bailian Coding Plan, or another Codex profile.
 - [24 Claude Code Setup](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
   Read this when Claude Code already works on your machine and you want DeepScientist to reuse it directly.
+- [27 Kimi Code Setup](./27_KIMI_CODE_PROVIDER_SETUP.md)
+  Read this when the official Kimi Code CLI already works on your machine and you want DeepScientist to use it as a separate builtin runner.
 - [25 OpenCode Setup](./25_OPENCODE_PROVIDER_SETUP.md)
   Read this when OpenCode already works on your machine and you want DeepScientist to reuse its provider/model configuration.
 - [21 Local Model Backends Guide](./21_LOCAL_MODEL_BACKENDS_GUIDE.md)
@@ -66,7 +71,9 @@ Built-in runner status today:
 - [20 Workspace Modes Guide](./20_WORKSPACE_MODES_GUIDE.md)
   Use this when the main question is not “how do I fill the form?” but “should this project start as Copilot or Autonomous?”.
 - [01 Settings Reference](./01_SETTINGS_REFERENCE.md)
-  Use this when you need to configure runners, connectors, runtime defaults, or home paths.
+  Use this when DeepScientist is already running and you want to configure runtime defaults, models, connectors, baselines, DeepXiv, extensions, or MCP from the visual Settings page before touching raw YAML.
+- [30 Settings Control Center Guide](./30_SETTINGS_CONTROL_CENTER_GUIDE.md)
+  Use this when the question is not configuration but runtime supervision: summary, hardware, diagnostics, errors, logs, quests, repairs, controllers, stats, or search.
 - [11 License And Risk Notice](./11_LICENSE_AND_RISK.md)
   Read this first if you care about the license boundary, server safety, fabricated outputs, connector leakage, and public exposure risk.
 - [26 Citation And Attribution](./26_CITATION_AND_ATTRIBUTION.md)
@@ -76,6 +83,10 @@ Built-in runner status today:
 
 - [16 Telegram Connector Guide](./16_TELEGRAM_CONNECTOR_GUIDE.md)
   Bind Telegram through the built-in polling runtime and continue quests from bot chats.
+- [28 Discord Connector Guide](./28_DISCORD_CONNECTOR_GUIDE.md)
+  Configure the built-in Discord gateway connector from the Settings page and keep the workflow visual-first.
+- [29 Slack Connector Guide](./29_SLACK_CONNECTOR_GUIDE.md)
+  Configure the built-in Slack Socket Mode connector from the Settings page after launch.
 - [17 WhatsApp Connector Guide](./17_WHATSAPP_CONNECTOR_GUIDE.md)
   Bind WhatsApp through the local-session runtime and continue quests from local chat sessions.
 - [18 Feishu Connector Guide](./18_FEISHU_CONNECTOR_GUIDE.md)
@@ -104,10 +115,14 @@ Built-in runner status today:
 
 - [09 Doctor](./09_DOCTOR.md)
   Start here for diagnostics and common runtime problems.
+- [30 Settings Control Center Guide](./30_SETTINGS_CONTROL_CENTER_GUIDE.md)
+  Use this when you want the operator view of summary, hardware, diagnostics, errors, logs, quests, repairs, controllers, stats, and search.
 - [15 Codex Provider Setup](./15_CODEX_PROVIDER_SETUP.md)
   Check this if the problem is likely in your Codex profile, provider endpoint, API key, or model configuration.
 - [24 Claude Code Setup](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
   Check this if the problem is likely in your Claude Code login, config directory, permission mode, or Anthropic-compatible gateway setup.
+- [27 Kimi Code Setup](./27_KIMI_CODE_PROVIDER_SETUP.md)
+  Check this if the problem is likely in your Kimi Code login, `~/.kimi` home, agent selection, or `--yolo` / thinking configuration.
 - [25 OpenCode Setup](./25_OPENCODE_PROVIDER_SETUP.md)
   Check this if the problem is likely in your OpenCode provider login, config file, model selection, agent, or variant setup.
 - [21 Local Model Backends Guide](./21_LOCAL_MODEL_BACKENDS_GUIDE.md)

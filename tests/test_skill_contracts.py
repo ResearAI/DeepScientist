@@ -146,17 +146,17 @@ def test_artifact_record_examples_match_payload_signature() -> None:
 def test_system_prompt_restores_interaction_and_stage_protocols() -> None:
     text = _system_prompt_text()
 
-    assert "### 3.6 Artifact interaction protocol" in text
+    assert "### 7.6 Artifact interaction protocol" in text
     assert "`kind='answer'`" in text
     assert "`reply_to_interaction_id`" in text
     assert "`supersede_open_requests=True`" in text
     assert "`delivery_results` and `attachment_issues`" in text
     assert "`dedupe_key`, `suppress_if_unchanged`, and `min_interval_seconds`" in text
     assert "recommended_skill_reads" in text
-    assert "### 10.3A Supplementary experiment protocol" in text
-    assert "### 10.3B ID discipline" in text
-    assert "### 10.3C Startup-contract delivery mode" in text
-    assert "### 10.3D Artifact-managed Git contract" in text
+    assert "### 14.3A Supplementary experiment protocol" in text
+    assert "### 14.3B ID discipline" in text
+    assert "### 14.3C Startup-contract delivery mode" in text
+    assert "### 14.3D Artifact-managed Git contract" in text
     assert "#### `scout`" in text
     assert "#### `intake-audit`" in text
     assert "#### `decision`" in text
@@ -183,13 +183,13 @@ def test_system_prompt_strengthens_bash_exec_only_terminal_contract() -> None:
 def test_system_prompt_includes_stepwise_mode_operating_manuals() -> None:
     text = _system_prompt_text()
 
-    assert "### 10.5A `paper_required` operating manual" in text
+    assert "### 14.5A `paper_required` operating manual" in text
     assert "1. Recovery and route framing" in text
     assert "2. Baseline gate" in text
     assert "7. Writing line" in text
     assert "8. Skeptical audit and reviewer pressure" in text
     assert "9. Closure" in text
-    assert "### 10.5B `algorithm_first` operating manual" in text
+    assert "### 14.5B `algorithm_first` operating manual" in text
     assert "4. Frontier management and within-line optimization" in text
     assert "6. Post-result route judgment" in text
     assert "Must not drift into paper work by default." in text
@@ -207,7 +207,7 @@ def test_system_prompt_requires_outline_and_analysis_mapping_for_paper_work() ->
 def test_system_prompt_keeps_compact_reference_wording_templates() -> None:
     text = _system_prompt_text()
 
-    assert "### 3.1 Reference wording" in text
+    assert "### 7.1 Reference wording" in text
     assert "These templates are references only." in text
     assert "Quick update:" in text
     assert "There's one fork I want to confirm before I continue" in text

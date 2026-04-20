@@ -236,7 +236,7 @@ git config --global user.email "you@example.com"
 
 ### Runner 切换与启用检查
 
-当前版本已经支持 `codex`、`claude`、`opencode`。
+当前版本已经支持 `codex`、`claude`、`kimi`、`opencode`。
 
 如果你误启用了某个 runner，先检查：
 

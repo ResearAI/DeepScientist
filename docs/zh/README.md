@@ -13,7 +13,7 @@ DeepScientist 灵活且易于使用，支持：
 - 本地优先、开源、一条命令安装
 - Git 驱动的 quest 仓库、Web 工作区、Studio / Canvas 与 TUI
 - 工作坊式协作：可长期自主推进，也可随时接管、协作、改代码、跑终端或记录 Notion 式笔记
-- 内建 `codex`、`claude`、`opencode` 三种 runner，其中 `codex` 是主路径，`claude` 与 `opencode` 属于 supported experimental
+- 内建 `codex`、`claude`、`kimi`、`opencode` 四种 runner，其中 `codex` 是主路径，`claude`、`kimi` 与 `opencode` 属于 supported experimental
 - 兼容外部 OpenAI-compatible 模型端点
 - 你可以在任何地方使用 DeepScientist：服务器（TUI）、浏览器（Web）、手机（微信或 QQ），甚至眼镜（Rokid Glasses）
 - 每个 quest 绑定一个外部 connector
@@ -77,17 +77,21 @@ DeepScientist 灵活且易于使用，支持：
 ## 如果你是第一次使用
 
 - [00 快速开始](./00_QUICK_START.md)
-  从安装、选择 Codex / Claude Code / OpenCode runner，到启动和创建第一个项目，先看这一篇。
+  从安装、选择 Codex / Claude Code / Kimi Code / OpenCode runner，到启动和创建第一个项目，先看这一篇。
 - [20 工作区模式指南](./20_WORKSPACE_MODES_GUIDE.md)
   如果你最纠结的是“应该选 Copilot 还是全自动”，先看这篇。
-- [19 本地浏览器密码说明](./19_LOCAL_BROWSER_AUTH.md)
+- [31 本地浏览器密码说明](./31_LOCAL_BROWSER_AUTH.md)
   如果你想弄清楚密码弹窗是什么、密码去哪里看、怎样关闭这一层本地保护，先看这篇。
+- [32 Windows + WSL2 部署指南](./32_WINDOWS_WSL2_DEPLOYMENT_GUIDE.md)
+  如果你在 Windows 上使用 DeepScientist，并且想走推荐的 WSL2 路线，先看这篇。
 - [05 TUI 端到端指南](./05_TUI_GUIDE.md)
   如果你主要在服务器或终端里工作，这篇会带你从 `ds --tui` 一路走到 quest、connector 和跨端协作跑通。
 - [15 Codex Provider 配置](./15_CODEX_PROVIDER_SETUP.md)
   如果你准备通过 MiniMax、GLM、火山方舟、阿里百炼 Coding Plan 或其他 Codex profile 来运行 DeepScientist，先看这一篇。
 - [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
   如果 Claude Code 在你的机器上已经能正常工作，并且你想让 DeepScientist 直接复用它，先看这一篇。
+- [27 Kimi Code 配置指南](./27_KIMI_CODE_PROVIDER_SETUP.md)
+  如果官方 `kimi` CLI 在你的机器上已经能正常工作，并且你想把它作为独立 builtin runner 使用，先看这一篇。
 - [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
   如果 OpenCode 在你的机器上已经能正常工作，并且你想让 DeepScientist 直接复用它的 provider/model 配置，先看这一篇。
 - [21 本地模型后端指南](./21_LOCAL_MODEL_BACKENDS_GUIDE.md)
@@ -148,6 +152,8 @@ DeepScientist 灵活且易于使用，支持：
   如果问题更像出在 Codex profile、provider endpoint、API key 或模型配置上，优先看这篇。
 - [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
   如果问题更像出在 Claude Code 登录、配置目录、permission mode 或 Anthropic 兼容网关上，优先看这篇。
+- [27 Kimi Code 配置指南](./27_KIMI_CODE_PROVIDER_SETUP.md)
+  如果问题更像出在 Kimi Code 登录、`~/.kimi` home、agent 或 `--yolo` / thinking 配置上，优先看这篇。
 - [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
   如果问题更像出在 OpenCode provider 登录、配置文件、模型选择、agent 或 variant 上，优先看这篇。
 - [21 本地模型后端指南](./21_LOCAL_MODEL_BACKENDS_GUIDE.md)

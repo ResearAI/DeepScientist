@@ -34,6 +34,7 @@ type WorkspaceMode = 'copilot' | 'autonomous'
 const DEFAULT_RUNNER_ENV_KEYS: Record<string, readonly string[]> = {
   codex: ['OPENAI_BASE_URL', 'OPENAI_API_KEY'],
   claude: ['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_MAX_OUTPUT_TOKENS'],
+  kimi: [],
   opencode: [],
 }
 

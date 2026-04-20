@@ -62,6 +62,7 @@ A more complete baseline package is only the default when the acceptance target 
 - do not restart broad baseline discovery by default
 - do not front-load a full codebase audit
 - do not require a fresh memory pass for every fast-path validation
+- fast-path exception: if you are resuming a previously blocked or ambiguous route, recover the relevant memory before trusting the old path again
 - use `memory.list_recent(...)` or `memory.search(...)` when resuming, reopening old command paths, or avoiding repeated failures
 - if runtime already exposes `requested_baseline_ref` or a matching `confirmed_baseline_ref`, default to reuse-and-verify
 - escalate to fuller audit, reproduction, or repair only when no concrete comparator, command path, or core comparability surface can be trusted yet

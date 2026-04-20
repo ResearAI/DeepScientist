@@ -1662,10 +1662,15 @@ export function CreateProjectDialog({
   const processedPatchMessageIdsRef = useRef<Set<string>>(new Set())
   const autoBenchAssistStartedRef = useRef<string | null>(null)
   const latestFormRef = useRef(form)
+  const latestAgentManagedValuesRef = useRef(agentManagedValues)
 
   useEffect(() => {
     latestFormRef.current = form
   }, [form])
+
+  useEffect(() => {
+    latestAgentManagedValuesRef.current = agentManagedValues
+  }, [agentManagedValues])
 
   useEffect(() => {
     if (!open) return
@@ -1978,9 +1983,11 @@ export function CreateProjectDialog({
 
   const applyAgentPatch = useCallback(
     (patch: Partial<StartResearchTemplate>) => {
+      const currentManaged = latestAgentManagedValuesRef.current
       setForm((current) => {
         const next = { ...current }
-        const nextManaged = { ...agentManagedValues }
+        const nextManaged = { ...currentManaged }
+        let changed = false
         for (const key of Object.keys(patch) as Array<keyof StartResearchTemplate>) {
           const proposed = patch[key]
           const currentValue = current[key]
@@ -1994,10 +2001,18 @@ export function CreateProjectDialog({
           if (!canApply) {
             continue
           }
+          if (currentValue === proposed && previousManaged === proposed) {
+            continue
+          }
           ;(next as Record<string, unknown>)[key] = proposed as unknown
           ;(nextManaged as Record<string, unknown>)[key as string] = proposed as unknown
+          changed = true
+        }
+        if (!changed) {
+          return current
         }
         saveStartResearchDraft(next)
+        latestAgentManagedValuesRef.current = nextManaged
         setAgentManagedValues(nextManaged)
         return next
       })
@@ -2005,7 +2020,7 @@ export function CreateProjectDialog({
         setBenchAutoAssistReady(true)
       }
     },
-    [agentManagedValues, setupPacket]
+    [setupPacket]
   )
 
   const benchAutoAssistMessage = useMemo(

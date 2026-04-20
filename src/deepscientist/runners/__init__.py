@@ -7,6 +7,7 @@ from .registry import get_runner_factory, list_runner_names, register_runner
 __all__ = [
     "ClaudeRunner",
     "CodexRunner",
+    "KimiRunner",
     "OpenCodeRunner",
     "RunRequest",
     "RunResult",
@@ -32,6 +33,10 @@ def __getattr__(name: str):
         from .opencode import OpenCodeRunner
 
         return OpenCodeRunner
+    if name == "KimiRunner":
+        from .kimi import KimiRunner
+
+        return KimiRunner
     if name == "register_builtin_runners":
         from .builtins import register_builtin_runners
 

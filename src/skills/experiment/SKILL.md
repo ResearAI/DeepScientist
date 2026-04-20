@@ -630,6 +630,14 @@ Use memory only to avoid repeating known failures or to preserve reusable experi
 
 ## Artifact rules
 
+## Connector-facing chart requirements
+
+- Use calm connector-safe palettes such as `sage-clay`, `mist-stone`, and `dust-rose` when turning experiment evidence into connector-facing charts.
+- A practical anchor for the light `mist-stone` background is `#F3EEE8`.
+- The palette must keep milestone charts readable in QQ or other connector previews before it tries to look vivid.
+- Stay aligned with the system prompt rather than inventing a new local visual language for each chart.
+- Highlight only the decisive delta; do not color every series as if they are equally important.
+
 - use `progress` for long-running execution updates
 - use `artifact.record_main_experiment(...)` for each meaningful completed main experiment
 - use `report` for suspicious-result investigations or analysis-rich summaries when they materially help the next route

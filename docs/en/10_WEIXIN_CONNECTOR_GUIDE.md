@@ -48,7 +48,18 @@ This reference screenshot is only there to remind you to use the phone that alre
 
 Open:
 
-- [Settings > Connectors > WeChat](/settings/connectors#connector-weixin)
+- [Settings > Connectors > WeChat](/settings/connector/weixin)
+
+### Settings page at a glance
+
+Use the WeChat page to:
+
+- start the QR-based binding flow
+- inspect the current runtime status after login
+- verify the saved account identity and connector state
+- keep the whole binding path inside DeepScientist instead of a separate local bridge
+
+![WeChat connector settings page](../images/connectors/connector-weixin-en.png)
 
 Then:
 

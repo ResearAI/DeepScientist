@@ -34,6 +34,8 @@ Make sure:
 
 You no longer need to manually edit host, port, agent, OpenClaw snippets, or extra probe steps in the main flow.
 
+![Lingzhu connector settings page](../images/connectors/connector-lingzhu-en.png)
+
 ## 3. What is auto-generated
 
 After you click `Add Lingzhu (Rokid Glasses)`, the popup shows these copyable values:

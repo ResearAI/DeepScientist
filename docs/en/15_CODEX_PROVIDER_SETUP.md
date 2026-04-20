@@ -1,7 +1,5 @@
 # 15 Codex Provider Setup
 
-DeepScientist does not maintain a separate provider adapter layer for MiniMax, GLM, Volcengine Ark, Alibaba Bailian, or other Codex-compatible services.
-
 It reuses the Codex CLI that already works on your machine.
 
 The right mental model is:
@@ -10,8 +8,6 @@ The right mental model is:
 2. confirm the same config works in a terminal
 3. run `ds doctor`
 4. only then run `ds` or `ds --codex-profile <name>`
-
-If Codex itself is not working yet, fixing DeepScientist first is the wrong order.
 
 For the other built-in runners, see also:
 

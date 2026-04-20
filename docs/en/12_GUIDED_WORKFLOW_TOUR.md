@@ -42,6 +42,12 @@ Use `Open Project` when the quest already exists and you want to continue it.
 
 For a first run, click `Start Research`.
 
+If you only want one practical rule:
+
+- click `Start Research` when you already know what project you want to start
+- click `BenchStore` when you want the system to help you choose a benchmark first
+- click `Settings` when you are not starting a project yet and only want to configure the system
+
 ## 3. Understand what the dialog is doing
 
 The `Start Research` dialog has two jobs:
@@ -244,6 +250,15 @@ Check for:
 - a tone that no longer matches the real task
 
 This is the cheapest correction point in the whole workflow.
+
+If you are unsure what the shortest real-project path looks like, it is:
+
+1. `Start Research`
+2. `Autonomous`
+3. fill `Project title`
+4. fill `Primary research request`
+5. review the right-side prompt
+6. click `Create project`
 
 ## 5. Click Create project
 

@@ -1,4 +1,4 @@
-# Local Browser Auth
+# 31 Local Browser Auth
 
 DeepScientist can optionally protect the local web workspace with a generated 16-character password.
 

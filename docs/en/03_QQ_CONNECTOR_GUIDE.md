@@ -102,7 +102,18 @@ DeepScientist currently uses this path:
 
 Open:
 
-- [Settings > Connectors > QQ](/settings/connectors#connector-qq)
+- [Settings > Connectors > QQ](/settings/connector/qq)
+
+### Settings page at a glance
+
+This is the real QQ connector page after launch. Use it to:
+
+- add the QQ connector entry
+- save `App ID` and `App Secret`
+- review runtime state, discovered targets, and recent activity
+- confirm that `openid` was learned after the first inbound QQ message
+
+![QQ connector settings page](../images/connectors/connector-qq-en.png)
 
 The link jumps directly to the `QQ` connector card. The page is now organized into these anchored setup steps:
 
@@ -192,7 +203,7 @@ If the connector is working, DeepScientist will auto-detect the `openid` for tha
 
 ### Step 5: go back to the Settings page and confirm the state
 
-Refresh or reopen `Settings > Connectors > QQ`, or jump back to [#connector-qq-step-success](/settings/connectors#connector-qq-step-success), and check:
+Refresh or reopen `Settings > Connectors > QQ`, or jump back to [#connector-qq-step-success](/settings/connector/qq#connector-qq-step-success), and check:
 
 - whether `Detected OpenID` is now filled automatically
 - whether the `Snapshot` panel shows something close to:
@@ -323,7 +334,7 @@ If you only want the shortest path that works:
 
 1. create the QQ bot
 2. save `AppID` and `AppSecret`
-3. open [Settings > Connectors > QQ](/settings/connectors#connector-qq)
+3. open [Settings > Connectors > QQ](/settings/connector/qq)
 4. enable QQ and fill `App ID` / `App secret`
 5. save and click `Check`
 6. send `/help` to the bot from your QQ private chat

@@ -25,9 +25,8 @@ DeepScientist 的构思、架构设计与实现过程中，受到了许多优秀
 
 同时，特别感谢以下老师和同学的支持、讨论、启发与贡献：
 
-为保持格式统一、同时避免误链到不稳定或错误的个人主页，下面的个人条目统一链接到公开搜索页。
-
 - [Shichen Li](https://www.google.com/search?q=%22Shichen+Li%22)
+- [Siqi Wen](https://www.google.com/search?q=%22Siqi+Wen%22)
 - [Guangsheng Bao](https://www.google.com/search?q=%22Guangsheng+Bao%22)
 - [Fuchen Shen](https://www.google.com/search?q=%22Fuchen+Shen%22)
 - [Wenyang Gao](https://www.google.com/search?q=%22Wenyang+Gao%22)

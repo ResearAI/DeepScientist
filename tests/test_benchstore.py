@@ -471,7 +471,7 @@ def test_benchstore_setup_packet_allows_launch_even_when_device_is_below_minimum
 
     assert packet["device_fit"] == "unsupported"
     constraints_text = "\n".join(packet["constraints"] or [])
-    assert "launch remains allowed" in constraints_text
+    assert "仍允许启动" in constraints_text
     assert "launch_payload" in packet
 
 
@@ -785,6 +785,46 @@ def test_benchstore_prefers_locale_specific_catalog_file(tmp_path: Path) -> None
     assert en_listing["items"][0]["name"] == "English Benchmark"
     assert zh_listing["items"][0]["name"] == "中文基准"
     assert zh_detail["entry"]["one_line"] == "中文简介"
+
+
+def test_benchstore_setup_packet_localizes_prefilled_form_by_locale(tmp_path: Path) -> None:
+    repo_root = _make_repo_root(tmp_path)
+    catalog_root = repo_root / "AISB" / "catalog"
+    write_yaml(
+        catalog_root / "locale.launch.yaml",
+        {
+            "name": "English Benchmark",
+            "id": "locale.launch",
+            "one_line": "English summary",
+            "task_description": "English benchmark description.",
+            "requires_paper": True,
+        },
+    )
+    write_yaml(
+        catalog_root / "locale.launch.zh.yaml",
+        {
+            "name": "中文基准",
+            "id": "locale.launch",
+            "one_line": "中文摘要",
+            "task_description": "中文 benchmark 描述。",
+            "requires_paper": True,
+        },
+    )
+
+    service = BenchStoreService(tmp_path / "home", repo_root=repo_root)
+    en_packet = service.build_setup_packet(entry_id="locale.launch", hardware_payload=_hardware_payload(), locale="en")
+    zh_packet = service.build_setup_packet(entry_id="locale.launch", hardware_payload=_hardware_payload(), locale="zh")
+
+    assert en_packet["project_title"] == "English Benchmark Autonomous Research"
+    assert zh_packet["project_title"] == "中文基准 全自动研究"
+    assert en_packet["suggested_form"]["goal"] == "English benchmark description."
+    assert zh_packet["suggested_form"]["goal"] == "中文 benchmark 描述。"
+    assert "Establish a credible starting point" in str(en_packet["suggested_form"]["objectives"])
+    assert "建立一个与 benchmark 保持一致的可信起点。" in str(zh_packet["suggested_form"]["objectives"])
+    assert "Primary Benchmark Goal" in str(en_packet["startup_instruction"])
+    assert "核心 benchmark 目标" in str(zh_packet["startup_instruction"])
+    assert en_packet["suggested_form"]["user_language"] == "en"
+    assert zh_packet["suggested_form"]["user_language"] == "zh"
 
 
 def test_benchstore_http_routes_preserve_locale_query_for_catalog_and_detail(

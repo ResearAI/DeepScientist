@@ -19,7 +19,7 @@ type RunnerField = {
   options?: Array<{ label: string; value: string }>
 }
 
-const RUNNER_ORDER: BuiltinRunnerName[] = ['codex', 'claude', 'opencode']
+const RUNNER_ORDER: BuiltinRunnerName[] = ['codex', 'claude', 'kimi', 'opencode']
 
 const RUNNER_DEFAULTS: Record<BuiltinRunnerName, StructuredConfig> = {
   codex: {
@@ -45,6 +45,21 @@ const RUNNER_DEFAULTS: Record<BuiltinRunnerName, StructuredConfig> = {
     config_dir: '~/.claude',
     model: 'inherit',
     permission_mode: 'bypassPermissions',
+    retry_on_failure: true,
+    retry_max_attempts: 4,
+    retry_initial_backoff_sec: 10,
+    retry_backoff_multiplier: 4,
+    retry_max_backoff_sec: 600,
+    env: {},
+  },
+  kimi: {
+    enabled: false,
+    binary: 'kimi',
+    config_dir: '~/.kimi',
+    model: 'inherit',
+    agent: '',
+    thinking: false,
+    yolo: true,
     retry_on_failure: true,
     retry_max_attempts: 4,
     retry_initial_backoff_sec: 10,
@@ -133,6 +148,14 @@ const RUNNER_FIELDS: Record<BuiltinRunnerName, RunnerField[]> = {
       ],
     },
   ],
+  kimi: [
+    { key: 'binary', label: 'Binary', kind: 'text', description: 'Kimi Code CLI binary name or absolute path.' },
+    { key: 'config_dir', label: 'Config directory', kind: 'text', description: 'Kimi Code home used for auth, config, and skills.' },
+    { key: 'model', label: 'Model', kind: 'text', description: 'Default Kimi model id.' },
+    { key: 'agent', label: 'Agent', kind: 'text', description: 'Optional `kimi --agent` profile name.' },
+    { key: 'thinking', label: 'Thinking', kind: 'boolean', description: 'Enable Kimi thinking mode by default.' },
+    { key: 'yolo', label: 'Yolo', kind: 'boolean', description: 'Enable Kimi no-confirm execution with `--yolo`.' },
+  ],
   opencode: [
     { key: 'binary', label: 'Binary', kind: 'text', description: 'OpenCode CLI binary name or absolute path.' },
     { key: 'config_dir', label: 'Config directory', kind: 'text', description: 'OpenCode home used for config and cache.' },
@@ -164,7 +187,7 @@ const COMMON_FIELDS: RunnerField[] = [
 const copy = {
   en: {
     selectionTitle: 'Global runner',
-    selectionBody: 'Choose exactly one active runner for the whole local product. This changes the default runner and disables the others for new work.',
+    selectionBody: 'Choose exactly one active runner for the whole local product. This changes the default runner and disables the remaining runners for new work.',
     active: 'Active',
     ready: 'Ready',
     save: 'Save',
@@ -186,7 +209,7 @@ const copy = {
   },
   zh: {
     selectionTitle: '全局 Runner',
-    selectionBody: '整个本地产品只保留一个激活中的 runner。这里的选择会同时修改默认 runner，并把另外两个置为非激活状态。',
+    selectionBody: '整个本地产品只保留一个激活中的 runner。这里的选择会同时修改默认 runner，并把其余 runner 置为非激活状态。',
     active: '当前使用',
     ready: '已就绪',
     save: '保存',

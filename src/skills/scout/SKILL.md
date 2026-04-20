@@ -13,6 +13,7 @@ The goal is to make the task frame concrete enough that a heavier stage can star
 
 Follow the shared interaction contract injected by the system prompt.
 Only send a richer scout milestone when the framing ambiguity actually shrank or the next anchor became clear.
+For ordinary active work, prefer a concise progress update once work has crossed roughly 6 tool calls with a human-meaningful delta, and do not drift beyond roughly 12 tool calls or about 8 minutes without a user-visible update.
 
 ## Tool discipline
 

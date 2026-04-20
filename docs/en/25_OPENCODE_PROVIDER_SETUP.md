@@ -1,7 +1,5 @@
 # 25 OpenCode Setup
 
-DeepScientist does not implement a separate provider layer for OpenCode either.
-
 It reuses the `opencode` CLI that already works on your machine, injects DeepScientist MCP servers, and mirrors first-party skills into the OpenCode project tree.
 
 The right order is:
@@ -11,8 +9,6 @@ The right order is:
 3. validate `opencode run` directly
 4. run `ds doctor`
 5. only then switch DeepScientist to the `opencode` runner
-
-If `opencode` itself is not working yet, fixing DeepScientist first is the wrong order.
 
 ## Official docs to read first
 
@@ -253,6 +249,20 @@ opencode:
   retry_max_backoff_sec: 600.0
   env: {}
 ```
+
+### Settings-first path after launch
+
+If DeepScientist is already running, use the visual `Models` page first:
+
+- route: `/settings/runners`
+
+Use it to:
+
+- switch the global default runner to `OpenCode`
+- enable the OpenCode runner
+- fill `binary`, `config_dir`, `model`, `default_agent`, and `variant`
+
+![Models settings page](../images/settings/settings-runners-en.png)
 
 ### Settings page mapping
 

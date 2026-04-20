@@ -17,7 +17,7 @@
 | 文件 | 页面分类 | 作用 |
 | --- | --- | --- |
 | `~/DeepScientist/config/config.yaml` | Runtime | 运行时主配置：主目录、daemon、UI、日志、Git、技能同步、云链接、ACP 等 |
-| `~/DeepScientist/config/runners.yaml` | Models | Runner 配置：`codex` / `claude` / `opencode` 的二进制、模型默认值、权限/沙箱、重试与环境变量 |
+| `~/DeepScientist/config/runners.yaml` | Models | Runner 配置：`codex` / `claude` / `kimi` / `opencode` 的二进制、模型默认值、权限/沙箱、重试与环境变量 |
 | `~/DeepScientist/config/connectors.yaml` | Connectors | QQ、Telegram、Discord、Slack、Feishu、WhatsApp、Lingzhu 等连接器配置 |
 | `~/DeepScientist/config/plugins.yaml` | Extensions | 插件发现、启用、禁用与信任策略 |
 | `~/DeepScientist/config/mcp_servers.yaml` | MCP | 外部 MCP 服务，不包含内置 `memory`、`artifact`、`bash_exec` |
@@ -109,7 +109,7 @@ acp:
 
 - 类型：`string`
 - 默认值：`codex`
-- 允许值：`codex`、`claude`、`opencode`
+- 允许值：`codex`、`claude`、`kimi`、`opencode`
 - 页面标签：`Default runner`
 - 作用：当项目没有单独覆盖 runner 时，默认走这里指定的 runner。
 - 何时修改：只有在你真的接通并启用了其他 runner 时才需要改。
@@ -435,6 +435,8 @@ acp:
   - OpenAI Codex CLI 路径，也包括已经在 Codex 里配置好的 provider-backed profile
 - `claude`
   - Claude Code CLI 路径，也包括已经能在 Claude Code 里工作的 Anthropic 或兼容网关配置
+- `kimi`
+  - 官方 Kimi Code CLI 路径，也包括已经在 `~/.kimi` 中工作的登录态和配置
 - `opencode`
   - OpenCode CLI 路径，也包括直接在 OpenCode 里管理的 provider/model 配置
 
@@ -514,6 +516,7 @@ opencode:
 - 默认值：
   - `codex -> ~/.codex`
   - `claude -> ~/.claude`
+  - `kimi -> ~/.kimi`
   - `opencode -> ~/.config/opencode`
 
 **`profile`**
@@ -529,7 +532,7 @@ opencode:
 - 类型：`string`
 - 页面标签：`Default model`
 - 作用：当 quest 或单次请求没有覆盖时，默认使用哪个模型。
-- 默认值：三个 runner 都是 `inherit`。
+- 默认值：四个 runner 都是 `inherit`。
 - 推荐规则：
   - 如果希望 CLI 自己决定 provider/model，就保持 `inherit`
   - 只有在你明确要让 DeepScientist 每次 turn 都强制指定模型时，才写死
@@ -567,6 +570,29 @@ opencode:
 - 常见值：`default`、`bypassPermissions`、`dontAsk`、`acceptEdits`、`delegate`、`plan`
 - 本地自动化的推荐默认值：`bypassPermissions`
 
+**`agent`**
+
+- 类型：`string`
+- 页面标签：`Kimi agent`
+- 适用 runner：`kimi`
+- 作用：可选的 Kimi agent，会透传成 `kimi --agent <name>`。
+- 只有当相同 agent 名在你直接运行 Kimi CLI 时已经确认有效，再填写这里。
+
+**`thinking`**
+
+- 类型：`boolean`
+- 页面标签：`Thinking mode`
+- 适用 runner：`kimi`
+- 作用：是否默认给 Kimi 追加 `--thinking`。
+
+**`yolo`**
+
+- 类型：`boolean`
+- 页面标签：`Yolo mode`
+- 适用 runner：`kimi`
+- 作用：是否默认给 Kimi 追加 `--yolo`，让它不要停下来等待交互式确认。
+- 本地无人值守自动化的推荐默认值：`true`
+
 **`default_agent`**
 
 - 类型：`string`
@@ -591,6 +617,7 @@ opencode:
 - 常见示例：
   - Codex：`OPENAI_API_KEY`、`OPENAI_BASE_URL`
   - Claude：`ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL`、`CLAUDE_CODE_MAX_OUTPUT_TOKENS`
+  - Kimi：通常保持为空；只有你的本地 Kimi CLI 路径明确需要额外环境变量时再填写
   - OpenCode：只有当你的 OpenCode provider 配置需要额外环境变量时才填写
 
 **`retry_on_failure` / `retry_max_attempts` / `retry_initial_backoff_sec` / `retry_backoff_multiplier` / `retry_max_backoff_sec`**
@@ -599,7 +626,7 @@ opencode:
 - 作用：runner 的自动重试策略。
 - 默认差异：
   - `codex` 的退避更激进
-  - `claude` / `opencode` 的默认梯度更短
+  - `claude` / `kimi` / `opencode` 的默认梯度更短
 
 **`mcp_tool_timeout_sec`**
 
@@ -613,12 +640,13 @@ opencode:
 - 作用：写给操作者的备注。
 - 当前实际含义：
   - `codex`：主路径
-  - `claude`、`opencode`：supported experimental
+  - `claude`、`kimi`、`opencode`：supported experimental
 
 ### 常见建议
 
 - 如果你想走最稳妥路径，用 `codex`。
 - 如果 Claude Code 在本机已经直接可用，且你希望走 Anthropic / Claude 原生路径，用 `claude`。
+- 如果官方 Kimi Code CLI 在本机已经直接可用，且你希望走独立的 Moonshot 原生路径，用 `kimi`。
 - 如果你的 provider/model 组合在 OpenCode 里已经工作最好，用 `opencode`。
 - 现在可以安全把 `default_runner` 从 `codex` 切走，只要目标 runner 已启用并且能通过 `ds doctor`。
 - 新 quest 会跟随 `config.default_runner`。

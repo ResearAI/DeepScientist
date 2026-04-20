@@ -29,6 +29,20 @@ For the recommended path, outbound delivery is queued into the local-session out
 7. Send one real message from WhatsApp.
 8. Return to DeepScientist and verify that the target conversation has been discovered.
 
+## 2.1 Settings page at a glance
+
+Route:
+
+- [Settings > Connectors > WhatsApp](/settings/connector/whatsapp)
+
+Use this page to:
+
+- keep `transport: local_session`
+- choose the local session directory
+- inspect discovered targets and runtime state after the first real WhatsApp message
+
+![WhatsApp connector settings page](../images/connectors/connector-whatsapp-en.png)
+
 ## 3. Important config fields
 
 Main fields:

@@ -2,6 +2,13 @@
 
 This manual documents the current DeepScientist `Settings` surface and the YAML files it actually edits. The structure intentionally follows a PyTorch-style reference pattern: short summary, schema, parameters, defaults, allowed values, runtime effect, and practical notes.
 
+If DeepScientist is already running, this should be your first stop. The intended path is:
+
+1. start DeepScientist
+2. open the web `Settings` page
+3. use the structured UI first
+4. edit raw YAML only when you are headless, automating setup, or doing bulk changes
+
 Implementation sources:
 
 - `src/ui/src/components/settings/settingsFormCatalog.ts`
@@ -12,12 +19,19 @@ Implementation sources:
 
 ## Overview
 
+This guide works best if you use it in two passes:
+
+1. first read the page-level sections in this document to find the right `Settings` page
+2. then read the field reference only for the page you are actually using
+
+If you try to read the entire file from top to bottom as one long schema, it will feel heavier than it needs to.
+
 The `Settings` page writes directly to the following files:
 
 | File | UI category | Purpose |
 | --- | --- | --- |
 | `~/DeepScientist/config/config.yaml` | Runtime | Main runtime config: home path, daemon, UI, logging, Git, skill sync, cloud, ACP |
-| `~/DeepScientist/config/runners.yaml` | Models | Runner config for `codex` / `claude` / `opencode`: binary path, model defaults, permissions, sandbox, retries, env |
+| `~/DeepScientist/config/runners.yaml` | Models | Runner config for `codex` / `claude` / `kimi` / `opencode`: binary path, model defaults, permissions, sandbox, retries, env |
 | `~/DeepScientist/config/connectors.yaml` | Connectors | QQ, Telegram, Discord, Slack, Feishu, WhatsApp, Lingzhu connector config |
 | `~/DeepScientist/config/plugins.yaml` | Extensions | Plugin discovery, enable/disable overrides, trust policy |
 | `~/DeepScientist/config/mcp_servers.yaml` | MCP | External MCP servers only; not built-in `memory`, `artifact`, or `bash_exec` |
@@ -28,10 +42,246 @@ Button semantics:
 - `Check` / `Validate`: local schema validation only.
 - `Test`: run a lightweight readiness probe. The exact behavior depends on the file type and is described later in this document.
 
+## Most Common Jobs After First Launch
+
+If you are new to the `Settings` page, start from the task you actually want to complete:
+
+| What you want to do | Open this page first |
+| --- | --- |
+| Change the default language, home path, daemon defaults, web port, or Git policy | `Runtime` |
+| Switch the default runner or configure Claude / Kimi / OpenCode after launch | `Models` |
+| Bind a chat platform or inspect connector state | `Connectors` |
+| Reuse or publish baselines | `Baselines` |
+| Enable and test DeepXiv | `DeepXiv` |
+| Add plugins or plugin load paths | `Extensions` |
+| Register external MCP servers | `MCP` |
+
 Connector-specific setup guides:
 
 - `docs/en/03_QQ_CONNECTOR_GUIDE.md`
 - `docs/en/04_LINGZHU_CONNECTOR_GUIDE.md`
+- `docs/en/10_WEIXIN_CONNECTOR_GUIDE.md`
+- `docs/en/16_TELEGRAM_CONNECTOR_GUIDE.md`
+- `docs/en/17_WHATSAPP_CONNECTOR_GUIDE.md`
+- `docs/en/18_FEISHU_CONNECTOR_GUIDE.md`
+- `docs/en/28_DISCORD_CONNECTOR_GUIDE.md`
+- `docs/en/29_SLACK_CONNECTOR_GUIDE.md`
+
+## Visual Tour Of The Core Settings Pages
+
+The pages below cover the main configuration surfaces you should use after launch.
+
+### Runtime
+
+Route:
+
+- `/settings/config`
+
+This page edits:
+
+- `~/DeepScientist/config/config.yaml`
+
+Use this page when you need to change:
+
+- home path, default locale, and default runner
+- daemon policy, web binding, logging, Git, and skill sync defaults
+- hardware prompt policy and cloud / ACP compatibility knobs
+
+How to use it:
+
+1. open the page
+2. change only the fields related to the task you are doing right now
+3. click `Save`
+4. use `Check` or `Test` if you want confirmation before leaving
+
+Good first tasks here:
+
+- switch `default_locale`
+- change the web port
+- adjust `default_runner`
+- review Git and logging defaults
+
+Do not start here when:
+
+- you are trying to bind one specific connector
+- you are trying to configure one specific runner in detail
+- you need runtime diagnostics rather than configuration
+
+![Runtime settings page](../images/settings/settings-config-en.png)
+
+### Models
+
+Route:
+
+- `/settings/runners`
+
+This page edits:
+
+- `~/DeepScientist/config/runners.yaml`
+
+Use this page when you need to:
+
+- switch the global default runner
+- confirm which runner is currently active
+- configure Codex / Claude Code / Kimi Code / OpenCode without editing `runners.yaml` by hand
+
+How to use it:
+
+1. decide which runner you want to use by default
+2. enable only the runner you actually want active
+3. fill the runner-specific path, config dir, model, and runtime knobs
+4. click `Save`
+5. click `Check` and then `Test`
+
+Good first tasks here:
+
+- enable Claude after `claude` already works in the terminal
+- enable Kimi after `kimi` already works in the terminal
+- reuse an existing OpenCode install
+
+Do not start here when:
+
+- the real problem is a connector delivery issue
+- the real problem is that DeepScientist is unhealthy before any runner even starts
+
+![Models settings page](../images/settings/settings-runners-en.png)
+
+### Connectors
+
+Route:
+
+- `/settings/connector`
+
+This page edits:
+
+- `~/DeepScientist/config/connectors.yaml`
+
+Use this page when you need to:
+
+- choose which connector to configure next
+- jump from the connector catalog into a specific platform page
+- keep connector setup visual-first instead of opening `connectors.yaml` immediately
+
+How to use it:
+
+1. start from the catalog page
+2. open one connector at a time
+3. save that connector before sending real test traffic
+4. only after the first real inbound message, expect discovered targets and runtime state to become useful
+
+Do not start here when:
+
+- you need system-wide diagnosis before touching any connector
+- the runtime itself is not healthy enough to host connectors at all
+
+![Connectors overview page](../images/settings/settings-connectors-overview-en.png)
+
+### Baselines
+
+Route:
+
+- `/settings/baselines`
+
+This page edits:
+
+- the baseline registry under the DeepScientist home rather than one raw config file
+
+Use this page when you need to:
+
+- inspect reusable published baselines
+- attach an existing baseline before launch
+- publish a confirmed quest baseline into the shared registry
+
+How to use it:
+
+1. open this page before launch if you already have a reusable baseline
+2. open it after a quest succeeds if you want to publish that baseline for future reuse
+3. stay here for registry-level baseline work; go back to quest pages for quest-specific work
+
+![Baselines settings page](../images/settings/settings-baselines-en.png)
+
+### DeepXiv
+
+Route:
+
+- `/settings/deepxiv`
+
+This page edits:
+
+- the `literature.deepxiv` block in `~/DeepScientist/config/config.yaml`
+
+Use this page when you need to:
+
+- enable or disable DeepXiv
+- configure the literature token and timeout defaults
+- use the guided setup flow instead of editing `config.yaml` manually
+
+How to use it:
+
+1. open the page
+2. start the guided setup flow if you do not already know the exact fields
+3. save the token and defaults
+4. test the route from the same page before relying on it in real work
+
+![DeepXiv settings page](../images/settings/settings-deepxiv-en.png)
+
+### Extensions
+
+Route:
+
+- `/settings/plugins`
+
+This page edits:
+
+- `~/DeepScientist/config/plugins.yaml`
+
+Use this page when you need to:
+
+- configure plugin discovery paths
+- enable or disable optional local extensions
+- adjust plugin trust policy
+
+How to use it:
+
+1. keep the default path if you are not actively using local plugins
+2. add plugin paths only when you actually have plugins to load
+3. treat this page as a plugin registry page, not a general runtime diagnosis page
+
+![Extensions settings page](../images/settings/settings-plugins-en.png)
+
+### MCP
+
+Route:
+
+- `/settings/mcp_servers`
+
+This page edits:
+
+- `~/DeepScientist/config/mcp_servers.yaml`
+
+Use this page when you need to:
+
+- register or edit external MCP servers
+- review MCP connection settings without touching the built-in MCP namespaces
+- validate external MCP integration before using it in quests
+
+How to use it:
+
+1. add one external MCP server at a time
+2. keep built-in MCP expectations separate from external MCP setup
+3. validate the external MCP server before using it in a real quest
+
+![MCP settings page](../images/settings/settings-mcp-servers-en.png)
+
+## How To Read The Rest Of This Document
+
+From this point onward, the file switches into field-level reference mode.
+
+The fastest way to use the remaining sections is:
+
+1. find the page you actually need
+2. skim its screenshot and operational notes above
+3. jump to the field reference below only for the fields you are about to change
 
 ## `config.yaml`
 
@@ -109,7 +359,7 @@ acp:
 
 - Type: `string`
 - Default: `codex`
-- Allowed values: `codex`, `claude`, `opencode`
+- Allowed values: `codex`, `claude`, `kimi`, `opencode`
 - UI label: `Default runner`
 - Meaning: runner used when a project does not override it.
 - Notes: new quests inherit this default; existing quests may override it in project settings. Switch only to a runner that is enabled and already passes `ds doctor`.
@@ -421,6 +671,8 @@ Current built-in runners:
   - OpenAI Codex CLI path, including Codex-compatible provider profiles
 - `claude`
   - Claude Code CLI path, including Anthropic or compatible gateway setups that already work in Claude Code
+- `kimi`
+  - Official Kimi Code CLI path, including login state and config already working in `~/.kimi`
 - `opencode`
   - OpenCode CLI path, including provider/model configurations managed directly by OpenCode
 
@@ -515,7 +767,7 @@ opencode:
 - Type: `string`
 - UI label: `Default model`
 - Meaning: default runner model when a quest or request does not override it.
-- Default: `inherit` for all three runners.
+- Default: `inherit` for all four runners.
 - Recommended rule:
   - keep `inherit` when the CLI should decide the provider/model itself
   - set a fixed model only when you want DeepScientist to override every turn
@@ -553,6 +805,29 @@ opencode:
 - Common values: `default`, `bypassPermissions`, `dontAsk`, `acceptEdits`, `delegate`, `plan`
 - Recommended local automation default: `bypassPermissions`
 
+**`agent`**
+
+- Type: `string`
+- UI label: `Kimi agent`
+- Runners: `kimi`
+- Meaning: optional Kimi agent name passed through as `kimi --agent <name>`.
+- Leave empty unless the same agent profile already works in direct Kimi CLI usage.
+
+**`thinking`**
+
+- Type: `boolean`
+- UI label: `Thinking mode`
+- Runners: `kimi`
+- Meaning: whether DeepScientist should pass `--thinking` to Kimi by default.
+
+**`yolo`**
+
+- Type: `boolean`
+- UI label: `Yolo mode`
+- Runners: `kimi`
+- Meaning: whether DeepScientist should pass `--yolo` so Kimi does not stop for interactive approval prompts.
+- Recommended unattended local automation default: `true`
+
 **`default_agent`**
 
 - Type: `string`
@@ -577,6 +852,7 @@ opencode:
 - Common examples:
   - Codex: `OPENAI_API_KEY`, `OPENAI_BASE_URL`
   - Claude: `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_MAX_OUTPUT_TOKENS`
+  - Kimi: usually empty unless your local Kimi CLI path requires extra environment variables
   - OpenCode: provider-specific environment variables only if your OpenCode provider setup requires them
 
 **`retry_on_failure` / `retry_max_attempts` / `retry_initial_backoff_sec` / `retry_backoff_multiplier` / `retry_max_backoff_sec`**
@@ -585,7 +861,7 @@ opencode:
 - Meaning: automatic turn retry policy for the runner.
 - Defaults:
   - `codex`: more aggressive retry ladder
-  - `claude` / `opencode`: shorter ladder
+  - `claude` / `kimi` / `opencode`: shorter ladder
 
 **`mcp_tool_timeout_sec`**
 
@@ -599,12 +875,13 @@ opencode:
 - Meaning: operator-facing note.
 - Current practical meaning:
   - `codex`: primary path
-  - `claude`, `opencode`: supported experimental paths
+  - `claude`, `kimi`, `opencode`: supported experimental paths
 
 ### Practical guidance
 
 - Use `codex` if you want the most battle-tested DeepScientist path.
 - Use `claude` when Claude Code already works directly on the machine and you want Anthropic / Claude-native execution.
+- Use `kimi` when the official Kimi Code CLI already works directly on the machine and you want a separate Moonshot-native runner path.
 - Use `opencode` when your model/provider setup already works best through OpenCode.
 - `default_runner` can now be switched away from `codex` safely if the target runner is enabled and passes `ds doctor`.
 - New quests follow `config.default_runner`.

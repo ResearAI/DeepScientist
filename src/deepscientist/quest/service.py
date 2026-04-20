@@ -7233,7 +7233,7 @@ class QuestService:
             return False
         parts = PurePosixPath(normalized).parts
         top = parts[0] if parts else normalized
-        if top in {".codex", ".claude", ".opencode", ".ds", "tmp", "userfiles", "artifacts"}:
+        if top in {".codex", ".claude", ".kimi", ".opencode", ".ds", "tmp", "userfiles", "artifacts"}:
             return True
         if top.startswith(".") and normalized not in {".gitignore"}:
             return True

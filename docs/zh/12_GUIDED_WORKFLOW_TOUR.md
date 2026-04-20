@@ -42,6 +42,12 @@ DeepScientist 常见有两种使用方式：
 
 第一次使用时，优先点击 `Start Research`。
 
+如果你只记一条最实用的规则：
+
+- 已经知道要启动什么项目，就点 `Start Research`
+- 还不知道做哪个 benchmark，就先去 `BenchStore`
+- 只是想改配置，还不打算启动项目，就去 `Settings`
+
 ## 3. 先理解这个弹窗到底在做什么
 
 `Start Research` 弹窗有两个同样重要的任务：
@@ -244,6 +250,15 @@ DeepScientist 常见有两种使用方式：
 - 语气和任务是否已经不一致
 
 这是整个流程里成本最低、收益最高的纠错点。
+
+如果你想记住一条最短真实项目路径，可以直接照这个顺序做：
+
+1. `Start Research`
+2. `Autonomous`
+3. 填 `Project title`
+4. 填 `Primary research request`
+5. 检查右侧生成的 prompt
+6. 点击 `Create project`
 
 ## 5. 点击 `Create project`
 

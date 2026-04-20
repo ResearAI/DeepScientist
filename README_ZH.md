@@ -42,6 +42,10 @@
   <a href="docs/zh/25_OPENCODE_PROVIDER_SETUP.md">OpenCode 配置</a>
 </p>
 
+<p align="center">
+  维护者入口：<a href="docs/zh/22_BENCHSTORE_YAML_REFERENCE.md">BenchStore YAML 编写指南</a>
+</p>
+
 ![deepscientist_install](https://github.com/user-attachments/assets/d8244944-4f70-4e08-94e3-002b74ce70fb)
 
 与一次性 **The AI Scientist** 或 **autoresearch** 风格系统不同，DeepScientist 是一个**本地优先的自治 AI 科研工作室**，**10 分钟即可启动**，并能在你的机器上持续推进从 **Baseline**、**多轮实验** 到 **论文级产出** 的完整科研闭环。依靠 **Findings Memory**、**贝叶斯优化** 和 **Research Map**，它会把每个新结果继续变成下一轮优化的起点，并在需要时通过更深入、更广泛的探索推进 **成百上千次实验验证**。

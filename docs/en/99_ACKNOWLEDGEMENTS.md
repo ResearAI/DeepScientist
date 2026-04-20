@@ -25,9 +25,8 @@ These projects have been important references for thinking about automated resea
 
 We also sincerely thank the following researchers, collaborators, and supporters:
 
-To keep the format consistent without guessing unstable personal homepages, the personal entries below link to public search pages.
-
 - [Shichen Li](https://www.google.com/search?q=%22Shichen+Li%22)
+- [Siqi Wen](https://www.google.com/search?q=%22Siqi+Wen%22)
 - [Guangsheng Bao](https://www.google.com/search?q=%22Guangsheng+Bao%22)
 - [Fuchen Shen](https://www.google.com/search?q=%22Fuchen+Shen%22)
 - [Wenyang Gao](https://www.google.com/search?q=%22Wenyang+Gao%22)

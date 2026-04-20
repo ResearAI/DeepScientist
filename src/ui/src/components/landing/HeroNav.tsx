@@ -38,7 +38,6 @@ export default function HeroNav(props: {
             height={28}
             className="object-contain"
             loading="eager"
-            fetchPriority="high"
             decoding="async"
             draggable={false}
           />

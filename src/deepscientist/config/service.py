@@ -23,6 +23,7 @@ from ..codex_cli_compat import (
     normalize_codex_reasoning_effort,
     provider_base_url_looks_local,
 )
+from ..kimi_cli_compat import materialize_kimi_runtime_home
 from ..connector.connector_profiles import PROFILEABLE_CONNECTOR_NAMES, list_connector_profiles, normalize_connector_config
 from ..connector_runtime import build_discovered_target, infer_connector_transport
 from ..home import repo_root
@@ -231,6 +232,15 @@ class ConfigManager:
                 "config_dir",
                 "model",
                 "permission_mode",
+                "env",
+            ),
+            "kimi": (
+                "binary",
+                "config_dir",
+                "model",
+                "agent",
+                "thinking",
+                "yolo",
                 "env",
             ),
             "opencode": (
@@ -535,7 +545,7 @@ This page edits `{home_text}/config/runners.yaml`.
 ## Recommended v1 choice
 
 - keep `codex.enabled: true`
-- enable whichever runners you actually plan to use (`codex`, `claude`, `opencode`)
+- enable whichever runners you actually plan to use (`codex`, `claude`, `kimi`, `opencode`)
 - keep the others disabled if their local CLI or credentials are not ready yet
 - set `codex.profile` only when your Codex CLI uses a named provider profile such as `m27`
 - when you launch DeepScientist ad hoc with a provider profile, you can also use `ds --codex-profile <name>`
@@ -752,6 +762,8 @@ Use **Test** when the file exposes runtime dependencies.
             result = self._probe_codex_runner(runner_payload)
         elif normalized_runner == "claude":
             result = self._probe_claude_runner(runner_payload)
+        elif normalized_runner == "kimi":
+            result = self._probe_kimi_runner(runner_payload)
         elif normalized_runner == "opencode":
             result = self._probe_opencode_runner(runner_payload)
         else:
@@ -1968,6 +1980,12 @@ Use **Test** when the file exposes runtime dependencies.
                 f"Install OpenCode and make sure `{binary} --version` works in the current shell.",
                 "If OpenCode is already installed elsewhere, set `runners.opencode.binary` to the absolute path.",
             ]
+        if normalized_runner == "kimi":
+            return [
+                f"Install Kimi Code and make sure `{binary} --version` works in the current shell.",
+                "Run `kimi login` (or just `kimi`) once to complete the first-run login flow.",
+                "If Kimi Code uses a custom home, point `runners.kimi.config_dir` at the correct `~/.kimi`-style directory that contains `config.toml` and `mcp.json`.",
+            ]
         return [f"Install runner `{normalized_runner}` and ensure `{binary}` is on PATH."]
 
     def _probe_claude_runner(self, config: dict) -> dict:
@@ -2167,6 +2185,122 @@ Use **Test** when the file exposes runtime dependencies.
             "guidance": [] if ok else [
                 "Run `opencode run --format json \"Reply with exactly HELLO\"` manually and confirm it succeeds.",
                 "If OpenCode uses a custom config root, point `runners.opencode.config_dir` at the correct directory.",
+            ],
+        }
+
+    def _probe_kimi_runner(self, config: dict) -> dict:
+        checked_at = utc_now()
+        binary = str(config.get("binary") or "kimi").strip() or "kimi"
+        resolved_binary = resolve_runner_binary(binary, runner_name="kimi")
+        requested_model = str(config.get("model") or "inherit").strip() or "inherit"
+        agent_name = str(config.get("agent") or "").strip() or None
+        yolo_enabled = bool(config.get("yolo", True))
+        thinking_enabled = bool(config.get("thinking", False))
+        details: dict[str, object] = {
+            "binary": binary,
+            "resolved_binary": resolved_binary,
+            "config_dir": str(config.get("config_dir") or "~/.kimi"),
+            "model": requested_model,
+            "requested_model": requested_model,
+            "effective_model": requested_model,
+            "agent": agent_name,
+            "thinking": thinking_enabled,
+            "yolo": yolo_enabled,
+            "checked_at": checked_at,
+        }
+        if not resolved_binary:
+            return {
+                "ok": False,
+                "summary": "Kimi Code startup probe failed before execution.",
+                "warnings": [],
+                "errors": [f"Kimi Code binary `{binary}` is not available."],
+                "details": details,
+                "guidance": self._runner_missing_binary_guidance("kimi", config),
+            }
+        env = ensure_utf8_subprocess_env(os.environ.copy())
+        env.update(self._codex_runner_env(config))
+        temp_home_handle = tempfile.TemporaryDirectory()
+        try:
+            temp_home = Path(temp_home_handle.name)
+            kimi_home = materialize_kimi_runtime_home(
+                source_home=Path(str(config.get("config_dir") or Path.home() / ".kimi")).expanduser(),
+                target_home=temp_home,
+            )
+            mcp_config_path = kimi_home / "mcp.json"
+            write_json(mcp_config_path, {"mcpServers": {}})
+            env["HOME"] = str(temp_home)
+            env["USERPROFILE"] = str(temp_home)
+            command = [
+                resolved_binary,
+                "--print",
+                "--input-format",
+                "text",
+                "--output-format",
+                "stream-json",
+                "--work-dir",
+                str(repo_root()),
+                "--mcp-config-file",
+                str(mcp_config_path),
+            ]
+            if yolo_enabled:
+                command.append("--yolo")
+            if requested_model.lower() not in {"", "inherit", "default", "kimi-default"}:
+                command.extend(["--model", requested_model])
+            if agent_name:
+                command.extend(["--agent", agent_name])
+            if thinking_enabled:
+                command.append("--thinking")
+            result = subprocess.run(
+                command,
+                input="Reply with exactly HELLO.",
+                cwd=str(repo_root()),
+                env=env,
+                capture_output=True,
+                timeout=90,
+                check=False,
+                **utf8_text_subprocess_kwargs(),
+            )
+        except subprocess.TimeoutExpired as exc:
+            details.update(
+                {
+                    "exit_code": None,
+                    "stdout_excerpt": self._compact_probe_text(exc.stdout or ""),
+                    "stderr_excerpt": self._compact_probe_text(exc.stderr or ""),
+                }
+            )
+            return {
+                "ok": False,
+                "summary": "Kimi Code startup probe timed out.",
+                "warnings": [],
+                "errors": ["Kimi Code did not answer the startup probe within 90 seconds."],
+                "details": details,
+                "guidance": [
+                    "Run a small `kimi --print --output-format stream-json` request manually and confirm it can answer before starting DeepScientist.",
+                ],
+            }
+        finally:
+            temp_home_handle.cleanup()
+        stdout_text = (result.stdout or "").strip()
+        stderr_text = (result.stderr or "").strip()
+        ok = result.returncode == 0 and "HELLO" in f"{stdout_text}\n{stderr_text}".upper()
+        details.update(
+            {
+                "exit_code": result.returncode,
+                "stdout_excerpt": self._compact_probe_text(stdout_text),
+                "stderr_excerpt": self._compact_probe_text(stderr_text),
+                "probe_command": command,
+            }
+        )
+        return {
+            "ok": ok,
+            "summary": "Kimi Code startup probe completed." if ok else "Kimi Code startup probe failed.",
+            "warnings": ["Kimi Code returned stderr during the startup probe."] if stderr_text else [],
+            "errors": [] if ok else ["Kimi Code did not complete the startup hello probe successfully."],
+            "details": details,
+            "guidance": [] if ok else [
+                "Run `kimi --print --input-format text --output-format stream-json --yolo` manually and confirm it returns `HELLO`.",
+                "Run `kimi login` first if this machine has not completed the Kimi Code login flow yet.",
+                "If Kimi Code uses a custom home, point `runners.kimi.config_dir` at the correct `~/.kimi`-style directory.",
             ],
         }
 

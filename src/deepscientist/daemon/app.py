@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from collections import deque
 from dataclasses import dataclass
+import errno
 import faulthandler
 import hashlib
 import hmac
@@ -83,7 +84,7 @@ from ..prompts import PromptBuilder
 from ..prompts.builder import classify_turn_intent, current_standard_skills
 from ..connector.qq_profiles import list_qq_profiles, merge_qq_profile_config, normalize_qq_connector_config
 from ..quest import QuestService
-from ..runners import ClaudeRunner, CodexRunner, OpenCodeRunner, RunRequest, get_runner_factory, register_builtin_runners
+from ..runners import ClaudeRunner, CodexRunner, KimiRunner, OpenCodeRunner, RunRequest, get_runner_factory, register_builtin_runners
 from ..runners.metadata import get_runner_metadata
 from ..runtime_logs import JsonlLogger
 from ..shared import append_jsonl, ensure_dir, generate_id, iter_jsonl, read_json, read_jsonl, read_jsonl_tail, read_text, resolve_within, run_command, slugify, utc_now, utf8_text_subprocess_kwargs, which, write_json
@@ -263,6 +264,14 @@ class DaemonApp:
             prompt_builder=self.prompt_builder,
             artifact_service=self.artifact_service,
         )
+        self.kimi_runner = KimiRunner(
+            home=home,
+            repo_root=self.repo_root,
+            binary=self.runners_config.get("kimi", {}).get("binary", "kimi"),
+            logger=self.logger,
+            prompt_builder=self.prompt_builder,
+            artifact_service=self.artifact_service,
+        )
         self.opencode_runner = OpenCodeRunner(
             home=home,
             repo_root=self.repo_root,
@@ -274,13 +283,14 @@ class DaemonApp:
         register_builtin_runners(
             codex_runner=self.codex_runner,
             claude_runner=self.claude_runner,
+            kimi_runner=self.kimi_runner,
             opencode_runner=self.opencode_runner,
         )
         register_builtin_connector_bridges()
         register_builtin_channels(home=home, connectors_config=self.connectors_config)
         self.runners = {
             name: self._create_runner(name)
-            for name in ("codex", "claude", "opencode")
+            for name in ("codex", "claude", "kimi", "opencode")
         }
         self.channels = {name: self._create_channel(name) for name in list_channel_names()}
         self.sessions = SessionStore()
@@ -1627,6 +1637,7 @@ class DaemonApp:
         runner_instances = {
             "codex": self.codex_runner,
             "claude": self.claude_runner,
+            "kimi": self.kimi_runner,
             "opencode": self.opencode_runner,
         }
         payload: dict[str, object] = {
@@ -5050,10 +5061,21 @@ class DaemonApp:
         removed_conversations = self._unbind_external_bindings(quest_id)
         self.sessions.forget(quest_id)
 
-        try:
-            shutil.rmtree(quest_root)
-        except FileNotFoundError:
-            return {"ok": True, "quest_id": quest_id, "deleted": False}
+        last_delete_error: OSError | None = None
+        for attempt in range(5):
+            try:
+                shutil.rmtree(quest_root)
+                last_delete_error = None
+                break
+            except FileNotFoundError:
+                return {"ok": True, "quest_id": quest_id, "deleted": False}
+            except OSError as exc:
+                last_delete_error = exc
+                if exc.errno not in {errno.ENOTEMPTY, errno.EBUSY} or attempt == 4:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
+        if last_delete_error is not None and quest_root.exists():
+            raise last_delete_error
 
         self.logger.log(
             "info",

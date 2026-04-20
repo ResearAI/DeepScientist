@@ -196,7 +196,7 @@ class PromptBuilder:
             mcp_namespace_note = "mcp_namespace_note: use `bash_exec(...)` for all CLI commands."
         runner_tool_name_note = ""
         normalized_runner_name = str(runner_name or "").strip().lower()
-        if normalized_runner_name in {"claude", "opencode"}:
+        if normalized_runner_name in {"claude", "kimi", "opencode"}:
             if custom_profile == "settings_issue":
                 runner_tool_name_note = (
                     "runner_tool_name_note: this runner may expose MCP tools with names like "

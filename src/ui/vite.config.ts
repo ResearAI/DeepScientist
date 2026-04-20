@@ -47,7 +47,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: '/ui/',
-    publicDir: false,
+    publicDir: 'public',
     plugins: [react()],
     define: {
       'process.env': browserEnv,

@@ -1,546 +1,445 @@
-# 22 BenchStore YAML 参考
+# 22 BenchStore YAML 编写指南
 
-这份文档定义 BenchStore catalog 的 YAML 合同，目录位置是：
+这份文档说明如何在 `AISB/catalog/` 下新增一个 BenchStore 条目、系统如何自动发现它，以及当前 BenchStore 真正会读取哪些字段。
 
-- `AISB/catalog/*.yaml`
+如果你要发布可下载的 benchmark 源码包，请同时参考
+[23 BenchStore GitHub Releases 分发规范](./23_BENCHSTORE_GITHUB_RELEASES_SPEC.md)。
 
-BenchStore 会直接读取这些文件、校验它们，并通过 BenchStore API 提供出去。
+## 1. 自动发现规则
 
-前端渲染是“宽松显示”的：
+BenchStore 不需要手工注册表。
 
-- 只渲染实际存在的字段
-- 缺失的可选字段会自动跳过
-- 唯一严格必填字段是 `name`
+只要你把 YAML 文件放进 `AISB/catalog/`，BenchStore 下一次扫描 catalog 时就会自动读到它。
 
-## 1. 文件放置规则
+当前规则是：
 
-一个 benchmark 对应一个文件：
+- BenchStore 会递归扫描 `AISB/catalog/**/*.yaml`。
+- 一个 YAML 文件对应一个条目。
+- `name` 是唯一严格必填字段。
+- `id` 可以不写；不写时会自动回退成文件名 stem。
+- 整个 catalog 内的 `id` 必须唯一。
+- 以 `.zh.yaml` 结尾的文件是中文本地化版本。
+- 当 locale 是 `zh` 时，BenchStore 会优先读取 `<stem>.zh.yaml`，而不是 `<stem>.yaml`。
+- `.zh.yaml` 不是局部覆盖，而是完整替换。
 
-- `AISB/catalog/aisb.t3.026_gartkg.yaml`
-- `AISB/catalog/my_custom_benchmark.yaml`
+例如：
 
-也允许子目录。BenchStore 会递归扫描 `AISB/catalog/`。
-但对当前这批人工整理的 AutoSOTA 条目，建议全部直接放在
-`AISB/catalog/` 根下，不要再额外套一层 `autosota/` 子目录。
+- `AISB/catalog/my.benchmark.yaml`
+- `AISB/catalog/my.benchmark.zh.yaml`
+- `AISB/catalog/vision/my.benchmark.yaml`
 
-## 2. 最小合法示例
+推荐命名规则：
+
+- 文件名 stem 直接等于你想要的 entry id。
+- stem 里尽量只用字母、数字、`.`、`_`、`-`。
+
+## 2. 快速上手：新增一个 YAML
+
+### 最小可用文件
+
+最小合法内容只有这一行：
 
 ```yaml
 name: My Benchmark
 ```
 
-这就是唯一的必填项。
+它会出现在 BenchStore 里，但信息会非常少。
 
-## 3. 推荐示例
+### 推荐起步模板
+
+通常建议从这个模板开始：
 
 ```yaml
 schema_version: 1
-id: aisb.t3.tdc_admet
-name: TDC ADMET Discovery
+id: my.benchmark
+name: My Benchmark
 version: 0.1.0
-one_line: Evaluate whether an AI Scientist can improve molecular property prediction through hypothesis-driven experiments.
+
+one_line: 卡片和概览里展示的一句话摘要。
+task_description: >
+  详情页和 BenchStore setup 流程使用的较长描述。
+
+task_mode: evaluation_driven
+requires_execution: true
+requires_paper: true
 
 capability_tags:
   - scientific_discovery
-  - hypothesis_experiment_validation
-
-aisb_direction: T3
 track_fit:
-  - paper_track
   - benchmark_track
 
-task_mode: experiment_driven
-requires_execution: true
-requires_paper: true
-integrity_level: cas_plus_canary
-
-cost_band: low
 time_band: 1-2h
+cost_band: medium
 difficulty: medium
 data_access: public
 
-recommended_when: Use this benchmark to test hypothesis-driven experimental improvement with real logged experiments.
-not_recommended_when: Do not use this for pure reasoning, theorem proving, or long-horizon software engineering.
+snapshot_status: runnable
+support_level: advanced
+
+resources:
+  minimum:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 50
+    gpu_count: 1
+    gpu_vram_gb: 12
+  recommended:
+    cpu_cores: 16
+    ram_gb: 32
+    disk_gb: 100
+    gpu_count: 1
+    gpu_vram_gb: 24
 
 paper:
-  title: Thermotherapeutics Data Commons: Machine Learning Datasets and Tasks for Drug Discovery and Development
-  venue: NeurIPS 2021 Datasets and Benchmarks
-  year: 2021
-  url: https://openreview.net/forum?id=8nvgnORnoWr
+  title: My Benchmark Paper
+  venue: NeurIPS 2026
+  year: 2026
+  url: https://example.com/paper
 
 download:
-  provider: github_release
-  repo: ResearAI/DeepScientist
-  tag: benchstore-assets-2026-04-13
-  asset_name: aisb.t3.tdc_admet-v0.1.0.zip
-  url: https://github.com/ResearAI/DeepScientist/releases/download/benchstore-assets-2026-04-13/aisb.t3.tdc_admet-v0.1.0.zip
+  url: https://example.com/my.benchmark.zip
   archive_type: zip
-  local_dir_name: aisb.t3.tdc_admet
-  version: 0.1.0
-  sha256: <sha256>
-  size_bytes: 12345678
+  local_dir_name: my.benchmark
 
-resources:
-  minimum:
-    cpu_cores: 8
-    ram_gb: 16
-    disk_gb: 20
-    gpu_count: 1
-    gpu_vram_gb: 8
-  recommended:
-    cpu_cores: 16
-    ram_gb: 32
-    disk_gb: 50
-    gpu_count: 1
-    gpu_vram_gb: 16
-
-environment:
-  python: "3.10"
-  cuda: "11.8"
-  pytorch: "2.1.0"
-  flash_attn: null
-  key_packages:
-    - deepspeed==0.15.4
-    - transformers==4.46.3
-  notes:
-    - Use the repository requirements file for the full dependency set.
-
-commercial:
-  annual_fee: null
-
-display:
-  palette_seed: sage-coral-mist
-  art_style: morandi-minimal
-  accent_priority: high
+image_path: ../../../AISB/image/my.benchmark.jpg
 ```
 
-## 4. 字段说明
+### 中文本地化
 
-### 必填字段
+如果你要支持中文展示，就再加一个同 stem 的文件：
 
-**`name`**
+- `AISB/catalog/my.benchmark.yaml`
+- `AISB/catalog/my.benchmark.zh.yaml`
 
-- 类型：`string`
-- 是否必填：是
-- 含义：benchmark 的主展示名称
+这里有一个很重要的坑：
 
-### 强烈建议填写
+- `my.benchmark.zh.yaml` 必须是一份完整条目。
+- BenchStore 不会把中文文件和英文文件做字段合并。
+- 如果你只在 `.zh.yaml` 里写翻译过的几个字段，其他字段就真的没有了。
 
-**`id`**
+## 3. 具体填写要求和规范
 
-- 类型：`string`
-- 是否必填：否
-- 是否推荐：是
-- 示例：`aisb.t3.026_gartkg`
-- 规则：如果不填，BenchStore 会用文件名自动生成
-- 最佳实践：除非确实需要兼容旧标识，否则直接让它和文件名 stem 保持一致
+### 3.1 系统硬要求
 
-**`one_line`**
+下面这些属于当前实现层面的硬要求或硬行为：
 
-- 类型：`string`
-- 是否必填：否
-- 含义：卡片和概览页上的一句话摘要
+- YAML 根节点必须是 object，不能是纯字符串或纯列表。
+- `name` 必须是非空字符串。
+- `id` 如果写了，应该是字符串；如果不写，会自动从文件名 stem 推导。
+- 最终解析出来的 `id` 必须在整个 catalog 中唯一。
+- `.zh.yaml` 会完整替换同 stem 的英文文件，不会做字段合并。
+- `capability_tags`、`track_fit`、`primary_outputs`、`risk_flags`、`risk_notes`、`environment.key_packages`、`environment.notes`、`dataset_download.notes`、`credential_requirements.items`、`credential_requirements.notes`、`launch_profiles` 必须写成列表。
+- `resources.minimum` 和 `resources.recommended` 如果写了，必须是 object。
+- `environment`、`dataset_download`、`credential_requirements`、`paper`、`download`、`display`、`commercial` 如果写了，必须是 object。
+- `launch_profiles` 里的每个元素都必须是 object。
+- `download.url` 是安装流程真正依赖的最小字段；没有它就不能走 BenchStore 安装。
 
-**`task_description`**
+### 3.2 推荐填写规范
 
-- 类型：`string`
-- 是否必填：否
-- 含义：详情页展示和 setup agent 理解任务时使用的更长描述
+下面这些不是“代码强校验”，但如果你想让条目表现稳定、推荐结果正常、后续维护成本低，建议严格按这个约定来写。
 
-**`image_path`**
+**基础规范**
 
-- 类型：`string`
-- 是否必填：否
-- 含义：benchmark 对应的本地预览 JPG 图片相对路径
-- 建议：优先写 repo 内相对路径，例如 `../../../AISB/image/001_aisb.t3.001_savvy.jpg`
+- `schema_version`：固定写 `1`。
+- `id`：直接等于文件名 stem，例如文件是 `aisb.t3.026_gartkg.yaml`，就写 `id: aisb.t3.026_gartkg`。
+- `id` 风格：推荐全小写，稳定，不要频繁改名；只用字母、数字、`.`、`_`、`-`。
+- `version`：推荐用 semver，例如 `0.1.0`、`0.2.3`。
+- `requires_execution`、`requires_paper`：用 YAML 布尔值 `true` / `false`，不要写自然语言。
 
-### 分类与发现
+**文案规范**
 
-**`capability_tags`**
+- `name`：主标题，给用户看，尽量使用 benchmark 或项目的正式名字。
+- `one_line`：一行摘要，建议 1 句话，适合直接放在卡片上，不要写成长段。
+- `task_description`：建议 1 段到 3 段，重点写“这个 benchmark 现在在 DeepScientist 里实际要做什么”，不要只是复述论文摘要。
+- `recommended_when` / `not_recommended_when`：分别说明适合场景和不适合场景，建议都写成完整句子。
 
-- 类型：`string[]`
-- 是否必填：否
-- 示例：`["scientific_discovery", "drug_discovery"]`
+**推荐系统会识别的标准取值**
 
-**`aisb_direction`**
+- `cost_band`：推荐只用 `very_low`、`low`、`medium`、`high`、`very_high`。
+- `difficulty`：推荐只用 `easy`、`medium`、`hard`、`expert`。
+- `data_access`：推荐只用 `public`、`restricted`、`private`。
+- `snapshot_status`：推荐只用 `runnable`、`runnable_not_verified`、`partial`、`restore_needed`、`external_eval_required`、`data_only`。
+- `support_level`：推荐只用 `turnkey`、`advanced`、`recovery`。
 
-- 类型：`string`
-- 是否必填：否
-- 示例：`T1`、`T2`、`T3`
+重要说明：
 
-**`track_fit`**
+- `cost_band`、`difficulty`、`snapshot_status`、`support_level` 这些字段虽然代码不做强枚举校验，但推荐排序逻辑只会识别上面这些标准值。
+- 如果你写了别的字符串，条目不会报错，但推荐分数通常会退回到“未知值”的默认处理。
 
-- 类型：`string[]`
-- 是否必填：否
-- 示例：`["paper_track", "benchmark_track"]`
+**`time_band` 格式规范**
 
-**`task_mode`**
+BenchStore 当前能稳定识别这些格式：
 
-- 类型：`string`
-- 是否必填：否
-- 示例：`experiment_driven`、`analysis_driven`、`evaluation_driven`
-
-### 运行形态
-
-**`requires_execution`**
-
-- 类型：`boolean`
-- 是否必填：否
-- 含义：这个 benchmark 是否通常需要真实代码/实验执行
-
-**`requires_paper`**
-
-- 类型：`boolean`
-- 是否必填：否
-- 含义：这个 benchmark 是否通常要求论文级输出
-
-**`integrity_level`**
-
-- 类型：`string`
-- 是否必填：否
-- 示例：`cas_plus_canary`
-
-### 规划提示
-
-**`cost_band`**
-重要发布说明：
-
-- 如果条目作为可下载源码包公开发布，必须保留 `risk_flags` 与 `risk_notes`；可下载不应覆盖已知 caveat
-
-
-- 类型：`string`
-- 是否必填：否
-- 示例：`low`、`medium`、`high`
-
-**`time_band`**
-
-- 类型：`string`
-- 是否必填：否
-- 示例：`30-60m`、`1-2h`、`1d+`、`2-4d`、`4d+`
-- 建议：按“推荐硬件上的第一次可信端到端运行”估算 wall-clock，需把必要的环境准备、主要评测和论文所要求的关键阶段一起算进去；有明确上界时写分钟 / 小时 / 天区间，经常跨多天的 benchmark 用 `1d+`、`4d+` 这类开放区间
-
-**`difficulty`**
-
-- 类型：`string`
-- 是否必填：否
-- 示例：`easy`、`medium`、`hard`
-
-**`data_access`**
-
-- 类型：`string`
-- 是否必填：否
-- 示例：`public`、`restricted`、`private`
-
-**`recommended_when`**
-
-- 类型：`string`
-- 是否必填：否
-
-**`not_recommended_when`**
-
-- 类型：`string`
-- 是否必填：否
-
-### 论文信息
-
-**`paper.title`**
-
-- 类型：`string`
-- 是否必填：否
-
-**`paper.venue`**
-
-- 类型：`string`
-- 是否必填：否
-- 这是“论文场地 / 录用场所 / 发表 venue”的推荐字段
-
-**`paper.year`**
-
-- 类型：`integer`
-- 是否必填：否
-
-**`paper.url`**
-
-- 类型：`string`
-- 是否必填：否
-
-### 下载信息
-
-**`download.url`**
-
-- 类型：`string`
-- 是否必填：否
-- 建议：生产环境里的 BenchStore 分发应优先使用 GitHub Release asset 这类不可变源码包链接，而不是分支压缩包。
-- 参见：[23 BenchStore GitHub Releases 分发规范](./23_BENCHSTORE_GITHUB_RELEASES_SPEC.md)
-
-**`download.archive_type`**
-
-- 类型：`string`
-- 是否必填：否
-- 示例：`zip`、`tar.gz`
-
-**`download.local_dir_name`**
-
-- 类型：`string`
-- 是否必填：否
-- 含义：下载并解压后建议使用的本地目录名
-
-### 数据获取元数据
-
-当 benchmark 依赖明确的数据下载路线时，建议补充这一节。BenchStore 现在可以直接把这些信息显示在前端详情页和 setup-agent 上下文里。
-
-推荐结构：
-
-```yaml
-dataset_download:
-  primary_method: mixed
-  sources:
-    - kind: huggingface
-      url: https://huggingface.co/datasets/example/bench
-      access: public
-      note: 主公开数据入口。
-  notes:
-    - 需要先把原始 split 转成项目自己的 JSON 文件。
-```
-
-约定字段：
-
-- `dataset_download.primary_method`: `string`
-- `dataset_download.sources`: `object[]`
-- `dataset_download.notes`: `string[]`
-- `dataset_download.sources[].kind`: `string | null`
-- `dataset_download.sources[].url`: `string | null`
-- `dataset_download.sources[].access`: `string | null`
-- `dataset_download.sources[].note`: `string | null`
-
-### 凭证元数据
-
-当 benchmark 依赖 API key、gated model token、Kaggle 凭证等密钥时，建议补充这一节。
-
-推荐结构：
-
-```yaml
-credential_requirements:
-  mode: conditional
-  items:
-    - OPENAI_API_KEY
-    - HF_TOKEN
-  notes:
-    - 只有可选 evaluator 路线才需要 OpenAI 访问。
-```
-
-约定字段：
-
-- `credential_requirements.mode`: `string`
-- `credential_requirements.items`: `string[]`
-- `credential_requirements.notes`: `string[]`
-
-### 运行态状态元数据
-
-这些字段主要服务于前端详情页和后续类似 Steam 的启动逻辑，用来更清楚地表达“当前这个本地 snapshot 到底能做什么”。
-
-**`snapshot_status`**
-
-- 类型：`string`
-- 是否必填：否
-- 示例：`runnable`、`partial`、`docs_only`、`restore_needed`、`external_eval_required`
-- 建议：这里描述的是“当前本地快照今天真实能做什么”，不是论文上游理论上能做什么。
-
-**`support_level`**
-
-- 类型：`string`
-- 是否必填：否
-- 示例：`turnkey`、`advanced`、`recovery`
-- 建议：用来区分这个 benchmark 是即装即跑、需要复杂多步配置，还是主要用于源码恢复与人工审计。
-
-**`primary_outputs`**
-
-- 类型：`string[]`
-- 是否必填：否
-- 示例：`["aid_accuracy", "model_checkpoint", "evaluation_report"]`
-- 建议：列出一次可信运行后最重要的产物或指标，而不是把所有内部中间量都塞进去。
-
-**`launch_profiles`**
-
-- 类型：`object[]`
-- 是否必填：否
-- 推荐结构：
-
-```yaml
-launch_profiles:
-  - id: quick_check
-    label: Quick Check
-    description: 在当前设备上先跑最小可行路径。
-  - id: paper_faithful
-    label: Paper-Faithful
-    description: 按论文描述跑完整复现路径。
-```
-
-支持的子字段：
-
-- `launch_profiles[].id`: `string | null`
-- `launch_profiles[].label`: `string | null`
-- `launch_profiles[].description`: `string | null`
-
-### 资源需求
-
-这里必须尽量写成结构化数值，不能只写自然语言硬件描述。否则兼容性判断、排序、过滤都无法自动工作。
-
-**`resources.minimum`**
-
-- 类型：object
-- 是否必填：否
-
-**`resources.recommended`**
-
-- 类型：object
-- 是否必填：否
-
-支持的子字段：
-
-- `cpu_cores`: number
-- `ram_gb`: number
-- `disk_gb`: number
-- `gpu_count`: number
-- `gpu_vram_gb`: number
-
-示例：
-
-```yaml
-resources:
-  minimum:
-    cpu_cores: 8
-    ram_gb: 16
-    disk_gb: 20
-    gpu_count: 1
-    gpu_vram_gb: 8
-  recommended:
-    cpu_cores: 16
-    ram_gb: 32
-    disk_gb: 50
-    gpu_count: 1
-    gpu_vram_gb: 16
-```
-
-### 可选环境元数据
-
-当 benchmark 的可复现性明显依赖某个运行时组合时，建议补充这一节。
-
-推荐结构：
-
-```yaml
-environment:
-  python: "3.10"
-  cuda: "11.8"
-  pytorch: "2.1.0"
-  flash_attn: "2.7.0.post2"
-  key_packages:
-    - deepspeed==0.15.4
-    - transformers==4.46.3
-  notes:
-    - Install from requirements.txt for the full dependency set.
-```
-
-约定字段：
-
-- `environment.python`: `string`
-- `environment.cuda`: `string | null`
-- `environment.pytorch`: `string | null`
-- `environment.flash_attn`: `string | null`
-- `environment.key_packages`: `string[]`
-- `environment.notes`: `string[]`
-
-填写建议：
-
-- 上游仓库写了明确版本时，优先填精确版本。
-- 不需要或无法确认时填 `null`。
-- `key_packages` 只保留高价值依赖，不要把整个 lockfile 全塞进去。
-- `notes` 用来写 CPU-only、需要 `nvcc`、需要额外 toolkit 之类的安装约束。
-
-### 可选图片元数据
-
-如果有 benchmark 预览图，可以补充：
-
-```yaml
-image_path: ../../../AISB/image/026_aisb.t3.026_gartkg.jpg
-```
+- 单值：`30m`、`2h`、`3d`
+- 区间：`30-60m`、`1-2h`、`2-4d`
+- 开放区间：`6h+`、`1d+`、`4d+`
 
 建议：
 
-- 尽量使用 100KB 以内的 `jpg`
-- 尽量统一为 16:9
-- 图片文件名尽量使用 `<三位编号>_<yaml_stem>.jpg`，这样可以和 YAML 条目做机械对应
-- 优先使用 README 里的主图
-- README 没有合适图时，退回到论文 PDF 的主图
-- 再不行就用论文首页做裁剪预览
+- 用最保守的“第一次可信端到端运行” wall-clock 估计。
+- 推荐直接写成不带空格的规范格式，例如 `1-2h`，不要写“about one day”这类自然语言。
 
-## 5. AutoSOTA 扁平规范
+**资源填写规范**
 
-对当前这批人工维护的 AutoSOTA catalog，建议同时遵守下面几条：
+- `resources.minimum` 和 `resources.recommended` 里，当前真正会读取的只有这 5 个数值键：
+- `cpu_cores`
+- `ram_gb`
+- `disk_gb`
+- `gpu_count`
+- `gpu_vram_gb`
 
-- YAML 路径：`AISB/catalog/aisb.t3.026_gartkg.yaml`
-- `id: aisb.t3.026_gartkg`
-- `download.url: https://deepscientist.cc/AISB/026_gartkg`
-- `image_path: ../../../AISB/image/026_aisb.t3.026_gartkg.jpg`
+补充说明：
 
-这批条目的额外编写建议：
+- 这里建议只写数字。
+- 即使你在 `resources.minimum` 里额外塞 `notes` 之类字段，当前 BenchStore 也不会把它们用于兼容性计算。
+- 如果要写额外说明，优先放到 `task_description` 或 `environment.notes`。
 
-- `task_description` 要对应本地仓库里真实存在的 README、优化笔记或代码焦点，不能只是复述摘要。
-- `resources.minimum` 和 `resources.recommended` 要偏保守，尤其是 GPU 显存和磁盘需求。
-- `environment` 只填本地 README、requirements、环境文件或明确安装命令里能证实的版本。
-- 版本不确定时宁可填 `null`，不要猜。
+**下载字段规范**
 
-### 商业信息
+- `download.url`：必须指向具体可下载资产。
+- `download.archive_type`：推荐只写 `zip`、`tar.gz`、`tar`。
+- `download.local_dir_name`：推荐等于解压后的根目录名；通常也建议和 `id` 保持一致。
+- 如果你走 GitHub Releases 分发，推荐同时补齐 `download.provider`、`download.repo`、`download.tag`、`download.asset_name`、`download.sha256`、`download.size_bytes`。
 
-**`commercial.annual_fee`**
+**图片与本地化规范**
 
-- 类型：`string | number | null`
-- 是否必填：否
-- 示例：`99`、`"$99/year"`、`null`
+- `image_path`：推荐写相对于 YAML 文件的相对路径；解析后文件必须真实存在，并且仍然位于当前 workspace 内。
+- `.zh.yaml`：建议把英文文件完整复制一份，再只翻译文案字段；不要只写中文增量字段。
 
-### 展示提示
+**风险字段规范**
 
-这些是可选的显示 hint。未来前端视觉系统升级时，可能不会逐字段照搬，但现在可以安全写入。
+- `risk_flags` 和 `risk_notes` 只在确实存在重要 caveat 时填写。
+- 一旦条目写入 `risk_flags` 或 `risk_notes`，BenchStore 推荐逻辑会把它排除出推荐结果。
 
-**`display.palette_seed`**
+### 3.3 按目标来看，需要填写哪些字段
 
-- 类型：`string`
-- 是否必填：否
+### 只要能在 BenchStore 里出现
 
-**`display.art_style`**
+必填：
 
-- 类型：`string`
-- 是否必填：否
-- 示例：`morandi-minimal`
+- `name`
 
-**`display.accent_priority`**
+强烈建议：
 
-- 类型：`string`
-- 是否必填：否
-- 示例：`low`、`medium`、`high`
+- `id`
+- `one_line`
+- `task_description`
 
-## 6. 校验行为
+### 想让推荐、过滤、排序更靠谱
 
-BenchStore 会遵循下面这些规则：
+这些字段会明显影响 catalog 质量：
 
-- `name` 必须存在且不能为空
-- 其他字段都可选
-- 未识别的额外字段会保留，但当前不一定渲染
-- 非法文件会从主 catalog 中跳过，并作为 catalog 错误返回
+- `task_mode`
+- `capability_tags`
+- `aisb_direction`
+- `track_fit`
+- `cost_band`
+- `time_band`
+- `difficulty`
+- `data_access`
+- `resources.minimum`
+- `resources.recommended`
+- `snapshot_status`
+- `support_level`
 
-## 7. 编写建议
+补充说明：
 
-建议：
+- `resources.minimum` 和 `resources.recommended` 会参与设备匹配判断。
+- `snapshot_status` 和 `support_level` 会参与推荐分数。
+- `risk_flags` 和 `risk_notes` 用来标记已知风险。
+- 只要条目带有 `risk_flags` 或 `risk_notes`，BenchStore 就不会把它放进推荐结果里。
 
-- 使用稳定、简短的 `id`
-- 尽量提供真实的结构化资源需求
-- `one_line` 保持短小
-- `task_description` 只在确实有必要时写长一点
-- 用 `paper.venue` 表示论文场地，不要再单独发明 `accepted_place` 之类字段
+### 想让条目支持 BenchStore 安装
 
-避免：
+安装流程的最小要求：
 
-- 在 YAML 里塞超长 prompt 文本
-- 只写自然语言硬件需求，不写结构化数值
-- 把安装状态写进 catalog 文件
-- 提交本地机器绝对路径
+- `download.url`
+
+强烈建议同时写：
+
+- `download.archive_type`
+- `download.local_dir_name`
+- `download.provider`
+- `download.repo`
+- `download.tag`
+- `download.asset_name`
+- `download.sha256`
+- `download.size_bytes`
+
+重要行为：
+
+- 如果 `requires_execution: true`，那么条目在本地安装前不能直接 launch。
+- 如果不写 `download.archive_type`，BenchStore 会尝试根据 URL 后缀自动推断。
+- 如果不写 `download.local_dir_name`，BenchStore 会退回使用 entry id 作为安装目录名。
+
+### 想让详情页和 setup packet 更完整
+
+这些字段很有用：
+
+- `paper`
+- `primary_outputs`
+- `launch_profiles`
+- `dataset_download`
+- `credential_requirements`
+- `environment`
+- `recommended_when`
+- `not_recommended_when`
+- `image_path`
+- `display`
+- `commercial`
+
+## 4. 当前支持的字段
+
+BenchStore 目前会读取这些顶层字段：
+
+- `schema_version`
+- `id`
+- `name`
+- `version`
+- `one_line`
+- `task_description`
+- `capability_tags`
+- `aisb_direction`
+- `track_fit`
+- `task_mode`
+- `requires_execution`
+- `requires_paper`
+- `integrity_level`
+- `snapshot_status`
+- `support_level`
+- `primary_outputs`
+- `launch_profiles`
+- `cost_band`
+- `time_band`
+- `difficulty`
+- `data_access`
+- `risk_flags`
+- `risk_notes`
+- `recommended_when`
+- `not_recommended_when`
+- `paper`
+- `download`
+- `dataset_download`
+- `credential_requirements`
+- `resources`
+- `environment`
+- `commercial`
+- `display`
+- `image_path`
+
+当前识别的嵌套字段是：
+
+- `paper.title`
+- `paper.venue`
+- `paper.year`
+- `paper.url`
+- `download.url`
+- `download.archive_type`
+- `download.local_dir_name`
+- `download.provider`
+- `download.repo`
+- `download.tag`
+- `download.asset_name`
+- `download.sha256`
+- `download.size_bytes`
+- `dataset_download.primary_method`
+- `dataset_download.sources[].kind`
+- `dataset_download.sources[].url`
+- `dataset_download.sources[].access`
+- `dataset_download.sources[].note`
+- `dataset_download.notes[]`
+- `credential_requirements.mode`
+- `credential_requirements.items[]`
+- `credential_requirements.notes[]`
+- `resources.minimum.cpu_cores`
+- `resources.minimum.ram_gb`
+- `resources.minimum.disk_gb`
+- `resources.minimum.gpu_count`
+- `resources.minimum.gpu_vram_gb`
+- `resources.recommended.cpu_cores`
+- `resources.recommended.ram_gb`
+- `resources.recommended.disk_gb`
+- `resources.recommended.gpu_count`
+- `resources.recommended.gpu_vram_gb`
+- `environment.python`
+- `environment.cuda`
+- `environment.pytorch`
+- `environment.flash_attn`
+- `environment.key_packages[]`
+- `environment.notes[]`
+- `commercial.annual_fee`
+- `display.palette_seed`
+- `display.art_style`
+- `display.accent_priority`
+- `launch_profiles[].id`
+- `launch_profiles[].label`
+- `launch_profiles[].description`
+
+如果你额外加了别的 key，不要默认当前 UI、安装器或推荐逻辑会用到它。
+
+## 5. 不需要手动填写的字段
+
+这些字段是 BenchStore 自动生成的：
+
+- `source_file`
+- `image_url`
+- `search_text`
+- `install_state`
+- `compatibility`
+- `recommendation`
+- `setup_prompt_preview`
+- `raw_payload`
+
+另外：
+
+- `schema_version` 不写时默认会变成 `1`。
+- `id` 不写时会自动从文件名 stem 推导。
+
+## 6. 常见错误
+
+### 把 `.zh.yaml` 当成局部补丁
+
+错误写法：
+
+- 英文文件里有完整字段。
+- 中文文件里只写 `name` 和 `one_line`。
+
+结果：
+
+- 中文界面会丢掉其他字段，因为中文 YAML 会完整替换英文 YAML。
+
+### 重复 id
+
+如果两个文件最终解析成同一个 `id`，后出现的那个会被标记为无效条目。
+
+### 列表字段写成了非列表
+
+下面这些字段如果出现，就必须是列表：
+
+- `capability_tags`
+- `track_fit`
+- `primary_outputs`
+- `risk_flags`
+- `risk_notes`
+- `environment.key_packages`
+- `environment.notes`
+- `dataset_download.sources`
+- `dataset_download.notes`
+- `credential_requirements.items`
+- `credential_requirements.notes`
+- `launch_profiles`
+
+### 图片路径无效
+
+`image_path` 默认会相对 YAML 文件所在目录解析。解析后的文件必须实际存在，而且必须仍然位于 DeepScientist workspace 内。
+
+## 7. 如何验证新条目
+
+新增或修改 YAML 之后，可以这样验证：
+
+- 打开 Web 里的 BenchStore，看卡片是否出现。
+- 调 `GET /api/benchstore/entries`，确认条目是否在列表里。
+- 调 `GET /api/benchstore/entries/<entry_id>`，检查归一化后的 payload。
+- 如果条目没出现，检查 catalog 返回里的 `invalid_entries`。
+
+这里没有额外“注册”步骤。创建 YAML 文件本身就是注册。

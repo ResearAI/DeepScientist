@@ -31,6 +31,20 @@ This means Telegram already fits the same quest-binding model as the other conne
 9. Send one real private message such as `/start` or `/help` to the bot.
 10. Return to DeepScientist and verify that the runtime has discovered the target conversation.
 
+## 2.1 Settings page at a glance
+
+Route:
+
+- [Settings > Connectors > Telegram](/settings/connector/telegram)
+
+Use this page to:
+
+- keep `transport: polling`
+- fill `bot_token`
+- inspect target discovery and runtime state after the first message
+
+![Telegram connector settings page](../images/connectors/connector-telegram-en.png)
+
 ## 3. Important config fields
 
 Main fields:

@@ -557,8 +557,12 @@ def test_runner_settings_surface_exposes_reasoning_and_retry_controls() -> None:
     doctor_source = _read("src/deepscientist/doctor.py")
 
     assert "{ label: 'Claude', value: 'claude' }" in settings_catalog_source
+    assert "{ label: 'Kimi', value: 'kimi' }" in settings_catalog_source
     assert "{ label: 'OpenCode', value: 'opencode' }" in settings_catalog_source
     assert "key: 'permission_mode'" in settings_catalog_source
+    assert "key: 'agent'" in settings_catalog_source
+    assert "key: 'thinking'" in settings_catalog_source
+    assert "key: 'yolo'" in settings_catalog_source
     assert "key: 'default_agent'" in settings_catalog_source
     assert "key: 'variant'" in settings_catalog_source
     assert "key: 'model_reasoning_effort'" in settings_catalog_source
@@ -575,7 +579,7 @@ def test_runner_settings_surface_exposes_reasoning_and_retry_controls() -> None:
     assert "codex.retry_on_failure: true" in config_service_source
     assert "at most `7` total attempts" in config_service_source
     assert "10s / 6x / 1800s max" in config_service_source
-    assert "Enable one of `codex`, `claude`, or `opencode`" in doctor_source
+    assert "Enable one of `codex`, `claude`, `kimi`, or `opencode`" in doctor_source
 
 
 def test_ui_font_loading_uses_single_stylesheet_entrypoint() -> None:

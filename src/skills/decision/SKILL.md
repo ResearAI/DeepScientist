@@ -13,6 +13,7 @@ Use it to make one route judgment from durable evidence and then get the quest m
 
 Follow the shared interaction contract injected by the system prompt.
 Avoid repeating the same decision without new evidence, and use blocking requests only when the user truly must choose.
+For ordinary active work, prefer a concise progress update once work has crossed roughly 6 tool calls with a human-meaningful delta, and do not drift beyond roughly 12 tool calls or about 8 minutes without a user-visible update.
 When a decision materially resolves ambiguity and the quest can continue automatically, follow the durable record with `artifact.interact(kind='milestone', reply_mode='threaded', ...)` so the user can see the chosen route, the decisive evidence, and the next checkpoint.
 
 ## Tool discipline

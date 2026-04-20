@@ -39,6 +39,7 @@ Prepare these first:
 - one working runner path:
   - `codex` is the primary and most battle-tested path
   - `claude` is supported experimental and should already work as `claude` in your shell
+  - `kimi` is supported experimental and should already work as `kimi` in your shell
   - `opencode` is supported experimental and should already work as `opencode` in your shell
 - a model or API credential if your project needs external inference
 - GPU or server access if your experiments are compute-heavy
@@ -64,6 +65,7 @@ Use the matching runner setup doc before your first real launch:
 
 - [15 Codex Provider Setup](./15_CODEX_PROVIDER_SETUP.md)
 - [24 Claude Code Setup](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [27 Kimi Code Setup](./27_KIMI_CODE_PROVIDER_SETUP.md)
 - [25 OpenCode Setup](./25_OPENCODE_PROVIDER_SETUP.md)
 
 ## 1. Install Node.js and DeepScientist
@@ -87,10 +89,11 @@ npm install -g @researai/deepscientist
 
 This installs the `ds` command globally.
 
-DeepScientist ships three built-in runner paths:
+DeepScientist ships four built-in runner paths:
 
 - `codex`: primary path
 - `claude`: supported experimental
+- `kimi`: supported experimental
 - `opencode`: supported experimental
 
 Important installation detail:
@@ -237,6 +240,28 @@ If you want the full setup order, config mapping, and provider notes, continue w
 
 - [25 OpenCode Setup](./25_OPENCODE_PROVIDER_SETUP.md)
 
+### 2.5 Kimi Code path
+
+Use this when `kimi` already works directly in your terminal.
+
+The shortest validation path is:
+
+```bash
+kimi --version
+kimi login
+ds doctor --runner kimi
+```
+
+Then launch DeepScientist through Kimi:
+
+```bash
+ds --runner kimi
+```
+
+If you want the full setup order, config mapping, and a clearer Settings-first path, continue with:
+
+- [27 Kimi Code Setup](./27_KIMI_CODE_PROVIDER_SETUP.md)
+
 ## 3. Start the Local Runtime
 
 Run:
@@ -255,6 +280,26 @@ ds --runner opencode
 ```
 
 If the target runner passes `ds doctor` and you want to keep using it, switch `config.default_runner` later in `~/DeepScientist/config/config.yaml` or in the Settings page.
+
+### After the first successful launch, use Settings first
+
+Once the browser is open, the easiest next step is usually not raw YAML. It is the `Settings` page.
+
+A simple rule that works well for first-time users:
+
+1. open `Settings`
+2. go to `Runtime` if you want to change the language, web port, home path, or Git / logging defaults
+3. go to `Models` if you want to switch the default runner or configure Claude / Kimi / OpenCode after launch
+4. go to `Connectors` if you want to bind Telegram, Discord, Slack, Feishu, WhatsApp, QQ, WeChat, or Lingzhu
+5. go to `DeepXiv` if you want literature search
+
+Use raw YAML only when you are:
+
+- headless
+- automating setup
+- changing many fields at once
+
+![Models settings page](../images/settings/settings-runners-en.png)
 
 Again, strongly recommended:
 

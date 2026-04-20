@@ -37,6 +37,13 @@ _RUNNER_METADATA: dict[str, RunnerMetadata] = {
         default_config_dir="~/.config/opencode",
         quest_dotdir=".opencode",
     ),
+    "kimi": RunnerMetadata(
+        name="kimi",
+        label="Kimi Code",
+        default_binary="kimi",
+        default_config_dir="~/.kimi",
+        quest_dotdir=".kimi",
+    ),
 }
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import errno
 from http.cookiejar import CookieJar
 import io
 import json
@@ -3315,6 +3316,33 @@ def test_quest_delete_handler_removes_repo_and_unbinds_connectors(temp_home: Pat
     assert payload["deleted"] is True
     assert not quest_root.exists()
     assert all(item["conversation_id"] != conversation_id for item in app.list_connector_bindings("qq"))
+
+
+def test_quest_delete_handler_retries_directory_not_empty(temp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create("delete quest retry")
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+    real_rmtree = shutil.rmtree
+    attempts = {"count": 0}
+
+    def flaky_rmtree(path: str | os.PathLike[str], *args, **kwargs) -> None:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise OSError(errno.ENOTEMPTY, "Directory not empty", str(path))
+        real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "rmtree", flaky_rmtree)
+
+    payload = app.handlers.quest_delete(quest_id, {"source": "pytest"})
+
+    assert isinstance(payload, dict)
+    assert payload["ok"] is True
+    assert payload["deleted"] is True
+    assert attempts["count"] >= 2
+    assert not quest_root.exists()
 
 
 def test_update_quest_binding_keeps_only_one_external_connector_per_quest(temp_home: Path) -> None:

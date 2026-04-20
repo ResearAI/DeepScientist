@@ -31,6 +31,20 @@ This means Feishu already fits the same quest-binding model as the other connect
 9. Send one real message to the bot.
 10. Return to DeepScientist and confirm that the target conversation has been discovered.
 
+## 2.1 Settings page at a glance
+
+Route:
+
+- [Settings > Connectors > Feishu](/settings/connector/feishu)
+
+Use this page to:
+
+- keep `transport: long_connection`
+- fill `app_id` and `app_secret`
+- inspect runtime status, discovered targets, and connector health after the first message
+
+![Feishu connector settings page](../images/connectors/connector-feishu-en.png)
+
 ## 3. Important config fields
 
 Main fields:

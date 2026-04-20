@@ -1,8 +1,10 @@
 **Next move:** click `Start Research`.
 
-You are not launching the full system yet. You are only opening the first choice screen.
+This does **not** create the project yet.
 
-That screen asks one simple question first:
+It opens the first choice screen, where DeepScientist asks:
 
 - do you want a quieter, human-led start
-- or a normal autonomous start
+- or do you want the normal autonomous project flow
+
+If your goal is a normal first project, the usual next click is **Autonomous**.

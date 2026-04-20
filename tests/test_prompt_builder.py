@@ -1451,6 +1451,15 @@ def test_prompt_builder_runner_namespaced_notes_cover_claude_and_opencode_profil
             "mcp__artifact__prepare_github_issue",
         ),
         (
+            "kimi",
+            {
+                "workspace_mode": "copilot",
+                "launch_mode": "custom",
+                "custom_profile": "settings_issue",
+            },
+            "mcp__artifact__prepare_github_issue",
+        ),
+        (
             "opencode",
             {
                 "workspace_mode": "copilot",

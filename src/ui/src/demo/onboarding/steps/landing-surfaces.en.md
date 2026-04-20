@@ -1,17 +1,18 @@
-Three doors, three ways to start
+Three doors, three ways to start.
 
-**Start Research**
-For: I know exactly what I want to investigate
-Like: Starting a new game directly
+If your goal is to create a real project right now:
 
-**BenchStore**
-For: Show me some interesting research directions
-Like: Browsing a task catalog and picking one
+- click **Start Research** when you already know what you want to work on
+- click **BenchStore** when you want DeepScientist to help you choose a benchmark first
+- click **Settings** only when you want to configure the system before starting
 
-**Settings**
-For: I want to adjust some configurations
-Like: Game settings menu
+Read the buttons like this:
 
-If you remember just one thing: **Start Research** is for “I already know my task.” **BenchStore** is for “Help me find a task first.”
+- **Start Research**: opens the launch flow for a new project
+- **BenchStore**: opens the benchmark catalog, where you can inspect one task and then hand it into the launch form
+- **Settings**: opens configuration pages such as runtime, runners, connectors, and diagnostics
 
-New here? Try BenchStore first to see recommended tasks.
+If you remember just one thing:
+
+- **Start Research** = “I already know the project I want to start.”
+- **BenchStore** = “Help me choose a task first.”

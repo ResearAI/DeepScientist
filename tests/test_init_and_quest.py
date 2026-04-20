@@ -121,6 +121,8 @@ def test_new_creates_standalone_git_repo(temp_home: Path) -> None:
     assert (quest_root / ".codex" / "skills").exists()
     assert (quest_root / ".claude" / "agents").exists()
     assert (quest_root / ".claude" / "agents" / "deepscientist-decision.md").exists()
+    assert (quest_root / ".kimi" / "skills").exists()
+    assert (quest_root / ".kimi" / "skills" / "deepscientist-decision" / "SKILL.md").exists()
     assert (quest_root / ".codex" / "skills" / "deepscientist-finalize" / "SKILL.md").exists()
     assert snapshot["quest_id"] == "001"
     assert snapshot["runner"] == "codex"
@@ -658,7 +660,7 @@ def test_init_command_syncs_global_skills(temp_home: Path, monkeypatch) -> None:
 
     def _record_sync(self):  # type: ignore[no-untyped-def]
         calls.append("sync_global")
-        return {"codex": [], "claude": [], "notes": []}
+        return {"codex": [], "claude": [], "kimi": [], "opencode": [], "notes": []}
 
     monkeypatch.setattr(SkillInstaller, "sync_global", _record_sync)
     exit_code = init_command(temp_home)

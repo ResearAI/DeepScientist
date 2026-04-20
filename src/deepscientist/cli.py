@@ -22,7 +22,7 @@ from .network import configure_runtime_proxy, urlopen_with_proxy as urlopen
 from .prompts import PromptBuilder
 from .quest import QuestService
 from .registries import BaselineRegistry
-from .runners import ClaudeRunner, CodexRunner, OpenCodeRunner, RunRequest, get_runner_factory, register_builtin_runners
+from .runners import ClaudeRunner, CodexRunner, KimiRunner, OpenCodeRunner, RunRequest, get_runner_factory, register_builtin_runners
 from .runtime_tools import RuntimeToolService
 from .runtime_logs import JsonlLogger
 from .shared import ensure_dir, read_json, read_yaml
@@ -328,6 +328,7 @@ def run_command(
     quest_root = home / "quests" / quest_id
     codex_cfg = runners.get("codex", {})
     claude_cfg = runners.get("claude", {})
+    kimi_cfg = runners.get("kimi", {})
     opencode_cfg = runners.get("opencode", {})
     logger = JsonlLogger(home / "logs", level=config.get("logging", {}).get("level", "info"))
     prompt_builder = PromptBuilder(
@@ -352,6 +353,14 @@ def run_command(
         prompt_builder=prompt_builder,
         artifact_service=artifact_service,
     )
+    kimi_runner = KimiRunner(
+        home=home,
+        repo_root=repo_root(),
+        binary=kimi_cfg.get("binary", "kimi"),
+        logger=logger,
+        prompt_builder=prompt_builder,
+        artifact_service=artifact_service,
+    )
     opencode_runner = OpenCodeRunner(
         home=home,
         repo_root=repo_root(),
@@ -363,6 +372,7 @@ def run_command(
     register_builtin_runners(
         codex_runner=codex_runner,
         claude_runner=claude_runner,
+        kimi_runner=kimi_runner,
         opencode_runner=opencode_runner,
     )
     runner_name = str(runner_override or config.get("default_runner", "codex")).strip().lower()

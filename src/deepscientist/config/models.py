@@ -119,6 +119,7 @@ def default_config(home: Path) -> dict:
 def default_runners() -> dict:
     codex = get_runner_metadata("codex")
     claude = get_runner_metadata("claude")
+    kimi = get_runner_metadata("kimi")
     opencode = get_runner_metadata("opencode")
     return {
         "codex": {
@@ -144,6 +145,22 @@ def default_runners() -> dict:
             "config_dir": claude.default_config_dir,
             "model": "inherit",
             "permission_mode": "bypassPermissions",
+            "retry_on_failure": True,
+            "retry_max_attempts": 4,
+            "retry_initial_backoff_sec": 10.0,
+            "retry_backoff_multiplier": 4.0,
+            "retry_max_backoff_sec": 600.0,
+            "env": {},
+            "status": "supported_experimental",
+        },
+        "kimi": {
+            "enabled": False,
+            "binary": kimi.default_binary,
+            "config_dir": kimi.default_config_dir,
+            "model": "inherit",
+            "agent": "",
+            "thinking": False,
+            "yolo": True,
             "retry_on_failure": True,
             "retry_max_attempts": 4,
             "retry_initial_backoff_sec": 10.0,
