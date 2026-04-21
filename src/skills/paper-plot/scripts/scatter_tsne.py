@@ -18,7 +18,7 @@ plt.rcParams.update({
 rng = np.random.default_rng(42)
 
 def cluster(cx, cy, n, rx=8, ry=8, shape='round'):
-    """生成一个椭圆形聚类，shape='round'|'elongated'"""
+    """Generate an elliptical cluster; shape can be `round` or `elongated`."""
     if shape == 'elongated':
         angles = rng.uniform(0, 2 * np.pi, n)
         r = rng.rayleigh(1.0, n)
@@ -30,18 +30,18 @@ def cluster(cx, cy, n, rx=8, ry=8, shape='round'):
     return x, y
 
 
-# ---- 数据集颜色（严格参照原图） ----
+# ---- Dataset colors (chosen to match the source figure closely) ----
 DS = {
     'GSM8K':    {'color': '#6A4C93', 'n': 900,  'cx':  10, 'cy':  12, 'rx': 9,  'ry': 12},
     'MATH':     {'color': '#D651A0', 'n': 700,  'cx':  8,  'cy':  32, 'rx': 7,  'ry': 8},
     'GPQA':     {'color': '#F06292', 'n': 300,  'cx':  18, 'cy':  50, 'rx': 5,  'ry': 6},
     'KodCode':  {'color': '#FF8A65', 'n': 500,  'cx':  38, 'cy': -10, 'rx': 9,  'ry': 10},
     'BCB':      {'color': '#FFB74D', 'n': 600,  'cx':  18, 'cy': -30, 'rx': 10, 'ry': 9},
-    'ALFWorld': {'color': '#FFF176', 'n': 280,  'cx': -10, 'cy': -42, 'rx': 12, 'ry': 10},  # 黄色！
+    'ALFWorld': {'color': '#FFF176', 'n': 280,  'cx': -10, 'cy': -42, 'rx': 12, 'ry': 10},  # bright yellow
     'TriviaQA': {'color': '#C888E8', 'n': 700,  'cx': -42, 'cy':   5, 'rx': 14, 'ry': 22},
 }
 
-# ---- 注释框配置（统一深灰边框，与原图一致；GPQA 也添加）----
+# ---- Annotation box config: shared dark border and explicit GPQA label ----
 ANNOTS = [
     {'name': 'MATH',     'xy': (8,  32),  'xytext': (8,  32)},
     {'name': 'GSM8K',    'xy': (10, 10),  'xytext': (10, 10)},
@@ -51,7 +51,7 @@ ANNOTS = [
     {'name': 'ALFWorld', 'xy': (-10,-42), 'xytext': (-10,-42)},
     {'name': 'TriviaQA', 'xy': (-42,  5), 'xytext': (-42,  5)},
 ]
-BBOX_EDGECOLOR = '#2C3E50'   # 统一深蓝灰
+BBOX_EDGECOLOR = '#2C3E50'   # shared deep blue-gray border
 
 fig, ax = plt.subplots(figsize=(7.5, 6.2))
 
@@ -60,10 +60,10 @@ for name, cfg in DS.items():
     ax.scatter(x, y, c=cfg['color'], s=14, alpha=0.55,
                linewidths=0, rasterized=True, label=name, zorder=2)
 
-# ---- 注释框 ----
+# ---- Annotation boxes ----
 for ann in ANNOTS:
     color = DS[ann['name']]['color']
-    # 注释框：与簇色同色相的浅色半透明底（原图风格）
+    # Use a translucent fill derived from the cluster color
     import matplotlib.colors as mcolors
     rgba = list(mcolors.to_rgba(color))
     rgba[3] = 0.28   # alpha for facecolor
@@ -80,7 +80,7 @@ for ann in ANNOTS:
         ha='center', va='center', zorder=5,
     )
 
-# ---- Axes 样式 ----
+# ---- Axes styling ----
 ax.set_xlabel(r'\textbf{t-SNE Component 1}', fontsize=12)
 ax.set_ylabel(r'\textbf{t-SNE Component 2}', fontsize=12)
 ax.set_title(
@@ -94,7 +94,7 @@ ax.set_ylim(-75, 80)
 ax.xaxis.set_major_locator(plt.MultipleLocator(20))
 ax.yaxis.set_major_locator(plt.MultipleLocator(20))
 
-# 四边框，深灰接近原图
+# Four-sided frame in dark gray
 for sp in ax.spines.values():
     sp.set_visible(True)
     sp.set_linewidth(0.9)
@@ -103,11 +103,11 @@ for sp in ax.spines.values():
 ax.tick_params(direction='in', length=4, width=0.8, labelsize=10,
                color='#333333')
 
-# 浅灰点线网格（原图风格）
+# Light gray dotted grid
 ax.grid(True, color='#E0E0E0', linewidth=0.6, linestyle=':', zorder=0)
 ax.set_axisbelow(True)
 
-# ---- 图例（原图有白底浅灰框） ----
+# ---- Legend (white background, light gray frame) ----
 leg = ax.legend(
     loc='upper right',
     fontsize=9.5,

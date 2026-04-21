@@ -14,7 +14,7 @@ plt.rcParams.update({
     'text.usetex': False,
 })
 
-# ---- 数据（顺时针从正上方开始）----
+# ---- Data (clockwise, starting from the top) ----
 CATEGORIES = [
     'CommonSense\n(LLaMA)',
     'MT-bench\n(LLaMA2)',
@@ -54,7 +54,7 @@ angles = np.linspace(0, 2 * np.pi, N, endpoint=False)
 def close(arr):
     return np.concatenate([arr, [arr[0]]])
 
-# 原图 1032×850 → 宽高比 1.21
+# Source image size is about 1032×850, so the aspect ratio is roughly 1.21
 fig, ax = plt.subplots(figsize=(7.0, 5.8),
                        subplot_kw=dict(projection='polar'))
 
@@ -63,43 +63,43 @@ ax.set_theta_direction(-1)
 ax.set_yticks([])
 ax.set_xticks([])
 
-# ---- 同心正八边形网格（虚线），非圆形 ----
+# ---- Concentric octagonal dashed grids, not circular grids ----
 for r in [0.4, 0.55, 0.7, 0.85, 1.0]:
     ax.plot(close(angles), close(np.full(N, r)),
             color='#CCCCCC', lw=0.8, linestyle='--', zorder=1)
 
-# 射线
+# Radial guide lines
 for ang in angles:
     ax.plot([ang, ang], [0, 1.0],
             color='#CCCCCC', lw=0.8, linestyle='--', zorder=1)
 
-C_DORA = '#5A8A5A'   # 深绿，与原图一致
-C_LORA = '#4169E1'   # 皇家蓝，原图 LoRA 为真蓝色
+C_DORA = '#5A8A5A'   # deep green, close to the source figure
+C_LORA = '#4169E1'   # royal blue, matching the LoRA line
 
-# ---- 填充（统一透明度）----
+# ---- Filled regions with a shared opacity ----
 ax.fill(close(angles), close(dora_r), color=C_DORA, alpha=0.18, zorder=3)
 ax.fill(close(angles), close(lora_r), color=C_LORA, alpha=0.18, zorder=3)
 
-# ---- 折线（DoRA 明显粗于 LoRA）----
+# ---- Lines (DoRA visibly thicker than LoRA) ----
 ax.plot(close(angles), close(dora_r),
         color=C_DORA, lw=3.0, solid_capstyle='round', zorder=4)
 ax.plot(close(angles), close(lora_r),
         color=C_LORA, lw=1.5, solid_capstyle='round', zorder=4)
 
-# ---- 数值标注（带白底提高可读性）----
+# ---- Numeric labels with white boxes for readability ----
 def fmt(v):
-    # 原图保留两位小数
+    # The source figure keeps two decimals
     return f'{v:.2f}'
 
 for i, ang in enumerate(angles):
-    # DoRA 数值（折线外侧）
+    # DoRA values outside the polygon
     r_d = dora_r[i] + 0.08
     ax.text(ang, r_d, fmt(DORA_raw[i]),
             ha='center', va='center',
             fontsize=7.8, color=C_DORA, zorder=6,
             bbox=dict(boxstyle='round,pad=0.12',
                       facecolor='white', edgecolor='none', alpha=0.85))
-    # LoRA 数值（折线内侧）
+    # LoRA values inside the polygon
     r_l = lora_r[i] - 0.09
     ax.text(ang, r_l, fmt(LORA_raw[i]),
             ha='center', va='center',
@@ -107,8 +107,8 @@ for i, ang in enumerate(angles):
             bbox=dict(boxstyle='round,pad=0.12',
                       facecolor='white', edgecolor='none', alpha=0.85))
 
-# ---- 轴标签 ----
-# 原图 label 紧贴多边形外圈（约 1.13），字体相对图幅偏小
+# ---- Axis labels ----
+# In the source figure the labels sit close to the outer polygon ring
 label_r = 1.13
 for i, (ang, cat) in enumerate(zip(angles, CATEGORIES)):
     if abs(np.sin(ang)) < 0.15:
@@ -122,8 +122,8 @@ for i, (ang, cat) in enumerate(zip(angles, CATEGORIES)):
             fontsize=8.5, color='#333333',
             multialignment='center')
 
-# ---- 图例：黑色系列名 + 彩色线段 ----
-# DoRA 图例行（粗绿线 + 黑色加粗文字）
+# ---- Legend: black series names plus colored line samples ----
+# DoRA legend row (thicker green line + bold black text)
 fig.text(0.09, 0.91,
          '────  ', color=C_DORA, fontsize=11,
          fontweight='bold', va='center', ha='left')
@@ -131,7 +131,7 @@ fig.text(0.155, 0.91,
          'DoRA', color='black', fontsize=10,
          fontweight='bold', va='center', ha='left')
 
-# LoRA 图例行（细蓝线 + 黑色普通文字）
+# LoRA legend row (thinner blue line + regular black text)
 fig.text(0.09, 0.875,
          '─────', color=C_LORA, fontsize=8.5,
          va='center', ha='left')
@@ -139,7 +139,7 @@ fig.text(0.155, 0.875,
          'LoRA', color='black', fontsize=10,
          va='center', ha='left')
 
-ax.set_ylim(0, 1.32)   # 缩小上下留白，让多边形撑满
+ax.set_ylim(0, 1.32)   # reduce top and bottom whitespace so the polygon fills more of the canvas
 ax.set_frame_on(False)
 
 fig.subplots_adjust(left=0.10, right=0.90, top=0.86, bottom=0.06)

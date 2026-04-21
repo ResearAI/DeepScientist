@@ -1,38 +1,44 @@
-# Style: line_training_curve
+# Style: `line_training_curve`
 
-## 适用场景
-训练过程曲线，展示多种方法的收敛对比，带垂直断点线和水平基准线。
+## Best use case
 
-## 视觉特征
-- 字体：`sans-serif`，无 LaTeX
-- 轴标签：约 12-13pt 粗体
-- Spine：四边全显
-- 刻度：朝外（`direction='out'`）
-- 网格：无
-- 图例：右下角，白底灰框
+Training-process curves comparing multiple methods, especially when the figure needs vertical breakpoint markers and a horizontal reference line.
 
-## 颜色示例（AIME 训练曲线）
+## Visual signature
+
+- Typeface: `sans-serif`, no LaTeX
+- Axis labels: roughly 12-13 pt and bold
+- Spines: all four visible
+- Tick direction: outward
+- Grid: none
+- Legend: lower-right with a white background and a gray frame
+
+## Color example
+
 ```python
-C_DYN   = '#5B0DAD'  # 深紫（主方法）
-C_NODYN = '#5BBCCA'  # 柔和青绿（对比）
-C_REF   = '#3D78C2'  # 独立蓝（水平参考线，与主线颜色区分！）
+C_DYN   = '#5B0DAD'  # deep purple for the main method
+C_NODYN = '#5BBCCA'  # soft teal for the comparison
+C_REF   = '#3D78C2'  # separate blue for the horizontal reference line
 ```
 
-## 关键参数
+## Key parameters
+
 ```python
-# 水平参考线（独立颜色）
+# Horizontal reference line
 ax.axhline(ref_y, color=C_REF, lw=1.5, linestyle='--')
 
-# 垂直断点线（与对应曲线同色）
-ax.axvline(step1, color=C_DYN,   lw=1.5, linestyle='--', alpha=0.85)
+# Vertical breakpoint lines
+ax.axvline(step1, color=C_DYN, lw=1.5, linestyle='--', alpha=0.85)
 ax.axvline(step2, color=C_NODYN, lw=1.5, linestyle='--', alpha=0.85)
 
-# 四边框 + 朝外刻度
+# Full box + outward ticks
 for sp in ax.spines.values():
-    sp.set_visible(True); sp.set_linewidth(1.0)
+    sp.set_visible(True)
+    sp.set_linewidth(1.0)
 ax.tick_params(direction='out', length=4, width=0.8)
 ```
 
-## 复现文件
+## Reference outputs
+
 - `repro/line_aime.py`
 - `repro/line_aime_repro.png`

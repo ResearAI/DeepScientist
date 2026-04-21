@@ -16,7 +16,7 @@ plt.rcParams.update({
 
 rng = np.random.default_rng(42)
 
-# ---- 模拟数据 ----
+# ---- Synthetic data ----
 # w/ Dynamic Sampling (purple): 0-2200 steps, rises fast, ends ~0.42
 steps_dyn_a = np.arange(0, 2300, 50)
 y_dyn_a = 0.43 * (1 - np.exp(-steps_dyn_a / 600))
@@ -34,27 +34,27 @@ y_nodyn[:2] = [0.01, 0.02]
 mask = steps_nodyn > 6000
 y_nodyn[mask] -= 0.06 * (steps_nodyn[mask] - 6000) / 3000
 
-C_DYN   = '#5B0DAD'   # 更深紫，接近原图
-C_NODYN = '#5BBCCA'   # 柔和青绿
-C_REF   = '#3D78C2'   # 独立蓝色（参考线，与曲线色区分）
-STEP_DYN  = 2200      # 紫色垂直线
-STEP_NODYN = 6050     # 青色垂直线
-REF_Y = 0.43          # 水平参考线
+C_DYN   = '#5B0DAD'   # deeper purple, closer to the source figure
+C_NODYN = '#5BBCCA'   # soft teal
+C_REF   = '#3D78C2'   # separate blue for the horizontal reference line
+STEP_DYN  = 2200      # purple vertical marker
+STEP_NODYN = 6050     # teal vertical marker
+REF_Y = 0.43          # horizontal reference line
 
 fig, ax = plt.subplots(figsize=(9.0, 4.8))
 
-# ---- 两条主线 ----
+# ---- Main curves ----
 ax.plot(steps_dyn_a, y_dyn_a, color=C_DYN, lw=1.4, zorder=3, label='w/ Dynamic Sampling')
 ax.plot(steps_nodyn, y_nodyn, color=C_NODYN, lw=1.4, zorder=3, label='w/o Dynamic Sampling')
 
-# ---- 水平参考线 ----
+# ---- Horizontal reference line ----
 ax.axhline(REF_Y, color=C_REF, lw=1.5, linestyle='--', zorder=2)
 
-# ---- 两条垂直虚线 ----
+# ---- Vertical dashed markers ----
 ax.axvline(STEP_DYN, color=C_DYN, lw=1.5, linestyle='--', alpha=0.85, zorder=2)
 ax.axvline(STEP_NODYN, color=C_NODYN, lw=1.5, linestyle='--', alpha=0.85, zorder=2)
 
-# ---- Axes 样式 ----
+# ---- Axes styling ----
 ax.set_xlim(-100, 9200)
 ax.set_ylim(-0.01, 0.47)
 ax.set_xticks([0, 2000, 4000, 6000, 8000])
@@ -64,14 +64,14 @@ ax.tick_params(labelsize=10, direction='out', length=4, width=0.8)
 ax.set_xlabel('Step', fontsize=12)
 ax.set_ylabel('AIME avg@32', fontsize=12)
 
-# 四边框（all spines visible）
+# Full box frame (all spines visible)
 for sp in ax.spines.values():
     sp.set_visible(True)
     sp.set_linewidth(1.0)
 
 ax.grid(False)
 
-# ---- 图例 ----
+# ---- Legend ----
 leg = ax.legend(
     loc='lower right',
     fontsize=9.5,

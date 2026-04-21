@@ -20,7 +20,7 @@ plt.rcParams.update({
 
 rng = np.random.default_rng(7)
 
-# ---- 模拟数据 ----
+# ---- Synthetic data ----
 steps = np.arange(0, 5600, 20)
 
 # HybridNorm (orange): exponential decay to ~8, spike at ~1900, then flat ~8
@@ -36,9 +36,9 @@ y_hybrid[after_spike:] = 7.8 + rng.normal(0, 0.07, len(steps[after_spike:]))
 y_blue = 7.8 * np.exp(-steps / 380) + 2.3
 y_blue += rng.normal(0, 0.18, len(steps))
 mask_noisy = steps > 2300
-# 模拟蓝线在 2300+ 之后有明显峰值（与原图一致）
+# Simulate a visible blue-line peak after roughly step 2300, matching the source figure
 noise_large = rng.normal(0, 1.5, mask_noisy.sum())
-# 少量极值峰
+# A few stronger spikes
 for idx_offset in rng.integers(10, mask_noisy.sum() - 10, size=8):
     noise_large[idx_offset] += rng.uniform(4, 9)
 y_blue[mask_noisy] += noise_large
@@ -54,8 +54,8 @@ C_ORANGE = '#FF7F0E'
 C_BLUE   = '#1F77B4'
 C_GREEN  = '#2CA02C'
 
-# ---- 主图 ----
-# 原图 952×368 → 宽高比 2.59；复现目标 10.5×4.05"
+# ---- Main panel ----
+# Source image size is about 952×368, so the target aspect ratio is roughly 2.59.
 fig = plt.figure(figsize=(10.5, 4.05))
 ax_main = fig.add_axes([0.08, 0.16, 0.50, 0.78])
 
@@ -64,19 +64,19 @@ ax_main.plot(steps, y_blue,   color=C_BLUE,   lw=1.0, label='HybridNorm-ResiDual
 ax_main.plot(steps, y_green,  color=C_GREEN,  lw=1.3, label='SiameseNorm (Ours)', zorder=4)
 
 ax_main.set_xlim(-50, 5600)
-ax_main.set_ylim(1.5, 14.5)   # 与原图 ~2-14 对齐
+ax_main.set_ylim(1.5, 14.5)   # align roughly with the source range of ~2 to 14
 ax_main.set_xlabel(r'Step', fontsize=10)
 ax_main.set_ylabel(r'Loss', fontsize=10)
 ax_main.set_xticks([0, 1000, 2000, 3000, 4000, 5000])
 ax_main.tick_params(labelsize=9.0, direction='out', length=3.5, width=0.8)
 
-# L 形 spine（左+下），无上右
+# L-shaped spines: keep left and bottom, hide top and right
 ax_main.spines['top'].set_visible(False)
 ax_main.spines['right'].set_visible(False)
 ax_main.spines['left'].set_linewidth(1.0)
 ax_main.spines['bottom'].set_linewidth(1.0)
 
-# 轴端箭头（模拟原图的箭头轴）
+# Axis-end arrowheads to mimic the source figure
 ax_main.plot(1, 0, '>k', transform=ax_main.get_yaxis_transform(),
              clip_on=False, markersize=5)
 ax_main.plot(0, 1, '^k', transform=ax_main.get_xaxis_transform(),
@@ -97,7 +97,7 @@ leg = ax_main.legend(
     framealpha=1.0,
 )
 
-# ---- Zoom 区域（虚线矩形）----
+# ---- Zoom region (dashed rectangle) ----
 zoom_x1, zoom_x2 = 2400, 5500
 zoom_y1, zoom_y2 = 1.8, 4.5
 rect = mpatches.FancyBboxPatch(
@@ -110,7 +110,7 @@ rect = mpatches.FancyBboxPatch(
 )
 ax_main.add_patch(rect)
 
-# ---- Inset（右侧独立子图，原图约占总宽 40%，紧凑）----
+# ---- Inset panel on the right (roughly 40% of the total width) ----
 ax_inset = fig.add_axes([0.61, 0.10, 0.36, 0.86])
 
 mask_z = (steps >= zoom_x1) & (steps <= zoom_x2)
@@ -120,26 +120,26 @@ ax_inset.plot(steps_z, y_blue[mask_z],  color=C_BLUE,  lw=1.0, zorder=3)
 ax_inset.plot(steps_z, y_green[mask_z], color=C_GREEN, lw=1.2, zorder=4)
 
 ax_inset.set_xlim(zoom_x1 - 50, zoom_x2 + 50)
-ax_inset.set_ylim(zoom_y1 - 0.1, zoom_y2 + 4.0)   # 原图 inset y: ~1.8~8.5
+ax_inset.set_ylim(zoom_y1 - 0.1, zoom_y2 + 4.0)   # source inset y-range is roughly 1.8 to 8.5
 ax_inset.set_xticks([3000, 4000, 5000])
 ax_inset.tick_params(labelsize=8.5, direction='out', length=3.5, width=0.8)
 
 for sp in ax_inset.spines.values():
     sp.set_visible(True)
     sp.set_linewidth(1.5)
-    sp.set_color('#2A6073')   # 原图 inset 边框为深蓝灰色
+    sp.set_color('#2A6073')   # deep blue-gray inset border
 
 ax_inset.grid(False)
 
-# ---- 黑色虚线连接线（从 zoom 框的两个角到 inset 边缘）----
-# 右上角 → inset 左上角
+# ---- Black dashed connectors from the zoom box to the inset ----
+# upper-right zoom corner -> inset upper-left
 con1 = ConnectionPatch(
     xyA=(zoom_x2, zoom_y2), coordsA=ax_main.transData,
     xyB=(ax_inset.get_xlim()[0], ax_inset.get_ylim()[1]),
     coordsB=ax_inset.transData,
     color='#333333', lw=0.8, linestyle='--',
 )
-# 右下角 → inset 左下角
+# lower-right zoom corner -> inset lower-left
 con2 = ConnectionPatch(
     xyA=(zoom_x2, zoom_y1), coordsA=ax_main.transData,
     xyB=(ax_inset.get_xlim()[0], ax_inset.get_ylim()[0]),

@@ -16,7 +16,7 @@ plt.rcParams.update({
     'text.usetex': False,
 })
 
-# ---- 模拟数据 ----
+# ---- Synthetic data ----
 rng = np.random.default_rng(42)
 
 # Ours (Pareto) — red stars + dashed pink line
@@ -28,7 +28,7 @@ np_x = rng.uniform(25000, 50000, 32)
 np_y = 35 + 14 * (np_x - 25000) / 25000 + rng.normal(0, 1.8, 32)
 np_y = np.clip(np_y, 34, 50)
 
-# Few-shot — purple circles + straight line (折线，非样条)
+# Few-shot — purple circles + straight line (polyline, not a spline)
 few_x = np.array([4000, 8000, 15000, 25000, 38000, 48000])
 few_y = np.array([32.5, 34.2, 34.0, 35.7, 40.5, 41.0])
 
@@ -42,17 +42,17 @@ mce_x, mce_y = 115000, 39.6
 ace_x, ace_y = 200000, 41.0
 
 
-# ---- 颜色 ----
-C_PARETO   = '#E53935'   # 亮红（与原图一致）
-C_NONPARETO= '#F4B8B8'   # 更淡的粉雾
-C_FEW      = '#6B4FA0'   # 深紫
-C_FEW_LINE = '#B8A8D8'   # 浅紫（曲线）
-C_MCE      = '#E69B00'   # 橙色
-C_ACE      = '#2E86C1'   # 蓝色
-C_ZS       = '#5B2D8E'   # 深紫（zero-shot）
-C_DASH     = '#F0A0A0'   # 粉色虚线
+# ---- Colors ----
+C_PARETO   = '#E53935'   # bright red
+C_NONPARETO= '#F4B8B8'   # very light pink
+C_FEW      = '#6B4FA0'   # deep purple
+C_FEW_LINE = '#B8A8D8'   # light purple line
+C_MCE      = '#E69B00'   # orange
+C_ACE      = '#2E86C1'   # blue
+C_ZS       = '#5B2D8E'   # deep purple for zero-shot
+C_DASH     = '#F0A0A0'   # pink dashed line
 
-# ---- 布局：左宽（0-50k）右窄（115k, 200k）----
+# ---- Layout: wide left panel (0-50k), narrow right panel (115k, 200k) ----
 fig, (ax1, ax2) = plt.subplots(
     1, 2,
     figsize=(9.5, 5.5),
@@ -65,10 +65,10 @@ YLIM = (25, 51)
 for ax in [ax1, ax2]:
     ax.set_ylim(*YLIM)
 
-# ---- 左轴（ax1：0 - 50k）----
+# ---- Left axis (ax1: 0 to 50k) ----
 ax1.set_xlim(-3000, 53000)
 
-# Few-shot 样条曲线（原图明显为 S 形平滑曲线）
+# Few-shot spline curve; the source figure shows a smooth S-shaped trajectory
 spl = make_interp_spline(few_x, few_y, k=3)
 spl_x = np.linspace(few_x[0], few_x[-1], 300)
 spl_y = spl(spl_x)
@@ -81,7 +81,7 @@ ax1.scatter(few_x, few_y,
 ax1.scatter([zs_x], [zs_y], marker='X', s=120, color=C_ZS, zorder=5,
             linewidths=0.8, edgecolors='black')
 
-# non-Pareto circles（淡粉，无描边）
+# Non-Pareto circles (light pink, no edge outline)
 ax1.scatter(np_x, np_y, marker='o', s=28, color=C_NONPARETO, alpha=0.85,
             zorder=3, linewidths=0)
 
@@ -97,13 +97,13 @@ ax1.set_xticks([0, 10000, 20000, 30000, 40000, 50000])
 ax1.set_xticklabels(['0', '10k', '20k', '30k', '40k', '50k'], fontsize=10)
 ax1.tick_params(labelsize=10)
 
-# spines: 左/下
+# Spines: left and bottom only
 ax1.spines['top'].set_visible(False)
 ax1.spines['right'].set_visible(False)
 ax1.spines['left'].set_linewidth(1.0)
 ax1.spines['bottom'].set_linewidth(1.0)
 
-# ---- 右轴（ax2：115k, 200k）----
+# ---- Right axis (ax2: 115k and 200k) ----
 ax2.set_xlim(95000, 220000)
 
 ax2.scatter([mce_x], [mce_y], marker='^', s=130, color=C_MCE, zorder=5,
@@ -116,21 +116,21 @@ ax2.set_xticklabels(['115k', '200k'], fontsize=10)
 ax2.tick_params(labelsize=10)
 ax2.set_yticks([])
 
-# spines: 只保留下边
+# Spines: bottom only
 ax2.spines['top'].set_visible(False)
 ax2.spines['right'].set_visible(False)
 ax2.spines['left'].set_visible(False)
 ax2.spines['bottom'].set_linewidth(1.0)
 
-# ---- 折断符号（只在 x 轴底部，不在顶部）----
+# ---- Break marks on the bottom x-axis only ----
 d = 0.015
 kwargs = dict(transform=ax1.transAxes, color='k', clip_on=False, lw=1.2)
-ax1.plot((1 - d, 1 + d), (-d, +d), **kwargs)   # 底部斜杠
+ax1.plot((1 - d, 1 + d), (-d, +d), **kwargs)   # bottom slash
 
 kwargs2 = dict(transform=ax2.transAxes, color='k', clip_on=False, lw=1.2)
-ax2.plot((-d, +d), (-d, +d), **kwargs2)         # 底部斜杠
+ax2.plot((-d, +d), (-d, +d), **kwargs2)         # bottom slash
 
-# ---- 图例（右下角，有浅灰框）----
+# ---- Legend (lower-right, light gray frame) ----
 legend_elements = [
     mlines.Line2D([], [], marker='*', color='w', markerfacecolor=C_PARETO,
                   markersize=11, label='Ours (Pareto)',
