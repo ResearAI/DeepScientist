@@ -16,6 +16,7 @@ the `claim` text is locked once the card spans more than one quest.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 
@@ -95,3 +96,55 @@ def validate_cross_quest_patch(
         raise ValueError("Cross-quest patch may not shrink lineage")
     if after_lineage[: len(before_lineage)] != before_lineage:
         raise ValueError("Cross-quest patch may not rewrite existing lineage entries, only append")
+
+
+def coerce_distill_mode(value: Any, *, field_name: str = "experience_distill") -> dict[str, str]:
+    """Normalize user-supplied value into {"mode": "on"|"off"}.
+
+    Accepts:
+      - bool True/False
+      - string "on"/"off" (case-insensitive)
+      - dict {"mode": "on"|"off"}
+    Anything else collapses to {"mode": "off"}.
+    """
+    if value is True:
+        return {"mode": "on"}
+    if value is False or value is None:
+        return {"mode": "off"}
+    if isinstance(value, str):
+        return {"mode": "on" if value.strip().lower() == "on" else "off"}
+    if isinstance(value, dict):
+        mode_val = value.get("mode")
+        if mode_val is True:
+            return {"mode": "on"}
+        if mode_val is False:
+            return {"mode": "off"}
+        raw = str(mode_val or "").strip().lower()
+        return {"mode": "on" if raw == "on" else "off"}
+    return {"mode": "off"}
+
+
+def read_distill_mode(quest_root: Path | None) -> dict[str, str]:
+    """Read `startup_contract.experience_distill` from quest.yaml; return normalized dict."""
+    if quest_root is None:
+        return {"mode": "off"}
+    quest_yaml = quest_root / "quest.yaml"
+    if not quest_yaml.exists():
+        return {"mode": "off"}
+    try:
+        from ..shared import require_yaml
+        require_yaml()
+        import yaml  # type: ignore
+        payload = yaml.safe_load(quest_yaml.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {"mode": "off"}
+    if not isinstance(payload, dict):
+        return {"mode": "off"}
+    contract = payload.get("startup_contract") or {}
+    if not isinstance(contract, dict):
+        return {"mode": "off"}
+    return coerce_distill_mode(contract.get("experience_distill"))
+
+
+def is_distill_on(quest_root: Path | None) -> bool:
+    return read_distill_mode(quest_root)["mode"] == "on"
