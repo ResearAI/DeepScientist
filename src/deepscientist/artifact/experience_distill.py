@@ -148,3 +148,55 @@ def read_distill_mode(quest_root: Path | None) -> dict[str, str]:
 
 def is_distill_on(quest_root: Path | None) -> bool:
     return read_distill_mode(quest_root)["mode"] == "on"
+
+
+def _is_analysis_slice_terminal(record: dict[str, Any]) -> bool:
+    if str(record.get("kind") or "") != "run":
+        return False
+    run_kind = str(record.get("run_kind") or "")
+    if run_kind != "analysis.slice":
+        return False
+    status = str(record.get("status") or "").strip().lower()
+    if status and status not in {"completed", "success", "succeeded", "done"}:
+        return False
+    return True
+
+
+def maybe_inject_distill_routing(
+    quest_root: Path,
+    record: dict[str, Any],
+    guidance_vm: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """When distill is on and the record is a completed analysis-slice run,
+    return a new guidance_vm recommending the `distill` companion skill.
+
+    Otherwise return guidance_vm unchanged (same object identity).
+    Never raises; callers should still wrap in try/except for defense.
+    """
+    if not is_distill_on(quest_root):
+        return guidance_vm
+    if not _is_analysis_slice_terminal(record):
+        return guidance_vm
+    base = dict(guidance_vm) if isinstance(guidance_vm, dict) else {}
+    previous_skill = str(base.get("recommended_skill") or "").strip() or None
+    previous_action = str(base.get("recommended_action") or "").strip() or None
+    routes = list(base.get("alternative_routes") or []) if isinstance(base.get("alternative_routes"), list) else []
+    if previous_skill and previous_skill != "distill":
+        routes.append(
+            {
+                "recommended_skill": previous_skill,
+                "recommended_action": previous_action or f"Fall back to `{previous_skill}` if nothing to distill.",
+                "reason": "Original next step before distill redirect.",
+            }
+        )
+    out = {
+        **base,
+        "recommended_skill": "distill",
+        "recommended_action": "Inspect this analysis slice and distill reusable experience if warranted.",
+        "previous_recommended_skill": previous_skill,
+        "previous_recommended_action": previous_action,
+        "alternative_routes": routes,
+        "experience_distill": True,
+        "source_artifact_id": str(record.get("artifact_id") or ""),
+    }
+    return out
