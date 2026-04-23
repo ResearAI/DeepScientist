@@ -16,8 +16,7 @@ the `claim` text is locked once the card spans more than one quest.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 
 _REQUIRED_LINEAGE_KEYS = ("quest", "run", "direction", "note")
