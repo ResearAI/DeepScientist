@@ -7926,6 +7926,12 @@ class ArtifactService:
         if semantic_key:
             record["semantic_key"] = semantic_key
         guidance_vm = build_guidance_for_record(record)
+        try:
+            from .experience_distill import maybe_inject_distill_routing
+
+            guidance_vm = maybe_inject_distill_routing(quest_root, record, guidance_vm)
+        except Exception:
+            pass
         record["guidance_vm"] = guidance_vm
         guidance_text = guidance_summary(guidance_vm) or guidance_for_kind(record["kind"])
         recommended_skill = (
