@@ -1,0 +1,98 @@
+"""Experience distillation helpers.
+
+Experience is a `subtype` of the `knowledge` memory kind — not a new kind.
+Frontmatter schema enforced here:
+
+    subtype: experience
+    claim: <one-sentence mechanism-bearing claim>
+    mechanism: <why the claim plausibly holds>
+    conditions: [<scoping tags>, ...]
+    confidence: 0.0..1.0
+    lineage: [{quest, run, direction, note}, ...]
+
+Cross-quest patches may append lineage and downgrade confidence only;
+the `claim` text is locked once the card spans more than one quest.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Iterable
+
+
+_REQUIRED_LINEAGE_KEYS = ("quest", "run", "direction", "note")
+
+
+def build_experience_metadata(
+    *,
+    claim: str,
+    mechanism: str,
+    conditions: list[str],
+    confidence: float,
+    lineage: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Construct a well-formed experience frontmatter dict."""
+    return {
+        "subtype": "experience",
+        "claim": str(claim).strip(),
+        "mechanism": str(mechanism).strip(),
+        "conditions": [str(item).strip() for item in (conditions or []) if str(item).strip()],
+        "confidence": float(confidence),
+        "lineage": [_canonical_lineage_entry(item) for item in (lineage or [])],
+    }
+
+
+def _canonical_lineage_entry(entry: dict[str, Any]) -> dict[str, str]:
+    return {key: str(entry.get(key) or "").strip() for key in _REQUIRED_LINEAGE_KEYS}
+
+
+def validate_experience_metadata(meta: dict[str, Any]) -> None:
+    """Raise ValueError if the frontmatter does not satisfy the experience contract."""
+    if str(meta.get("subtype") or "").strip() != "experience":
+        raise ValueError("Experience frontmatter must have subtype: experience")
+    for field in ("claim", "mechanism"):
+        if not str(meta.get(field) or "").strip():
+            raise ValueError(f"Experience frontmatter missing required field `{field}`")
+    conditions = meta.get("conditions") or []
+    if not isinstance(conditions, list) or not any(str(item).strip() for item in conditions):
+        raise ValueError("Experience frontmatter `conditions` must be a non-empty list of scoping tags")
+    confidence = meta.get("confidence")
+    if not isinstance(confidence, (int, float)) or not 0.0 <= float(confidence) <= 1.0:
+        raise ValueError("Experience frontmatter `confidence` must be a float in [0.0, 1.0]")
+    lineage = meta.get("lineage") or []
+    if not isinstance(lineage, list) or not lineage:
+        raise ValueError("Experience frontmatter `lineage` must be a non-empty list")
+    for idx, entry in enumerate(lineage):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Experience lineage[{idx}] must be a dict")
+        for key in ("quest", "run"):
+            if not str(entry.get(key) or "").strip():
+                raise ValueError(f"Experience lineage[{idx}] missing required key `{key}`")
+
+
+def validate_cross_quest_patch(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    *,
+    patching_quest: str,
+) -> None:
+    """Enforce cross-quest patch permissions (prompt-level contract, enforced in tests/CLI).
+
+    Same quest -> free edit. Cross-quest -> claim locked, confidence non-increasing,
+    lineage may only grow.
+    """
+    validate_experience_metadata(after)
+    owning_quests = {str(entry.get("quest") or "").strip() for entry in (before.get("lineage") or [])}
+    is_same_quest = owning_quests == {patching_quest} or not owning_quests
+    if is_same_quest:
+        return
+    if str(before.get("claim") or "").strip() != str(after.get("claim") or "").strip():
+        raise ValueError("Cross-quest patch may not change `claim` text; claim is locked across quests")
+    if float(after.get("confidence", 0.0)) > float(before.get("confidence", 0.0)):
+        raise ValueError("Cross-quest patch may only downgrade `confidence`, not increase it")
+    before_lineage = before.get("lineage") or []
+    after_lineage = after.get("lineage") or []
+    if len(after_lineage) < len(before_lineage):
+        raise ValueError("Cross-quest patch may not shrink lineage")
+    if after_lineage[: len(before_lineage)] != before_lineage:
+        raise ValueError("Cross-quest patch may not rewrite existing lineage entries, only append")
