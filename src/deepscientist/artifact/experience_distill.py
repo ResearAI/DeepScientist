@@ -16,6 +16,7 @@ the `claim` text is locked once the card spans more than one quest.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -285,7 +286,7 @@ def _render_experience_draft(
         f"  - quest: {quest_id}\n"
         f"    run: {run_id}\n"
         f"    direction: {campaign_id}\n"
-        f"    note: \"{title}\"\n"
+        f"    note: {json.dumps(str(title))}\n"
         "---\n"
         f"# Draft experience from {campaign_id}:{slice_id}\n\n"
         f"Source summary: {summary or '(empty)'}\n\n"

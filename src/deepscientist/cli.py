@@ -498,10 +498,10 @@ def distill_quest_command(home: Path, quest_id: str) -> int:
     artifacts_dir = quest_root / "artifacts"
     drafts_root = home / "drafts" / "experiences"
     records = list(iter_analysis_slice_records(artifacts_dir))
-    emit_experience_drafts(quest_id=quest_id, records=records, drafts_root=drafts_root)
+    written = emit_experience_drafts(quest_id=quest_id, records=records, drafts_root=drafts_root)
     print(
         json.dumps(
-            {"quest_id": quest_id, "drafts": len(records), "drafts_root": str(drafts_root / quest_id)},
+            {"quest_id": quest_id, "drafts": len(written), "drafts_root": str(drafts_root / quest_id)},
             ensure_ascii=False,
             indent=2,
         )

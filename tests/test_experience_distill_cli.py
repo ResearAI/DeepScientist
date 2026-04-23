@@ -61,6 +61,27 @@ def test_emit_experience_drafts_writes_one_file_per_slice(tmp_path: Path):
     assert "Warm-up effect on CNNs" in body
 
 
+def test_emit_experience_drafts_escapes_title_with_quote(tmp_path: Path):
+    import yaml
+    drafts_root = tmp_path / "drafts_out"
+    records = [{
+        "artifact_id": "a1",
+        "kind": "run",
+        "run_kind": "analysis.slice",
+        "status": "completed",
+        "run_id": "cmp_1:s_1",
+        "campaign_id": "cmp_1",
+        "slice_id": "s_1",
+        "details": {"title": 'effect of "warm-up" on CNNs'},
+    }]
+    written = emit_experience_drafts(quest_id="q_demo", records=records, drafts_root=drafts_root)
+    body = written[0].read_text(encoding="utf-8")
+    # Parse the YAML frontmatter and verify title survived the escaping.
+    frontmatter_text = body.split("---\n", 2)[1]
+    meta = yaml.safe_load(frontmatter_text)
+    assert meta["lineage"][0]["note"] == 'effect of "warm-up" on CNNs'
+
+
 def test_iter_analysis_slice_records_filters_index(tmp_path: Path):
     artifacts = tmp_path / "artifacts"
     run_dir = artifacts / "runs"
@@ -80,6 +101,10 @@ def test_iter_analysis_slice_records_filters_index(tmp_path: Path):
         ) + "\n",
         encoding="utf-8",
     )
+    # Malformed line (bad JSON) and missing-file path should be skipped, not crash.
+    with index.open("a", encoding="utf-8") as fh:
+        fh.write("not-json-garbage\n")
+        fh.write(json.dumps({"artifact_id": "a3", "kind": "run", "status": "completed", "path": str(run_dir / "a3.json")}) + "\n")  # file doesn't exist
     records = list(iter_analysis_slice_records(artifacts))
     assert [r["artifact_id"] for r in records] == ["a1"]
 
