@@ -142,6 +142,9 @@ def build_parser() -> argparse.ArgumentParser:
     note_parser.add_argument("quest_id")
     note_parser.add_argument("text")
 
+    distill_parser = subparsers.add_parser("distill-quest")
+    distill_parser.add_argument("quest_id")
+
     approve_parser = subparsers.add_parser("approve")
     approve_parser.add_argument("quest_id")
     approve_parser.add_argument("decision_id")
@@ -488,6 +491,24 @@ def note_command(home: Path, quest_id: str, text: str) -> int:
     return 0
 
 
+def distill_quest_command(home: Path, quest_id: str) -> int:
+    from .artifact.experience_distill import emit_experience_drafts, iter_analysis_slice_records
+
+    quest_root = home / "quests" / quest_id
+    artifacts_dir = quest_root / "artifacts"
+    drafts_root = home / "drafts" / "experiences"
+    records = list(iter_analysis_slice_records(artifacts_dir))
+    emit_experience_drafts(quest_id=quest_id, records=records, drafts_root=drafts_root)
+    print(
+        json.dumps(
+            {"quest_id": quest_id, "drafts": len(records), "drafts_root": str(drafts_root / quest_id)},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
 def approve_command(home: Path, quest_id: str, decision_id: str, reason: str) -> int:
     quest_root = home / "quests" / quest_id
     result = ArtifactService(home).record(
@@ -668,6 +689,8 @@ def main(argv: list[str] | None = None) -> int:
         return config_validate_command(home)
     if args.command == "migrate":
         return migrate_command(home, args.target)
+    if args.command == "distill-quest":
+        return distill_quest_command(home, args.quest_id)
     parser.error(f"Unknown command: {args.command}")
     return 1
 

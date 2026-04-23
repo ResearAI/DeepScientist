@@ -1,0 +1,114 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from deepscientist.artifact import ArtifactService
+from deepscientist.artifact.experience_distill import (
+    emit_experience_drafts,
+    iter_analysis_slice_records,
+)
+from deepscientist.config import ConfigManager
+from deepscientist.home import ensure_home_layout, repo_root
+from deepscientist.quest import QuestService
+from deepscientist.skills import SkillInstaller
+
+
+def test_emit_experience_drafts_writes_one_file_per_slice(tmp_path: Path):
+    drafts_root = tmp_path / "drafts_out"
+    records = [
+        {
+            "artifact_id": "a1",
+            "kind": "run",
+            "run_kind": "analysis.slice",
+            "status": "completed",
+            "run_id": "cmp_1:s_1",
+            "campaign_id": "cmp_1",
+            "slice_id": "s_1",
+            "details": {"title": "Warm-up effect on CNNs"},
+            "summary": "Warm-up helps on small batch",
+        },
+        {
+            "artifact_id": "a2",
+            "kind": "run",
+            "run_kind": "analysis.slice",
+            "status": "completed",
+            "run_id": "cmp_1:s_2",
+            "campaign_id": "cmp_1",
+            "slice_id": "s_2",
+            "details": {"title": "Cooldown effect"},
+            "summary": "Cooldown mostly neutral",
+        },
+        {
+            "artifact_id": "a3",
+            "kind": "run",
+            "run_kind": "main.experiment",  # not a slice — must be skipped
+        },
+    ]
+    written = emit_experience_drafts(quest_id="q_demo", records=records, drafts_root=drafts_root)
+    assert len(written) == 2
+    draft_dir = drafts_root / "q_demo"
+    assert (draft_dir / "cmp_1__s_1.md").exists()
+    assert (draft_dir / "cmp_1__s_2.md").exists()
+    body = (draft_dir / "cmp_1__s_1.md").read_text(encoding="utf-8")
+    assert "subtype: experience" in body
+    assert "quest: q_demo" in body
+    assert "run: cmp_1:s_1" in body
+    assert "TODO: claim" in body
+    assert "TODO: mechanism" in body
+    assert "Warm-up effect on CNNs" in body
+
+
+def test_iter_analysis_slice_records_filters_index(tmp_path: Path):
+    artifacts = tmp_path / "artifacts"
+    run_dir = artifacts / "runs"
+    run_dir.mkdir(parents=True)
+    index = artifacts / "_index.jsonl"
+    a1 = {
+        "artifact_id": "a1", "kind": "run", "run_kind": "analysis.slice",
+        "status": "completed", "run_id": "c:1", "campaign_id": "c", "slice_id": "s1",
+    }
+    a2 = {"artifact_id": "a2", "kind": "run", "run_kind": "main.experiment", "status": "completed"}
+    (run_dir / "a1.json").write_text(json.dumps(a1), encoding="utf-8")
+    (run_dir / "a2.json").write_text(json.dumps(a2), encoding="utf-8")
+    index.write_text(
+        "\n".join(
+            json.dumps({"artifact_id": x["artifact_id"], "kind": x["kind"], "status": x["status"], "path": str(run_dir / f'{x["artifact_id"]}.json')})
+            for x in (a1, a2)
+        ) + "\n",
+        encoding="utf-8",
+    )
+    records = list(iter_analysis_slice_records(artifacts))
+    assert [r["artifact_id"] for r in records] == ["a1"]
+
+
+def test_distill_quest_cli_end_to_end(tmp_path: Path, capsys):
+    home = tmp_path / "DeepScientistHome"
+    ensure_home_layout(home)
+    ConfigManager(home).ensure_files()
+    quest_service = QuestService(home, skill_installer=SkillInstaller(repo_root(), home))
+    quest = quest_service.create("Distill retro demo")
+    quest_id = quest["quest_id"]
+    quest_root = home / "quests" / quest_id
+    ArtifactService(home).record(
+        quest_root,
+        {
+            "kind": "run",
+            "run_kind": "analysis.slice",
+            "status": "completed",
+            "run_id": "cmp_1:s_1",
+            "summary": "Slice 1 recorded",
+        },
+    )
+    from deepscientist.cli import distill_quest_command
+    rc = distill_quest_command(home, quest_id)
+    assert rc == 0
+    drafts_dir = home / "drafts" / "experiences" / quest_id
+    files = list(drafts_dir.glob("*.md"))
+    assert len(files) == 1
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["quest_id"] == quest_id
+    assert payload["drafts"] == 1

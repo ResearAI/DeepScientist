@@ -17,7 +17,7 @@ the `claim` text is locked once the card spans more than one quest.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 
 _REQUIRED_LINEAGE_KEYS = ("quest", "run", "direction", "note")
@@ -200,3 +200,95 @@ def maybe_inject_distill_routing(
         "source_artifact_id": str(record.get("artifact_id") or ""),
     }
     return out
+
+
+def iter_analysis_slice_records(artifacts_dir: Path) -> Iterable[dict[str, Any]]:
+    """Yield full analysis-slice run records by reading the artifact index."""
+    import json
+    index_path = artifacts_dir / "_index.jsonl"
+    if not index_path.exists():
+        return
+    for line in index_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except Exception:
+            continue
+        if entry.get("kind") != "run":
+            continue
+        record_path = Path(str(entry.get("path") or ""))
+        if not record_path.exists():
+            continue
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if _is_analysis_slice_terminal(record):
+            yield record
+
+
+def emit_experience_drafts(
+    *,
+    quest_id: str,
+    records: list[dict[str, Any]] | Iterable[dict[str, Any]],
+    drafts_root: Path,
+) -> list[Path]:
+    """Write one draft markdown per analysis-slice record.
+
+    Each draft has experience frontmatter with lineage pre-filled and
+    TODO placeholders for claim/mechanism/conditions/confidence. The
+    human reviewer edits these and promotes the card to global memory.
+    """
+    slices = [r for r in records if _is_analysis_slice_terminal(r)]
+    quest_dir = drafts_root / quest_id
+    quest_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for record in slices:
+        campaign_id = str(record.get("campaign_id") or "cmp").strip() or "cmp"
+        slice_id = str(record.get("slice_id") or record.get("artifact_id") or "slice").strip() or "slice"
+        run_id = str(record.get("run_id") or f"{campaign_id}:{slice_id}")
+        title = str((record.get("details") or {}).get("title") or record.get("summary") or slice_id)
+        body = _render_experience_draft(
+            quest_id=quest_id,
+            run_id=run_id,
+            campaign_id=campaign_id,
+            slice_id=slice_id,
+            title=title,
+            summary=str(record.get("summary") or ""),
+        )
+        path = quest_dir / f"{campaign_id}__{slice_id}.md"
+        path.write_text(body, encoding="utf-8")
+        written.append(path)
+    return written
+
+
+def _render_experience_draft(
+    *,
+    quest_id: str,
+    run_id: str,
+    campaign_id: str,
+    slice_id: str,
+    title: str,
+    summary: str,
+) -> str:
+    return (
+        "---\n"
+        "subtype: experience\n"
+        "claim: \"TODO: claim — one mechanism-bearing sentence.\"\n"
+        "mechanism: \"TODO: mechanism — why this plausibly holds.\"\n"
+        "conditions:\n"
+        "  - \"TODO: at least one scoping tag\"\n"
+        "confidence: 0.4\n"
+        "lineage:\n"
+        f"  - quest: {quest_id}\n"
+        f"    run: {run_id}\n"
+        f"    direction: {campaign_id}\n"
+        f"    note: \"{title}\"\n"
+        "---\n"
+        f"# Draft experience from {campaign_id}:{slice_id}\n\n"
+        f"Source summary: {summary or '(empty)'}\n\n"
+        "Write 3–8 lines of prose explaining the causal story. Delete this guidance\n"
+        "block when you promote the card to global memory.\n"
+    )
