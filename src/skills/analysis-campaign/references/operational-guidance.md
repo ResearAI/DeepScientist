@@ -32,6 +32,24 @@ When useful, include these fields:
 
 The longer prose still matters, but the summary should make the slice readable at a glance.
 
+## Resource gate
+
+Before launching a multi-slice campaign or any expensive slice, record the current execution envelope in the durable route record:
+
+- available GPUs, CPUs, memory, and storage
+- expected wall-clock budget
+- concurrency or queue limits
+- services, credentials, or dependencies that may block execution
+
+For each planned slice, decide explicitly:
+
+- runnable as written
+- runnable only after downscoping
+- infeasible in the current environment
+
+Do not keep an infeasible slice as if it were still on equal footing with runnable slices.
+Either replace it with a lower-cost proxy, defer it with a blocker note, or drop it.
+
 ## Execution tactics
 
 Use whatever execution route is most faithful, observable, and efficient while preserving the hard gates.
@@ -39,6 +57,7 @@ Use whatever execution route is most faithful, observable, and efficient while p
 - A bounded smoke test is useful when the slice command, outputs, metric path, or evaluator wiring is uncertain.
 - Treat smoke work as a `0-2` default budget, not as an automatic mandatory phase.
 - If the path is already concrete, go straight to direct verification or the real slice.
+- If two candidate slices answer the same evidence question, prefer the one that preserves the most soundness under the current hardware and time budget.
 - If runtime is uncertain or likely long, prefer `bash_exec(mode='detach', ...)` plus managed monitoring.
 - `bash_exec(mode='read', id=...)` returns the full rendered log when it is 2000 lines or fewer; for longer logs it returns the first 500 lines plus the last 1500 lines and a hint to inspect omitted sections with `start` and `tail`.
 - If you need a middle section that was omitted from that default preview, use `bash_exec(mode='read', id=..., start=..., tail=...)`.
@@ -53,6 +72,7 @@ Use whatever execution route is most faithful, observable, and efficient while p
   - if you are waiting on an already running session, prefer `bash_exec(mode='await', id=..., timeout_seconds=...)` instead of starting a new sleep command
 - when you control the slice code, prefer a throttled `tqdm` progress reporter and concise structured progress markers when feasible
 - if the same failure class appears again without a real route or evidence change, stop widening the campaign and route through `decision`
+- if the same slice repeatedly fails because the environment cannot support it, stop retrying and redesign the slice set around the real resource envelope
 
 ## Memory note
 

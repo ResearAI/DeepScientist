@@ -113,6 +113,12 @@ Before promotion, challenge the idea:
 
 This check is especially important for attractive cross-domain ideas.
 
+Also ask:
+
+- are we staying near the current line only because it is familiar or already partially built?
+- what hidden assumption has gone unchallenged in the current frontier?
+- what assumption-reversal or outside-family route would break a local-optimum lock if the current framing is wrong?
+
 ## 10. End with one clear research object
 
 The selected output should be one clear research object:

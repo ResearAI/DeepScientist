@@ -67,6 +67,7 @@ Check that the method section:
 - explains why the method should work
 - compares the method conceptually to alternatives
 - tells the reader what property to watch for in experiments
+- keeps any implementation-facing statement anchored to actual code, configs, scripts, or verified outputs rather than memory, comments, or stale prose
 - does not consume space that would be more valuable as objection-handling evidence
 
 Rewrite if the method:
@@ -188,6 +189,7 @@ Check that the paper:
 - signals what is reproducible now
 - points to appendix or code artifacts where appropriate
 - describes artifact availability consistently across abstract, main text, appendix, and reproducibility statements
+- does not present planned, commented, or stale code paths as if they were verified current artifacts
 
 Do not use limitation language performatively. The limitation should calibrate trust, not just check a box.
 

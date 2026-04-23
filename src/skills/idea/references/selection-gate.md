@@ -12,6 +12,7 @@ Before promotion, score each serious candidate on a compact `1-5` scale:
 - verifiability
 - paper or report potential
 - failure value
+- breakthrough or boundary-changing potential
 
 Also check the FINER-style screen explicitly:
 
@@ -27,6 +28,7 @@ Also check the FINER-style screen explicitly:
   - relevant to an important bottleneck rather than a decorative tweak
 
 If the route scores poorly on both value and feasibility, do not promote it merely because it feels exciting.
+If the route is only a small local tweak, require an explicit justification for why a more differentiated route did not survive.
 
 ## 2. Lightweight quality gate
 
@@ -57,18 +59,23 @@ If total `< 7/10`, do not promote the idea yet.
 Also treat these as hard gates before promotion:
 
 - the literature survey must already durably cover at least `5` and usually `5-10` related and usable papers
+- the survey must show both the strongest direct-field overlap and any adjacent-domain mechanisms that could plausibly subsume or outgrow the candidate
+- a pre-idea draft or equivalent durable challenge memo must already exist for the serious surviving candidates, especially the likely winner
+- that draft must explicitly surface hidden assumptions, local-optimum lock-in risk, strongest rejection case, and strongest outside-family alternative
 - the closest-prior-work comparison must explain why the idea is still needed
+- the selected route must be classified honestly as breakthrough-seeking, clearly differentiated, or incremental-with-justification; default rejection applies to decorative tweaks
 - the final selected-idea draft must be ready to carry standard-format citations for the papers actually used
 
 ## 3. Honest novelty / value labels
 
 Use these labels explicitly:
 
-- `novel`: closest prior work does not already make the same mechanism-plus-claim combination
+- `novel`: closest prior work does not already make the same mechanism-plus-claim combination, and the route is materially more than a cosmetic delta from the baseline
 - `incremental but valuable`: overlap exists, but the new setting, evidence package, or failure-mode resolution is still meaningful
 - `not sufficiently differentiated`: closest prior work already dominates the idea
 
 Only the first two are eligible for promotion.
+Even then, prefer `novel` when it remains feasible.
 
 ## 4. Mechanism and falsification gate
 
@@ -126,8 +133,11 @@ Do not promote a candidate if any of these remain unclear:
 
 - what exactly is being claimed
 - how the claim differs from closest prior work
+- what hidden assumption is carrying most of the route
+- whether the route only looks best because of incumbent inertia or implementation convenience
 - what minimal experiment can refute it
 - which code touchpoints are affected
 - what evidence package would later defend it in writing
 - which `5-10` surveyed papers actually support the motivation, mechanism, and claim boundary
 - whether the final idea draft includes proper citation markers plus a standard-format reference list
+- why this route deserves promotion over simpler but lower-value tweaks and over more ambitious but still feasible alternatives

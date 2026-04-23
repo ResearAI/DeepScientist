@@ -65,6 +65,7 @@ skill_role: stage
 - Keep these files aligned when they exist:
   `paper/selected_outline.json`, `paper/evidence_ledger.json`, `paper/paper_experiment_matrix.md` or `.json`, `paper/references.bib`, `paper/claim_evidence_map.json`, `paper/paper_bundle_manifest.json`.
 - If a section depends on experiment or analysis evidence, draft from the current paper contract rows, not from remembered summaries.
+- If method, system, or implementation details are mentioned, treat the current codebase, configs, scripts, logs, and durable outputs as the primary truth surface; comments, plans, TODOs, and old draft wording are only hints until verified.
 - Any shell, CLI, Python, bash, node, git, npm, uv, LaTeX, or file-inspection execution in this stage must go through `bash_exec(...)`.
 - Use `artifact.create_analysis_campaign(...)` only for real paper-facing evidence gaps, not for prose cleanup or citation chores.
 - Use `artifact.submit_paper_bundle(...)` only after draft, bibliography, and bundle metadata are durable enough to hand off.
@@ -82,6 +83,16 @@ skill_role: stage
 - Any claimed compile, render, search, grep, or script-run result comes from a real `bash_exec(...)` execution rather than hypothetical prose.
 - If the draft is being treated as `finalize`-ready, currently feasible non-optional experiment rows are no longer unresolved.
 - The output ends in one of three durable states: a stronger draft, an explicit blocker, or a clear route-back decision.
+
+## Potentially Reference-Worthy, Code-Grounded Facts
+- Implementation surfaces can be worth citing in prose when they are verified from the current repo state: entrypoints, module boundaries, dataflow stages, control loops, evaluator wiring, and ablation switches that materially affect the claim.
+- Config truth can be worth citing when it changes interpretation: actual loss terms, objective weights, decoding or inference settings, comparison toggles, dataset filters, and default runtime modes taken from checked configs or scripts.
+- Reproducibility and trust details can be worth citing when they are real: executable scripts, artifact paths, checkpoint conventions, dependency constraints, hardware assumptions, and run-time limits that the current code or logs actually expose.
+- Failure-boundary details can be worth citing when they are visible in code or artifacts: guardrails, unsupported regimes, fallback paths, assertions, evaluator exclusions, or branch-specific limitations that materially narrow the claim.
+- Concrete traces can be worth citing when they are generated artifacts rather than imagination: logs, examples, case-study outputs, prompt traces, or render outputs produced by the current code path.
+- If a detail is only present in comments, TODOs, planning notes, stale branches, or remembered conversation, do not write it as fact.
+- If code and manuscript wording disagree, resolve to code plus durable outputs first, then rewrite the manuscript to match.
+- If a path exists in code but was not exercised by the evidence package, label it as implemented or available, not as experimentally validated behavior.
 
 ## Reference Routing
 - Read `references/oral_package_patterns.md` when the draft needs a clearer oral-style evidence package.

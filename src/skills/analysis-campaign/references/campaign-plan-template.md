@@ -37,7 +37,17 @@ Expand only when the analysis is multi-slice, writing-facing, route-changing, ex
 - missing dependencies or credentials:
 - fallback if unavailable:
 
-## 5. Execution Choice
+## 5. Execution Envelope
+
+- available devices or machine class:
+- available memory:
+- available storage:
+- wall-clock budget:
+- concurrency or queue limits:
+- environment or dependency risk:
+- slices that are infeasible unless downscoped:
+
+## 6. Execution Choice
 
 - artifact-backed campaign needed:
 - working location:
@@ -46,7 +56,7 @@ Expand only when the analysis is multi-slice, writing-facing, route-changing, ex
 - expected outputs or evidence paths:
 - monitoring plan if long-running:
 
-## 6. Interpretation Boundary
+## 7. Interpretation Boundary
 
 - what will count as stable support:
 - what will count as partial support:
@@ -54,7 +64,7 @@ Expand only when the analysis is multi-slice, writing-facing, route-changing, ex
 - what will count as unresolved ambiguity:
 - what result would stop further slices:
 
-## 7. Paper Or Review Mapping
+## 8. Paper Or Review Mapping
 
 - selected outline ref:
 - paper experiment matrix path:
@@ -62,7 +72,7 @@ Expand only when the analysis is multi-slice, writing-facing, route-changing, ex
 - reviewer / rebuttal item:
 - write-back target:
 
-## 8. Current Frontier
+## 9. Current Frontier
 
 - next action:
 - active blocker:

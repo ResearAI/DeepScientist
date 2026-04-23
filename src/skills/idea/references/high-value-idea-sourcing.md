@@ -104,3 +104,16 @@ Before widening the frontier, make sure the active pass can answer:
 5. What is the strongest falsification path?
 
 If these answers are weak, stay in problem definition and history search rather than generating a larger idea slate.
+
+## 7. Local-optimum lock-in check
+
+Before promotion, ask whether the pass is only polishing the current line because it is familiar, cheap, or already half-implemented.
+
+Challenge the hidden assumptions behind the incumbent explicitly:
+
+- what assumption about the bottleneck, data, objective, evaluator, or system boundary are we currently treating as fixed?
+- which of those assumptions might be wrong, too narrow, or inherited from convenience rather than evidence?
+- if that assumption were false, would the current candidate family still be the right place to search?
+- what non-local alternative or assumption-reversal route should remain alive long enough to avoid local-optimum lock-in?
+
+If the current frontier cannot answer these questions, do not treat the easiest continuation of the mainline as the best idea by default.

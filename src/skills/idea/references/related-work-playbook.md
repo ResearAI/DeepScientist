@@ -7,6 +7,7 @@ For a broader history-aware search before final narrowing, also read `research-h
 ## 0. Broad search policy
 
 Search should be broad enough to map the field and its history, not only to confirm the first attractive candidate.
+It should also be broad enough to surface cross-domain mechanisms that may transfer into the current task, evaluation setup, or systems bottleneck.
 
 If DeepXiv is available under the runtime contract, prefer it for broad paper-centric discovery, citation expansion, and shortlist triage.
 If DeepXiv is unavailable, use search engines directly and keep the same breadth target:
@@ -26,6 +27,7 @@ The goal is to answer:
 - what is the strongest nearby prior work?
 - what remains unresolved or weakly defended?
 - does the candidate still have novelty or at least research value?
+- are there adjacent-domain methods that solve a structurally similar limitation and could be translated here?
 
 ## 2. Query families
 
@@ -53,6 +55,7 @@ Then search externally for the missing neighborhood:
 1. arXiv for direct paper discovery
 2. citation trails for nearest-neighbor expansion
 3. broader web or repo search for implementation overlap and follow-up work
+4. adjacent-domain mechanism search when the direct neighborhood looks saturated or overly incremental
 
 The goal is not to search the same cluster from zero every time.
 The goal is to reuse what the quest already knows and only spend new search budget on gaps, recency, or unresolved overlap.
@@ -72,6 +75,24 @@ Then use both:
 
 to reconstruct the problem lineage rather than only the current keyword cluster.
 
+## 2.3 Cross-domain translation pass
+
+Before you conclude that the best route is a small local tweak, search at least one adjacent domain that faces a structurally similar bottleneck.
+
+Useful prompts:
+
+- same failure mode in a different task family
+- same mechanism used under a different evaluator or deployment constraint
+- same resource or infrastructure bottleneck solved in another systems or modeling setting
+- a theory, optimization, or measurement idea that may be portable even if the task is different
+
+For each promising adjacent paper, record:
+
+- why the bottleneck is structurally similar
+- what part of the mechanism may transfer
+- what part probably does not transfer directly
+- whether the translation would still be non-trivial and worth testing here
+
 ## 3. Coverage targets
 
 Try to cover these buckets before final selection:
@@ -81,9 +102,12 @@ Try to cover these buckets before final selection:
 - nearest mechanism-level neighbors
 - papers focused on the same failure mode
 - papers with the same task but different mechanism families
+- adjacent-domain papers whose mechanism, objective, or analysis logic can plausibly transfer into the current task
 
 For a normal selected-idea decision, the survey should durably cover at least `5` and usually `5-10` related and usable papers.
 Prefer direct task-modeling papers first; if that pool is truly small, fill the rest with the closest adjacent and translatable work instead of pretending the literature is empty.
+Do not stop at the direct field if it only yields small variations of the same idea family.
+Run at least one deliberate cross-domain pass whenever the bottleneck might be shared with another domain.
 
 If the area is active, recent work matters a lot.
 If the area is stable, seminal work may matter more than recency.
@@ -143,6 +167,11 @@ Possible verdicts:
 - `incremental but valuable`
 - `not sufficiently differentiated`
 
+Default preference:
+
+- first look for a route that is `novel` and still executable
+- accept `incremental but valuable` only when the value is concrete and larger routes were honestly ruled out
+
 ## 7. Research-value checks
 
 Even if novelty is limited, a direction may still be worth doing when it offers:
@@ -165,6 +194,7 @@ Watch for these traps:
 - declaring novelty from implementation detail rather than research claim
 - mistaking recency for relevance
 - importing a concept from another domain without proving the translation makes sense here
+- failing to look outside the immediate field and therefore rediscovering a nearby but more ambitious route too late
 - treating a paper title match as evidence without checking dataset and metric overlap
 - reading only the last few years and mistaking recency for centrality
 - skipping citation chaining and therefore missing the evolution of the question itself
@@ -174,6 +204,7 @@ Watch for these traps:
 The related-work search is good enough to stop when:
 
 - the strongest obvious nearby papers are mapped
+- at least one explicit cross-domain or adjacent-domain translation pass has been completed when the bottleneck plausibly allows it
 - the closest-prior-work table is complete enough to compare seriously
 - each top candidate has an explicit novelty or value verdict
 - the usable-paper floor for the selected idea has been satisfied or the shortage is explicitly documented

@@ -16,6 +16,13 @@ It is optional; the hard requirement is that launched slices, evidence boundarie
 - [ ] active uncertainty is written as a concrete question
 - [ ] next route is known if this gate clears or fails
 
+## Resource Gate
+
+- [ ] current device, memory, storage, and wall-clock limits are explicit when they affect campaign design
+- [ ] planned slices have been screened as runnable-now, runnable-with-downscope, or blocked-by-resources
+- [ ] blocked high-value slices are recorded explicitly rather than silently dropped
+- [ ] the current frontier is prioritized by soundness gain under the real resource budget
+
 ## Evidence Gate
 
 - [ ] parent claim, paper gap, reviewer item, or decision being tested is explicit

@@ -15,6 +15,7 @@ The purpose is to make related-work coverage durable, searchable, and reusable s
   - related and usable papers found so far
   - how many are direct task-modeling papers
   - how many are adjacent but translatable papers
+  - how many are cross-domain mechanism papers
   - whether the hard floor of at least `5` and usually `5-10` usable papers has been satisfied
 - why the survey is being run now
   - first idea build
@@ -63,6 +64,7 @@ Split the papers into:
 - core papers
 - closest competitors
 - adjacent inspirations
+- cross-domain transferable mechanisms
 - watchlist / uncertain relevance
 
 For each paper, include:
@@ -136,6 +138,7 @@ Close with:
 - the best surviving candidate ideas
 - the rejected ideas and why
 - what still needs more search before selection
+- whether the remaining serious ideas are breakthrough-seeking, clearly differentiated, or merely incremental
 - whether the stage is ready for `idea` selection, more `scout`, or a user decision
 
 ## 10. Citation-ready shortlist for the selected idea

@@ -7,7 +7,7 @@ skill_role: stage
 # Analysis Campaign
 
 Use this skill when follow-up evidence is needed after a durable result.
-The goal is to answer a bounded evidence question, not to keep opening more slices just because they are imaginable.
+The goal is to answer a bounded, resource-aware evidence question, not to keep opening more slices just because they are imaginable.
 
 ## Match signals
 
@@ -31,13 +31,16 @@ Answer the smallest evidence question that changes, confirms, or blocks a parent
 
 1. Lock the parent object, evidence question, comparison target, and stop condition.
    Make explicit what claim, failure mode, or route decision is actually being tested.
-2. Choose the lightest analysis route and the smallest slice set that can answer the question.
-   Run claim-critical slices first.
-3. Keep slices isolated and comparable.
+2. Audit the real execution envelope before designing the slice set.
+   Make explicit the current device and runtime limits: available GPU or CPU class, memory, wall-clock budget, storage, concurrency, required dependencies, and any queue or service constraints that materially limit what can run now.
+3. Choose the lightest analysis route and the smallest slice set that can answer the question within that envelope.
+   Prefer slices with the highest soundness gain per unit of compute, time, or engineering effort.
+   Run claim-critical slices first and mark infeasible slices explicitly instead of quietly keeping them in scope.
+4. Keep slices isolated and comparable.
    Record exactly what changed, what stayed fixed, and whether apples-to-apples comparison still holds.
-4. Record slice-level evidence before making any campaign-level claim.
+5. Record slice-level evidence before making any campaign-level claim.
    Every meaningful slice should leave a durable outcome and a claim update.
-5. Aggregate only the decision-relevant findings and route the next step.
+6. Aggregate only the decision-relevant findings and route the next step.
    End in continue, write, experiment, idea, decision, blocker, or stop.
 
 ## AVOID / pitfalls
@@ -47,6 +50,8 @@ Answer the smallest evidence question that changes, confirms, or blocks a parent
 - Do not change many factors at once and then interpret the result as isolating one factor.
 - Do not widen the campaign after the next route is already clear.
 - Do not use subjective or manual inspection to support a claim without rubric, sample, prompt, trace, and caveat.
+- Do not design a slice frontier that ignores current hardware, memory, runtime, or storage limits.
+- Do not keep infeasible slices as silent assumptions; either downscope them, replace them with runnable proxies, or record them as blocked.
 
 ## Constraints
 
@@ -55,6 +60,8 @@ Answer the smallest evidence question that changes, confirms, or blocks a parent
 - Keep the same evaluation contract unless the variation itself is the point.
 - When baseline comparison matters, keep slice comparisons aligned with the active baseline metric contract unless the deviation is explicit.
 - Campaign-level conclusions must be derived from per-slice evidence rather than impressions.
+- Campaign design must be conditioned on the current execution envelope, not an idealized future machine.
+- If a slice would materially improve soundness but is infeasible now, record the blocker and choose the best runnable lower-cost alternative or narrower proxy.
 - If a slice is paper-relevant, its result must be bound back into the current paper contract rather than left only in `experiments/analysis-results/*` or chat.
 
 ## Validation
@@ -62,7 +69,9 @@ Answer the smallest evidence question that changes, confirms, or blocks a parent
 Before `analysis-campaign` can end, all applicable checks should be true:
 
 - the parent object is explicit
+- the current execution envelope and its binding constraints are explicit when they affect slice design or ordering
 - every launched slice has a durable outcome: completed, partial, failed, blocked, infeasible, or superseded
+- launched and deferred slices were screened against the current device or resource limits
 - null, negative, failed, partial, and contradictory findings remain visible
 - the campaign changed or confirmed the evidence boundary of the parent claim with traceable slice-level evidence
 - the next route is explicit: continue campaign, return to `experiment`, return to `idea`, move to `write`, route through `decision`, stop, reset, or record a blocker
@@ -79,6 +88,7 @@ For meaningful long-running slices, include the estimated next reply time or nex
 The agent owns the analysis path.
 It may choose a one-slice check, a lightweight durable report, an artifact-backed one-slice campaign, a full multi-slice campaign, or a writing-facing campaign.
 It may choose slice order, workspace layout, filenames, monitoring strategy, and whether a smoke test, direct verification, or full run is the right first move.
+It may also shrink, reorder, or replace slices to fit the real hardware and runtime envelope, as long as the resulting campaign still answers the parent evidence question honestly.
 
 Do not treat `PLAN.md`, `CHECKLIST.md`, `artifact.create_analysis_campaign(...)`, one-slice campaigns, returned worktrees, `evaluation_summary`, smoke tests, detached runs, paper-matrix files, `tqdm`, or a fixed phase order as required paths.
 They are tactics.
@@ -99,6 +109,7 @@ Before treating analysis as successful, all applicable gates must be true:
 
 - the parent object is explicit, such as a main run, accepted idea line, paper gap, reviewer item, or rebuttal item
 - the claim, question, failure mode, or decision being tested is explicit
+- the slice frontier was screened against current compute, memory, storage, dependency, and runtime limits
 - every launched slice has a durable outcome: completed, partial, failed, blocked, infeasible, or superseded
 - every evidence-bearing slice records the question, intervention or inspection target, fixed conditions, metric or observable, evidence path, claim update, comparability verdict, and next action
 - null, negative, failed, partial, and contradictory findings remain visible
@@ -116,7 +127,7 @@ Use the lightest route that preserves trust and downstream utility.
 - `failure-analysis route`: evidence explains why a result failed, diverged, or became non-comparable
 
 Start the smallest route that can answer the current follow-up question.
-Run claim-critical slices first and stop widening once the next route is already clear.
+Run claim-critical slices first, weighted by soundness gain under the current resource budget, and stop widening once the next route is already clear.
 
 Useful slice classes:
 
@@ -134,6 +145,7 @@ For each meaningful slice, define and record enough of the following to make the
 - controls or fixed conditions
 - metric, observable, table, qualitative artifact, or rubric
 - comparison target
+- expected resource class or major execution constraint when it affects feasibility
 - stop condition or completion condition
 - evidence path expectations
 - claim update
@@ -194,6 +206,7 @@ For multi-slice, writing-facing, route-changing, expensive, unstable, or long-ru
 - acceptance or stop condition
 - slice list or first slice frontier
 - comparability boundary
+- execution envelope and the slices ruled infeasible under it
 - available assets and required comparators
 - evidence paths or expected outputs
 - current blocker or fallback
@@ -227,6 +240,7 @@ Do not treat analysis as successful when:
 - a completed paper-relevant slice remains visible only as a free-floating analysis result and is not bound back into the current paper contract
 - a failed slice is silently skipped and replaced by a different slice
 - the campaign keeps expanding after the next route is already clear
+- the campaign scope assumes hardware, memory, or runtime that is not actually available in the current environment
 - a new comparator overwrites the canonical quest baseline gate instead of being recorded as analysis-local comparison evidence
 - the underlying main result is still untrusted and the proposed work is really baseline recovery or a new main experiment
 - a new main experiment is disguised as an analysis slice to bypass the main-experiment gate

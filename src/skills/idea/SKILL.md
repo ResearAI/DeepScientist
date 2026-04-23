@@ -6,8 +6,8 @@ skill_role: stage
 
 # Idea
 
-Use this skill to turn the current baseline and problem frame into concrete, literature-grounded, testable directions.
-The goal is to choose the next executable research route, not to maximize brainstorming volume.
+Use this skill to turn the current baseline and problem frame into concrete, literature-grounded, frontier-aware, testable directions.
+The goal is to choose the next executable research route, not to maximize brainstorming volume or reward shallow novelty.
 
 When `startup_contract.need_research_paper = false` and the quest already has a concrete optimization handle, `idea` may stop after selecting or seeding a direction and then hand off into `optimize` instead of insisting on the full paper-oriented ideation loop.
 In that algorithm-first case, `idea` should usually produce a small method-brief frontier and then defer candidate ranking, promotion, and bounded search to `optimize`.
@@ -39,29 +39,74 @@ Turn the current objective, board state, and bottleneck into a small differentia
 1. Write the objective contract.
    Use `references/objective-contract-template.md`.
    Make the real target, trusted proxies, false-progress signals, and hard constraints explicit before generating ideas.
+   Default durable path: `artifacts/idea/objective_contract.md`.
 2. Write the current board packet.
    Use `references/current-board-packet-template.md`.
    Compress the incumbent, latest decisive result, active blocker, and stale routes-to-ignore into one current state surface.
+   Default durable path: `artifacts/idea/current_board_packet.md`.
 3. Identify the important contradiction and plausible novelty source.
    Use `references/high-value-idea-sourcing.md`.
    Start from the most important unresolved contradiction, anomaly, bottleneck, or failure region rather than from a preferred mechanism.
-4. Run a broad, history-aware literature search.
-   Use `references/related-work-playbook.md` and `references/research-history-playbook.md`.
+4. Run a broad, history-aware literature search before proposing serious ideas.
+   Use `references/related-work-playbook.md`, `references/research-history-playbook.md`, and `references/literature-survey-template.md`.
+   Cover direct in-domain frontier papers, foundational papers, strongest nearby competitors, and cross-domain papers whose mechanisms may translate into the current task.
    If DeepXiv is available, use it for broad paper-centric discovery and citation expansion; otherwise use search engines and citation chaining directly.
-5. Choose the idea family mix.
+   Do not promote or even seriously shortlist a new idea until the durable survey and closest-prior-work comparison are updated enough to judge novelty and feasibility honestly.
+5. Extract the limitation pattern and novelty opportunity from the survey.
+   Distinguish what is already saturated, what is only a decorative tweak, and what could still support a differentiated route.
+   Default against small local edits unless they are explicitly shown to be the highest-value surviving route.
+6. Choose the idea family mix.
    At minimum, decide whether the current pass should consider some mix of:
    - mechanism-family routes
    - objective-family routes
    - measurement-family routes
    - infrastructure-family routes
-6. Run bounded brainstorming.
+7. Run bounded brainstorming.
    Use `references/controlled-brainstorming-playbook.md` when the route is not already obvious.
    Generate a small, meaningfully different slate rather than a pile of micro-variants.
-7. Filter aggressively.
+   Prefer candidate families that could change the conclusion, capability boundary, or paper value materially, not just move a knob.
+8. Write a compact pre-idea draft for the serious surviving candidates.
+   Use `references/pre-idea-draft-template.md`.
+   Normally write drafts for the top `1-3` candidates, not for the whole raw slate.
+   The draft must surface hidden assumptions, local-optimum lock-in risk, strongest outside-family alternative, strongest rejection case, and the cheapest falsification path before any formal idea submission.
+   Default durable path per candidate: `artifacts/idea/pre_idea_drafts/<candidate_id>.md`.
+9. Filter aggressively.
    Use `references/selection-gate.md`.
    Remove candidates that only improve a surrogate, reopen a stale route without new evidence, violate leakage or submission-time boundaries, or lack a cheap falsification path.
-8. Select and hand off.
+10. Select and hand off.
    The selected package must include the route, why now, novelty type, main risk, anti-win condition, core hypothesis, mechanism sketch, strongest falsification experiment, minimal validation, abandonment condition, and the next stage.
+
+## Draft-before-submit SOP
+
+Before a direction is formally submitted as the selected idea, write a compact pre-idea draft or equivalent durable challenge memo for each serious surviving candidate.
+
+The default rule is:
+
+- raw brainstorming can widen the frontier
+- pre-idea drafts narrow and stress-test the frontier
+- only then can a final selected idea be submitted
+
+The pre-idea draft exists to stop three failure modes:
+
+- local-optimum lock-in around the current mainline
+- hidden assumptions staying implicit
+- attractive ideas being promoted before the strongest rejection case is written down
+
+Unless there is already an up-to-date equivalent artifact, do not formally submit the final idea until at least one pre-idea draft has:
+
+- been written for the likely winner
+- been compared against the incumbent and at least one outside-family or assumption-reversal alternative
+- been revised, rejected, or promoted based on that comparison
+
+Default durable path rules:
+
+- objective contract: `artifacts/idea/objective_contract.md`
+- current board packet: `artifacts/idea/current_board_packet.md`
+- candidate frontier summary: `artifacts/idea/candidates.md`
+- pre-idea draft per serious candidate: `artifacts/idea/pre_idea_drafts/<candidate_id>.md`
+- final selected idea: `artifacts/idea/selected_idea.md`
+
+When a candidate is promoted, `artifacts/idea/selected_idea.md` should point back to the winning pre-idea draft path instead of losing that lineage in prose only.
 
 ## AVOID / pitfalls
 
@@ -70,6 +115,10 @@ Turn the current objective, board state, and bottleneck into a small differentia
 - Do not treat lower loss, better average surrogate, or cleaner intermediate metrics as route health if the real target is unchanged.
 - Do not reopen stale routes unless new evidence explicitly weakens the current mainline.
 - Do not generate a large within-family variant swarm before the mechanism family itself is chosen.
+- Do not propose an idea as "new" before the direct-field and adjacent transferable literature have both been checked.
+- Do not default to cosmetic modifications, parameter nudges, or tiny architecture swaps unless the survey and bottleneck analysis show they are genuinely the best surviving route.
+- Do not let the current mainline, favorite mechanism, or easiest implementation path lock the search into a local optimum while the hidden assumptions behind that line remain unchallenged.
+- Do not jump from brainstorming notes straight to final idea submission without a compact draft that forces the hidden assumptions, strongest rejection case, and falsification path into the open.
 - Do not treat novelty as “totally unprecedented”; it may come from a new problem, view, mechanism, method, setting, evaluation, or boundary condition.
 - Do not promote a direction that fails a value/feasibility screen simply because it sounds exciting.
 - Do not promote a direction without a cheap falsification path and a visible anti-win condition.
@@ -81,8 +130,12 @@ Turn the current objective, board state, and bottleneck into a small differentia
 - Do not propose routes that introduce leakage-prone targets or labels into training.
 - Do not let implementation convenience outrank target alignment.
 - Search should be broad enough to map the main paradigms, history, and strongest overlaps, not just skim a few recent papers.
+- Search must cover both the current field's strongest direct papers and adjacent or cross-domain papers whose mechanisms may translate into the current task, evaluator, or systems setting.
 - If DeepXiv is available, prefer it for broad paper-centric discovery; otherwise use search engines, citation chaining, and open-web search directly.
+- Serious idea generation should happen only after the survey is broad enough to rule out obvious rediscoveries and to reveal non-trivial opportunity gaps.
 - A serious candidate should be explainable in terms of importance, novelty type, feasibility, verification path, and failure value.
+- By default, prefer routes with step-change or boundary-changing potential over small local refinements.
+- Small refinements are allowed only when the literature and current evidence indicate they are still the highest-value route and the reason is stated explicitly.
 - In system optimization work, a valid idea may be a mechanism change, an objective/evaluator correction, a measurement fix, or an infrastructure change if that is what best improves the real target.
 
 ## Validation
@@ -90,10 +143,13 @@ Turn the current objective, board state, and bottleneck into a small differentia
 Before the idea pass can end, the durable selected idea package should make explicit:
 
 - the important contradiction, gap, anomaly, or bottleneck it is targeting
+- the literature coverage used to justify the route, including direct-field papers and adjacent transferable papers
 - the dominant novelty type
 - the targeted limitation
 - the real objective and the strongest false-progress signal
+- the pre-idea draft or equivalent challenge memo that preceded promotion
 - the selected direction and why it won now
+- why the selected route is not merely a decorative tweak relative to the closest prior work or current baseline
 - the value/feasibility screen or equivalent judgment
 - the core hypothesis
 - the mechanism sketch
@@ -162,12 +218,15 @@ This stage is not just "brainstorming".
 It is a controlled brainstorming plus route-selection stage.
 It still needs a bounded creative-divergence phase before convergence.
 Do not collapse onto the first plausible route just because it sounds implementable.
+Do not settle for a low-amplitude tweak when a broader, still-feasible route remains live.
 It should normally create a new candidate direction branch and node; it does not by itself decide the next optimization round.
 The output must survive three checks at once:
 
 - novelty or at least clear research value
 - feasibility in the current repo and resource budget
 - manuscript defensibility if the line later becomes a paper claim
+
+When multiple routes survive, prefer the most differentiated route that is still falsifiable and executable in the current repo, rather than the easiest tiny patch.
 
 When the route already looks likely to become a paper-facing line, seed one lightweight structured outline candidate during idea work.
 Use `artifact.submit_paper_outline(mode='candidate', ...)` for that seed instead of leaving the future paper structure only in prose.
@@ -206,7 +265,7 @@ At the direction level, prefer elegant algorithmic or theoretical improvements o
 This stage should preserve the strongest old DeepScientist direction-selection logic:
 
 - understand the baseline and its failure modes
-- search related work broadly before claiming an idea is good
+- search related work broadly before claiming an idea is good, including adjacent fields with translatable mechanisms
 - derive limitations
 - produce a compact set of candidate ideas from an explicit direction set
 - rank them with explicit tradeoffs
@@ -244,6 +303,9 @@ Break ties primarily through careful reasoning over:
 - Do not select an idea before checking whether close prior work already did it.
 - Do not confuse "I can implement this" with "this is a publishable or useful research direction".
 - Do not treat a weak literature search as sufficient because the idea sounds elegant.
+- Do not start serious ideation from memory or taste alone; refresh the external literature unless the existing survey already covers the needed frontier and that reuse is recorded explicitly.
+- Do not treat the current field as the only search space; check cross-domain mechanism transfer whenever the bottleneck might admit it.
+- Do not promote a small tweak by default; if an incremental route wins, record why broader routes failed on novelty, feasibility, or claim value.
 - For paper-ready idea packages, aim for a durable survey that usually covers at least `5` and often `5-10` task-modeling-related, mechanism-relevant, or otherwise directly usable papers.
 - If the direct task-modeling neighborhood truly contains fewer than `5` usable papers, record that evidence explicitly and fill the remaining coverage with the closest adjacent papers whose mechanism can still be translated into the current task and codebase.
 - Algorithm-first exception:
@@ -490,6 +552,7 @@ The idea stage should usually leave behind:
 - `2-5` candidate ideas, with the final serious frontier usually narrowed to `2-3`
 - a selected idea or explicit rejection of the current line
 - a durable Markdown idea draft that is finalized before the accepted idea is submitted
+- one pre-idea draft per serious surviving candidate, usually `1-3`
 - one or more memory cards for reusable rationale
 - one or more quest `papers` cards for the strongest papers or search clusters
 - an idea artifact and a decision artifact
@@ -521,10 +584,13 @@ Do not force this structure for every tiny ideation turn, but use it when the qu
 
 Recommended durable files:
 
+- `artifacts/idea/objective_contract.md`
+- `artifacts/idea/current_board_packet.md`
 - `artifacts/idea/literature_survey.md`
 - `artifacts/idea/related_work.md`
 - `artifacts/idea/limitations.md`
 - `artifacts/idea/candidates.md`
+- `artifacts/idea/pre_idea_drafts/<candidate_id>.md`
 - `artifacts/idea/selected_idea.md`
 - `artifacts/idea/research_outline.md`
 
