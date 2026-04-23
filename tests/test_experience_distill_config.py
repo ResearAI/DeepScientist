@@ -27,6 +27,9 @@ def test_coerce_dict_passthrough():
     assert coerce_distill_mode({"mode": "on"}) == {"mode": "on"}
     assert coerce_distill_mode({"mode": "bogus"}) == {"mode": "off"}
     assert coerce_distill_mode({}) == {"mode": "off"}
+    # YAML parses `mode: on` as boolean True inside a dict; must still resolve to on.
+    assert coerce_distill_mode({"mode": True}) == {"mode": "on"}
+    assert coerce_distill_mode({"mode": False}) == {"mode": "off"}
 
 
 def test_read_distill_mode_defaults_off(tmp_path: Path):
