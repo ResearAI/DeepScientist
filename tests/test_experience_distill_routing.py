@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from deepscientist.artifact.experience_distill import maybe_inject_distill_routing
 
 
@@ -49,6 +47,14 @@ def test_returns_original_when_slice_status_not_completed(tmp_path: Path):
     qr = _quest(tmp_path, distill_on=True)
     gvm = _baseline_guidance()
     record = {"kind": "run", "run_kind": "analysis.slice", "status": "running", "artifact_id": "a1"}
+    out = maybe_inject_distill_routing(qr, record, gvm)
+    assert out is gvm
+
+
+def test_returns_original_when_slice_status_missing(tmp_path: Path):
+    qr = _quest(tmp_path, distill_on=True)
+    gvm = _baseline_guidance()
+    record = {"kind": "run", "run_kind": "analysis.slice", "artifact_id": "a1"}  # no status field
     out = maybe_inject_distill_routing(qr, record, gvm)
     assert out is gvm
 

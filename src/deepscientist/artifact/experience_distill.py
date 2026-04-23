@@ -157,7 +157,7 @@ def _is_analysis_slice_terminal(record: dict[str, Any]) -> bool:
     if run_kind != "analysis.slice":
         return False
     status = str(record.get("status") or "").strip().lower()
-    if status and status not in {"completed", "success", "succeeded", "done"}:
+    if status not in {"completed", "success", "succeeded", "done"}:
         return False
     return True
 
