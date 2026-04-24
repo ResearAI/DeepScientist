@@ -838,21 +838,21 @@ Use **Test** when the file exposes runtime dependencies.
 
         user_name = get_value("user.name")
         user_email = get_value("user.email")
-        warnings: list[str] = []
+        errors: list[str] = []
         guidance: list[str] = []
         if not user_name:
-            warnings.append("Git user.name is missing.")
+            errors.append("Git user.name is missing.")
             guidance.append('git config --global user.name "Your Name"')
         if not user_email:
-            warnings.append("Git user.email is missing.")
+            errors.append("Git user.email is missing.")
             guidance.append('git config --global user.email "you@example.com"')
         return {
-            "ok": True,
+            "ok": not errors,
             "installed": True,
             "user_name": user_name,
             "user_email": user_email,
-            "warnings": warnings,
-            "errors": [],
+            "warnings": [],
+            "errors": errors,
             "guidance": guidance,
         }
 

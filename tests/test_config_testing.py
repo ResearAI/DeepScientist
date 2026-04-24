@@ -2,12 +2,38 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from deepscientist.bridges import register_builtin_connector_bridges
 from deepscientist.config import ConfigManager
 from deepscientist.daemon.app import DaemonApp
 from deepscientist.home import ensure_home_layout
 from deepscientist.connector.lingzhu_support import generate_lingzhu_auth_ak
+
+
+def test_git_readiness_blocks_when_user_ident_missing(monkeypatch, temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+
+    def fake_run(cmd, **_kwargs):
+        if cmd[:2] == ["git", "--version"]:
+            return SimpleNamespace(returncode=0, stdout="git version 2.40.0\n", stderr="")
+        if cmd[:3] == ["git", "config", "--get"]:
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr("deepscientist.config.service.run_command", fake_run)
+
+    readiness = manager.git_readiness()
+    assert readiness["installed"] is True
+    assert readiness["ok"] is False
+    assert sorted(readiness["errors"]) == [
+        "Git user.email is missing.",
+        "Git user.name is missing.",
+    ]
+    assert readiness["warnings"] == []
+    assert any("user.name" in g for g in readiness["guidance"])
+    assert any("user.email" in g for g in readiness["guidance"])
 
 
 def test_config_show_includes_help_markdown_and_testability(temp_home: Path) -> None:

@@ -3116,6 +3116,10 @@ function ensureInitialized(home, runtimePython) {
     console.error('Git is required before DeepScientist can run correctly.');
     process.exit(result.status || 1 || 1);
   }
+  if (payload.git && Array.isArray(payload.git.errors) && payload.git.errors.length > 0) {
+    console.error('Git is not ready. Fix the items above (run the suggested commands) and rerun.');
+    process.exit(result.status || 1);
+  }
   fs.writeFileSync(stampPath, `${JSON.stringify(desired, null, 2)}\n`, 'utf8');
 }
 
