@@ -266,6 +266,25 @@ rsync_exclude_args() {
   done < <(source_copy_excludes)
 }
 
+sweep_stale_staging() {
+  local prefix="${INSTALL_DIR}.staging."
+  local dir
+  for dir in "${prefix}"*; do
+    [ -d "$dir" ] || continue
+    print_step "Removing stale staging dir: $dir"
+    safe_remove_dir "$dir"
+  done
+}
+
+clean_source_bundles() {
+  local d
+  for d in "$SOURCE_ROOT/src/ui/dist" "$SOURCE_ROOT/src/tui/dist"; do
+    [ -e "$d" ] || continue
+    print_step "Removing stale source bundle: $d"
+    safe_remove_dir "$d"
+  done
+}
+
 stop_existing_install() {
   if [ -x "$INSTALL_DIR/bin/ds" ]; then
     "$INSTALL_DIR/bin/ds" --stop >/dev/null 2>&1 || true
@@ -551,6 +570,9 @@ fi
 STAGING_DIR="${INSTALL_DIR}.staging.$$"
 safe_remove_dir "$STAGING_DIR"
 trap 'rm -rf "$STAGING_DIR"' EXIT
+
+sweep_stale_staging
+clean_source_bundles
 
 print_step "Preparing staging directory"
 mkdir -p "$BASE_DIR"
