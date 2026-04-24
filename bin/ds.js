@@ -32,6 +32,7 @@ const pythonCommands = new Set([
   'baseline',
   'latex',
   'config',
+  'distill-quest',
 ]);
 const UPDATE_PACKAGE_NAME = String(packageJson.name || '@researai/deepscientist').trim() || '@researai/deepscientist';
 const UPDATE_CHECK_TTL_MS = 12 * 60 * 60 * 1000;
