@@ -277,3 +277,20 @@ def test_full_finalize_gate_lifecycle(home_with_quest):
     assert candidates_after["experience_distill_on"] is True
     assert candidates_after["candidates"] == []
     assert main_run_id in candidates_after["reviewed_run_ids"]
+
+
+def test_distill_review_rejects_fabricated_reviewed_run_ids(home_with_quest):
+    home, quest_id = home_with_quest
+    quest_root = _enable_distill(home, quest_id)
+    service = ArtifactService(home)
+    with pytest.raises(Exception) as exc_info:
+        service.record(
+            quest_root,
+            {
+                "kind": "distill_review",
+                "reviewed_run_ids": ["run-does-not-exist"],
+                "cards_written": [],
+                "reason_if_empty": "test",
+            },
+        )
+    assert "unknown" in str(exc_info.value).lower() or "run-does-not-exist" in str(exc_info.value)
