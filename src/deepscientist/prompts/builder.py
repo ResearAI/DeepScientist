@@ -5,6 +5,7 @@ import os
 import re
 from pathlib import Path
 
+from ..artifact.experience_distill import is_recall_priors_on
 from ..connector_runtime import normalize_conversation_id, parse_conversation_id
 from ..config import ConfigManager
 from ..home import repo_root
@@ -2077,6 +2078,14 @@ class PromptBuilder:
             "- checkpoint_memory_lookup_rule: on resume/restart/auto_continue turns and continue/status questions, look for the latest checkpoint-style quest memory that states the current route, current active node, node history, what not to reopen, the next resume step, and the first files to read.",
             "- memory_injection_rule: keep the injected memory compact, but do not drop all continuity on auto_continue turns; reuse a few recent durable cues directly when they materially anchor the next action.",
         ]
+        if is_recall_priors_on(quest_root) and skill_id in stage_skill_ids(repo_root()):
+            lines.append(
+                "- recall_priors_rule: before generating new ideas, baselines, or experiment plans, "
+                "call `memory.list_knowledge_summaries(scope='global')` once and scan the returned "
+                "rows for any `task:` tag, claim, or keyword that overlaps your current quest. "
+                "Read the full card via `memory.read_card` for any candidate that looks relevant. "
+                "If nothing matches, say so explicitly in your reasoning and proceed."
+            )
         selected: list[dict] = []
         seen_paths: set[str] = set()
         for kind in plan.get("quest", ())[:2]:

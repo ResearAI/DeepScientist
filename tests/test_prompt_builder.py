@@ -2124,3 +2124,62 @@ def test_prompt_builder_uses_selected_runner_name_in_runtime_context(temp_home: 
 
     assert "runner_name: opencode" in prompt
     assert "runner_name: codex" not in prompt
+
+
+def _make_builder_with_startup_contract(
+    temp_home: Path, *, startup_contract: dict
+) -> tuple[PromptBuilder, dict]:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    snapshot = service.create(
+        "recall priors prompt quest",
+        startup_contract=startup_contract,
+    )
+    return PromptBuilder(repo_root(), temp_home), snapshot
+
+
+def test_prompt_builder_injects_recall_priors_when_on_for_stage_skill(temp_home: Path) -> None:
+    builder, snapshot = _make_builder_with_startup_contract(
+        temp_home, startup_contract={"recall_priors": "on"}
+    )
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="idea",
+        user_message="Sketch a new idea for the next experiment.",
+        model="gpt-5.4",
+    )
+
+    assert "recall_priors_rule:" in prompt
+    assert "list_knowledge_summaries" in prompt
+
+
+def test_prompt_builder_omits_recall_priors_when_off(temp_home: Path) -> None:
+    builder, snapshot = _make_builder_with_startup_contract(
+        temp_home, startup_contract={"recall_priors": "off"}
+    )
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="idea",
+        user_message="Sketch a new idea for the next experiment.",
+        model="gpt-5.4",
+    )
+
+    assert "recall_priors_rule:" not in prompt
+
+
+def test_prompt_builder_omits_recall_priors_for_companion_skill(temp_home: Path) -> None:
+    builder, snapshot = _make_builder_with_startup_contract(
+        temp_home, startup_contract={"recall_priors": "on"}
+    )
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="distill",
+        user_message="Run the distill companion pass.",
+        model="gpt-5.4",
+    )
+
+    assert "recall_priors_rule:" not in prompt
