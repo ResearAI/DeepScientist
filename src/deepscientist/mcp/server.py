@@ -246,6 +246,7 @@ START_SETUP_FORM_FIELDS: tuple[str, ...] = (
     "custom_brief",
     "user_language",
     "experience_distill",
+    "recall_priors",
 )
 START_SETUP_SESSION_FIELDS: tuple[str, ...] = (
     "fit_assessment",
@@ -602,6 +603,9 @@ def _sanitize_start_setup_form_patch(form_patch: dict[str, Any] | None) -> dict[
             patch[key] = _coerce_prepare_bool(value, field_name=key)
             continue
         if key == "experience_distill":
+            patch[key] = _coerce_prepare_bool(value, field_name=key)
+            continue
+        if key == "recall_priors":
             patch[key] = _coerce_prepare_bool(value, field_name=key)
             continue
         if isinstance(value, (str, int, float, bool)):

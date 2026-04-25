@@ -151,6 +151,54 @@ def is_distill_on(quest_root: Path | None) -> bool:
     return read_distill_mode(quest_root)["mode"] == "on"
 
 
+def coerce_recall_priors_mode(value: Any, *, field_name: str = "recall_priors") -> dict[str, str]:
+    """Normalize user-supplied value into {"mode": "on"|"off"} for recall_priors.
+
+    Accepts: bool, "on"/"off" string, dict {"mode": ...}. Anything else collapses to off.
+    """
+    if value is True:
+        return {"mode": "on"}
+    if value is False or value is None:
+        return {"mode": "off"}
+    if isinstance(value, str):
+        return {"mode": "on" if value.strip().lower() == "on" else "off"}
+    if isinstance(value, dict):
+        mode_val = value.get("mode")
+        if mode_val is True:
+            return {"mode": "on"}
+        if mode_val is False:
+            return {"mode": "off"}
+        raw = str(mode_val or "").strip().lower()
+        return {"mode": "on" if raw == "on" else "off"}
+    return {"mode": "off"}
+
+
+def read_recall_priors_mode(quest_root: Path | None) -> dict[str, str]:
+    """Read `startup_contract.recall_priors` from quest.yaml; return normalized dict."""
+    if quest_root is None:
+        return {"mode": "off"}
+    quest_yaml = quest_root / "quest.yaml"
+    if not quest_yaml.exists():
+        return {"mode": "off"}
+    try:
+        from ..shared import require_yaml
+        require_yaml()
+        import yaml  # type: ignore
+        payload = yaml.safe_load(quest_yaml.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {"mode": "off"}
+    if not isinstance(payload, dict):
+        return {"mode": "off"}
+    contract = payload.get("startup_contract") or {}
+    if not isinstance(contract, dict):
+        return {"mode": "off"}
+    return coerce_recall_priors_mode(contract.get("recall_priors"))
+
+
+def is_recall_priors_on(quest_root: Path | None) -> bool:
+    return read_recall_priors_mode(quest_root)["mode"] == "on"
+
+
 def _is_analysis_slice_terminal(record: dict[str, Any]) -> bool:
     if str(record.get("kind") or "") != "run":
         return False

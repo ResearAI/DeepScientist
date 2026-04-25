@@ -2912,3 +2912,11 @@ def test_list_distill_candidates_respects_active_worktree_workspace(tmp_path):
     assert artifact_id in candidate_ids, (
         f"list_distill_candidates did not read from worktree artifacts dir; candidates={result['candidates']}"
     )
+
+
+def test_sanitize_start_setup_accepts_recall_priors_bool() -> None:
+    from deepscientist.mcp.server import _sanitize_start_setup_form_patch
+    patch = _sanitize_start_setup_form_patch({"recall_priors": True})
+    assert patch == {"recall_priors": True}
+    patch = _sanitize_start_setup_form_patch({"recall_priors": "on"})
+    assert patch == {"recall_priors": True}
