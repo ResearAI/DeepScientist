@@ -151,6 +151,7 @@ class MemoryService:
         source_quest_id: str | None = None,
         shared: bool = False,
         include_metadata: bool = False,
+        include_body: bool = False,
     ) -> list[dict]:
         cards: list[dict] = []
         if not root.exists():
@@ -179,6 +180,8 @@ class MemoryService:
             }
             if include_metadata:
                 entry["metadata"] = metadata
+            if include_body:
+                entry["body"] = body
             if source_quest_id:
                 entry["source_quest_id"] = source_quest_id
             cards.append(entry)
@@ -348,8 +351,14 @@ class MemoryService:
                 source_quest_id=source_quest_id,
                 shared=shared,
                 include_metadata=True,
+                include_body=True,
             ):
                 row = self._summary_row(raw, raw["metadata"], source_scope)
+                # Defensive: legacy quest 010 cards stored experience metadata
+                # (claim/mechanism/subtype) as a body-leading frontmatter block
+                # rather than merging it into the top-level frontmatter. Fall
+                # back to that block when top-level fields are missing.
+                self._merge_body_frontmatter_fallback(row, raw.get("body") or "")
                 # Pre-attach `path` for deterministic tie-break in `_card_sort_key`;
                 # popped below before returning so consumers don't see it.
                 row["path"] = raw["path"]
@@ -359,6 +368,40 @@ class MemoryService:
         for row in rows:
             row.pop("path", None)
         return rows
+
+    @staticmethod
+    def _merge_body_frontmatter_fallback(row: dict[str, Any], body: str) -> None:
+        """If `body` starts with a YAML frontmatter block, parse it and use it
+        to fill missing values in `row`. Top-level metadata always wins — this
+        is a fallback for legacy "dual-frontmatter" knowledge cards where
+        experience fields (claim/mechanism/subtype) live in a body-leading
+        block instead of merged into the top-level frontmatter.
+        """
+        if not body or not body.lstrip().startswith("---"):
+            return
+        try:
+            body_metadata, _rest = load_markdown_document_from_text(body)
+        except Exception:
+            # Malformed body frontmatter — silently skip (top-level still wins).
+            return
+        if not isinstance(body_metadata, dict) or not body_metadata:
+            return
+
+        for field in ("claim", "mechanism"):
+            if not row.get(field):
+                value = body_metadata.get(field)
+                if value:
+                    row[field] = str(value).strip()
+
+        if not row.get("subtype"):
+            subtype = body_metadata.get("subtype")
+            if subtype:
+                row["subtype"] = str(subtype).strip()
+
+        if not row.get("keywords"):
+            kws = body_metadata.get("keywords")
+            if isinstance(kws, list):
+                row["keywords"] = [str(k).strip() for k in kws if str(k).strip()]
 
     @staticmethod
     def _summary_row(raw: dict[str, Any], metadata: dict[str, Any], scope: str) -> dict[str, Any]:

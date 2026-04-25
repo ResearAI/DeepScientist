@@ -5760,3 +5760,100 @@ def test_list_knowledge_summaries_visible_scope_includes_global_and_quest(temp_h
     assert "Quest card" in titles
     scopes = {r["scope"] for r in rows}
     assert scopes == {"global", "quest"}
+
+
+def test_list_knowledge_summaries_extracts_dual_frontmatter(temp_home: Path) -> None:
+    """Legacy quest 010 cards stored experience metadata as a second body-leading
+    frontmatter block. `list_knowledge_summaries` should defensively extract
+    `claim`, `mechanism`, and `subtype` from that body block when the top-level
+    frontmatter is missing them."""
+    memory = MemoryService(temp_home)
+    folder = temp_home / "memory" / "knowledge"
+    folder.mkdir(parents=True)
+    card = folder / "legacy-dual-frontmatter.md"
+    card.write_text(
+        "---\n"
+        "id: knowledge-legacy-001\n"
+        "type: knowledge\n"
+        "kind: knowledge\n"
+        "title: Legacy dual-frontmatter card\n"
+        "quest_id: '010'\n"
+        "tags:\n  - stage:experiment\n"
+        "keywords:\n  - legacy\n  - dual-frontmatter\n"
+        "created_at: '2026-04-25T09:00:00+00:00'\n"
+        "updated_at: '2026-04-25T09:00:00+00:00'\n"
+        "scope: global\n"
+        "---\n"
+        "---\n"
+        "subtype: experience\n"
+        "claim: Symbolic features dramatically reduce sample requirements.\n"
+        "mechanism: Pre-solving visual parsing leaves only Q-value mapping.\n"
+        "confidence: 0.72\n"
+        "---\n"
+        "\n## Evidence\nSee run logs.\n",
+        encoding="utf-8",
+    )
+    rows = memory.list_knowledge_summaries(scope="global")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["claim"] == "Symbolic features dramatically reduce sample requirements."
+    assert row["subtype"] == "experience"
+    # `keywords` was set in the top-level frontmatter — it should still be present.
+    assert row["keywords"] == ["legacy", "dual-frontmatter"]
+
+
+def test_list_knowledge_summaries_top_level_wins_over_body_frontmatter(temp_home: Path) -> None:
+    """When BOTH the top-level frontmatter AND the body's leading frontmatter
+    define `claim`, the top-level value always wins (body is fallback only)."""
+    memory = MemoryService(temp_home)
+    folder = temp_home / "memory" / "knowledge"
+    folder.mkdir(parents=True)
+    card = folder / "both-have-claim.md"
+    card.write_text(
+        "---\n"
+        "id: knowledge-both-001\n"
+        "type: knowledge\n"
+        "kind: knowledge\n"
+        "title: Both have claim\n"
+        "quest_id: '011'\n"
+        "tags: []\n"
+        "claim: TOP-LEVEL CLAIM WINS\n"
+        "updated_at: '2026-04-25T09:00:00+00:00'\n"
+        "scope: global\n"
+        "---\n"
+        "---\n"
+        "subtype: experience\n"
+        "claim: body claim should be ignored\n"
+        "---\n"
+        "\nbody text\n",
+        encoding="utf-8",
+    )
+    rows = memory.list_knowledge_summaries(scope="global")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["claim"] == "TOP-LEVEL CLAIM WINS"
+    # `subtype` is missing top-level, so body fallback fills it.
+    assert row["subtype"] == "experience"
+
+
+def test_list_knowledge_summaries_handles_body_without_frontmatter(temp_home: Path) -> None:
+    """Cards whose body is plain prose (no leading `---`) must not crash and
+    must produce the same row as before (claim from top-level only)."""
+    memory = MemoryService(temp_home)
+    memory.write_card(
+        scope="global",
+        kind="knowledge",
+        title="Plain body card",
+        markdown=(
+            "---\n"
+            "claim: Simple top-level claim.\n"
+            "subtype: experience\n"
+            "---\n\nThis is just prose, no second frontmatter block.\n"
+        ),
+        quest_id="012",
+    )
+    rows = memory.list_knowledge_summaries(scope="global")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["claim"] == "Simple top-level claim."
+    assert row["subtype"] == "experience"
