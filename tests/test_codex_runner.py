@@ -1438,3 +1438,8 @@ def test_runner_emits_warning_when_setup_output_falsely_claims_form_patch_missin
         == 'start_setup_false_missing_form_patch_claim'
         for item in events
     )
+
+
+def test_list_distill_candidates_is_codex_auto_approved() -> None:
+    from deepscientist.runners.codex import _BUILTIN_MCP_TOOL_APPROVALS
+    assert "list_distill_candidates" in _BUILTIN_MCP_TOOL_APPROVALS["artifact"]

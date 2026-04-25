@@ -63,6 +63,7 @@ _BUILTIN_MCP_TOOL_APPROVALS: dict[str, tuple[str, ...]] = {
         "read_quest_documents",
         "get_conversation_context",
         "get_analysis_campaign",
+        "list_distill_candidates",
         "record_main_experiment",
         "create_analysis_campaign",
         "submit_paper_outline",
