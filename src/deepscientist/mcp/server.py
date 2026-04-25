@@ -1617,6 +1617,20 @@ def build_artifact_server(context: McpContext) -> FastMCP:
         return service.get_analysis_campaign(context.require_quest_root(), campaign_id=campaign_id)
 
     @server.tool(
+        name="list_distill_candidates",
+        description=(
+            "List completed-run records (analysis.slice / main_experiment / experiment) "
+            "that have not yet been distilled. Use this at the start of the `distill` skill "
+            "to enumerate the batch."
+        ),
+        annotations=_read_only_tool_annotations(title="List distill candidates"),
+    )
+    def list_distill_candidates(
+        comment: str | dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return service.list_distill_candidates(context.require_quest_root())
+
+    @server.tool(
         name="record_main_experiment",
         description=(
             "Record the completed main experiment on the active idea workspace. "

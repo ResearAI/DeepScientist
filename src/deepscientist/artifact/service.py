@@ -7443,6 +7443,66 @@ class ArtifactService:
             "manifest": manifest,
         }
 
+    def list_distill_candidates(self, quest_root: Path) -> dict[str, Any]:
+        """Return undistilled completed-run candidates for the active quest.
+
+        Result shape:
+          {
+            "ok": True,
+            "experience_distill_on": bool,
+            "reviewed_run_ids": list[str],
+            "candidates": [
+              {artifact_id, run_kind, status, summary, branch, created_at, path},
+              ...
+            ],
+            "candidate_run_kinds": list[str],
+          }
+        """
+        from .experience_distill import (
+            DISTILL_CANDIDATE_RUN_KINDS,
+            _read_distill_reviews,
+            is_distill_on,
+            iter_distill_candidate_records,
+        )
+
+        artifacts_dir = quest_root / "artifacts"
+        if not is_distill_on(quest_root):
+            return {
+                "ok": True,
+                "experience_distill_on": False,
+                "reviewed_run_ids": [],
+                "candidates": [],
+                "candidate_run_kinds": sorted(DISTILL_CANDIDATE_RUN_KINDS),
+            }
+        reviews = _read_distill_reviews(artifacts_dir)
+        reviewed_set: set[str] = set()
+        for r in reviews:
+            for rid in r.get("reviewed_run_ids") or []:
+                reviewed_set.add(str(rid))
+        candidates = []
+        for record in iter_distill_candidate_records(artifacts_dir):
+            aid = str(record.get("artifact_id") or "")
+            if aid in reviewed_set:
+                continue
+            candidates.append(
+                {
+                    "artifact_id": aid,
+                    "run_kind": str(record.get("run_kind") or ""),
+                    "status": str(record.get("status") or ""),
+                    "summary": str(record.get("summary") or "")[:400],
+                    "branch": str(record.get("branch") or ""),
+                    "created_at": str(record.get("created_at") or ""),
+                    "path": str(record.get("path") or ""),
+                }
+            )
+        return {
+            "ok": True,
+            "experience_distill_on": True,
+            "reviewed_run_ids": sorted(reviewed_set),
+            "candidates": candidates,
+            "candidate_run_kinds": sorted(DISTILL_CANDIDATE_RUN_KINDS),
+        }
+
     def list_paper_outlines(self, quest_root: Path) -> dict[str, Any]:
         selected_outline_path, selected_outline = self._read_selected_outline_record(quest_root)
         selected_outline = selected_outline if isinstance(selected_outline, dict) else {}

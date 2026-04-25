@@ -2591,3 +2591,114 @@ def test_artifact_confirm_baseline_state_change_watchdog_requires_follow_up_upda
         assert any(item["kind"] == "state_change" for item in result["watchdog_notes"])
 
     asyncio.run(scenario())
+
+
+def test_list_distill_candidates_returns_pending_only(tmp_path):
+    """Quest with two completed main_experiments and one already-reviewed; only the unreviewed one returns."""
+    from deepscientist.artifact import ArtifactService
+    from deepscientist.config import ConfigManager
+    from deepscientist.home import ensure_home_layout, repo_root
+    from deepscientist.quest import QuestService
+    from deepscientist.skills import SkillInstaller
+    import yaml
+
+    home = tmp_path / "DSHome"
+    ensure_home_layout(home)
+    ConfigManager(home).ensure_files()
+    quest_service = QuestService(home, skill_installer=SkillInstaller(repo_root(), home))
+    quest = quest_service.create("Distill candidates demo")
+    quest_id = quest["quest_id"]
+    quest_root = home / "quests" / quest_id
+
+    # Enable distill
+    quest_yaml = quest_root / "quest.yaml"
+    payload = yaml.safe_load(quest_yaml.read_text(encoding="utf-8")) or {}
+    contract = payload.get("startup_contract") if isinstance(payload.get("startup_contract"), dict) else {}
+    contract["experience_distill"] = {"mode": "on"}
+    payload["startup_contract"] = contract
+    quest_yaml.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    service = ArtifactService(home)
+    # Two completed main_experiments
+    run_a = service.record(quest_root, {"kind": "run", "run_kind": "main_experiment", "status": "completed", "run_id": "main:1", "summary": "A"})
+    run_b = service.record(quest_root, {"kind": "run", "run_kind": "main_experiment", "status": "completed", "run_id": "main:2", "summary": "B"})
+    # Mark run A as reviewed
+    service.record(quest_root, {
+        "kind": "distill_review",
+        "reviewed_run_ids": [run_a["artifact_id"]],
+        "cards_written": [],
+        "reason_if_empty": "smoke test",
+    })
+
+    result = service.list_distill_candidates(quest_root)
+    assert result["ok"] is True
+    assert result["experience_distill_on"] is True
+    assert run_a["artifact_id"] in result["reviewed_run_ids"]
+    candidate_ids = {c["artifact_id"] for c in result["candidates"]}
+    assert candidate_ids == {run_b["artifact_id"]}
+
+
+def test_list_distill_candidates_distill_off_returns_empty(tmp_path):
+    """Quest with experience_distill: false. Expect empty candidates regardless of run state."""
+    from deepscientist.artifact import ArtifactService
+    from deepscientist.config import ConfigManager
+    from deepscientist.home import ensure_home_layout, repo_root
+    from deepscientist.quest import QuestService
+    from deepscientist.skills import SkillInstaller
+
+    home = tmp_path / "DSHome"
+    ensure_home_layout(home)
+    ConfigManager(home).ensure_files()
+    quest_service = QuestService(home, skill_installer=SkillInstaller(repo_root(), home))
+    quest = quest_service.create("Distill off demo")
+    quest_id = quest["quest_id"]
+    quest_root = home / "quests" / quest_id  # NOT enabled
+
+    service = ArtifactService(home)
+    service.record(quest_root, {"kind": "run", "run_kind": "main_experiment", "status": "completed", "run_id": "main:1", "summary": "A"})
+
+    result = service.list_distill_candidates(quest_root)
+    assert result["ok"] is True
+    assert result["experience_distill_on"] is False
+    assert result["candidates"] == []
+    assert result["reviewed_run_ids"] == []
+
+
+def test_list_distill_candidates_includes_summary_metadata(tmp_path):
+    """Each candidate dict carries artifact_id, run_kind, status, summary, branch, created_at, path."""
+    from deepscientist.artifact import ArtifactService
+    from deepscientist.config import ConfigManager
+    from deepscientist.home import ensure_home_layout, repo_root
+    from deepscientist.quest import QuestService
+    from deepscientist.skills import SkillInstaller
+    import yaml
+
+    home = tmp_path / "DSHome"
+    ensure_home_layout(home)
+    ConfigManager(home).ensure_files()
+    quest_service = QuestService(home, skill_installer=SkillInstaller(repo_root(), home))
+    quest = quest_service.create("Distill metadata demo")
+    quest_id = quest["quest_id"]
+    quest_root = home / "quests" / quest_id
+
+    quest_yaml = quest_root / "quest.yaml"
+    payload = yaml.safe_load(quest_yaml.read_text(encoding="utf-8")) or {}
+    contract = payload.get("startup_contract") if isinstance(payload.get("startup_contract"), dict) else {}
+    contract["experience_distill"] = {"mode": "on"}
+    payload["startup_contract"] = contract
+    quest_yaml.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    service = ArtifactService(home)
+    service.record(quest_root, {
+        "kind": "run", "run_kind": "experiment", "status": "completed",
+        "run_id": "exp:1", "summary": "Ablation A vs B",
+    })
+
+    result = service.list_distill_candidates(quest_root)
+    assert len(result["candidates"]) == 1
+    cand = result["candidates"][0]
+    for key in ("artifact_id", "run_kind", "status", "summary", "branch", "created_at", "path"):
+        assert key in cand, f"missing {key}"
+    assert cand["run_kind"] == "experiment"
+    assert cand["status"] == "completed"
+    assert cand["summary"] == "Ablation A vs B"
