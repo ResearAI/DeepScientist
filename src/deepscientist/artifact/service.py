@@ -7460,7 +7460,7 @@ class ArtifactService:
         """
         from .experience_distill import (
             DISTILL_CANDIDATE_RUN_KINDS,
-            _read_distill_reviews,
+            read_distill_reviews,
             is_distill_on,
             iter_distill_candidate_records,
         )
@@ -7473,12 +7473,17 @@ class ArtifactService:
                 "reviewed_run_ids": [],
                 "candidates": [],
                 "candidate_run_kinds": sorted(DISTILL_CANDIDATE_RUN_KINDS),
+                "cursor_run_created_at": None,
             }
-        reviews = _read_distill_reviews(artifacts_dir)
+        reviews = read_distill_reviews(artifacts_dir)
         reviewed_set: set[str] = set()
+        cursor_run_created_at: str | None = None
         for r in reviews:
             for rid in r.get("reviewed_run_ids") or []:
                 reviewed_set.add(str(rid))
+            ts = str(r.get("created_at") or "")
+            if ts and (cursor_run_created_at is None or ts > cursor_run_created_at):
+                cursor_run_created_at = ts
         candidates = []
         for record in iter_distill_candidate_records(artifacts_dir):
             aid = str(record.get("artifact_id") or "")
@@ -7487,8 +7492,10 @@ class ArtifactService:
             candidates.append(
                 {
                     "artifact_id": aid,
+                    "run_id": str(record.get("run_id") or ""),
                     "run_kind": str(record.get("run_kind") or ""),
                     "status": str(record.get("status") or ""),
+                    # Truncate summary to keep MCP response payload bounded; the skill reads the full record via "path".
                     "summary": str(record.get("summary") or "")[:400],
                     "branch": str(record.get("branch") or ""),
                     "created_at": str(record.get("created_at") or ""),
@@ -7501,6 +7508,7 @@ class ArtifactService:
             "reviewed_run_ids": sorted(reviewed_set),
             "candidates": candidates,
             "candidate_run_kinds": sorted(DISTILL_CANDIDATE_RUN_KINDS),
+            "cursor_run_created_at": cursor_run_created_at,
         }
 
     def list_paper_outlines(self, quest_root: Path) -> dict[str, Any]:

@@ -346,7 +346,7 @@ def _render_experience_draft(
     )
 
 
-def _read_distill_reviews(artifacts_dir: Path) -> list[dict[str, Any]]:
+def read_distill_reviews(artifacts_dir: Path) -> list[dict[str, Any]]:
     import json
     index_path = artifacts_dir / "_index.jsonl"
     if not index_path.exists():
@@ -388,7 +388,7 @@ def evaluate_distill_gate(
     """
     if not is_distill_on(quest_root):
         return None
-    reviews = _read_distill_reviews(artifacts_dir)
+    reviews = read_distill_reviews(artifacts_dir)
     reviewed_set: set[str] = set()
     cursor_created_at: str | None = None
     for rec in reviews:

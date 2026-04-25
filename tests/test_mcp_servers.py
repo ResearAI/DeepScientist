@@ -2636,6 +2636,7 @@ def test_list_distill_candidates_returns_pending_only(tmp_path):
     assert run_a["artifact_id"] in result["reviewed_run_ids"]
     candidate_ids = {c["artifact_id"] for c in result["candidates"]}
     assert candidate_ids == {run_b["artifact_id"]}
+    assert result["cursor_run_created_at"] is not None
 
 
 def test_list_distill_candidates_distill_off_returns_empty(tmp_path):
@@ -2662,6 +2663,7 @@ def test_list_distill_candidates_distill_off_returns_empty(tmp_path):
     assert result["experience_distill_on"] is False
     assert result["candidates"] == []
     assert result["reviewed_run_ids"] == []
+    assert result["cursor_run_created_at"] is None
 
 
 def test_list_distill_candidates_includes_summary_metadata(tmp_path):
@@ -2697,8 +2699,9 @@ def test_list_distill_candidates_includes_summary_metadata(tmp_path):
     result = service.list_distill_candidates(quest_root)
     assert len(result["candidates"]) == 1
     cand = result["candidates"][0]
-    for key in ("artifact_id", "run_kind", "status", "summary", "branch", "created_at", "path"):
+    for key in ("artifact_id", "run_id", "run_kind", "status", "summary", "branch", "created_at", "path"):
         assert key in cand, f"missing {key}"
     assert cand["run_kind"] == "experiment"
     assert cand["status"] == "completed"
     assert cand["summary"] == "Ablation A vs B"
+    assert cand["run_id"] == "exp:1"
