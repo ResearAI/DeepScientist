@@ -308,6 +308,77 @@ class MemoryService:
         cards.sort(key=self._card_sort_key, reverse=True)
         return cards[:limit]
 
+    def list_knowledge_summaries(
+        self,
+        *,
+        scope: str = "global",
+        quest_root: Path | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return compact rows (id / title / claim / keywords / tags / subtype / updated_at)
+        for every knowledge-kind card in scope.
+
+        No ranking, no filtering, no pagination — the LLM is the judge.
+        Sort: most-recently-updated first, ties broken by card id for stability.
+        """
+        if scope not in {"global", "quest", "visible"}:
+            raise ValueError(f"unsupported scope: {scope}")
+
+        sources: list[tuple[Path, str, str | None, bool]] = []
+        if scope == "global":
+            sources.append((self._root_for("global"), "global", None, False))
+        elif scope == "quest":
+            if quest_root is None:
+                raise ValueError("quest scope requires quest_root")
+            sources.append((self._root_for("quest", quest_root), "quest", None, False))
+        else:  # visible: global + every initialized quest
+            sources.append((self._root_for("global"), "global", None, False))
+            for qid, qroot in self._iter_initialized_quest_roots() or []:
+                sources.append((self._root_for("quest", qroot), "quest", qid, True))
+
+        rows: list[dict[str, Any]] = []
+        for root, source_scope, source_quest_id, shared in sources:
+            for raw in self._list_cards_from_root(
+                root=root,
+                kind="knowledge",
+                writable=not shared,
+                scope=source_scope,
+                source_quest_id=source_quest_id,
+                shared=shared,
+            ):
+                metadata, _body = load_markdown_document(Path(raw["path"]))
+                rows.append(self._summary_row(raw, metadata, source_scope))
+
+        def _sort_key(row: dict[str, Any]) -> tuple[float, str]:
+            ts = str(row.get("updated_at") or "")
+            try:
+                ts_float = -datetime.fromisoformat(ts).timestamp() if ts else 0.0
+            except ValueError:
+                ts_float = 0.0
+            return (ts_float, str(row.get("card_id") or ""))
+
+        rows.sort(key=_sort_key)
+        return rows
+
+    @staticmethod
+    def _summary_row(raw: dict[str, Any], metadata: dict[str, Any], scope: str) -> dict[str, Any]:
+        keywords = metadata.get("keywords") or []
+        if not isinstance(keywords, list):
+            keywords = []
+        tags = metadata.get("tags") or []
+        if not isinstance(tags, list):
+            tags = []
+        return {
+            "card_id": str(metadata.get("id") or raw.get("id") or "").strip(),
+            "title": str(metadata.get("title") or raw.get("title") or "").strip(),
+            "claim": str(metadata.get("claim") or "").strip(),
+            "keywords": [str(k).strip() for k in keywords if str(k).strip()],
+            "tags": [str(t).strip() for t in tags if str(t).strip()],
+            "scope": scope,
+            "quest_id": str(metadata.get("quest_id") or "").strip(),
+            "subtype": (str(metadata.get("subtype")).strip() if metadata.get("subtype") else None),
+            "updated_at": str(metadata.get("updated_at") or "").strip(),
+        }
+
     def search(
         self,
         query: str,

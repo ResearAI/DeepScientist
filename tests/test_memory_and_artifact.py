@@ -5649,3 +5649,86 @@ def test_analysis_campaign_uses_current_workspace_parent_and_returns_there(temp_
     assert final_state["workspace_mode"] == "paper"
     assert final_state["research_head_branch"] == head["branch"]
     assert final_state["active_idea_id"] == parent["idea_id"]
+
+
+def test_list_knowledge_summaries_global_returns_compact_rows(temp_home: Path) -> None:
+    memory = MemoryService(temp_home)
+    memory.write_card(
+        scope="global",
+        kind="knowledge",
+        title="Reward shaping helps early",
+        markdown=(
+            "---\n"
+            "subtype: experience\n"
+            "claim: Shaping accelerates early DQN training.\n"
+            "keywords:\n  - reward-shaping\n  - dqn\n  - manhattan\n"
+            "tags:\n  - task:snake-10x10\n  - method:dqn\n"
+            "---\n\nbody\n"
+        ),
+        quest_id="010",
+    )
+    rows = memory.list_knowledge_summaries(scope="global")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["title"] == "Reward shaping helps early"
+    assert row["claim"] == "Shaping accelerates early DQN training."
+    assert row["keywords"] == ["reward-shaping", "dqn", "manhattan"]
+    assert "task:snake-10x10" in row["tags"]
+    assert row["scope"] == "global"
+    assert row["subtype"] == "experience"
+    assert row["card_id"]
+    assert row["updated_at"]
+
+
+def test_list_knowledge_summaries_handles_missing_optional_fields(temp_home: Path) -> None:
+    memory = MemoryService(temp_home)
+    memory.write_card(
+        scope="global",
+        kind="knowledge",
+        title="Bare card",
+        markdown="---\nclaim: ''\n---\n\n",
+        quest_id="000",
+    )
+    rows = memory.list_knowledge_summaries(scope="global")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["claim"] == ""
+    assert row["keywords"] == []
+    assert isinstance(row["tags"], list)
+
+
+def test_list_knowledge_summaries_empty_when_no_cards(temp_home: Path) -> None:
+    memory = MemoryService(temp_home)
+    assert memory.list_knowledge_summaries(scope="global") == []
+
+
+def test_list_knowledge_summaries_quest_scope(temp_home: Path) -> None:
+    memory = MemoryService(temp_home)
+    quest_root = temp_home / "quests" / "010"
+    quest_root.mkdir(parents=True)
+    memory.write_card(
+        scope="quest",
+        kind="knowledge",
+        title="Quest-local card",
+        markdown="---\nclaim: local claim\nkeywords:\n  - foo\n---\n\nbody\n",
+        quest_root=quest_root,
+        quest_id="010",
+    )
+    rows = memory.list_knowledge_summaries(scope="quest", quest_root=quest_root)
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Quest-local card"
+    assert rows[0]["scope"] == "quest"
+
+
+def test_list_knowledge_summaries_sorted_recent_first(temp_home: Path) -> None:
+    memory = MemoryService(temp_home)
+    memory.write_card(
+        scope="global", kind="knowledge", title="Older",
+        markdown="---\nclaim: old\n---\n", quest_id="000",
+    )
+    memory.write_card(
+        scope="global", kind="knowledge", title="Newer",
+        markdown="---\nclaim: new\n---\n", quest_id="001",
+    )
+    rows = memory.list_knowledge_summaries(scope="global")
+    assert [r["title"] for r in rows] == ["Newer", "Older"]
