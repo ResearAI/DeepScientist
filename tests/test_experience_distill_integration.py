@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from deepscientist.artifact import ArtifactService
+from deepscientist.artifact.experience_distill import maybe_inject_distill_finalize_gate
 from deepscientist.config import ConfigManager
 from deepscientist.home import ensure_home_layout, repo_root
 from deepscientist.quest import QuestService
@@ -294,3 +296,88 @@ def test_distill_review_rejects_fabricated_reviewed_run_ids(home_with_quest):
             },
         )
     assert "unknown" in str(exc_info.value).lower() or "run-does-not-exist" in str(exc_info.value)
+
+
+def test_e2e_finalize_gate_uses_imperative_routing_no_fallback(tmp_path: Path) -> None:
+    """End-to-end: from quest with one completed run + recall_priors=on,
+    a write decision routes to distill with the new imperative wording and
+    no write fallback in alternative_routes."""
+    quest_root = tmp_path / "quest-e2e"
+    quest_root.mkdir()
+    (quest_root / "quest.yaml").write_text(
+        "startup_contract:\n"
+        "  experience_distill: on\n"
+        "  recall_priors: on\n",
+        encoding="utf-8",
+    )
+    artifacts_dir = quest_root / "artifacts"
+    artifacts_dir.mkdir()
+    run_path = artifacts_dir / "runs" / "run-main.json"
+    run_path.parent.mkdir(parents=True)
+    run_path.write_text(
+        json.dumps({
+            "kind": "run", "run_kind": "main_experiment",
+            "status": "completed", "artifact_id": "run-main",
+            "summary": "main experiment ok",
+        }),
+        encoding="utf-8",
+    )
+    (artifacts_dir / "_index.jsonl").write_text(
+        json.dumps({"kind": "run", "path": str(run_path)}) + "\n", encoding="utf-8"
+    )
+
+    decision = {"kind": "decision", "action": "write", "artifact_id": "decision-write-1"}
+    inbound = {"recommended_skill": "write", "recommended_action": "Draft paper."}
+    fired = maybe_inject_distill_finalize_gate(quest_root, artifacts_dir, decision, inbound)
+
+    assert fired is not None
+    assert fired["recommended_skill"] == "distill"
+    assert "Distill required" in fired["recommended_action"]
+    assert fired["pending_distill_count"] == 1
+    assert fired["pending_distill_ids"] == ["run-main"]
+    routes = fired.get("alternative_routes") or []
+    assert not any(
+        isinstance(r, dict) and r.get("recommended_skill") == "write"
+        for r in routes
+    )
+
+    # Now the agent records a distill_review with neighbor_decisions covering the run.
+    review_path = artifacts_dir / "distill_reviews" / "distill-review-1.json"
+    review_path.parent.mkdir(parents=True)
+    review_payload = {
+        "kind": "distill_review",
+        "artifact_id": "distill-review-1",
+        "created_at": "2026-04-25T10:00:00+00:00",
+        "reviewed_run_ids": ["run-main"],
+        "cards_written": [
+            {
+                "card_id": "knowledge-fresh",
+                "scope": "global",
+                "action": "new",
+                "target_run_id": "run-main",
+            }
+        ],
+        "neighbor_decisions": [
+            {
+                "candidate_card_id": "knowledge-existing",
+                "decision": "neighbor_but_separate",
+                "reason": "different mechanism",
+                "target_run_id": "run-main",
+            }
+        ],
+    }
+    review_path.write_text(json.dumps(review_payload), encoding="utf-8")
+    with (artifacts_dir / "_index.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"kind": "distill_review", "path": str(review_path)}) + "\n")
+
+    # Schema check passes.
+    from deepscientist.artifact.schemas import validate_artifact_payload
+    assert validate_artifact_payload(review_payload) == []
+
+    # Re-evaluate the same write decision: gate clears, original route restored.
+    cleared = maybe_inject_distill_finalize_gate(
+        quest_root, artifacts_dir, decision, fired
+    )
+    assert cleared is not None
+    assert cleared["recommended_skill"] == "write"
+    assert cleared.get("gate") != "finalize"
