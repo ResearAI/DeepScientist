@@ -46,26 +46,26 @@ the candidate run you are processing.
 For each row that looks like a plausible neighbor, fetch the full card:
 
 ```json
-{"tool": "memory.read_card", "arguments": {"card_id": "knowledge-..."}}
+{"tool": "memory.read", "arguments": {"card_id": "knowledge-..."}}
 ```
 
 For each inspection, decide one of:
 
 - **patch** — the existing card and the candidate run share a causal
   mechanism. Append a `lineage` entry, possibly downgrade `confidence`,
-  narrow `conditions`, and append (do not delete) `keywords`. The
-  `claim` text is immutable across quests.
+  narrow `conditions`, and update `keywords` per the cross-quest rule
+  in step 2.
 - **new** — no existing card covers the candidate's mechanism; write a
-  fresh card with `memory.write_card`.
+  fresh card with `memory.write`.
 - **neighbor_but_separate** — a related card exists but the candidate's
-  mechanism is genuinely different. Note the relationship in `notes`
+  mechanism is genuinely different. Note the relationship in the body
   and write a new card anyway.
 
 Record one `neighbor_decisions` entry per inspected neighbor in the
 final `distill_review` (see step 3) — including the negative cases
 (`new`, `neighbor_but_separate`).
 
-If the decision is **patch**, `memory.write_card` to patch:
+If the decision is **patch**, `memory.write` to patch:
 - append one `lineage` entry `{quest, run, direction, note}`
 - adjust `confidence` (monotone non-increasing across quests)
 - narrow `conditions` if this candidate revealed a scoping limit
@@ -73,7 +73,7 @@ If the decision is **patch**, `memory.write_card` to patch:
 
 **B. Create a new global card (only when no neighbor exists)**
 
-`memory.write_card` with `scope="global"`, `kind="knowledge"`, frontmatter:
+`memory.write` with `scope="global"`, `kind="knowledge"`, frontmatter:
 
 ```yaml
 subtype: experience
