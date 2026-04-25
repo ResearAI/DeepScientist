@@ -433,6 +433,25 @@ def maybe_inject_distill_finalize_gate(
         return guidance_vm
     gate = evaluate_distill_gate(quest_root, artifacts_dir)
     if gate is None:
+        # Gate has cleared — if the incoming guidance_vm was previously gate-injected,
+        # restore the previous recommended_skill so stale distill redirections are dropped.
+        if isinstance(guidance_vm, dict) and guidance_vm.get("gate") == "finalize":
+            base = dict(guidance_vm)
+            previous_skill = str(base.get("previous_recommended_skill") or "").strip() or None
+            previous_action = str(base.get("previous_recommended_action") or "").strip() or None
+            cleared: dict[str, Any] = {
+                k: v for k, v in base.items()
+                if k not in {
+                    "gate", "pending_distill_count", "pending_distill_ids",
+                    "cursor_run_created_at", "previous_recommended_skill",
+                    "previous_recommended_action",
+                }
+            }
+            if previous_skill:
+                cleared["recommended_skill"] = previous_skill
+            if previous_action:
+                cleared["recommended_action"] = previous_action
+            return cleared
         return guidance_vm
     base = dict(guidance_vm) if isinstance(guidance_vm, dict) else {}
     previous_skill = str(base.get("recommended_skill") or "").strip() or None
