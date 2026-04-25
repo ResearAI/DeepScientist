@@ -74,3 +74,15 @@ def test_iter_skips_missing_record_paths(tmp_path: Path):
 
 def test_iter_returns_empty_when_index_missing(tmp_path: Path):
     assert list(iter_distill_candidate_records(tmp_path)) == []
+
+
+def test_iter_skips_malformed_record_json(tmp_path: Path):
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True)
+    bad = runs_dir / "bad.json"
+    bad.write_text("not json", encoding="utf-8")
+    (tmp_path / "_index.jsonl").write_text(
+        json.dumps({"artifact_id": "bad", "kind": "run", "path": str(bad)}) + "\n",
+        encoding="utf-8",
+    )
+    assert list(iter_distill_candidate_records(tmp_path)) == []
