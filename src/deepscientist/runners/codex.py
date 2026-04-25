@@ -44,6 +44,7 @@ _BUILTIN_MCP_TOOL_APPROVALS: dict[str, tuple[str, ...]] = {
         "read",
         "search",
         "list_recent",
+        "list_knowledge_summaries",
         "promote_to_global",
     ),
     "artifact": (

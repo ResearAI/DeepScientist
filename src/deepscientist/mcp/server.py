@@ -1057,6 +1057,35 @@ def build_memory_server(context: McpContext) -> FastMCP:
         return {"ok": True, "count": len(items), "items": items}
 
     @server.tool(
+        name="list_knowledge_summaries",
+        description=(
+            "List compact summaries (id / title / claim / keywords / tags) of every "
+            "knowledge-kind card in scope. Use this before generating ideas or starting "
+            "distill to find prior experience to recall or patch. Returns all cards "
+            "unsorted-by-relevance — scan the rows yourself and `memory.read_card` "
+            "anything worth reading in full."
+        ),
+        annotations=_read_only_tool_annotations(title="List knowledge summaries"),
+    )
+    def list_knowledge_summaries(
+        scope: str = "global",
+        comment: str | dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        normalized = (scope or "global").strip().lower()
+        if normalized not in {"global", "quest", "visible"}:
+            raise ValueError("Scope must be `global`, `quest`, or `visible`.")
+        quest_root = (
+            context.require_quest_root() if normalized in {"quest", "visible"} else None
+        )
+        return {
+            "scope": normalized,
+            "summaries": service.list_knowledge_summaries(
+                scope=normalized,
+                quest_root=quest_root,
+            ),
+        }
+
+    @server.tool(
         name="promote_to_global",
         description=(
             "Promote a quest memory card into global memory. "

@@ -148,12 +148,14 @@ def test_memory_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
             "read",
             "search",
             "list_recent",
+            "list_knowledge_summaries",
             "promote_to_global",
         ]
         tool_map = {tool.name: tool for tool in tools}
         assert tool_map["read"].annotations.readOnlyHint is True
         assert tool_map["search"].annotations.readOnlyHint is True
         assert tool_map["list_recent"].annotations.readOnlyHint is True
+        assert tool_map["list_knowledge_summaries"].annotations.readOnlyHint is True
 
         write_result = _unwrap_tool_result(
             await server.call_tool(
@@ -261,6 +263,84 @@ def test_memory_mcp_server_searches_shared_quest_memory_when_runtime_mode_enable
         )
 
     asyncio.run(scenario())
+
+
+def test_memory_list_knowledge_summaries_tool_registered(temp_home: Path) -> None:
+    async def scenario() -> None:
+        ensure_home_layout(temp_home)
+        ConfigManager(temp_home).ensure_files()
+        quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create(
+            "mcp summaries registered quest"
+        )
+        context = McpContext(
+            home=temp_home,
+            quest_id=quest["quest_id"],
+            quest_root=Path(quest["quest_root"]),
+            run_id="run-mcp-summaries-registered",
+            active_anchor="baseline",
+            conversation_id="quest:test-summaries-registered",
+            agent_role="baseline",
+            worker_id="worker-main",
+            worktree_root=None,
+            team_mode="single",
+        )
+        server = build_memory_server(context)
+        tools = await server.list_tools()
+        names = {tool.name for tool in tools}
+        assert "list_knowledge_summaries" in names
+        tool_map = {tool.name: tool for tool in tools}
+        assert tool_map["list_knowledge_summaries"].annotations.readOnlyHint is True
+
+    asyncio.run(scenario())
+
+
+def test_memory_list_knowledge_summaries_tool_returns_summaries(temp_home: Path) -> None:
+    async def scenario() -> None:
+        ensure_home_layout(temp_home)
+        ConfigManager(temp_home).ensure_files()
+        quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create(
+            "mcp summaries returns quest"
+        )
+        memory = MemoryService(temp_home)
+        memory.write_card(
+            scope="global",
+            kind="knowledge",
+            title="Card A",
+            markdown=(
+                "---\nclaim: Card A claim.\nkeywords:\n  - alpha\n  - beta\n"
+                "tags:\n  - task:snake-10x10\n---\n\nbody\n"
+            ),
+            quest_id="010",
+        )
+        context = McpContext(
+            home=temp_home,
+            quest_id=quest["quest_id"],
+            quest_root=Path(quest["quest_root"]),
+            run_id="run-mcp-summaries-returns",
+            active_anchor="baseline",
+            conversation_id="quest:test-summaries-returns",
+            agent_role="baseline",
+            worker_id="worker-main",
+            worktree_root=None,
+            team_mode="single",
+        )
+        server = build_memory_server(context)
+
+        result = _unwrap_tool_result(
+            await server.call_tool("list_knowledge_summaries", {"scope": "global"})
+        )
+        assert result["scope"] == "global"
+        summaries = result["summaries"]
+        titles = [row["title"] for row in summaries]
+        assert "Card A" in titles
+
+    asyncio.run(scenario())
+
+
+def test_codex_runner_approves_list_knowledge_summaries() -> None:
+    from deepscientist.runners.codex import _BUILTIN_MCP_TOOL_APPROVALS
+
+    assert "list_knowledge_summaries" in _BUILTIN_MCP_TOOL_APPROVALS["memory"]
 
 
 def test_artifact_mcp_server_interact_delivers_to_bound_qq_connector(
