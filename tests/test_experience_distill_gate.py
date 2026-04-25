@@ -121,3 +121,60 @@ def test_pending_distill_ids_capped_at_five(tmp_path: Path):
     assert out is not None
     assert out["pending_distill_count"] == 8
     assert len(out["pending_distill_ids"]) == 5
+
+
+def test_cursor_run_created_at_returns_latest_review_timestamp(tmp_path: Path):
+    qr = _make_quest(tmp_path, distill_on=True)
+    artifacts = qr / "artifacts"
+    _seed_runs(artifacts, [{"artifact_id": "run-pending", "kind": "run", "run_kind": "main_experiment", "status": "completed"}])
+    # Two reviews with different timestamps; cursor must reflect the later one.
+    _seed_distill_review(artifacts, "distill-review-old", ["run-old"])
+    _seed_distill_review(artifacts, "distill-review-new", ["run-new"])
+    # Manually overwrite created_at after seeding because _seed_distill_review pins a fixed timestamp.
+    import json
+    old_path = artifacts / "distill_reviews" / "distill-review-old.json"
+    new_path = artifacts / "distill_reviews" / "distill-review-new.json"
+    old = json.loads(old_path.read_text(encoding="utf-8"))
+    old["created_at"] = "2026-04-25T00:00:00+00:00"
+    old_path.write_text(json.dumps(old), encoding="utf-8")
+    new = json.loads(new_path.read_text(encoding="utf-8"))
+    new["created_at"] = "2026-04-25T05:00:00+00:00"
+    new_path.write_text(json.dumps(new), encoding="utf-8")
+    out = evaluate_distill_gate(qr, artifacts)
+    assert out is not None
+    assert out["cursor_run_created_at"] == "2026-04-25T05:00:00+00:00"
+
+
+def test_multiple_reviews_aggregate_into_reviewed_set(tmp_path: Path):
+    qr = _make_quest(tmp_path, distill_on=True)
+    artifacts = qr / "artifacts"
+    _seed_runs(
+        artifacts,
+        [
+            {"artifact_id": "run-1", "kind": "run", "run_kind": "main_experiment", "status": "completed"},
+            {"artifact_id": "run-2", "kind": "run", "run_kind": "experiment", "status": "completed"},
+            {"artifact_id": "run-3", "kind": "run", "run_kind": "experiment", "status": "completed"},
+        ],
+    )
+    # Two separate reviews each cover one run; the third remains pending.
+    _seed_distill_review(artifacts, "distill-review-1", ["run-1"])
+    _seed_distill_review(artifacts, "distill-review-2", ["run-2"])
+    out = evaluate_distill_gate(qr, artifacts)
+    assert out is not None
+    assert out["pending_distill_count"] == 1
+    assert out["pending_distill_ids"] == ["run-3"]
+
+
+def test_pending_distill_ids_preserves_index_order_when_truncated(tmp_path: Path):
+    qr = _make_quest(tmp_path, distill_on=True)
+    artifacts = qr / "artifacts"
+    _seed_runs(
+        artifacts,
+        [
+            {"artifact_id": f"run-{i}", "kind": "run", "run_kind": "experiment", "status": "completed"}
+            for i in range(8)
+        ],
+    )
+    out = evaluate_distill_gate(qr, artifacts)
+    assert out is not None
+    assert out["pending_distill_ids"] == ["run-0", "run-1", "run-2", "run-3", "run-4"]
