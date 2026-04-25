@@ -32,13 +32,40 @@ For each `candidate`, look at the run record (`path`) and any related artifacts 
 
 **A. Patch an existing global card (default when a neighbor is found)**
 
-Search for neighbors:
+**Search for neighbors via the keyword summary index.**
 
 ```json
-{"tool": "memory.search", "arguments": {"query": "<keywords from candidate>", "scope": "global", "kind": "knowledge", "limit": 10}}
+{"tool": "memory.list_knowledge_summaries", "arguments": {"scope": "global"}}
 ```
 
-Read the top 3 matches. If any is in the same causal neighborhood as what this candidate observed, `memory.write_card` to patch:
+The tool returns one row per global knowledge card with
+`card_id / title / claim / keywords / tags / subtype / updated_at`. Scan
+the rows for any card whose `task:` tag, `claim`, or `keywords` overlap
+the candidate run you are processing.
+
+For each row that looks like a plausible neighbor, fetch the full card:
+
+```json
+{"tool": "memory.read_card", "arguments": {"card_id": "knowledge-..."}}
+```
+
+For each inspection, decide one of:
+
+- **patch** — the existing card and the candidate run share a causal
+  mechanism. Append a `lineage` entry, possibly downgrade `confidence`,
+  narrow `conditions`, and append (do not delete) `keywords`. The
+  `claim` text is immutable across quests.
+- **new** — no existing card covers the candidate's mechanism; write a
+  fresh card with `memory.write_card`.
+- **neighbor_but_separate** — a related card exists but the candidate's
+  mechanism is genuinely different. Note the relationship in `notes`
+  and write a new card anyway.
+
+Record one `neighbor_decisions` entry per inspected neighbor in the
+final `distill_review` (see step 3) — including the negative cases
+(`new`, `neighbor_but_separate`).
+
+If the decision is **patch**, `memory.write_card` to patch:
 - append one `lineage` entry `{quest, run, direction, note}`
 - adjust `confidence` (monotone non-increasing across quests)
 - narrow `conditions` if this candidate revealed a scoping limit
@@ -55,7 +82,15 @@ mechanism: <causal chain — why this plausibly holds>
 conditions:
   - <scoping tag 1>
   - <scoping tag 2>
+keywords:
+  - <kw 1>            # 3..8 short noun phrases or compound tokens; lowercased
+  - <kw 2>
 confidence: <0.0..1.0; 0.4 is a fine starting value>
+tags:
+  - task:<short-id>   # required
+  - stage:<stage>     # optional
+  - domain:<domain>   # optional
+  - method:<method>   # optional
 lineage:
   - quest: <quest_id>
     run: <candidate.run_id or candidate.artifact_id>
@@ -75,6 +110,16 @@ Acceptable when the run was a smoke test, the result was inconclusive, or it dup
 - `conditions` must name at least one scoping tag.
 - `lineage[*]` must cite a real `quest` and `run`. Forge nothing.
 - No numeric forecasts in the card body.
+- Every new or patched card must include a `task:<short-id>` tag in
+  the top-level `tags:` list. The `<short-id>` is a stable
+  low-cardinality slug for the task family the experience belongs to
+  (e.g. `task:snake-10x10`, `task:cifar10-classification`,
+  `task:gsm8k`). Reuse existing slugs when patching; coin a new slug
+  only when no neighbor card uses one.
+- Every new card must include a top-level `keywords` list of 3–8 short
+  noun phrases (lowercased, hyphenated). Cross-quest patches may
+  *append* keywords but must not delete existing ones; same-quest
+  patches may freely edit.
 
 ### 3. Record the batch summary
 
@@ -91,10 +136,19 @@ After processing all candidates, write exactly one `distill_review`:
       {"card_id": "knowledge-...", "scope": "global", "action": "patch", "target_run_id": "run-..."}
     ],
     "reason_if_empty": "<required iff cards_written is empty>",
-    "notes": "<optional free text>"
+    "notes": "<optional free text>",
+    "neighbor_decisions": [
+      {"candidate_card_id": "knowledge-...", "decision": "patch",  "reason": "same mechanism", "target_run_id": "run-..."},
+      {"candidate_card_id": "knowledge-...", "decision": "neighbor_but_separate", "reason": "different conditions", "target_run_id": "run-..."}
+    ]
   }
 }
 ```
+
+> `neighbor_decisions` is optional but strongly recommended: record one
+> entry per neighbor card you inspected, including the negative cases
+> (where the decision was `new` or `neighbor_but_separate`). This makes
+> the review log show what you considered, not just what you wrote.
 
 `reviewed_run_ids` MUST list every candidate you actually inspected (not skipped). The cursor advances based on this list.
 
