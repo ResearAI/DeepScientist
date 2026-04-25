@@ -1062,8 +1062,8 @@ def build_memory_server(context: McpContext) -> FastMCP:
             "List compact summaries (id / title / claim / keywords / tags) of every "
             "knowledge-kind card in scope. Use this before generating ideas or starting "
             "distill to find prior experience to recall or patch. Returns all cards "
-            "unsorted-by-relevance — scan the rows yourself and `memory.read_card` "
-            "anything worth reading in full."
+            "ordered by most-recent update (no relevance ranking) — scan the rows "
+            "yourself and `memory.read_card` anything worth reading in full."
         ),
         annotations=_read_only_tool_annotations(title="List knowledge summaries"),
     )
@@ -1071,6 +1071,9 @@ def build_memory_server(context: McpContext) -> FastMCP:
         scope: str = "global",
         comment: str | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        # NOTE: not using _resolve_search_scope here.
+        # That helper exposes "both" (active quest + global), but this tool needs
+        # "visible" (global + every initialized quest) — different semantic.
         normalized = (scope or "global").strip().lower()
         if normalized not in {"global", "quest", "visible"}:
             raise ValueError("Scope must be `global`, `quest`, or `visible`.")

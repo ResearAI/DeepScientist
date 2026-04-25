@@ -333,6 +333,63 @@ def test_memory_list_knowledge_summaries_tool_returns_summaries(temp_home: Path)
         summaries = result["summaries"]
         titles = [row["title"] for row in summaries]
         assert "Card A" in titles
+        expected_keys = {
+            "card_id",
+            "title",
+            "claim",
+            "keywords",
+            "tags",
+            "scope",
+            "quest_id",
+            "subtype",
+            "updated_at",
+        }
+        assert expected_keys.issubset(summaries[0].keys())
+
+    asyncio.run(scenario())
+
+
+def test_memory_list_knowledge_summaries_tool_returns_quest_summaries(temp_home: Path) -> None:
+    async def scenario() -> None:
+        ensure_home_layout(temp_home)
+        ConfigManager(temp_home).ensure_files()
+        quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create(
+            "mcp summaries quest scope"
+        )
+        quest_root = Path(quest["quest_root"])
+        memory = MemoryService(temp_home)
+        memory.write_card(
+            scope="quest",
+            kind="knowledge",
+            title="Quest Card B",
+            markdown=(
+                "---\nclaim: Quest scope claim.\nkeywords:\n  - quest-kw\n"
+                "tags:\n  - task:quest-only\n---\n\nbody\n"
+            ),
+            quest_root=quest_root,
+            quest_id=quest["quest_id"],
+        )
+        context = McpContext(
+            home=temp_home,
+            quest_id=quest["quest_id"],
+            quest_root=quest_root,
+            run_id="run-mcp-summaries-quest",
+            active_anchor="baseline",
+            conversation_id="quest:test-summaries-quest",
+            agent_role="baseline",
+            worker_id="worker-main",
+            worktree_root=None,
+            team_mode="single",
+        )
+        server = build_memory_server(context)
+
+        result = _unwrap_tool_result(
+            await server.call_tool("list_knowledge_summaries", {"scope": "quest"})
+        )
+        assert result["scope"] == "quest"
+        summaries = result["summaries"]
+        titles = [row["title"] for row in summaries]
+        assert "Quest Card B" in titles
 
     asyncio.run(scenario())
 
