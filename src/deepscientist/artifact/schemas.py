@@ -33,6 +33,9 @@ DECISION_ACTIONS = {
     "request_user_decision",
 }
 
+DISTILL_CARD_ACTIONS = {"new", "patch"}
+DISTILL_CARD_SCOPES = {"global", "quest"}
+
 
 def validate_artifact_payload(payload: dict) -> list[str]:
     errors: list[str] = []
@@ -63,8 +66,6 @@ def validate_artifact_payload(payload: dict) -> list[str]:
                 "distill_review with empty `cards_written` requires `reason_if_empty`."
             )
         reviewed_set = set(str(rid) for rid in reviewed)
-        allowed_actions = {"new", "patch"}
-        allowed_scopes = {"global", "quest"}
         for idx, card in enumerate(cards):
             if not isinstance(card, dict):
                 errors.append(f"distill_review.cards_written[{idx}] must be an object.")
@@ -76,16 +77,16 @@ def validate_artifact_payload(payload: dict) -> list[str]:
                     f"must be present in `reviewed_run_ids`."
                 )
             action = str(card.get("action") or "")
-            if action not in allowed_actions:
+            if action not in DISTILL_CARD_ACTIONS:
                 errors.append(
                     f"distill_review.cards_written[{idx}].action `{action}` "
-                    f"must be one of {sorted(allowed_actions)}."
+                    f"must be one of {sorted(DISTILL_CARD_ACTIONS)}."
                 )
             scope = str(card.get("scope") or "")
-            if scope not in allowed_scopes:
+            if scope not in DISTILL_CARD_SCOPES:
                 errors.append(
                     f"distill_review.cards_written[{idx}].scope `{scope}` "
-                    f"must be one of {sorted(allowed_scopes)}."
+                    f"must be one of {sorted(DISTILL_CARD_SCOPES)}."
                 )
     return errors
 

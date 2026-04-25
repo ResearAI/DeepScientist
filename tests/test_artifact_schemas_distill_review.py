@@ -96,3 +96,56 @@ def test_distill_review_rejects_card_invalid_action():
         }
     )
     assert any("action" in e for e in errors)
+
+
+def test_distill_review_rejects_non_list_reviewed_run_ids():
+    errors = validate_artifact_payload(
+        {
+            "kind": "distill_review",
+            "reviewed_run_ids": "run-aaa",  # string, not list
+            "cards_written": [],
+            "reason_if_empty": "n/a",
+        }
+    )
+    assert any("reviewed_run_ids" in e for e in errors)
+
+
+def test_distill_review_rejects_non_list_cards_written():
+    errors = validate_artifact_payload(
+        {
+            "kind": "distill_review",
+            "reviewed_run_ids": ["run-aaa"],
+            "cards_written": {"card_id": "knowledge-1"},  # dict, not list
+            "reason_if_empty": "n/a",
+        }
+    )
+    assert any("cards_written" in e for e in errors)
+
+
+def test_distill_review_rejects_non_dict_card_entry():
+    errors = validate_artifact_payload(
+        {
+            "kind": "distill_review",
+            "reviewed_run_ids": ["run-aaa"],
+            "cards_written": ["not-a-dict"],
+        }
+    )
+    assert any("must be an object" in e for e in errors)
+
+
+def test_distill_review_rejects_card_invalid_scope():
+    errors = validate_artifact_payload(
+        {
+            "kind": "distill_review",
+            "reviewed_run_ids": ["run-aaa"],
+            "cards_written": [
+                {
+                    "card_id": "knowledge-1",
+                    "scope": "team",  # not allowed
+                    "action": "new",
+                    "target_run_id": "run-aaa",
+                }
+            ],
+        }
+    )
+    assert any("scope" in e for e in errors)
