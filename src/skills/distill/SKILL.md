@@ -1,97 +1,111 @@
 ---
 name: distill
-description: "Use right after an analysis-slice run lands to extract reusable causal intuition into a `knowledge` memory card (`subtype: experience`). Default to patching an existing entry; create a new one only when no similar claim exists; write a null+reason episode when nothing is worth distilling."
+description: "Use when the finalize gate fires (or when an analysis-slice just landed). Inspect the batch of undistilled completed runs, then write 0..N reusable knowledge cards (`subtype: experience`) and one bookkeeping `distill_review` artifact."
 skill_role: companion
 ---
 
 # Distill
 
-Run this skill after an analysis-slice completes. Your job is **not** to write a lab notebook entry — it is to decide whether this slice produced a reusable, mechanism-bearing piece of intuition, and if so, to persist it in a form that will actually help future quests.
+Run this skill when the distill gate routes you here — either immediately after an `analysis.slice` lands (per-slice trigger) or before write/finalize when the quest has undistilled completed runs (finalize gate).
 
-## When to distill
-
-Distill when **at least one** of the following holds:
-
-- **Non-obvious success**: a method worked in a way that could not have been predicted from the paper abstract alone. The "why it worked" is the payload.
-- **Informative failure**: a method broke in a way that teaches about the mechanism, not just about a bad hyperparameter.
-- **Contradiction with existing experience**: a prior experience card implied X; this run shows X does not hold under these conditions.
-- **Condition refinement**: a prior experience card made a claim; this run sharpens the *conditions* under which it holds.
-
-If none of the above apply, **output a null+reason episode** (see below) rather than inventing a new entry. Token-cost without signal is the worst outcome.
+Your job is **not** to write a lab notebook entry — it is to decide whether the batch produced reusable, mechanism-bearing intuition, persist it as global knowledge cards, and record one `distill_review` artifact summarizing what was inspected.
 
 ## Protocol
 
-### 1. Search for neighbors
-
-Before writing anything, search global experience entries for similar claims:
+### 0. Pull the batch
 
 ```json
-{"tool": "memory.search", "arguments": {"query": "<keywords from this slice>", "scope": "global", "kind": "knowledge", "limit": 10}}
+{"tool": "artifact.list_distill_candidates", "arguments": {}}
 ```
 
-Read the top 3 matches. Ask: is any of them making a claim in the same causal neighborhood as what I just observed?
+The tool returns:
+- `experience_distill_on`: skip the skill if `false`
+- `candidates`: undistilled run records (`artifact_id`, `run_id`, `run_kind`, `status`, `summary`, `branch`, `created_at`, `path`)
+- `reviewed_run_ids`: already covered, do not redo
+- `cursor_run_created_at`: timestamp of the last `distill_review`
 
-### 2. Decide one of three outcomes
+If `candidates` is empty, you should not have been routed here — record a minimal `distill_review` with `reviewed_run_ids=[]` is **not** valid (schema rejects it). Instead, exit the skill and record a `decision(action='continue')` noting that the gate was already clear.
 
-**A. Patch an existing entry (default when a neighbor is found)**
+### 1. For each candidate, decide one of three outcomes
 
-Read the target card, then `memory.write_card` with `markdown=` containing the original frontmatter plus:
-- one new lineage entry `{quest, run, direction, note}` appended to `lineage:`
-- `confidence:` adjusted (see rules below)
-- `conditions:` narrowed if this slice revealed a scoping limit
-- `claim:` **locked** if the target card already has lineage entries from another quest. Only same-quest patches may edit claim text.
+For each `candidate`, look at the run record (`path`) and any related artifacts the run references.
 
-Cross-quest patch rules (prompt-enforced, validated by the retroactive CLI):
-- `claim` is immutable.
-- `confidence` is monotone non-increasing — you may lower it, never raise it.
-- `lineage` grows only; existing entries are never rewritten.
-- `mechanism` may be clarified but the core causal direction must match.
+**A. Patch an existing global card (default when a neighbor is found)**
 
-**B. Create a new entry (only when no neighbor exists)**
+Search for neighbors:
 
-Use `memory.write_card` with `scope="global"`, `kind="knowledge"`, and a frontmatter that includes:
+```json
+{"tool": "memory.search", "arguments": {"query": "<keywords from candidate>", "scope": "global", "kind": "knowledge", "limit": 10}}
+```
+
+Read the top 3 matches. If any is in the same causal neighborhood as what this candidate observed, `memory.write_card` to patch:
+- append one `lineage` entry `{quest, run, direction, note}`
+- adjust `confidence` (monotone non-increasing across quests)
+- narrow `conditions` if this candidate revealed a scoping limit
+- `claim` is **immutable** when patching across quests; only same-quest patches may edit it
+
+**B. Create a new global card (only when no neighbor exists)**
+
+`memory.write_card` with `scope="global"`, `kind="knowledge"`, frontmatter:
 
 ```yaml
 subtype: experience
 claim: <one sentence, mechanism-bearing, falsifiable>
-mechanism: <why this plausibly holds — the causal chain>
+mechanism: <causal chain — why this plausibly holds>
 conditions:
   - <scoping tag 1>
   - <scoping tag 2>
-confidence: <0.0..1.0; be honest — 0.4 is a fine starting value>
+confidence: <0.0..1.0; 0.4 is a fine starting value>
 lineage:
   - quest: <quest_id>
-    run: <run_id, e.g. cmp_1:s_1>
+    run: <candidate.run_id or candidate.artifact_id>
     direction: <direction or goal id>
     note: <one-phrase takeaway>
 ```
 
-The body of the card should be 3–8 lines of prose explaining the reasoning. Do not dump the full experiment log — future readers do not need it.
+Body: 3–8 lines of prose explaining the reasoning. No experiment-log dumps.
 
-**C. Null + reason (write to quest-scoped episode, not global)**
+**C. No card from this candidate**
 
-If no trigger fires, `memory.write_card` with `scope="quest"`, `kind="episodes"`, title like `"distill: no experience extracted from <slice_id>"`, and a two-sentence body naming what was examined and why it did not meet the threshold. This prevents silent drops and gives the next retroactive CLI pass a clear record.
+Acceptable when the run was a smoke test, the result was inconclusive, or it duplicated a prior card with no new condition. Just skip writing a card for this entry. The `distill_review` (Step 2) records *which* candidates were skipped via `reason_if_empty` (only required when the entire batch produces zero cards).
 
-### 3. Hard constraints on new/patched entries
+### 2. Hard constraints on new/patched cards
 
-A rejection reviewer will apply these:
-
-- `claim` must name a **mechanism**, not just an outcome. "X improved accuracy" is rejected; "X helps because it shortens the gradient path through Y" is accepted.
-- `conditions` must name at least one scoping tag. If a claim holds "always", you are not being specific enough.
+- `claim` must name a **mechanism**, not just an outcome. ("X improved accuracy" → reject; "X helps because it shortens the gradient path through Y" → accept.)
+- `conditions` must name at least one scoping tag.
 - `lineage[*]` must cite a real `quest` and `run`. Forge nothing.
-- No numeric forecasts. Do not write "method will improve metric by 3%". Write *why* it might improve, under what conditions.
+- No numeric forecasts in the card body.
 
-### 4. What not to do
+### 3. Record the batch summary
 
-- Do not invoke this skill if the slice was inconclusive — output a null episode.
-- Do not create a new entry when a neighbor exists; patching is the default.
-- Do not remove other quests' lineage entries. Ever.
-- Do not promote confidence across quests. Only the original quest may raise confidence on a card.
+After processing all candidates, write exactly one `distill_review`:
+
+```json
+{
+  "tool": "artifact.record",
+  "arguments": {
+    "kind": "distill_review",
+    "reviewed_run_ids": ["<candidate.artifact_id>", "..."],
+    "cards_written": [
+      {"card_id": "knowledge-...", "scope": "global", "action": "new",   "target_run_id": "run-..."},
+      {"card_id": "knowledge-...", "scope": "global", "action": "patch", "target_run_id": "run-..."}
+    ],
+    "reason_if_empty": "<required iff cards_written is empty>",
+    "notes": "<optional free text>"
+  }
+}
+```
+
+`reviewed_run_ids` MUST list every candidate you actually inspected (not skipped). The cursor advances based on this list.
+
+### 4. Resume the original route
+
+After the `distill_review` lands, the finalize gate clears (the cursor advances past your reviewed runs). The agent's previous intent — `write` or `finalize` — is preserved in the guidance payload as `previous_recommended_skill`. Resume that route by recording a fresh `decision(action='write'|'finalize')` or proceeding to the corresponding skill directly.
 
 ## Output
 
-End with a single JSON summary line for downstream tooling:
+End with one JSON line for downstream tooling:
 
 ```json
-{"outcome": "patch" | "new" | "null", "card_id": "<id or null>", "reason": "<short>"}
+{"outcome": "patch_only" | "new_only" | "mixed" | "no_cards", "review_id": "distill-review-...", "card_ids": ["..."]}
 ```
