@@ -150,6 +150,7 @@ class MemoryService:
         scope: str | None = None,
         source_quest_id: str | None = None,
         shared: bool = False,
+        include_metadata: bool = False,
     ) -> list[dict]:
         cards: list[dict] = []
         if not root.exists():
@@ -175,8 +176,9 @@ class MemoryService:
                 "writable": writable,
                 "scope": scope,
                 "shared": shared,
-                "metadata": metadata,
             }
+            if include_metadata:
+                entry["metadata"] = metadata
             if source_quest_id:
                 entry["source_quest_id"] = source_quest_id
             cards.append(entry)
@@ -345,6 +347,7 @@ class MemoryService:
                 scope=source_scope,
                 source_quest_id=source_quest_id,
                 shared=shared,
+                include_metadata=True,
             ):
                 row = self._summary_row(raw, raw["metadata"], source_scope)
                 # Pre-attach `path` for deterministic tie-break in `_card_sort_key`;
