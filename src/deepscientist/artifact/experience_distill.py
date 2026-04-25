@@ -413,6 +413,19 @@ def evaluate_distill_gate(
 
 _FINALIZE_GATE_ACTIONS: frozenset[str] = frozenset({"write", "finalize"})
 
+_FINALIZE_GATE_INJECTED_KEYS: frozenset[str] = frozenset({
+    "gate",
+    "pending_distill_count",
+    "pending_distill_ids",
+    "cursor_run_created_at",
+    "previous_recommended_skill",
+    "previous_recommended_action",
+    "experience_distill",
+    "source_artifact_id",
+})
+
+_FINALIZE_GATE_FALLBACK_REASON: str = "Original next step before the finalize gate fired."
+
 
 def maybe_inject_distill_finalize_gate(
     quest_root: Path,
@@ -441,16 +454,18 @@ def maybe_inject_distill_finalize_gate(
             previous_action = str(base.get("previous_recommended_action") or "").strip() or None
             cleared: dict[str, Any] = {
                 k: v for k, v in base.items()
-                if k not in {
-                    "gate", "pending_distill_count", "pending_distill_ids",
-                    "cursor_run_created_at", "previous_recommended_skill",
-                    "previous_recommended_action",
-                }
+                if k not in _FINALIZE_GATE_INJECTED_KEYS
             }
             if previous_skill:
                 cleared["recommended_skill"] = previous_skill
             if previous_action:
                 cleared["recommended_action"] = previous_action
+            existing_routes = base.get("alternative_routes")
+            if isinstance(existing_routes, list):
+                cleared["alternative_routes"] = [
+                    r for r in existing_routes
+                    if not (isinstance(r, dict) and r.get("reason") == _FINALIZE_GATE_FALLBACK_REASON)
+                ]
             return cleared
         return guidance_vm
     base = dict(guidance_vm) if isinstance(guidance_vm, dict) else {}
@@ -462,7 +477,7 @@ def maybe_inject_distill_finalize_gate(
             {
                 "recommended_skill": previous_skill,
                 "recommended_action": previous_action or f"Resume `{previous_skill}` after distill_review is recorded.",
-                "reason": "Original next step before the finalize gate fired.",
+                "reason": _FINALIZE_GATE_FALLBACK_REASON,
             }
         )
     return {

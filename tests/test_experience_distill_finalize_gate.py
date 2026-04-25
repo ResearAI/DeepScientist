@@ -130,3 +130,72 @@ def test_redirect_when_decision_action_has_uppercase_or_whitespace(tmp_path: Pat
     out = maybe_inject_distill_finalize_gate(qr, artifacts, record, _baseline_guidance())
     assert out["recommended_skill"] == "distill"
     assert out["pending_distill_count"] == 1
+
+
+def test_clear_branch_strips_all_injected_keys(tmp_path: Path):
+    """Re-evaluating a previously gate-injected guidance with no pending candidates restores the previous skill."""
+    qr = _make_quest(tmp_path)
+    artifacts = qr / "artifacts"
+    # No pending candidates — gate is None — but inbound guidance was previously gate-injected.
+    inbound = {
+        "schema_version": 1,
+        "recommended_skill": "distill",
+        "recommended_action": "Review undistilled completed runs and record a `distill_review` before resuming write/finalize.",
+        "previous_recommended_skill": "write",
+        "previous_recommended_action": "write",
+        "alternative_routes": [
+            {
+                "recommended_skill": "write",
+                "recommended_action": "write",
+                "reason": "Original next step before the finalize gate fired.",
+            }
+        ],
+        "experience_distill": True,
+        "gate": "finalize",
+        "pending_distill_count": 1,
+        "pending_distill_ids": ["run-old"],
+        "cursor_run_created_at": "2026-04-25T00:00:00+00:00",
+        "source_artifact_id": "decision-old",
+    }
+    out = maybe_inject_distill_finalize_gate(qr, artifacts, _decision_record("write"), inbound)
+    # Restored to write
+    assert out["recommended_skill"] == "write"
+    assert out["recommended_action"] == "write"
+    # All gate metadata stripped
+    for key in (
+        "gate", "pending_distill_count", "pending_distill_ids",
+        "cursor_run_created_at", "previous_recommended_skill",
+        "previous_recommended_action", "experience_distill",
+        "source_artifact_id",
+    ):
+        assert key not in out, f"clear branch should strip `{key}`"
+
+
+def test_clear_branch_drops_gate_appended_alternative_route(tmp_path: Path):
+    """The clear branch should remove the fire branch's appended fallback route."""
+    qr = _make_quest(tmp_path)
+    artifacts = qr / "artifacts"
+    inbound = {
+        "schema_version": 1,
+        "recommended_skill": "distill",
+        "previous_recommended_skill": "write",
+        "previous_recommended_action": "write",
+        "alternative_routes": [
+            {
+                "recommended_skill": "scout",
+                "recommended_action": "scout literature",
+                "reason": "Pre-existing route from upstream.",
+            },
+            {
+                "recommended_skill": "write",
+                "recommended_action": "write",
+                "reason": "Original next step before the finalize gate fired.",
+            },
+        ],
+        "gate": "finalize",
+    }
+    out = maybe_inject_distill_finalize_gate(qr, artifacts, _decision_record("write"), inbound)
+    # Pre-existing route preserved; gate-appended route dropped.
+    reasons = [r.get("reason") for r in out.get("alternative_routes", [])]
+    assert "Pre-existing route from upstream." in reasons
+    assert "Original next step before the finalize gate fired." not in reasons

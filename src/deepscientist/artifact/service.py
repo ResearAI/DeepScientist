@@ -7905,7 +7905,7 @@ class ArtifactService:
 
                     guidance_vm = maybe_inject_distill_finalize_gate(
                         quest_root, write_root / "artifacts", existing_record, guidance_vm,
-                    ) or guidance_vm
+                    )
                 except Exception:
                     pass
                 guidance_text = guidance_summary(guidance_vm) or guidance_for_kind(str(existing_record.get("kind") or payload.get("kind") or "report"))
