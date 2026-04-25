@@ -14,11 +14,18 @@ from deepscientist.shared import write_json, write_text
 from deepscientist.skills import SkillInstaller
 
 
-def _make_builder(temp_home: Path) -> tuple[PromptBuilder, dict]:
+def _make_builder(
+    temp_home: Path, *, startup_contract: dict | None = None
+) -> tuple[PromptBuilder, dict]:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
     service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
-    snapshot = service.create("prompt builder quest")
+    if startup_contract is None:
+        snapshot = service.create("prompt builder quest")
+    else:
+        snapshot = service.create(
+            "prompt builder quest", startup_contract=startup_contract
+        )
     return PromptBuilder(repo_root(), temp_home), snapshot
 
 
@@ -2126,21 +2133,8 @@ def test_prompt_builder_uses_selected_runner_name_in_runtime_context(temp_home: 
     assert "runner_name: codex" not in prompt
 
 
-def _make_builder_with_startup_contract(
-    temp_home: Path, *, startup_contract: dict
-) -> tuple[PromptBuilder, dict]:
-    ensure_home_layout(temp_home)
-    ConfigManager(temp_home).ensure_files()
-    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
-    snapshot = service.create(
-        "recall priors prompt quest",
-        startup_contract=startup_contract,
-    )
-    return PromptBuilder(repo_root(), temp_home), snapshot
-
-
 def test_prompt_builder_injects_recall_priors_when_on_for_stage_skill(temp_home: Path) -> None:
-    builder, snapshot = _make_builder_with_startup_contract(
+    builder, snapshot = _make_builder(
         temp_home, startup_contract={"recall_priors": "on"}
     )
 
@@ -2156,7 +2150,7 @@ def test_prompt_builder_injects_recall_priors_when_on_for_stage_skill(temp_home:
 
 
 def test_prompt_builder_omits_recall_priors_when_off(temp_home: Path) -> None:
-    builder, snapshot = _make_builder_with_startup_contract(
+    builder, snapshot = _make_builder(
         temp_home, startup_contract={"recall_priors": "off"}
     )
 
@@ -2171,7 +2165,7 @@ def test_prompt_builder_omits_recall_priors_when_off(temp_home: Path) -> None:
 
 
 def test_prompt_builder_omits_recall_priors_for_companion_skill(temp_home: Path) -> None:
-    builder, snapshot = _make_builder_with_startup_contract(
+    builder, snapshot = _make_builder(
         temp_home, startup_contract={"recall_priors": "on"}
     )
 
