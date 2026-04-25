@@ -7460,6 +7460,7 @@ class ArtifactService:
         """
         from .experience_distill import (
             DISTILL_CANDIDATE_RUN_KINDS,
+            collect_reviewed_run_ids,
             read_distill_reviews,
             is_distill_on,
             iter_distill_candidate_records,
@@ -7476,14 +7477,7 @@ class ArtifactService:
                 "cursor_run_created_at": None,
             }
         reviews = read_distill_reviews(artifacts_dir)
-        reviewed_set: set[str] = set()
-        cursor_run_created_at: str | None = None
-        for r in reviews:
-            for rid in r.get("reviewed_run_ids") or []:
-                reviewed_set.add(str(rid))
-            ts = str(r.get("created_at") or "")
-            if ts and (cursor_run_created_at is None or ts > cursor_run_created_at):
-                cursor_run_created_at = ts
+        reviewed_set, cursor_run_created_at = collect_reviewed_run_ids(reviews)
         candidates = []
         for record in iter_distill_candidate_records(artifacts_dir):
             aid = str(record.get("artifact_id") or "")

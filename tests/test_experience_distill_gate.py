@@ -178,3 +178,22 @@ def test_pending_distill_ids_preserves_index_order_when_truncated(tmp_path: Path
     out = evaluate_distill_gate(qr, artifacts)
     assert out is not None
     assert out["pending_distill_ids"] == ["run-0", "run-1", "run-2", "run-3", "run-4"]
+
+
+def test_collect_reviewed_run_ids_handles_empty_reviews():
+    from deepscientist.artifact.experience_distill import collect_reviewed_run_ids
+    reviewed, cursor = collect_reviewed_run_ids([])
+    assert reviewed == set()
+    assert cursor is None
+
+
+def test_collect_reviewed_run_ids_aggregates_and_picks_latest_timestamp():
+    from deepscientist.artifact.experience_distill import collect_reviewed_run_ids
+    reviews = [
+        {"reviewed_run_ids": ["a", "b"], "created_at": "2026-04-25T01:00:00+00:00"},
+        {"reviewed_run_ids": ["c"], "created_at": "2026-04-25T03:00:00+00:00"},
+        {"reviewed_run_ids": ["d"], "created_at": "2026-04-25T02:00:00+00:00"},
+    ]
+    reviewed, cursor = collect_reviewed_run_ids(reviews)
+    assert reviewed == {"a", "b", "c", "d"}
+    assert cursor == "2026-04-25T03:00:00+00:00"

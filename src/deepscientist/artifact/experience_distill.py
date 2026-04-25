@@ -373,6 +373,26 @@ def read_distill_reviews(artifacts_dir: Path) -> list[dict[str, Any]]:
     return out
 
 
+def collect_reviewed_run_ids(
+    reviews: list[dict[str, Any]],
+) -> tuple[set[str], str | None]:
+    """Aggregate reviewed run ids and the latest review timestamp.
+
+    Returns:
+      (reviewed_set, cursor_run_created_at)
+      cursor_run_created_at is the max ISO created_at across reviews, or None if absent.
+    """
+    reviewed_set: set[str] = set()
+    cursor_run_created_at: str | None = None
+    for rec in reviews:
+        for rid in rec.get("reviewed_run_ids") or []:
+            reviewed_set.add(str(rid))
+        ts = str(rec.get("created_at") or "")
+        if ts and (cursor_run_created_at is None or ts > cursor_run_created_at):
+            cursor_run_created_at = ts
+    return reviewed_set, cursor_run_created_at
+
+
 def evaluate_distill_gate(
     quest_root: Path,
     artifacts_dir: Path,
@@ -389,14 +409,7 @@ def evaluate_distill_gate(
     if not is_distill_on(quest_root):
         return None
     reviews = read_distill_reviews(artifacts_dir)
-    reviewed_set: set[str] = set()
-    cursor_created_at: str | None = None
-    for rec in reviews:
-        for rid in rec.get("reviewed_run_ids") or []:
-            reviewed_set.add(str(rid))
-        ts = str(rec.get("created_at") or "")
-        if ts and (cursor_created_at is None or ts > cursor_created_at):
-            cursor_created_at = ts
+    reviewed_set, cursor_created_at = collect_reviewed_run_ids(reviews)
     candidates = [
         rec for rec in iter_distill_candidate_records(artifacts_dir)
         if str(rec.get("artifact_id") or "") not in reviewed_set
