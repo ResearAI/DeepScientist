@@ -492,12 +492,24 @@ def note_command(home: Path, quest_id: str, text: str) -> int:
 
 
 def distill_quest_command(home: Path, quest_id: str) -> int:
-    from .artifact.experience_distill import emit_experience_drafts, iter_analysis_slice_records
+    from .artifact.experience_distill import (
+        emit_experience_drafts,
+        iter_distill_candidate_records,
+        read_distill_reviews,
+    )
 
     quest_root = home / "quests" / quest_id
     artifacts_dir = quest_root / "artifacts"
     drafts_root = home / "drafts" / "experiences"
-    records = list(iter_analysis_slice_records(artifacts_dir))
+    reviews = read_distill_reviews(artifacts_dir)
+    reviewed_set: set[str] = set()
+    for r in reviews:
+        for rid in r.get("reviewed_run_ids") or []:
+            reviewed_set.add(str(rid))
+    records = [
+        r for r in iter_distill_candidate_records(artifacts_dir)
+        if str(r.get("artifact_id") or "") not in reviewed_set
+    ]
     written = emit_experience_drafts(quest_id=quest_id, records=records, drafts_root=drafts_root)
     print(
         json.dumps(

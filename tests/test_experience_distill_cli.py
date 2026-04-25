@@ -137,3 +137,84 @@ def test_distill_quest_cli_end_to_end(tmp_path: Path, capsys):
     payload = json.loads(captured.out)
     assert payload["quest_id"] == quest_id
     assert payload["drafts"] == 1
+
+
+def test_distill_quest_command_includes_main_experiment_and_experiment_kinds(tmp_path: Path):
+    """Retroactive CLI must emit drafts for analysis.slice + main_experiment + experiment, not just analysis.slice."""
+    from deepscientist.cli import distill_quest_command
+    from deepscientist.config import ConfigManager
+    from deepscientist.home import ensure_home_layout, repo_root
+    from deepscientist.quest import QuestService
+    from deepscientist.skills import SkillInstaller
+    from deepscientist.artifact import ArtifactService
+    import yaml
+
+    home = tmp_path / "DSHome"
+    ensure_home_layout(home)
+    ConfigManager(home).ensure_files()
+    quest_service = QuestService(home, skill_installer=SkillInstaller(repo_root(), home))
+    quest = quest_service.create("CLI candidates demo")
+    quest_id = quest["quest_id"]
+    quest_root = home / "quests" / quest_id
+
+    # Enable distill (some downstream emit logic may need it; harmless if not)
+    quest_yaml = quest_root / "quest.yaml"
+    payload = yaml.safe_load(quest_yaml.read_text(encoding="utf-8")) or {}
+    contract = payload.get("startup_contract") if isinstance(payload.get("startup_contract"), dict) else {}
+    contract["experience_distill"] = {"mode": "on"}
+    payload["startup_contract"] = contract
+    quest_yaml.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    service = ArtifactService(home)
+    service.record(quest_root, {"kind": "run", "run_kind": "analysis.slice", "status": "completed", "run_id": "cmp:s1", "summary": "slice"})
+    service.record(quest_root, {"kind": "run", "run_kind": "main_experiment", "status": "completed", "run_id": "main:1", "summary": "main"})
+    service.record(quest_root, {"kind": "run", "run_kind": "experiment", "status": "completed", "run_id": "abl:1", "summary": "ablation"})
+
+    rc = distill_quest_command(home, quest_id)
+    assert rc == 0
+    drafts_dir = home / "drafts" / "experiences" / quest_id
+    drafts = sorted(drafts_dir.glob("*.md"))
+    assert len(drafts) == 3, f"expected 3 drafts (analysis.slice + main_experiment + experiment); got {len(drafts)}"
+
+
+def test_distill_quest_command_excludes_already_reviewed_runs(tmp_path: Path):
+    """Retroactive CLI must skip runs already covered by distill_review records."""
+    from deepscientist.cli import distill_quest_command
+    from deepscientist.config import ConfigManager
+    from deepscientist.home import ensure_home_layout, repo_root
+    from deepscientist.quest import QuestService
+    from deepscientist.skills import SkillInstaller
+    from deepscientist.artifact import ArtifactService
+    import yaml
+
+    home = tmp_path / "DSHome"
+    ensure_home_layout(home)
+    ConfigManager(home).ensure_files()
+    quest_service = QuestService(home, skill_installer=SkillInstaller(repo_root(), home))
+    quest = quest_service.create("CLI exclude reviewed demo")
+    quest_id = quest["quest_id"]
+    quest_root = home / "quests" / quest_id
+
+    quest_yaml = quest_root / "quest.yaml"
+    payload = yaml.safe_load(quest_yaml.read_text(encoding="utf-8")) or {}
+    contract = payload.get("startup_contract") if isinstance(payload.get("startup_contract"), dict) else {}
+    contract["experience_distill"] = {"mode": "on"}
+    payload["startup_contract"] = contract
+    quest_yaml.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    service = ArtifactService(home)
+    run_a = service.record(quest_root, {"kind": "run", "run_kind": "main_experiment", "status": "completed", "run_id": "main:1", "summary": "A"})
+    run_b = service.record(quest_root, {"kind": "run", "run_kind": "main_experiment", "status": "completed", "run_id": "main:2", "summary": "B"})
+    # Mark run A as reviewed
+    service.record(quest_root, {
+        "kind": "distill_review",
+        "reviewed_run_ids": [run_a["artifact_id"]],
+        "cards_written": [],
+        "reason_if_empty": "smoke",
+    })
+
+    rc = distill_quest_command(home, quest_id)
+    assert rc == 0
+    drafts_dir = home / "drafts" / "experiences" / quest_id
+    drafts = sorted(drafts_dir.glob("*.md"))
+    assert len(drafts) == 1, f"expected 1 draft (only run B unreviewed); got {len(drafts)}"

@@ -293,7 +293,7 @@ def emit_experience_drafts(
     TODO placeholders for claim/mechanism/conditions/confidence. The
     human reviewer edits these and promotes the card to global memory.
     """
-    slices = [r for r in records if _is_analysis_slice_terminal(r)]
+    slices = [r for r in records if _is_distill_candidate(r, DISTILL_CANDIDATE_RUN_KINDS)]
     quest_dir = drafts_root / quest_id
     quest_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
