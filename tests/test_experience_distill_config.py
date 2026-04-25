@@ -119,6 +119,8 @@ def test_read_recall_priors_mode_defaults_off_when_no_yaml(tmp_path: Path) -> No
 
 def test_read_recall_priors_mode_independent_of_distill(tmp_path: Path) -> None:
     """recall_priors and experience_distill are separate fields."""
+    from deepscientist.artifact.experience_distill import is_distill_on
+
     quest_root = tmp_path / "quest"
     quest_root.mkdir()
     (quest_root / "quest.yaml").write_text(
@@ -126,3 +128,4 @@ def test_read_recall_priors_mode_independent_of_distill(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert is_recall_priors_on(quest_root) is True
+    assert is_distill_on(quest_root) is False
