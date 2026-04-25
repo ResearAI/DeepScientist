@@ -2706,3 +2706,72 @@ def test_list_distill_candidates_includes_summary_metadata(tmp_path):
     assert cand["status"] == "completed"
     assert cand["summary"] == "Ablation A vs B"
     assert cand["run_id"] == "exp:1"
+
+
+def test_list_distill_candidates_respects_active_worktree_workspace(tmp_path):
+    """When _workspace_root_for returns a worktree dir different from quest_root,
+    list_distill_candidates must read artifacts from the worktree dir, not quest_root."""
+    from deepscientist.artifact import ArtifactService
+    from deepscientist.config import ConfigManager
+    from deepscientist.home import ensure_home_layout, repo_root
+    from deepscientist.quest import QuestService
+    from deepscientist.skills import SkillInstaller
+    import yaml
+
+    home = tmp_path / "DSHome"
+    ensure_home_layout(home)
+    ConfigManager(home).ensure_files()
+    quest_service = QuestService(home, skill_installer=SkillInstaller(repo_root(), home))
+    quest = quest_service.create("Distill worktree demo")
+    quest_id = quest["quest_id"]
+    quest_root = home / "quests" / quest_id
+
+    # Enable distill
+    quest_yaml = quest_root / "quest.yaml"
+    payload = yaml.safe_load(quest_yaml.read_text(encoding="utf-8")) or {}
+    contract = payload.get("startup_contract") if isinstance(payload.get("startup_contract"), dict) else {}
+    contract["experience_distill"] = {"mode": "on"}
+    payload["startup_contract"] = contract
+    quest_yaml.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    # Create a fake worktree directory separate from quest_root
+    worktree_root = tmp_path / "worktree-branch"
+    worktree_root.mkdir(parents=True)
+
+    service = ArtifactService(home)
+
+    # Monkeypatch _workspace_root_for on this service instance to return worktree_root
+    original_workspace_root_for = service._workspace_root_for
+    service._workspace_root_for = lambda qr, wr=None: worktree_root  # type: ignore[method-assign]
+
+    # Write a run artifact directly into the worktree's artifacts dir
+    (worktree_root / "artifacts").mkdir(parents=True, exist_ok=True)
+    import json as _json
+    artifact_id = "run-worktree-001"
+    run_record = {
+        "artifact_id": artifact_id,
+        "kind": "run",
+        "run_kind": "main_experiment",
+        "status": "completed",
+        "run_id": "wt:1",
+        "summary": "Worktree run",
+        "branch": "feat-wt",
+        "created_at": "2026-01-01T00:00:00",
+        "path": str(worktree_root / "artifacts" / f"run-{artifact_id}.json"),
+    }
+    (worktree_root / "artifacts" / f"run-{artifact_id}.json").write_text(
+        _json.dumps(run_record), encoding="utf-8"
+    )
+    (worktree_root / "artifacts" / "_index.jsonl").write_text(
+        _json.dumps({"artifact_id": artifact_id, "kind": "run", "path": str(run_record["path"])}) + "\n",
+        encoding="utf-8",
+    )
+
+    result = service.list_distill_candidates(quest_root)
+    # Restore original
+    service._workspace_root_for = original_workspace_root_for  # type: ignore[method-assign]
+
+    candidate_ids = {c["artifact_id"] for c in result["candidates"]}
+    assert artifact_id in candidate_ids, (
+        f"list_distill_candidates did not read from worktree artifacts dir; candidates={result['candidates']}"
+    )

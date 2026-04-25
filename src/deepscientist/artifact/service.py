@@ -7466,7 +7466,8 @@ class ArtifactService:
             iter_distill_candidate_records,
         )
 
-        artifacts_dir = quest_root / "artifacts"
+        write_root = self._workspace_root_for(quest_root)
+        artifacts_dir = write_root / "artifacts"
         if not is_distill_on(quest_root):
             return {
                 "ok": True,
