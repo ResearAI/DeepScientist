@@ -237,6 +237,13 @@ const copy = {
     researchPaperEnabledBody: 'Keep paper-oriented analysis and writing in scope. A strong run alone is not the endpoint.',
     researchPaperDisabled: 'Algorithm-first mode',
     researchPaperDisabledBody: 'Skip default paper drafting and keep iterating toward the strongest justified method.',
+    distillLabel: 'Experience distillation',
+    distillHelp:
+      'Opt-in. When on, completed analysis slices are routed through the distill companion skill to extract reusable causal intuition into global memory. Default off to keep short runs light.',
+    distillEnabled: 'Distill on',
+    distillEnabledBody: 'After each completed analysis slice, run the distill skill and persist new experience cards into global memory.',
+    distillDisabled: 'Distill off',
+    distillDisabledBody: 'Analysis slices complete without triggering distillation. Suitable for throwaway or very short runs.',
     deliveryModeLabel: 'Delivery mode',
     languageLabel: 'User language',
     languageHelp: 'The launch instructions and later communication will prefer this language by default.',
@@ -626,6 +633,13 @@ const copy = {
     researchPaperEnabledBody: '保持论文导向的分析与写作流程。单次较强实验结果本身不构成终点。',
     researchPaperDisabled: '仅追求最佳算法',
     researchPaperDisabledBody: '默认不进入论文写作，重点持续迭代并追求更强、证据更扎实的方法结果。',
+    distillLabel: '经验蒸馏',
+    distillHelp:
+      '可选开启。开启后，每个完成的 analysis slice 都会触发 distill 伴随技能，把可复用的因果直觉沉淀到全局记忆中。默认关闭以保持短跑任务轻量。',
+    distillEnabled: '开启蒸馏',
+    distillEnabledBody: '每个 analysis slice 跑完后自动调用 distill 技能，把新经验卡片写入全局记忆。',
+    distillDisabled: '关闭蒸馏',
+    distillDisabledBody: '分析切片直接结束，不触发蒸馏。适合一次性或很短的任务。',
     deliveryModeLabel: '交付模式',
     languageLabel: '用户语言',
     languageHelp: '默认希望启动说明和后续交流优先使用的语言。',
@@ -2047,6 +2061,7 @@ function buildTutorialStartResearchExample(language: 'en' | 'zh'): Partial<Start
       review_materials: '',
       custom_brief: '',
       user_language: 'zh',
+      experience_distill: false,
     }
   }
 
@@ -2088,6 +2103,7 @@ function buildTutorialStartResearchExample(language: 'en' | 'zh'): Partial<Start
     review_materials: '',
     custom_brief: '',
     user_language: 'en',
+    experience_distill: false,
   }
 }
 
@@ -3639,6 +3655,7 @@ export function CreateProjectDialog({
       review_materials: next.review_materials,
       custom_brief: next.custom_brief,
       user_language: next.user_language,
+      experience_distill: next.experience_distill,
     })
   }
 
@@ -3798,6 +3815,7 @@ export function CreateProjectDialog({
       resource_policy: derivedFields.resource_policy,
       time_budget_hours: Number.isFinite(timeBudget) && timeBudget > 0 ? timeBudget : null,
       git_strategy: derivedFields.git_strategy,
+      experience_distill: saved.experience_distill,
       runtime_constraints: saved.runtime_constraints,
       objectives: sanitizeLines(saved.objectives),
       baseline_urls: sanitizeLines(saved.baseline_urls),
@@ -4355,6 +4373,27 @@ export function CreateProjectDialog({
                     </div>
                   </InlineField>
                 ) : null}
+                <InlineField label={t.distillLabel} help={t.distillHelp} hint={t.distillHelp}>
+                  <div className="rounded-[14px] border border-[rgba(45,42,38,0.08)] bg-white/70 px-3 py-3 dark:border-[rgba(45,42,38,0.08)] dark:bg-white/76">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">
+                          {form.experience_distill ? t.distillEnabled : t.distillDisabled}
+                        </div>
+                        <div className="mt-1 text-[11px] leading-5 text-[rgba(86,82,77,0.82)] dark:text-[rgba(86,82,77,0.82)]">
+                          {form.experience_distill ? t.distillEnabledBody : t.distillDisabledBody}
+                        </div>
+                      </div>
+                      <AnimatedCheckbox
+                        checked={form.experience_distill}
+                        onChange={(checked) => setField('experience_distill', checked)}
+                        disabled={manualOverride}
+                        size="md"
+                        className="shrink-0"
+                      />
+                    </div>
+                  </div>
+                </InlineField>
                 <div className="rounded-[14px] border border-[rgba(45,42,38,0.08)] bg-[rgba(244,239,233,0.52)] px-3 py-3 dark:border-[rgba(45,42,38,0.08)] dark:bg-[rgba(244,239,233,0.62)]">
                   <div className="text-[11px] font-medium text-[rgba(75,73,69,0.78)] dark:text-[rgba(75,73,69,0.78)]">
                     {t.derivedPolicyTitle}

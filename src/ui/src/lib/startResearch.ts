@@ -71,6 +71,7 @@ export type StartResearchTemplate = {
   review_materials: string
   custom_brief: string
   user_language: 'en' | 'zh'
+  experience_distill: boolean
 }
 
 export type StartResearchContractFields = {
@@ -201,6 +202,7 @@ export function defaultStartResearchTemplate(language: 'en' | 'zh'): StartResear
     review_materials: '',
     custom_brief: '',
     user_language: language,
+    experience_distill: false,
   }
 }
 
@@ -323,6 +325,7 @@ export function listReferenceStartResearchTemplates(): StartResearchTemplateEntr
     review_materials: '',
     custom_brief: '',
     user_language: 'zh',
+    experience_distill: false,
   }
 
   const enTemplate: StartResearchTemplate = {
@@ -376,6 +379,7 @@ export function listReferenceStartResearchTemplates(): StartResearchTemplateEntr
     review_materials: '',
     custom_brief: '',
     user_language: 'en',
+    experience_distill: false,
   }
 
   const templates = [
@@ -602,6 +606,7 @@ function sanitizeTemplate(input: PersistedStartResearchTemplate): StartResearchT
     review_materials: String(input.review_materials || '').trim(),
     custom_brief: String(input.custom_brief || '').trim(),
     user_language: input.user_language === 'en' ? 'en' : 'zh',
+    experience_distill: input.experience_distill === true,
   }
 }
 
