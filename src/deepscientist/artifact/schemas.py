@@ -11,6 +11,7 @@ ARTIFACT_DIRS = {
     "report": "reports",
     "approval": "approvals",
     "graph": "graphs",
+    "distill_review": "distill_reviews",
 }
 
 DECISION_ACTIONS = {
@@ -48,6 +49,44 @@ def validate_artifact_payload(payload: dict) -> list[str]:
             errors.append(f"Unknown decision action: {action}")
     if kind == "run" and not payload.get("run_kind"):
         errors.append("Run artifact requires `run_kind`.")
+    if kind == "distill_review":
+        reviewed = payload.get("reviewed_run_ids") or []
+        if not isinstance(reviewed, list) or not reviewed:
+            errors.append("distill_review artifact requires non-empty `reviewed_run_ids`.")
+            return errors
+        cards = payload.get("cards_written")
+        if cards is None or not isinstance(cards, list):
+            errors.append("distill_review artifact requires `cards_written` (may be empty list).")
+            return errors
+        if not cards and not str(payload.get("reason_if_empty") or "").strip():
+            errors.append(
+                "distill_review with empty `cards_written` requires `reason_if_empty`."
+            )
+        reviewed_set = set(str(rid) for rid in reviewed)
+        allowed_actions = {"new", "patch"}
+        allowed_scopes = {"global", "quest"}
+        for idx, card in enumerate(cards):
+            if not isinstance(card, dict):
+                errors.append(f"distill_review.cards_written[{idx}] must be an object.")
+                continue
+            target = str(card.get("target_run_id") or "")
+            if target not in reviewed_set:
+                errors.append(
+                    f"distill_review.cards_written[{idx}].target_run_id `{target}` "
+                    f"must be present in `reviewed_run_ids`."
+                )
+            action = str(card.get("action") or "")
+            if action not in allowed_actions:
+                errors.append(
+                    f"distill_review.cards_written[{idx}].action `{action}` "
+                    f"must be one of {sorted(allowed_actions)}."
+                )
+            scope = str(card.get("scope") or "")
+            if scope not in allowed_scopes:
+                errors.append(
+                    f"distill_review.cards_written[{idx}].scope `{scope}` "
+                    f"must be one of {sorted(allowed_scopes)}."
+                )
     return errors
 
 
@@ -70,4 +109,6 @@ def guidance_for_kind(kind: str) -> str:
         return "Approval captured. The quest may proceed with the approved step."
     if kind == "graph":
         return "Graph exported. Share the preview or attach it to a status response."
+    if kind == "distill_review":
+        return "Distill review recorded. The finalize gate cursor advances; resume the original write/finalize route."
     return "Artifact stored. Refresh quest status and continue from the latest durable state."
