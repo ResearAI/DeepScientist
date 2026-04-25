@@ -120,3 +120,13 @@ def test_handles_none_guidance_vm(tmp_path: Path):
     out = maybe_inject_distill_finalize_gate(qr, artifacts, _decision_record("write"), None)
     assert out is not None
     assert out["recommended_skill"] == "distill"
+
+
+def test_redirect_when_decision_action_has_uppercase_or_whitespace(tmp_path: Path):
+    qr = _make_quest(tmp_path)
+    artifacts = qr / "artifacts"
+    _seed_runs(artifacts, [{"artifact_id": "run-1", "kind": "run", "run_kind": "main_experiment", "status": "completed"}])
+    record = _decision_record("  Write  ")  # whitespace + capitalized
+    out = maybe_inject_distill_finalize_gate(qr, artifacts, record, _baseline_guidance())
+    assert out["recommended_skill"] == "distill"
+    assert out["pending_distill_count"] == 1

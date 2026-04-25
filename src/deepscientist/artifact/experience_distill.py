@@ -427,9 +427,9 @@ def maybe_inject_distill_finalize_gate(
     recommended_skill to `distill` and surface the candidate count. Returns
     `guidance_vm` unchanged (same identity) when the gate does not fire.
     """
-    if str(record.get("kind") or "") != "decision":
+    if str(record.get("kind") or "").strip().lower() != "decision":
         return guidance_vm
-    if str(record.get("action") or "") not in _FINALIZE_GATE_ACTIONS:
+    if str(record.get("action") or "").strip().lower() not in _FINALIZE_GATE_ACTIONS:
         return guidance_vm
     gate = evaluate_distill_gate(quest_root, artifacts_dir)
     if gate is None:
