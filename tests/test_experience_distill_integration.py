@@ -196,3 +196,84 @@ def test_finalize_gate_clears_after_distill_review(home_with_quest):
     )
     second_gvm = second_decision["guidance_vm"]
     assert second_gvm["recommended_skill"] != "distill"
+
+
+def test_full_finalize_gate_lifecycle(home_with_quest):
+    """Walk the full distill gate lifecycle through ArtifactService:
+    seed run → decision(write) gate fires → list_distill_candidates surfaces it
+    → distill_review lands → decision(write) gate clears → candidates empty.
+    """
+    home, quest_id = home_with_quest
+    quest_root = _enable_distill(home, quest_id)
+    service = ArtifactService(home)
+
+    # Step 2: Record a completed main_experiment.
+    main_run = service.record(
+        quest_root,
+        {
+            "kind": "run",
+            "run_kind": "main_experiment",
+            "status": "completed",
+            "run_id": "main:1",
+            "summary": "Main experiment done",
+        },
+    )
+    main_run_id = main_run["artifact_id"]
+
+    # Step 3: First decision(write) → gate fires.
+    first_decision = service.record(
+        quest_root,
+        {
+            "kind": "decision",
+            "action": "write",
+            "verdict": "accept_positive_result",
+            "reason": "Sufficient evidence for a paper",
+        },
+    )
+    first_gvm = first_decision["guidance_vm"]
+    assert first_gvm["recommended_skill"] == "distill"
+    assert first_gvm["gate"] == "finalize"
+    assert first_gvm["pending_distill_count"] == 1
+    assert main_run_id in first_gvm["pending_distill_ids"]
+
+    # Step 4: list_distill_candidates surfaces the candidate.
+    candidates_before = service.list_distill_candidates(quest_root)
+    assert candidates_before["experience_distill_on"] is True
+    assert len(candidates_before["candidates"]) == 1
+    assert candidates_before["candidates"][0]["artifact_id"] == main_run_id
+    assert candidates_before["candidates"][0]["run_id"] == "main:1"
+    assert candidates_before["candidates"][0]["run_kind"] == "main_experiment"
+    assert main_run_id not in candidates_before["reviewed_run_ids"]
+
+    # Step 5: Record distill_review covering the run.
+    review = service.record(
+        quest_root,
+        {
+            "kind": "distill_review",
+            "reviewed_run_ids": [main_run_id],
+            "cards_written": [],
+            "reason_if_empty": "smoke test",
+        },
+    )
+    assert review["artifact_id"].startswith("distill_review")
+
+    # Step 6: Second decision(write) — gate clears.
+    second_decision = service.record(
+        quest_root,
+        {
+            "kind": "decision",
+            "action": "write",
+            "verdict": "accept_positive_result",
+            "reason": "Second attempt after distill",
+        },
+    )
+    second_gvm = second_decision["guidance_vm"]
+    assert second_gvm["recommended_skill"] == "write"
+    # Gate metadata should be absent (the clear branch strips it)
+    assert "gate" not in second_gvm or second_gvm.get("gate") != "finalize"
+
+    # Step 7: list_distill_candidates after review.
+    candidates_after = service.list_distill_candidates(quest_root)
+    assert candidates_after["experience_distill_on"] is True
+    assert candidates_after["candidates"] == []
+    assert main_run_id in candidates_after["reviewed_run_ids"]
