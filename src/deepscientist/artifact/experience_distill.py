@@ -344,3 +344,68 @@ def _render_experience_draft(
         "Write 3–8 lines of prose explaining the causal story. Delete this guidance\n"
         "block when you promote the card to global memory.\n"
     )
+
+
+def _read_distill_reviews(artifacts_dir: Path) -> list[dict[str, Any]]:
+    import json
+    index_path = artifacts_dir / "_index.jsonl"
+    if not index_path.exists():
+        return []
+    out: list[dict[str, Any]] = []
+    for line in index_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except Exception:
+            continue
+        if entry.get("kind") != "distill_review":
+            continue
+        record_path = Path(str(entry.get("path") or ""))
+        if not record_path.exists():
+            continue
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        out.append(record)
+    return out
+
+
+def evaluate_distill_gate(
+    quest_root: Path,
+    artifacts_dir: Path,
+) -> dict[str, Any] | None:
+    """Return a gate payload if the agent should be routed to distill, else None.
+
+    Returned dict shape:
+      {
+        "pending_distill_count": int,        # total candidates past the reviewed set
+        "pending_distill_ids": list[str],    # first 5 candidate artifact_ids
+        "cursor_run_created_at": str | None, # latest review timestamp, if any
+      }
+    """
+    if not is_distill_on(quest_root):
+        return None
+    reviews = _read_distill_reviews(artifacts_dir)
+    reviewed_set: set[str] = set()
+    cursor_created_at: str | None = None
+    for rec in reviews:
+        for rid in rec.get("reviewed_run_ids") or []:
+            reviewed_set.add(str(rid))
+        ts = str(rec.get("created_at") or "")
+        if ts and (cursor_created_at is None or ts > cursor_created_at):
+            cursor_created_at = ts
+    candidates = [
+        rec for rec in iter_distill_candidate_records(artifacts_dir)
+        if str(rec.get("artifact_id") or "") not in reviewed_set
+    ]
+    if not candidates:
+        return None
+    ids = [str(rec.get("artifact_id") or "") for rec in candidates]
+    return {
+        "pending_distill_count": len(candidates),
+        "pending_distill_ids": ids[:5],
+        "cursor_run_created_at": cursor_created_at,
+    }
