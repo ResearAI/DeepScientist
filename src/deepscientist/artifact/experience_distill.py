@@ -230,6 +230,57 @@ def iter_analysis_slice_records(artifacts_dir: Path) -> Iterable[dict[str, Any]]
             yield record
 
 
+DISTILL_CANDIDATE_RUN_KINDS: frozenset[str] = frozenset(
+    {"analysis.slice", "main_experiment", "experiment"}
+)
+
+
+def _is_distill_candidate(record: dict[str, Any], allowed_kinds: frozenset[str]) -> bool:
+    if str(record.get("kind") or "") != "run":
+        return False
+    if str(record.get("run_kind") or "") not in allowed_kinds:
+        return False
+    status = str(record.get("status") or "").strip().lower()
+    return status in {"completed", "success", "succeeded", "done"}
+
+
+def iter_distill_candidate_records(
+    artifacts_dir: Path,
+    *,
+    run_kinds: frozenset[str] | set[str] | None = None,
+) -> Iterable[dict[str, Any]]:
+    """Yield completed run records eligible for distillation.
+
+    Default kinds cover analysis.slice, main_experiment, and experiment.
+    Pass `run_kinds` to narrow or widen the scope.
+    """
+    import json
+
+    allowed = frozenset(run_kinds) if run_kinds else DISTILL_CANDIDATE_RUN_KINDS
+    index_path = artifacts_dir / "_index.jsonl"
+    if not index_path.exists():
+        return
+    for line in index_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except Exception:
+            continue
+        if entry.get("kind") != "run":
+            continue
+        record_path = Path(str(entry.get("path") or ""))
+        if not record_path.exists():
+            continue
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if _is_distill_candidate(record, allowed):
+            yield record
+
+
 def emit_experience_drafts(
     *,
     quest_id: str,
