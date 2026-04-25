@@ -175,6 +175,7 @@ class MemoryService:
                 "writable": writable,
                 "scope": scope,
                 "shared": shared,
+                "metadata": metadata,
             }
             if source_quest_id:
                 entry["source_quest_id"] = source_quest_id
@@ -345,18 +346,15 @@ class MemoryService:
                 source_quest_id=source_quest_id,
                 shared=shared,
             ):
-                metadata, _body = load_markdown_document(Path(raw["path"]))
-                rows.append(self._summary_row(raw, metadata, source_scope))
+                row = self._summary_row(raw, raw["metadata"], source_scope)
+                # Pre-attach `path` for deterministic tie-break in `_card_sort_key`;
+                # popped below before returning so consumers don't see it.
+                row["path"] = raw["path"]
+                rows.append(row)
 
-        def _sort_key(row: dict[str, Any]) -> tuple[float, str]:
-            ts = str(row.get("updated_at") or "")
-            try:
-                ts_float = -datetime.fromisoformat(ts).timestamp() if ts else 0.0
-            except ValueError:
-                ts_float = 0.0
-            return (ts_float, str(row.get("card_id") or ""))
-
-        rows.sort(key=_sort_key)
+        rows.sort(key=self._card_sort_key, reverse=True)
+        for row in rows:
+            row.pop("path", None)
         return rows
 
     @staticmethod

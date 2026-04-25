@@ -5726,9 +5726,37 @@ def test_list_knowledge_summaries_sorted_recent_first(temp_home: Path) -> None:
         scope="global", kind="knowledge", title="Older",
         markdown="---\nclaim: old\n---\n", quest_id="000",
     )
+    # `utc_now()` strips microseconds, so two writes within the same second share
+    # an identical `updated_at` and the sort tie-break (path) would not match the
+    # insertion order. Sleep just over one second to guarantee distinct timestamps.
+    time.sleep(1.1)
     memory.write_card(
         scope="global", kind="knowledge", title="Newer",
         markdown="---\nclaim: new\n---\n", quest_id="001",
     )
     rows = memory.list_knowledge_summaries(scope="global")
     assert [r["title"] for r in rows] == ["Newer", "Older"]
+
+
+def test_list_knowledge_summaries_visible_scope_includes_global_and_quest(temp_home: Path) -> None:
+    memory = MemoryService(temp_home)
+    quest_root = temp_home / "quests" / "010"
+    quest_root.mkdir(parents=True)
+    # `_iter_initialized_quest_roots` yields any directory under `quests/`
+    # that contains a `quest.yaml` marker.
+    (quest_root / "quest.yaml").write_text("quest_id: '010'\n", encoding="utf-8")
+    memory.write_card(
+        scope="global", kind="knowledge", title="Global card",
+        markdown="---\nclaim: global claim\n---\n", quest_id="000",
+    )
+    memory.write_card(
+        scope="quest", kind="knowledge", title="Quest card",
+        markdown="---\nclaim: quest claim\n---\n",
+        quest_root=quest_root, quest_id="010",
+    )
+    rows = memory.list_knowledge_summaries(scope="visible")
+    titles = {r["title"] for r in rows}
+    assert "Global card" in titles
+    assert "Quest card" in titles
+    scopes = {r["scope"] for r in rows}
+    assert scopes == {"global", "quest"}
