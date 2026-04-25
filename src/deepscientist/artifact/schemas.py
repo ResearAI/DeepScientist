@@ -35,6 +35,7 @@ DECISION_ACTIONS = {
 
 DISTILL_CARD_ACTIONS = {"new", "patch"}
 DISTILL_CARD_SCOPES = {"global", "quest"}
+DISTILL_NEIGHBOR_DECISIONS = {"patch", "new", "neighbor_but_separate"}
 
 
 def validate_artifact_payload(payload: dict) -> list[str]:
@@ -88,6 +89,34 @@ def validate_artifact_payload(payload: dict) -> list[str]:
                     f"distill_review.cards_written[{idx}].scope `{scope}` "
                     f"must be one of {sorted(DISTILL_CARD_SCOPES)}."
                 )
+        neighbor_decisions = payload.get("neighbor_decisions")
+        if neighbor_decisions is not None:
+            if not isinstance(neighbor_decisions, list):
+                errors.append("distill_review.neighbor_decisions must be a list when present.")
+            else:
+                for idx, entry in enumerate(neighbor_decisions):
+                    if not isinstance(entry, dict):
+                        errors.append(
+                            f"distill_review.neighbor_decisions[{idx}] must be an object."
+                        )
+                        continue
+                    for key in ("candidate_card_id", "decision", "reason", "target_run_id"):
+                        if not str(entry.get(key) or "").strip():
+                            errors.append(
+                                f"distill_review.neighbor_decisions[{idx}] missing required key `{key}`."
+                            )
+                    decision = str(entry.get("decision") or "")
+                    if decision and decision not in DISTILL_NEIGHBOR_DECISIONS:
+                        errors.append(
+                            f"distill_review.neighbor_decisions[{idx}].decision `{decision}` "
+                            f"must be one of {sorted(DISTILL_NEIGHBOR_DECISIONS)}."
+                        )
+                    target = str(entry.get("target_run_id") or "")
+                    if target and target not in reviewed_set:
+                        errors.append(
+                            f"distill_review.neighbor_decisions[{idx}].target_run_id `{target}` "
+                            f"must be present in `reviewed_run_ids`."
+                        )
     return errors
 
 

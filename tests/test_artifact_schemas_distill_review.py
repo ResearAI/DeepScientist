@@ -149,3 +149,100 @@ def test_distill_review_rejects_card_invalid_scope():
         }
     )
     assert any("scope" in e for e in errors)
+
+
+def test_distill_review_neighbor_decisions_omitted_is_valid() -> None:
+    payload = {
+        "kind": "distill_review",
+        "reviewed_run_ids": ["run-1"],
+        "cards_written": [],
+        "reason_if_empty": "smoke run",
+    }
+    assert validate_artifact_payload(payload) == []
+
+
+def test_distill_review_neighbor_decisions_empty_list_is_valid() -> None:
+    payload = {
+        "kind": "distill_review",
+        "reviewed_run_ids": ["run-1"],
+        "cards_written": [],
+        "reason_if_empty": "smoke run",
+        "neighbor_decisions": [],
+    }
+    assert validate_artifact_payload(payload) == []
+
+
+def test_distill_review_neighbor_decisions_well_formed_is_valid() -> None:
+    payload = {
+        "kind": "distill_review",
+        "reviewed_run_ids": ["run-1"],
+        "cards_written": [
+            {
+                "card_id": "knowledge-abc",
+                "scope": "global",
+                "action": "patch",
+                "target_run_id": "run-1",
+            }
+        ],
+        "neighbor_decisions": [
+            {
+                "candidate_card_id": "knowledge-xyz",
+                "decision": "neighbor_but_separate",
+                "reason": "different mechanism",
+                "target_run_id": "run-1",
+            }
+        ],
+    }
+    assert validate_artifact_payload(payload) == []
+
+
+def test_distill_review_neighbor_decisions_unknown_decision_rejected() -> None:
+    payload = {
+        "kind": "distill_review",
+        "reviewed_run_ids": ["run-1"],
+        "cards_written": [],
+        "reason_if_empty": "skipped",
+        "neighbor_decisions": [
+            {
+                "candidate_card_id": "knowledge-xyz",
+                "decision": "merge",  # not in the allowed set
+                "reason": "test",
+                "target_run_id": "run-1",
+            }
+        ],
+    }
+    errors = validate_artifact_payload(payload)
+    assert any("decision" in e.lower() for e in errors), errors
+
+
+def test_distill_review_neighbor_decisions_target_run_id_must_be_in_reviewed() -> None:
+    payload = {
+        "kind": "distill_review",
+        "reviewed_run_ids": ["run-1"],
+        "cards_written": [],
+        "reason_if_empty": "skipped",
+        "neighbor_decisions": [
+            {
+                "candidate_card_id": "knowledge-xyz",
+                "decision": "patch",
+                "reason": "test",
+                "target_run_id": "run-MISSING",
+            }
+        ],
+    }
+    errors = validate_artifact_payload(payload)
+    assert any("target_run_id" in e for e in errors), errors
+
+
+def test_distill_review_neighbor_decisions_missing_required_key_rejected() -> None:
+    payload = {
+        "kind": "distill_review",
+        "reviewed_run_ids": ["run-1"],
+        "cards_written": [],
+        "reason_if_empty": "skipped",
+        "neighbor_decisions": [
+            {"candidate_card_id": "knowledge-xyz", "decision": "patch"}
+        ],
+    }
+    errors = validate_artifact_payload(payload)
+    assert any("neighbor_decisions" in e for e in errors), errors
