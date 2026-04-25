@@ -400,6 +400,7 @@ def test_artifact_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
             "read_quest_documents",
             "get_conversation_context",
             "get_analysis_campaign",
+            "list_distill_candidates",
             "record_main_experiment",
             "create_analysis_campaign",
             "submit_paper_outline",
