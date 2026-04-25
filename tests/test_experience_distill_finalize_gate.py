@@ -87,7 +87,8 @@ def test_redirect_when_decision_write_with_pending_candidates(tmp_path: Path):
     assert "run-1" in out["pending_distill_ids"]
     assert out["experience_distill"] is True
     assert out["gate"] == "finalize"
-    assert any(r.get("recommended_skill") == "write" for r in out["alternative_routes"])
+    # Phase 3 Task 1: fire branch no longer appends a write/finalize fallback route.
+    assert not any(r.get("recommended_skill") == "write" for r in out["alternative_routes"])
 
 
 def test_redirect_when_decision_finalize_with_pending_candidates(tmp_path: Path):
@@ -171,8 +172,9 @@ def test_clear_branch_strips_all_injected_keys(tmp_path: Path):
         assert key not in out, f"clear branch should strip `{key}`"
 
 
-def test_clear_branch_drops_gate_appended_alternative_route(tmp_path: Path):
-    """The clear branch should remove the fire branch's appended fallback route."""
+def test_clear_branch_preserves_alternative_routes(tmp_path: Path):
+    """The clear branch passes alternative_routes through untouched (Phase 3 Task 1: no
+    longer filters the obsolete fire-branch fallback entry, since fire no longer appends one)."""
     qr = _make_quest(tmp_path)
     artifacts = qr / "artifacts"
     inbound = {
@@ -186,16 +188,83 @@ def test_clear_branch_drops_gate_appended_alternative_route(tmp_path: Path):
                 "recommended_action": "scout literature",
                 "reason": "Pre-existing route from upstream.",
             },
-            {
-                "recommended_skill": "write",
-                "recommended_action": "write",
-                "reason": "Original next step before the finalize gate fired.",
-            },
         ],
         "gate": "finalize",
     }
     out = maybe_inject_distill_finalize_gate(qr, artifacts, _decision_record("write"), inbound)
-    # Pre-existing route preserved; gate-appended route dropped.
+    # Pre-existing route preserved.
     reasons = [r.get("reason") for r in out.get("alternative_routes", [])]
     assert "Pre-existing route from upstream." in reasons
-    assert "Original next step before the finalize gate fired." not in reasons
+
+
+def test_finalize_gate_fire_does_not_append_write_fallback(tmp_path: Path) -> None:
+    """When the gate fires, alternative_routes must NOT contain a write/finalize fallback entry."""
+    quest_root = tmp_path / "quest"
+    quest_root.mkdir()
+    (quest_root / "quest.yaml").write_text(
+        "startup_contract:\n  experience_distill: on\n", encoding="utf-8"
+    )
+    artifacts_dir = quest_root / "artifacts"
+    artifacts_dir.mkdir()
+    # Seed one completed run that has not been distilled.
+    index = artifacts_dir / "_index.jsonl"
+    run_path = artifacts_dir / "runs" / "run-x.json"
+    run_path.parent.mkdir(parents=True)
+    run_path.write_text(
+        json.dumps({
+            "kind": "run", "run_kind": "main_experiment",
+            "status": "completed", "artifact_id": "run-x",
+        }),
+        encoding="utf-8",
+    )
+    index.write_text(
+        json.dumps({"kind": "run", "path": str(run_path)}) + "\n", encoding="utf-8"
+    )
+
+    decision = {"kind": "decision", "action": "write", "artifact_id": "decision-1"}
+    inbound = {"recommended_skill": "write", "recommended_action": "Draft the paper."}
+
+    out = maybe_inject_distill_finalize_gate(quest_root, artifacts_dir, decision, inbound)
+
+    assert out is not None
+    assert out["recommended_skill"] == "distill"
+    assert out["gate"] == "finalize"
+    routes = out.get("alternative_routes") or []
+    fallback_entries = [
+        r for r in routes
+        if isinstance(r, dict) and r.get("recommended_skill") == "write"
+    ]
+    assert fallback_entries == [], (
+        f"Expected no write-fallback in alternative_routes, got: {fallback_entries}"
+    )
+
+
+def test_finalize_gate_fire_uses_imperative_action_wording(tmp_path: Path) -> None:
+    quest_root = tmp_path / "quest"
+    quest_root.mkdir()
+    (quest_root / "quest.yaml").write_text(
+        "startup_contract:\n  experience_distill: on\n", encoding="utf-8"
+    )
+    artifacts_dir = quest_root / "artifacts"
+    artifacts_dir.mkdir()
+    run_path = artifacts_dir / "runs" / "run-x.json"
+    run_path.parent.mkdir(parents=True)
+    run_path.write_text(
+        json.dumps({
+            "kind": "run", "run_kind": "main_experiment",
+            "status": "completed", "artifact_id": "run-x",
+        }),
+        encoding="utf-8",
+    )
+    (artifacts_dir / "_index.jsonl").write_text(
+        json.dumps({"kind": "run", "path": str(run_path)}) + "\n", encoding="utf-8"
+    )
+
+    decision = {"kind": "decision", "action": "write", "artifact_id": "decision-1"}
+    out = maybe_inject_distill_finalize_gate(quest_root, artifacts_dir, decision, None)
+
+    assert out is not None
+    action = str(out["recommended_action"])
+    assert "Distill required" in action
+    assert "distill_review" in action
+    assert "paused" in action

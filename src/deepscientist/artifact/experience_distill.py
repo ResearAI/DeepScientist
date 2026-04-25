@@ -437,9 +437,6 @@ _FINALIZE_GATE_INJECTED_KEYS: frozenset[str] = frozenset({
     "source_artifact_id",
 })
 
-_FINALIZE_GATE_FALLBACK_REASON: str = "Original next step before the finalize gate fired."
-
-
 def maybe_inject_distill_finalize_gate(
     quest_root: Path,
     artifacts_dir: Path,
@@ -473,32 +470,19 @@ def maybe_inject_distill_finalize_gate(
                 cleared["recommended_skill"] = previous_skill
             if previous_action:
                 cleared["recommended_action"] = previous_action
-            existing_routes = base.get("alternative_routes")
-            if isinstance(existing_routes, list):
-                cleared["alternative_routes"] = [
-                    r for r in existing_routes
-                    if not (isinstance(r, dict) and r.get("reason") == _FINALIZE_GATE_FALLBACK_REASON)
-                ]
             return cleared
         return guidance_vm
     base = dict(guidance_vm) if isinstance(guidance_vm, dict) else {}
     previous_skill = str(base.get("recommended_skill") or "").strip() or None
     previous_action = str(base.get("recommended_action") or "").strip() or None
     routes = list(base.get("alternative_routes") or []) if isinstance(base.get("alternative_routes"), list) else []
-    if previous_skill and previous_skill != "distill":
-        routes.append(
-            {
-                "recommended_skill": previous_skill,
-                "recommended_action": previous_action or f"Resume `{previous_skill}` after distill_review is recorded.",
-                "reason": _FINALIZE_GATE_FALLBACK_REASON,
-            }
-        )
     return {
         **base,
         "recommended_skill": "distill",
         "recommended_action": (
-            "Review undistilled completed runs and record a `distill_review` "
-            "before resuming write/finalize."
+            "Distill required before write/finalize: scan completed runs, "
+            "write 0..N knowledge cards, record one distill_review. "
+            "The original write/finalize route is paused until distill_review lands."
         ),
         "previous_recommended_skill": previous_skill,
         "previous_recommended_action": previous_action,
