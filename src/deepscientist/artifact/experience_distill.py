@@ -409,3 +409,57 @@ def evaluate_distill_gate(
         "pending_distill_ids": ids[:5],
         "cursor_run_created_at": cursor_created_at,
     }
+
+
+_FINALIZE_GATE_ACTIONS: frozenset[str] = frozenset({"write", "finalize"})
+
+
+def maybe_inject_distill_finalize_gate(
+    quest_root: Path,
+    artifacts_dir: Path,
+    record: dict[str, Any],
+    guidance_vm: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Pre-write/pre-finalize sweep.
+
+    When the agent records `decision(action='write'|'finalize')` and the quest
+    has completed runs not yet covered by any `distill_review`, swap the
+    recommended_skill to `distill` and surface the candidate count. Returns
+    `guidance_vm` unchanged (same identity) when the gate does not fire.
+    """
+    if str(record.get("kind") or "") != "decision":
+        return guidance_vm
+    if str(record.get("action") or "") not in _FINALIZE_GATE_ACTIONS:
+        return guidance_vm
+    gate = evaluate_distill_gate(quest_root, artifacts_dir)
+    if gate is None:
+        return guidance_vm
+    base = dict(guidance_vm) if isinstance(guidance_vm, dict) else {}
+    previous_skill = str(base.get("recommended_skill") or "").strip() or None
+    previous_action = str(base.get("recommended_action") or "").strip() or None
+    routes = list(base.get("alternative_routes") or []) if isinstance(base.get("alternative_routes"), list) else []
+    if previous_skill and previous_skill != "distill":
+        routes.append(
+            {
+                "recommended_skill": previous_skill,
+                "recommended_action": previous_action or f"Resume `{previous_skill}` after distill_review is recorded.",
+                "reason": "Original next step before the finalize gate fired.",
+            }
+        )
+    return {
+        **base,
+        "recommended_skill": "distill",
+        "recommended_action": (
+            "Review undistilled completed runs and record a `distill_review` "
+            "before resuming write/finalize."
+        ),
+        "previous_recommended_skill": previous_skill,
+        "previous_recommended_action": previous_action,
+        "alternative_routes": routes,
+        "experience_distill": True,
+        "gate": "finalize",
+        "pending_distill_count": gate["pending_distill_count"],
+        "pending_distill_ids": gate["pending_distill_ids"],
+        "cursor_run_created_at": gate.get("cursor_run_created_at"),
+        "source_artifact_id": str(record.get("artifact_id") or ""),
+    }
