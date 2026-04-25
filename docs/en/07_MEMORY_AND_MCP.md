@@ -289,3 +289,7 @@ In `/projects/{id}` Studio trace:
 
 If the agent is not calling memory at all, the problem is prompt/skill behavior.
 If the agent is calling memory but Studio still looks like raw logs, the problem is UI rendering.
+
+## 8. Distill finalize gate
+
+When a quest enables `experience_distill` in its `startup_contract` (e.g. `experience_distill: {mode: on}`), DeepScientist activates a finalize gate that intercepts any `decision(action='write'|'finalize')` record when there are completed runs that have not yet been distilled. The gate injects a `guidance_vm` entry redirecting the agent to run the `distill` skill before proceeding to write. The `distill` skill calls `artifact.list_distill_candidates` — a built-in MCP tool in the `artifact` namespace — to enumerate the batch of undistilled completed runs visible under the active workspace. After the skill processes the batch, it records a `distill_review` artifact (listing the `reviewed_run_ids` and any `cards_written`) which advances the internal cursor; on the next `decision(write)` the gate finds no pending candidates and clears, allowing the quest to proceed normally.

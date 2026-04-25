@@ -557,3 +557,7 @@ Do not use a new MCP tool to fix a stage-discipline problem that belongs in a sk
 - [13 Core Architecture Guide](./13_CORE_ARCHITECTURE_GUIDE.md)
 - [06 Runtime and Canvas](./06_RUNTIME_AND_CANVAS.md)
 - [01 Settings Reference](./01_SETTINGS_REFERENCE.md)
+
+## 13. Distill finalize gate
+
+Quests opt into experience distillation by setting `experience_distill: {mode: on}` in the `startup_contract` field of `quest.yaml`. Once enabled, the finalize gate intercepts `decision(action='write'|'finalize')` whenever there are completed runs that have not yet been reviewed: it injects a `guidance_vm` directive pointing the agent at the `distill` skill before write is allowed. The `distill` skill uses the `artifact.list_distill_candidates` MCP tool (auto-approved for Codex) to enumerate the current batch of undistilled runs visible under the active workspace root. After distilling the batch, the skill records a `distill_review` artifact — specifying `reviewed_run_ids` (which must all reference known run artifact IDs) and any `cards_written` — which advances the cursor. On the subsequent `decision(write)` call the gate finds no pending candidates and clears, returning the quest to the normal finalize path.
