@@ -244,6 +244,13 @@ const copy = {
     distillEnabledBody: 'After each completed analysis slice, run the distill skill and persist new experience cards into global memory.',
     distillDisabled: 'Distill off',
     distillDisabledBody: 'Analysis slices complete without triggering distillation. Suitable for throwaway or very short runs.',
+    recallPriorsLabel: 'Recall priors',
+    recallPriorsHelp:
+      'Opt-in. When on, stage skills (scout / idea / baseline) call memory.list_knowledge_summaries before generating, so prior task experience is surfaced.',
+    recallPriorsEnabled: 'Recall priors on',
+    recallPriorsEnabledBody: 'Stage skills (scout / idea / baseline) call memory.list_knowledge_summaries before generating, so prior task experience is surfaced.',
+    recallPriorsDisabled: 'Recall priors off',
+    recallPriorsDisabledBody: 'Stage skills do not look at global knowledge before generating. Suitable when this quest has no overlap with prior work.',
     deliveryModeLabel: 'Delivery mode',
     languageLabel: 'User language',
     languageHelp: 'The launch instructions and later communication will prefer this language by default.',
@@ -640,6 +647,13 @@ const copy = {
     distillEnabledBody: '每个 analysis slice 跑完后自动调用 distill 技能，把新经验卡片写入全局记忆。',
     distillDisabled: '关闭蒸馏',
     distillDisabledBody: '分析切片直接结束，不触发蒸馏。适合一次性或很短的任务。',
+    recallPriorsLabel: '先验回忆',
+    recallPriorsHelp:
+      '可选开启。开启后，scout / idea / baseline 阶段开始前会调用 memory.list_knowledge_summaries，把过往任务经验拉出来再做决定。',
+    recallPriorsEnabled: '开启先验回忆',
+    recallPriorsEnabledBody: '在 scout / idea / baseline 阶段开始前调用 memory.list_knowledge_summaries，把过往任务经验拉出来再做决定。',
+    recallPriorsDisabled: '关闭先验回忆',
+    recallPriorsDisabledBody: '阶段技能不查全局知识，直接生成。适合与已有积累完全无关的新任务。',
     deliveryModeLabel: '交付模式',
     languageLabel: '用户语言',
     languageHelp: '默认希望启动说明和后续交流优先使用的语言。',
@@ -2062,6 +2076,7 @@ function buildTutorialStartResearchExample(language: 'en' | 'zh'): Partial<Start
       custom_brief: '',
       user_language: 'zh',
       experience_distill: false,
+      recall_priors: false,
     }
   }
 
@@ -2104,6 +2119,7 @@ function buildTutorialStartResearchExample(language: 'en' | 'zh'): Partial<Start
     custom_brief: '',
     user_language: 'en',
     experience_distill: false,
+    recall_priors: false,
   }
 }
 
@@ -3656,6 +3672,7 @@ export function CreateProjectDialog({
       custom_brief: next.custom_brief,
       user_language: next.user_language,
       experience_distill: next.experience_distill,
+      recall_priors: next.recall_priors,
     })
   }
 
@@ -3816,6 +3833,7 @@ export function CreateProjectDialog({
       time_budget_hours: Number.isFinite(timeBudget) && timeBudget > 0 ? timeBudget : null,
       git_strategy: derivedFields.git_strategy,
       experience_distill: saved.experience_distill,
+      recall_priors: saved.recall_priors,
       runtime_constraints: saved.runtime_constraints,
       objectives: sanitizeLines(saved.objectives),
       baseline_urls: sanitizeLines(saved.baseline_urls),
@@ -4387,6 +4405,27 @@ export function CreateProjectDialog({
                       <AnimatedCheckbox
                         checked={form.experience_distill}
                         onChange={(checked) => setField('experience_distill', checked)}
+                        disabled={manualOverride}
+                        size="md"
+                        className="shrink-0"
+                      />
+                    </div>
+                  </div>
+                </InlineField>
+                <InlineField label={t.recallPriorsLabel} help={t.recallPriorsHelp} hint={t.recallPriorsHelp}>
+                  <div className="rounded-[14px] border border-[rgba(45,42,38,0.08)] bg-white/70 px-3 py-3 dark:border-[rgba(45,42,38,0.08)] dark:bg-white/76">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-[rgba(38,36,33,0.95)] dark:text-[rgba(38,36,33,0.95)]">
+                          {form.recall_priors ? t.recallPriorsEnabled : t.recallPriorsDisabled}
+                        </div>
+                        <div className="mt-1 text-[11px] leading-5 text-[rgba(86,82,77,0.82)] dark:text-[rgba(86,82,77,0.82)]">
+                          {form.recall_priors ? t.recallPriorsEnabledBody : t.recallPriorsDisabledBody}
+                        </div>
+                      </div>
+                      <AnimatedCheckbox
+                        checked={form.recall_priors}
+                        onChange={(checked) => setField('recall_priors', checked)}
                         disabled={manualOverride}
                         size="md"
                         className="shrink-0"
