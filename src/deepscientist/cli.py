@@ -500,6 +500,9 @@ def distill_quest_command(home: Path, quest_id: str) -> int:
     )
 
     quest_root = home / "quests" / quest_id
+    if not quest_root.is_dir():
+        print(f"Quest not found: {quest_id} (expected at {quest_root})", file=sys.stderr)
+        return 1
     artifacts_dir = quest_root / "artifacts"
     drafts_root = home / "drafts" / "experiences"
     reviews = read_distill_reviews(artifacts_dir)

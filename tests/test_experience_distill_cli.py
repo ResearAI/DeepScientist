@@ -218,3 +218,17 @@ def test_distill_quest_command_excludes_already_reviewed_runs(tmp_path: Path):
     drafts_dir = home / "drafts" / "experiences" / quest_id
     drafts = sorted(drafts_dir.glob("*.md"))
     assert len(drafts) == 1, f"expected 1 draft (only run B unreviewed); got {len(drafts)}"
+
+
+def test_distill_quest_command_returns_error_for_nonexistent_quest(tmp_path: Path, capsys):
+    from deepscientist.cli import distill_quest_command
+    from deepscientist.home import ensure_home_layout
+
+    home = tmp_path / "DSHome"
+    ensure_home_layout(home)
+
+    rc = distill_quest_command(home, "no-such-quest")
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "Quest not found" in captured.err
+    assert "no-such-quest" in captured.err
