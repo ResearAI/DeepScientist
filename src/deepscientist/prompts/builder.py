@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from ..artifact.experience_distill import (
-    evaluate_distill_gate,
+    evaluate_distill_gate_for_quest,
     is_distill_on,
     is_recall_priors_on,
 )
@@ -2091,7 +2091,7 @@ class PromptBuilder:
                 "If nothing matches, say so explicitly in your reasoning and proceed."
             )
         if is_distill_on(quest_root) and skill_id in STANDARD_SKILLS:
-            gate_payload = evaluate_distill_gate(quest_root, quest_root / "artifacts")
+            gate_payload = evaluate_distill_gate_for_quest(quest_root)
             if gate_payload is not None:
                 pending_ids = ", ".join(gate_payload.get("pending_distill_ids") or []) or "(none listed)"
                 lines.append(

@@ -12,8 +12,11 @@ from deepscientist.quest import QuestService
 from deepscientist.skills import SkillInstaller
 
 
-def _seed_pending_run(quest_root: Path, *, run_id: str = "run-pending-1") -> None:
-    artifacts = quest_root / "artifacts"
+def _seed_pending_run(
+    quest_root: Path, *, run_id: str = "run-pending-1", workspace: Path | None = None
+) -> None:
+    target = workspace if workspace is not None else quest_root
+    artifacts = target / "artifacts"
     runs_dir = artifacts / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
     record = {
@@ -37,6 +40,13 @@ def _seed_pending_run(quest_root: Path, *, run_id: str = "run-pending-1") -> Non
         index_path.write_text(existing + line + "\n", encoding="utf-8")
     else:
         index_path.write_text(line + "\n", encoding="utf-8")
+
+
+def _seed_worktree_pending_run(quest_root: Path, *, worktree_name: str, run_id: str) -> Path:
+    worktree = quest_root / ".ds" / "worktrees" / worktree_name
+    worktree.mkdir(parents=True, exist_ok=True)
+    _seed_pending_run(quest_root, run_id=run_id, workspace=worktree)
+    return worktree
 
 
 def _seed_distill_review(quest_root: Path, *, reviewed_run_ids: list[str]) -> None:
@@ -182,3 +192,67 @@ def test_complete_quest_skips_distill_check_when_already_completed(temp_home: Pa
 
     assert result["ok"] is True
     assert result["status"] == "already_completed"
+
+
+# --- Multi-workspace aggregation -----------------------------------------
+# Records often live only in an active worktree's artifacts dir until the
+# git-graph merge promotes them. The closure guards must look across every
+# workspace_root (quest_root + .ds/worktrees/*) so a candidate sitting in a
+# worktree still trips the gate.
+
+
+def test_submit_paper_bundle_detects_pending_run_in_worktree(temp_home: Path) -> None:
+    _, artifact, _, quest_root = _make_quest(temp_home, distill_on=True)
+    _seed_worktree_pending_run(quest_root, worktree_name="idea-foo", run_id="run-in-worktree")
+
+    with pytest.raises(ValueError) as excinfo:
+        artifact.submit_paper_bundle(
+            quest_root,
+            title="Bundle",
+            summary="Should still be blocked.",
+        )
+
+    msg = str(excinfo.value)
+    assert "submit_paper_bundle blocked" in msg
+    assert "run-in-worktree" in msg
+
+
+def test_complete_quest_detects_pending_run_in_worktree(temp_home: Path) -> None:
+    _, artifact, _, quest_root = _make_quest(temp_home, distill_on=True)
+    _seed_worktree_pending_run(quest_root, worktree_name="idea-bar", run_id="run-in-worktree-2")
+
+    result = artifact.complete_quest(quest_root, summary="Should be blocked.")
+
+    assert result["ok"] is False
+    assert result["status"] == "distill_required"
+    assert "run-in-worktree-2" in result["pending_distill_ids"]
+
+
+def test_complete_quest_dedupes_candidates_across_workspaces(temp_home: Path) -> None:
+    _, artifact, _, quest_root = _make_quest(temp_home, distill_on=True)
+    # Same artifact_id seeded in BOTH the canonical artifacts dir and a worktree
+    # (mimics post-merge state where the worktree record was promoted but the
+    # worktree copy was not pruned).
+    _seed_pending_run(quest_root, run_id="run-shared")
+    _seed_worktree_pending_run(quest_root, worktree_name="idea-baz", run_id="run-shared")
+
+    result = artifact.complete_quest(quest_root, summary="Should count once.")
+
+    assert result["ok"] is False
+    assert result["status"] == "distill_required"
+    assert result["pending_distill_count"] == 1
+    assert result["pending_distill_ids"] == ["run-shared"]
+
+
+def test_complete_quest_clears_when_review_in_quest_root_covers_worktree_run(
+    temp_home: Path,
+) -> None:
+    _, artifact, _, quest_root = _make_quest(temp_home, distill_on=True)
+    _seed_worktree_pending_run(quest_root, worktree_name="idea-qux", run_id="run-cross")
+    _seed_distill_review(quest_root, reviewed_run_ids=["run-cross"])
+
+    result = artifact.complete_quest(quest_root, summary="Distill review in main artifacts covers worktree run.")
+
+    assert result["ok"] is False
+    # No longer the distill block; falls through to approval logic.
+    assert result["status"] != "distill_required"

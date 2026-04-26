@@ -472,6 +472,66 @@ def evaluate_distill_gate(
     }
 
 
+def _quest_workspace_artifact_dirs(quest_root: Path) -> list[Path]:
+    roots: list[Path] = [quest_root]
+    worktrees_root = quest_root / ".ds" / "worktrees"
+    if worktrees_root.exists():
+        for path in sorted(worktrees_root.iterdir()):
+            if path.is_dir():
+                roots.append(path)
+    seen: set[str] = set()
+    out: list[Path] = []
+    for root in roots:
+        artifacts = root / "artifacts"
+        if not artifacts.exists():
+            continue
+        key = str(artifacts.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(artifacts)
+    return out
+
+
+def evaluate_distill_gate_for_quest(quest_root: Path) -> dict[str, Any] | None:
+    """Evaluate the distill gate across every artifacts dir owned by the quest.
+
+    Closure entry points (`submit_paper_bundle`, `complete_quest`, prompt cues)
+    fire outside `record(...)` and have no per-record `write_root` context, so
+    they must look at every workspace's artifacts directory — the canonical
+    `quest_root/artifacts` plus each `quest_root/.ds/worktrees/*/artifacts`.
+    Candidates and reviews are deduped by `artifact_id`.
+    """
+    if not is_distill_on(quest_root):
+        return None
+    artifact_dirs = _quest_workspace_artifact_dirs(quest_root)
+    if not artifact_dirs:
+        return None
+    reviewed_set: set[str] = set()
+    cursor_created_at: str | None = None
+    for artifacts_dir in artifact_dirs:
+        reviews = read_distill_reviews(artifacts_dir)
+        partial_reviewed, partial_cursor = collect_reviewed_run_ids(reviews)
+        reviewed_set.update(partial_reviewed)
+        if partial_cursor and (cursor_created_at is None or partial_cursor > cursor_created_at):
+            cursor_created_at = partial_cursor
+    candidates_by_id: dict[str, dict[str, Any]] = {}
+    for artifacts_dir in artifact_dirs:
+        for rec in iter_distill_candidate_records(artifacts_dir):
+            rid = str(rec.get("artifact_id") or "")
+            if not rid or rid in reviewed_set or rid in candidates_by_id:
+                continue
+            candidates_by_id[rid] = rec
+    if not candidates_by_id:
+        return None
+    ids = list(candidates_by_id.keys())
+    return {
+        "pending_distill_count": len(ids),
+        "pending_distill_ids": ids[:5],
+        "cursor_run_created_at": cursor_created_at,
+    }
+
+
 _FINALIZE_GATE_ACTIONS: frozenset[str] = frozenset({"write", "finalize"})
 
 _FINALIZE_GATE_INJECTED_KEYS: frozenset[str] = frozenset({

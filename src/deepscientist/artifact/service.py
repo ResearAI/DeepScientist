@@ -11563,9 +11563,9 @@ class ArtifactService:
         package_type: str = "draft_checkpoint",
         prepare_open_source: bool = False,
     ) -> dict[str, Any]:
-        from .experience_distill import evaluate_distill_gate
+        from .experience_distill import evaluate_distill_gate_for_quest
 
-        gate_payload = evaluate_distill_gate(quest_root, quest_root / "artifacts")
+        gate_payload = evaluate_distill_gate_for_quest(quest_root)
         if gate_payload is not None:
             pending_ids = ", ".join(gate_payload.get("pending_distill_ids") or []) or "(none listed)"
             raise ValueError(
@@ -13483,9 +13483,9 @@ class ArtifactService:
                 "snapshot": snapshot,
             }
 
-        from .experience_distill import evaluate_distill_gate
+        from .experience_distill import evaluate_distill_gate_for_quest
 
-        gate_payload = evaluate_distill_gate(quest_root, quest_root / "artifacts")
+        gate_payload = evaluate_distill_gate_for_quest(quest_root)
         if gate_payload is not None:
             return {
                 "ok": False,
