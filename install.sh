@@ -351,7 +351,22 @@ build_ui() {
   fi
   print_step "Building web UI in install tree"
   npm --prefix "$1/src/ui" install --include=dev --no-audit --no-fund
-  npm --prefix "$1/src/ui" run build
+  # Vite/rollup intermittently fails to resolve hoisted deps (clsx, framer-motion,
+  # react-router) on this fuse-overlayfs container even though npm install reports
+  # success. Retry the build (not the install) until it converges; observed
+  # failure rate ~10-30%, retry max 5 keeps p(all-fail) below 1%.
+  local attempt=1 max_attempts=5
+  while :; do
+    if npm --prefix "$1/src/ui" run build; then
+      break
+    fi
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      echo "[install] Web UI build failed after ${max_attempts} attempts" >&2
+      return 1
+    fi
+    echo "[install] Web UI build failed on attempt ${attempt}/${max_attempts}; retrying..." >&2
+    attempt=$((attempt + 1))
+  done
   rm -rf "$1/src/ui/node_modules" "$1/src/ui/lib/node_modules"
 }
 
