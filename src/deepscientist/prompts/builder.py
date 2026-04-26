@@ -5,7 +5,11 @@ import os
 import re
 from pathlib import Path
 
-from ..artifact.experience_distill import is_recall_priors_on
+from ..artifact.experience_distill import (
+    evaluate_distill_gate,
+    is_distill_on,
+    is_recall_priors_on,
+)
 from ..connector_runtime import normalize_conversation_id, parse_conversation_id
 from ..config import ConfigManager
 from ..home import repo_root
@@ -2086,6 +2090,18 @@ class PromptBuilder:
                 "Read the full card via `memory.read_card` for any candidate that looks relevant. "
                 "If nothing matches, say so explicitly in your reasoning and proceed."
             )
+        if is_distill_on(quest_root) and skill_id in STANDARD_SKILLS:
+            gate_payload = evaluate_distill_gate(quest_root, quest_root / "artifacts")
+            if gate_payload is not None:
+                pending_ids = ", ".join(gate_payload.get("pending_distill_ids") or []) or "(none listed)"
+                lines.append(
+                    "- distill_required_rule: there are "
+                    f"{gate_payload['pending_distill_count']} completed run(s) without a "
+                    f"distill_review (ids: {pending_ids}). Before calling "
+                    "`submit_paper_bundle` or `complete_quest`, run the distill skill and "
+                    "`artifact.record(kind='distill_review', ...)` covering the pending runs. "
+                    "Both closure tools hard-reject until the review lands."
+                )
         selected: list[dict] = []
         seen_paths: set[str] = set()
         for kind in plan.get("quest", ())[:2]:

@@ -11563,6 +11563,18 @@ class ArtifactService:
         package_type: str = "draft_checkpoint",
         prepare_open_source: bool = False,
     ) -> dict[str, Any]:
+        from .experience_distill import evaluate_distill_gate
+
+        gate_payload = evaluate_distill_gate(quest_root, quest_root / "artifacts")
+        if gate_payload is not None:
+            pending_ids = ", ".join(gate_payload.get("pending_distill_ids") or []) or "(none listed)"
+            raise ValueError(
+                "submit_paper_bundle blocked: experience_distill is on and "
+                f"{gate_payload['pending_distill_count']} completed run(s) lack a "
+                f"distill_review (pending: {pending_ids}). "
+                "Run the distill skill and record an "
+                "artifact.record(kind='distill_review', ...) before resubmitting."
+            )
         normalized_package_type = self._normalize_paper_bundle_package_type(package_type)
         paper_context = self._ensure_active_paper_workspace(quest_root)
         workspace_root = Path(str(paper_context.get("worktree_root") or self._workspace_root_for(quest_root)))
@@ -13469,6 +13481,24 @@ class ArtifactService:
                 "quest_id": snapshot.get("quest_id"),
                 "message": "Quest is already marked as completed.",
                 "snapshot": snapshot,
+            }
+
+        from .experience_distill import evaluate_distill_gate
+
+        gate_payload = evaluate_distill_gate(quest_root, quest_root / "artifacts")
+        if gate_payload is not None:
+            return {
+                "ok": False,
+                "status": "distill_required",
+                "quest_id": snapshot.get("quest_id"),
+                "pending_distill_count": gate_payload["pending_distill_count"],
+                "pending_distill_ids": gate_payload["pending_distill_ids"],
+                "message": (
+                    "Quest completion blocked: experience_distill is on and "
+                    f"{gate_payload['pending_distill_count']} completed run(s) lack a "
+                    "distill_review. Run the distill skill and "
+                    "artifact.record(kind='distill_review', ...) covering the pending runs."
+                ),
             }
 
         completion_request = self._latest_completion_request(quest_root)

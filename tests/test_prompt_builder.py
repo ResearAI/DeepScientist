@@ -2177,3 +2177,99 @@ def test_prompt_builder_omits_recall_priors_for_companion_skill(temp_home: Path)
     )
 
     assert "recall_priors_rule:" not in prompt
+
+
+def _seed_pending_run(quest_root: Path, *, run_id: str = "run-pending-1") -> None:
+    import json as _json
+
+    artifacts = quest_root / "artifacts"
+    runs_dir = artifacts / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "artifact_id": run_id,
+        "kind": "run",
+        "run_kind": "main_experiment",
+        "status": "completed",
+    }
+    (runs_dir / f"{run_id}.json").write_text(_json.dumps(record), encoding="utf-8")
+    index_path = artifacts / "_index.jsonl"
+    line = _json.dumps({
+        "artifact_id": run_id,
+        "kind": "run",
+        "status": "completed",
+        "path": str(runs_dir / f"{run_id}.json"),
+    })
+    if index_path.exists():
+        existing = index_path.read_text(encoding="utf-8")
+        if not existing.endswith("\n"):
+            existing += "\n"
+        index_path.write_text(existing + line + "\n", encoding="utf-8")
+    else:
+        index_path.write_text(line + "\n", encoding="utf-8")
+
+
+def test_prompt_builder_injects_distill_required_rule_when_pending(temp_home: Path) -> None:
+    builder, snapshot = _make_builder(
+        temp_home, startup_contract={"experience_distill": "on"}
+    )
+    _seed_pending_run(Path(snapshot["quest_root"]), run_id="run-pending-A")
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="finalize",
+        user_message="Wrap up the paper.",
+        model="gpt-5.4",
+    )
+
+    assert "distill_required_rule:" in prompt
+    assert "submit_paper_bundle" in prompt
+    assert "complete_quest" in prompt
+    assert "run-pending-A" in prompt
+
+
+def test_prompt_builder_omits_distill_required_rule_when_no_pending(temp_home: Path) -> None:
+    builder, snapshot = _make_builder(
+        temp_home, startup_contract={"experience_distill": "on"}
+    )
+    # No run artifacts seeded → gate clear → no cue.
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="finalize",
+        user_message="Wrap up the paper.",
+        model="gpt-5.4",
+    )
+
+    assert "distill_required_rule:" not in prompt
+
+
+def test_prompt_builder_omits_distill_required_rule_when_distill_off(temp_home: Path) -> None:
+    builder, snapshot = _make_builder(
+        temp_home, startup_contract={"experience_distill": "off"}
+    )
+    _seed_pending_run(Path(snapshot["quest_root"]), run_id="run-pending-B")
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="finalize",
+        user_message="Wrap up the paper.",
+        model="gpt-5.4",
+    )
+
+    assert "distill_required_rule:" not in prompt
+
+
+def test_prompt_builder_omits_distill_required_rule_for_companion_skill(temp_home: Path) -> None:
+    builder, snapshot = _make_builder(
+        temp_home, startup_contract={"experience_distill": "on"}
+    )
+    _seed_pending_run(Path(snapshot["quest_root"]), run_id="run-pending-C")
+
+    prompt = builder.build(
+        quest_id=snapshot["quest_id"],
+        skill_id="distill",
+        user_message="Run the distill companion pass.",
+        model="gpt-5.4",
+    )
+
+    assert "distill_required_rule:" not in prompt
