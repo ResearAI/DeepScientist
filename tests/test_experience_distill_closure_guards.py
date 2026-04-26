@@ -256,3 +256,42 @@ def test_complete_quest_clears_when_review_in_quest_root_covers_worktree_run(
     assert result["ok"] is False
     # No longer the distill block; falls through to approval logic.
     assert result["status"] != "distill_required"
+
+
+# --- record(distill_review) workspace_root resolution --------------------
+# Mirror of quest-012 bug: the MCP wrapper sets DS_WORKTREE_ROOT once at server
+# start (= quest root). When activate_branch switches the active worktree, the
+# env var is not refreshed, so record(...) is invoked with workspace_root=quest_root
+# even though the run actually lives in the active worktree's artifacts/. The
+# validator must aggregate across every workspace's artifacts dir, just like
+# evaluate_distill_gate_for_quest already does — otherwise list_distill_candidates
+# returns the run as a candidate yet record(distill_review, reviewed_run_ids=[run])
+# fails with 'unknown run artifact_ids'.
+
+
+def test_distill_review_accepts_run_recorded_only_in_worktree(temp_home: Path) -> None:
+    _, artifact, _, quest_root = _make_quest(temp_home, distill_on=True)
+    _seed_worktree_pending_run(
+        quest_root, worktree_name="idea-w", run_id="run-only-in-worktree"
+    )
+
+    review = artifact.record(
+        quest_root,
+        {
+            "kind": "distill_review",
+            "reviewed_run_ids": ["run-only-in-worktree"],
+            "cards_written": [
+                {
+                    "card_id": "knowledge-x",
+                    "scope": "global",
+                    "action": "new",
+                    "target_run_id": "run-only-in-worktree",
+                }
+            ],
+            "neighbor_decisions": [],
+            "notes": "worktree-resident run",
+        },
+        workspace_root=quest_root,
+    )
+    assert review.get("ok", True) is not False
+    assert str(review.get("artifact_id") or "").startswith("distill_review")

@@ -7994,28 +7994,36 @@ class ArtifactService:
                     "suppressed": True,
                 }
         if str(payload.get("kind") or "") == "distill_review":
-            from .experience_distill import iter_distill_candidate_records
-            artifacts_dir = write_root / "artifacts"
-            known_run_ids = {
-                str(r.get("artifact_id") or "")
-                for r in iter_distill_candidate_records(artifacts_dir)
-            }
-            # Also accept any historic run record (not just current candidate kinds)
-            # via a broader index scan, so a distill_review can cite a run that
-            # was previously a candidate but has since been excluded by run_kind.
-            index_path = artifacts_dir / "_index.jsonl"
-            if index_path.exists():
-                import json as _json
-                for line in index_path.read_text(encoding="utf-8").splitlines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entry = _json.loads(line)
-                    except Exception:
-                        continue
-                    if entry.get("kind") == "run":
-                        known_run_ids.add(str(entry.get("artifact_id") or ""))
+            from .experience_distill import (
+                iter_distill_candidate_records,
+                _quest_workspace_artifact_dirs,
+            )
+            # Aggregate known run ids across every workspace's artifacts dir
+            # (quest_root + each .ds/worktrees/*) — matches the multi-workspace
+            # scan used by list_distill_candidates and evaluate_distill_gate_for_quest.
+            # The MCP wrapper sets DS_WORKTREE_ROOT once at server start (= quest root)
+            # and does not refresh it when activate_branch swaps the active worktree,
+            # so write_root here is the quest root even when the run lives in a
+            # worktree's artifacts/.
+            known_run_ids: set[str] = set()
+            for artifacts_dir in _quest_workspace_artifact_dirs(quest_root):
+                for r in iter_distill_candidate_records(artifacts_dir):
+                    known_run_ids.add(str(r.get("artifact_id") or ""))
+                # Broader index scan: a distill_review can cite a run that was
+                # previously a candidate but has since been excluded by run_kind.
+                index_path = artifacts_dir / "_index.jsonl"
+                if index_path.exists():
+                    import json as _json
+                    for line in index_path.read_text(encoding="utf-8").splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = _json.loads(line)
+                        except Exception:
+                            continue
+                        if entry.get("kind") == "run":
+                            known_run_ids.add(str(entry.get("artifact_id") or ""))
             unknown = [
                 str(rid) for rid in (payload.get("reviewed_run_ids") or [])
                 if str(rid) not in known_run_ids
