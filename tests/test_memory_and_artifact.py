@@ -1735,7 +1735,7 @@ def test_artifact_stage_milestones_emit_semantic_connector_messages(temp_home: P
         for text in texts
         if text.startswith(f"Analysis campaign `{campaign['campaign_id']}` is complete.")
     )
-    bundle_text = next(text for text in texts if text.startswith("Paper bundle `Semantic Paper`"))
+    bundle_text = next(text for text in texts if text.startswith("Paper draft checkpoint `Semantic Paper`"))
     assert "Semantic route" in idea_text
     assert "Insert a compact residual adapter in the main path and keep the rest of the protocol fixed." in idea_text
     assert "The message should show the exact mechanism without collapsing it into an ellipsis." in idea_text
@@ -1762,7 +1762,10 @@ def test_artifact_stage_milestones_emit_semantic_connector_messages(temp_home: P
     assert "This second paragraph should also be delivered in full" in bundle_text
     assert "Files:\n- Bundle manifest:" in bundle_text
     assert "- PDF: `paper/paper.pdf`" in bundle_text
-    assert "Next route:\nFinalize the paper package, review the bundle artifacts, and publish or close the quest when ready." in bundle_text
+    assert (
+        "Next route:\nContinue writing/review unless manuscript coverage and submission readiness are both explicit;"
+        in bundle_text
+    )
     assert "…" not in bundle_text
 
 
@@ -4137,6 +4140,24 @@ def test_explorer_lists_real_files_and_path_documents_can_be_saved(temp_home: Pa
 
     reopened = quest_service.open_document(quest["quest_id"], note_node["document_id"])
     assert "Updated from explorer." in reopened["content"]
+
+
+def test_explorer_search_finds_paths_and_normalizes_legacy_glob_wrappers(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("explorer search quest")
+    quest_root = Path(quest["quest_root"])
+
+    script_path = quest_root / "experiments" / "analysis" / "new-slice" / "scripts" / "run_probe.py"
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    script_path.write_text("print('analysis runner')\n", encoding="utf-8")
+
+    path_result = quest_service.search_files(quest["quest_id"], "run_probe", limit=10)
+    assert any(item["path"] == "experiments/analysis/new-slice/scripts/run_probe.py" for item in path_result["items"])
+
+    wrapped_result = quest_service.search_files(quest["quest_id"], "*analysis runner*", limit=10)
+    assert any(item["path"] == "experiments/analysis/new-slice/scripts/run_probe.py" for item in wrapped_result["items"])
 
 
 def test_explorer_opens_image_files_as_assets(temp_home: Path) -> None:
