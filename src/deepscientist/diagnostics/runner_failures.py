@@ -188,4 +188,26 @@ def diagnose_runner_failure(
             matched_text="unknown file extension",
         )
 
+    if normalized_runner == "claude" and (
+        "failed to authenticate" in lower
+        or ("api error: 401" in lower and "authentication_error" in lower)
+        or "invalid authentication credentials" in lower
+    ):
+        return FailureDiagnosis(
+            code="claude_authentication_failed",
+            problem="Claude Code rejected the request with a 401 authentication error.",
+            why=(
+                "The OAuth access token in `~/.claude/.credentials.json` has expired and the silent refresh did not "
+                "produce a fresh token. Repeated retries hit the same auth wall and can rate-limit the refresh "
+                "endpoint, so the failure must be treated as deterministic until credentials are restored."
+            ),
+            guidance=(
+                "Run `claude login` (or just `claude`) once as the DeepScientist runtime user and complete the OAuth flow.",
+                "Alternatively, set `ANTHROPIC_API_KEY` under `runners.claude.env` in `~/DeepScientist/config/runners.yaml` to bypass OAuth.",
+                "Do not keep retrying the same turn until credentials are restored — every retry burns rate limit budget on the refresh endpoint.",
+            ),
+            retriable=False,
+            matched_text="claude authentication 401",
+        )
+
     return None

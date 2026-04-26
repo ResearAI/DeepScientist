@@ -268,6 +268,35 @@ def test_diagnose_runner_failure_recognizes_windows_gbk_prompt_encoding_error() 
     assert diagnosis.retriable is False
 
 
+def test_diagnose_runner_failure_recognizes_claude_authentication_failure() -> None:
+    diagnosis = diagnose_runner_failure(
+        runner_name="claude",
+        summary=(
+            "Failed to authenticate. API Error: 401 "
+            '{"type":"error","error":{"type":"authentication_error",'
+            '"message":"Invalid authentication credentials"},"request_id":"req_abc"}'
+        ),
+    )
+
+    assert diagnosis is not None
+    assert diagnosis.code == "claude_authentication_failed"
+    assert diagnosis.retriable is False
+    # Guidance should mention both recovery paths.
+    joined_guidance = "\n".join(diagnosis.guidance).lower()
+    assert "claude login" in joined_guidance
+    assert "anthropic_api_key" in joined_guidance
+
+
+def test_diagnose_runner_failure_does_not_match_codex_401() -> None:
+    # Make sure the claude-scoped pattern does not pull in unrelated codex 401s.
+    diagnosis = diagnose_runner_failure(
+        runner_name="codex",
+        summary="HTTP 401 Unauthorized when calling provider X",
+    )
+
+    assert diagnosis is None or diagnosis.code != "claude_authentication_failed"
+
+
 def test_codex_runner_injects_builtin_mcp_tool_approval_overrides(temp_home) -> None:  # type: ignore[no-untyped-def]
     source_codex_home = temp_home / "source-codex-home"
     source_codex_home.mkdir(parents=True, exist_ok=True)
