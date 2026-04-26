@@ -115,6 +115,8 @@ Built-in runners today:
 
 - [09 Doctor](./09_DOCTOR.md)
   Start here for diagnostics and common runtime problems.
+- [33 Workspace Explorer Q&A](./33_WORKSPACE_EXPLORER_QA.md)
+  Check this when files or folders exist in the terminal but do not appear in Web Explorer or Search; it explains active worktrees, `FILES` / `SCOPE`, refresh behavior, and Git status boundaries.
 - [30 Settings Control Center Guide](./30_SETTINGS_CONTROL_CENTER_GUIDE.md)
   Use this when you want the operator view of summary, hardware, diagnostics, errors, logs, quests, repairs, controllers, stats, and search.
 - [15 Codex Provider Setup](./15_CODEX_PROVIDER_SETUP.md)

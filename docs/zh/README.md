@@ -148,6 +148,8 @@ DeepScientist 灵活且易于使用，支持：
 
 - [09 启动诊断](./09_DOCTOR.md)
   启动诊断、排查常见运行问题，先看这篇。
+- [33 Workspace Explorer Q&A](./33_WORKSPACE_EXPLORER_QA.md)
+  如果终端里能看到文件或文件夹，但 Web Explorer / Search 看不到，先看这篇确认 active worktree、`FILES` / `SCOPE`、刷新和 Git 状态边界。
 - [15 Codex Provider 配置](./15_CODEX_PROVIDER_SETUP.md)
   如果问题更像出在 Codex profile、provider endpoint、API key 或模型配置上，优先看这篇。
 - [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
