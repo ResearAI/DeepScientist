@@ -558,6 +558,6 @@ artifact 名字虽然多，但本质上还是一个家族。
 - [06 Runtime 与 Canvas](./06_RUNTIME_AND_CANVAS.md)
 - [01 设置参考](./01_SETTINGS_REFERENCE.md)
 
-## 13. Distill 终结门（finalize gate）
+## 13. 跨 quest 经验蒸馏
 
-quest 通过在 `quest.yaml` 的 `startup_contract` 中设置 `experience_distill: {mode: on}` 启用经验蒸馏。一旦启用，终结门会拦截 `decision(action='write'|'finalize')`：当还存在尚未被 review 的 completed run 时，guidance_vm 会被注入一条指令，把 agent 在 write 之前先指向 `distill` 技能。`distill` 技能调用 `artifact.list_distill_candidates`（Codex 已自动 approve 的 MCP 工具）枚举当前活跃工作区下尚未蒸馏的 run 批次。蒸馏完成后，技能记录一条 `distill_review` 制品 —— 指明 `reviewed_run_ids`（必须全部对应已知 run 制品 ID）以及 `cards_written` —— 从而推进游标；下一次 `decision(write)` 时，终结门发现没有 pending 候选即放行，quest 回到正常的 finalize 路径。
+`experience_distill` 开关、finalize 终结门、`distill_review` 制品、`recall_priors` 提示、以及 `memory.list_knowledge_summaries` / `artifact.list_distill_candidates` 这两个 MCP 工具，统一在 [34 经验蒸馏指南](./34_EXPERIENCE_DISTILL_GUIDE.md) 中说明。

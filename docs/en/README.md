@@ -108,6 +108,8 @@ Built-in runners today:
   Explains how the daemon, workspace, canvas, and connector views fit together.
 - [07 Memory and MCP](./07_MEMORY_AND_MCP.md)
   Explains memory, artifacts, and built-in MCP behavior.
+- [34 Experience Distillation Guide](./34_EXPERIENCE_DISTILL_GUIDE.md)
+  Read this when you want to opt a quest into cross-quest experience distillation: the finalize gate, `distill_review` artifact, and `recall_priors` priors-recall.
 - [19 External Controller Guide](./19_EXTERNAL_CONTROLLER_GUIDE.md)
   Shows how to build optional outer-orchestration guards on top of mailbox and `quest_control` without patching core runtime code.
 

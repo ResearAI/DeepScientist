@@ -558,6 +558,6 @@ Do not use a new MCP tool to fix a stage-discipline problem that belongs in a sk
 - [06 Runtime and Canvas](./06_RUNTIME_AND_CANVAS.md)
 - [01 Settings Reference](./01_SETTINGS_REFERENCE.md)
 
-## 13. Distill finalize gate
+## 13. Cross-quest experience distillation
 
-Quests opt into experience distillation by setting `experience_distill: {mode: on}` in the `startup_contract` field of `quest.yaml`. Once enabled, the finalize gate intercepts `decision(action='write'|'finalize')` whenever there are completed runs that have not yet been reviewed: it injects a `guidance_vm` directive pointing the agent at the `distill` skill before write is allowed. The `distill` skill uses the `artifact.list_distill_candidates` MCP tool (auto-approved for Codex) to enumerate the current batch of undistilled runs visible under the active workspace root. After distilling the batch, the skill records a `distill_review` artifact — specifying `reviewed_run_ids` (which must all reference known run artifact IDs) and any `cards_written` — which advances the cursor. On the subsequent `decision(write)` call the gate finds no pending candidates and clears, returning the quest to the normal finalize path.
+For the opt-in pipeline that turns completed runs into cross-quest knowledge cards (the `experience_distill` toggle, the finalize gate, the `distill_review` artifact, the `recall_priors` browse cue, and the `memory.list_knowledge_summaries` / `artifact.list_distill_candidates` MCP tools), see [34 Experience Distillation Guide](./34_EXPERIENCE_DISTILL_GUIDE.md).
