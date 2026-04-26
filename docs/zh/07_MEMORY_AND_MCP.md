@@ -271,3 +271,7 @@ bash_exec.bash_exec(mode="await", id="<bash_id>", wait_timeout_seconds=1800)
 
 如果 agent 完全不调用 memory：优先看 prompt/skill 行为是否偏离。
 如果 agent 调用 memory 但 UI 只显示 raw logs：优先修 UI 的渲染层。
+
+## 8. Distill 终结门（finalize gate）
+
+当一个 quest 在 `startup_contract` 中启用 `experience_distill`（如 `experience_distill: {mode: on}`）后，DeepScientist 会激活一个终结门：在仍有 completed run 尚未被蒸馏的情况下，任何 `decision(action='write'|'finalize')` 记录都会被拦截，并向 `guidance_vm` 注入一条指令，把 agent 引导到 `distill` 技能上。`distill` 技能通过 `artifact.list_distill_candidates`（`artifact` 命名空间下的内建 MCP 工具）枚举当前活跃工作区中尚未蒸馏的一批 completed run；处理完后，技能记录一条 `distill_review` 制品（列出 `reviewed_run_ids` 和 `cards_written`），从而推进内部游标；在下一次 `decision(write)` 时，终结门发现没有 pending 候选即自动放行，quest 恢复正常 finalize 流程。
