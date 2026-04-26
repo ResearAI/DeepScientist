@@ -8,6 +8,7 @@ import faulthandler
 import hashlib
 import hmac
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -116,6 +117,13 @@ _STALLED_RUNNING_TURN_INACTIVITY_SECONDS = 30 * 60
 _STALLED_RUNNING_TURN_INTERRUPT_TIMEOUT_SECONDS = 5.0
 _IMMEDIATE_READ_INTERRUPT_TIMEOUT_SECONDS = 5.0
 _RESUME_CONTINUE_TEXT = "Continue"
+_AUTONOMOUS_BLOCKING_WAIT_REASONS = {
+    "completion_approval",
+    "credential_required",
+    "privacy_or_data_export_boundary",
+    "large_cost_or_external_paid_api",
+    "user_gated_decision_request",
+}
 CODEX_RETRY_DEFAULT_MAX_ATTEMPTS = 7
 PREVIOUS_CODEX_RETRY_DEFAULT_MAX_ATTEMPTS = 5
 CODEX_RETRY_DEFAULT_INITIAL_BACKOFF_SEC = 10.0
@@ -1506,6 +1514,9 @@ class DaemonApp:
     def _start_terminal_attach_server(self, host: str, port: int) -> None:
         if self._terminal_attach_server is not None:
             return
+        terminal_ws_logger = logging.getLogger("deepscientist.terminal_attach.websocket")
+        terminal_ws_logger.setLevel(logging.CRITICAL + 1)
+        terminal_ws_logger.propagate = False
         candidates: list[int] = []
         if port > 0 and port < 65535:
             candidates.append(port + 1)
@@ -1521,6 +1532,7 @@ class DaemonApp:
                     compression=None,
                     max_size=None,
                     max_queue=None,
+                    logger=terminal_ws_logger,
                 )
                 self._terminal_attach_server = server
                 self._terminal_attach_host = host
@@ -2628,16 +2640,19 @@ class DaemonApp:
         quest_id: str,
         *,
         message_id: str | None = None,
+        client_message_id: str | None = None,
         source: str = "local",
     ) -> dict[str, Any]:
         snapshot = self.quest_service.snapshot(quest_id)
         snapshot = self._reconcile_stale_active_turn(quest_id, snapshot=snapshot)
         quest_root = self.quest_service._quest_root(quest_id)
         target_message_id = str(message_id or "").strip() or None
-        if target_message_id:
+        target_client_message_id = str(client_message_id or "").strip() or None
+        if target_message_id or target_client_message_id:
             status_payload = self.quest_service.pending_user_message_status(
                 quest_root,
                 message_id=target_message_id,
+                client_message_id=target_client_message_id,
             )
             queue_state = str(status_payload.get("queue_state") or "missing")
             current_message_state = (
@@ -2651,7 +2666,8 @@ class DaemonApp:
                     "status": "already_read",
                     "quest_id": quest_id,
                     "message": "This message was already sent to the agent.",
-                    "message_ids": [target_message_id],
+                    "message_ids": [target_message_id] if target_message_id else [],
+                    "client_message_ids": [target_client_message_id] if target_client_message_id else [],
                     "current_message_state": current_message_state,
                     "snapshot": snapshot,
                 }
@@ -2661,22 +2677,36 @@ class DaemonApp:
                     "status": "withdrawn",
                     "quest_id": quest_id,
                     "message": "This message was already withdrawn from the waiting queue.",
-                    "message_ids": [target_message_id],
+                    "message_ids": [target_message_id] if target_message_id else [],
+                    "client_message_ids": [target_client_message_id] if target_client_message_id else [],
                     "current_message_state": current_message_state,
                     "snapshot": snapshot,
                 }
             if queue_state == "missing":
+                target_label = target_message_id or f"client:{target_client_message_id}"
                 return {
                     "ok": False,
                     "status": "missing",
                     "quest_id": quest_id,
-                    "message": f"Message `{target_message_id}` is not waiting in the queue.",
-                    "message_ids": [target_message_id],
+                    "message": f"Message `{target_label}` is not waiting in the queue.",
+                    "message_ids": [target_message_id] if target_message_id else [],
+                    "client_message_ids": [target_client_message_id] if target_client_message_id else [],
                     "current_message_state": current_message_state,
                     "snapshot": snapshot,
                 }
         queue_payload = self.quest_service._read_message_queue(quest_root)
         pending = [dict(item) for item in (queue_payload.get("pending") or [])]
+        runtime_status = str(snapshot.get("runtime_status") or snapshot.get("status") or "").strip().lower()
+        self.logger.log(
+            "info",
+            "quest.user_message.read_now.requested",
+            quest_id=quest_id,
+            source=source,
+            message_id=target_message_id,
+            client_message_id=target_client_message_id,
+            pending_user_message_count=len(pending),
+            runtime_status=runtime_status or None,
+        )
         if not pending:
             return {
                 "ok": False,
@@ -2697,6 +2727,16 @@ class DaemonApp:
                     for item in pending
                     if str(item.get("message_id") or "").strip()
                 ]
+            )
+            self.logger.log(
+                "warning",
+                "quest.user_message.read_now.interrupt_failed",
+                quest_id=quest_id,
+                source=source,
+                message_id=target_message_id,
+                client_message_id=target_client_message_id,
+                pending_user_message_count=len(pending),
+                error=str(exc),
             )
             return {
                 "ok": False,
@@ -2740,6 +2780,31 @@ class DaemonApp:
         if runtime_status in {"stopped", "paused", "completed", "error"}:
             post_snapshot = self.quest_service.set_status(quest_id, "active")
         scheduling = self.schedule_turn(quest_id, reason="immediate_read")
+        message_states = [
+            dict(item)
+            for item in (mailbox_payload.get("message_states") or [])
+            if isinstance(item, dict)
+        ]
+        self.logger.log(
+            "info",
+            "quest.user_message.read_now.scheduled",
+            quest_id=quest_id,
+            source=source,
+            message_ids=[
+                str(item.get("message_id") or "").strip()
+                for item in recent_inbound_messages
+                if str(item.get("message_id") or "").strip()
+            ],
+            client_message_ids=[
+                str(item.get("client_message_id") or "").strip()
+                for item in recent_inbound_messages
+                if str(item.get("client_message_id") or "").strip()
+            ],
+            scheduled=bool(scheduling.get("scheduled")),
+            started=bool(scheduling.get("started")),
+            queued=bool(scheduling.get("queued")),
+            interrupted=bool(restart.get("interrupted")),
+        )
         return {
             "ok": True,
             "status": "scheduled",
@@ -2750,6 +2815,13 @@ class DaemonApp:
                 for item in recent_inbound_messages
                 if str(item.get("message_id") or "").strip()
             ],
+            "client_message_ids": [
+                str(item.get("client_message_id") or "").strip()
+                for item in recent_inbound_messages
+                if str(item.get("client_message_id") or "").strip()
+            ],
+            "message_states": message_states,
+            "current_message_state": message_states[0] if message_states else None,
             "delivery_batch": mailbox_payload.get("delivery_batch"),
             "recent_inbound_messages": recent_inbound_messages,
             "interrupted": bool(restart.get("interrupted")),
@@ -3639,6 +3711,46 @@ class DaemonApp:
                 return value
         return "autonomous"
 
+    @staticmethod
+    def _decision_policy_for(snapshot: dict) -> str:
+        startup_contract = snapshot.get("startup_contract")
+        if isinstance(startup_contract, dict):
+            value = str(startup_contract.get("decision_policy") or "").strip().lower()
+            if value in {"autonomous", "user_gated"}:
+                return value
+        return "user_gated"
+
+    def _auto_resume_wait_if_allowed(self, quest_id: str, snapshot: dict) -> tuple[dict, bool]:
+        if str(snapshot.get("continuation_policy") or "").strip().lower() != "wait_for_user_or_resume":
+            return snapshot, False
+        if self._decision_policy_for(snapshot) != "autonomous":
+            return snapshot, False
+        reason = str(snapshot.get("continuation_reason") or "").strip() or "wait_for_user_or_resume"
+        if reason in _AUTONOMOUS_BLOCKING_WAIT_REASONS:
+            return snapshot, False
+        quest_root = self.quest_service._quest_root(quest_id)
+        message = self.quest_service.localized_copy(
+            quest_root=quest_root,
+            zh=f"【自动继续】系统检测到当前为无需询问模式，本次“等待反馈”已自动转换为继续执行。原因：{reason}。",
+            en=f"[Auto-resumed] This quest is in autonomous decision mode, so the waiting state was converted back to automatic continuation. Reason: {reason}.",
+        )
+        notice = {
+            "status": "auto_resumed",
+            "reason": reason,
+            "message": message,
+            "decision_policy": "autonomous",
+            "label": self.quest_service.localized_copy(quest_root=quest_root, zh="自动继续", en="Auto-resumed"),
+            "created_at": utc_now(),
+        }
+        self.quest_service.update_runtime_state(
+            quest_root=quest_root,
+            continuation_policy="auto",
+            continuation_reason=f"{reason}_auto_resumed",
+            waiting_notice=notice,
+        )
+        snapshot = self.quest_service.snapshot(quest_id)
+        return snapshot, True
+
     def _resolve_continuation_policy(self, snapshot: dict, *, current_policy: str) -> tuple[str, str]:
         normalized = str(current_policy or "auto").strip().lower() or "auto"
         if normalized != "auto":
@@ -4323,6 +4435,14 @@ class DaemonApp:
         if int(snapshot.get("pending_user_message_count") or 0) > 0:
             self.schedule_turn(quest_id, reason="queued_user_messages")
             return
+        snapshot, auto_resumed_wait = self._auto_resume_wait_if_allowed(quest_id, snapshot)
+        if auto_resumed_wait:
+            self._schedule_turn_later(
+                quest_id,
+                reason="auto_continue",
+                delay_seconds=self._auto_continue_delay_for_policy("auto"),
+            )
+            return
         continuation_policy = str(snapshot.get("continuation_policy") or "auto").strip().lower() or "auto"
         resolved_external_progress = False
         if continuation_policy == "auto":
@@ -4389,6 +4509,11 @@ class DaemonApp:
                     continuation_updated_at=utc_now(),
                 )
                 snapshot = self.quest_service.snapshot(quest_id)
+            snapshot, auto_resumed_wait = self._auto_resume_wait_if_allowed(quest_id, snapshot)
+            if auto_resumed_wait:
+                self.schedule_turn(quest_id, reason=reason)
+                return
+            continuation_policy = str(snapshot.get("continuation_policy") or "auto").strip().lower() or "auto"
             if continuation_policy in {"none", "wait_for_user_or_resume"}:
                 return
             if continuation_policy == "when_external_progress":
@@ -8410,6 +8535,13 @@ class DaemonApp:
         app = self
 
         class RequestHandler(BaseHTTPRequestHandler):
+            def handle(self) -> None:
+                try:
+                    super().handle()
+                except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                    self.close_connection = True
+                    return
+
             def log_message(self, format: str, *args) -> None:
                 return
 

@@ -30,6 +30,7 @@ from .base import (
     RunResult,
     builtin_mcp_server_names_for_custom_profile,
     extract_start_setup_patch_from_text,
+    extract_start_setup_session_patch_from_text,
     resolve_mcp_tool_profile_for_quest,
 )
 
@@ -54,6 +55,7 @@ _BUILTIN_MCP_TOOL_APPROVALS: dict[str, tuple[str, ...]] = {
         "list_research_branches",
         "resolve_runtime_refs",
         "get_paper_contract_health",
+        "validate_manuscript_coverage",
         "get_quest_state",
         "get_global_status",
         "get_method_scoreboard",
@@ -1176,14 +1178,16 @@ class CodexRunner:
         if not isinstance(startup_contract.get("start_setup_session"), dict):
             return
         patch = extract_start_setup_patch_from_text(output_text)
-        if not patch:
+        session_patch = extract_start_setup_session_patch_from_text(output_text)
+        if not patch and not session_patch:
             return
         result = self.artifact_service.apply_start_setup_form_patch(
             request.quest_root,
             form_patch=patch,
+            session_patch=session_patch,
             message="Applied from runner fallback `start_setup_patch` block.",
         )
-        patch_keys = sorted(result.get("form_patch", {}).keys()) if isinstance(result.get("form_patch"), dict) else sorted(patch.keys())
+        patch_keys = sorted(result.get("form_patch", {}).keys()) if isinstance(result.get("form_patch"), dict) else sorted((patch or {}).keys())
         append_jsonl(
             quest_events,
             {

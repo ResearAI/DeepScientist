@@ -4790,6 +4790,57 @@ def test_chat_upload_and_send_materializes_web_attachment_into_userfiles(temp_ho
     assert str((pending[0].get("attachments") or [])[0].get("path") or "") == str(final_path)
 
 
+def test_chat_import_copies_setup_attachment_into_target_draft(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    source_quest = app.quest_service.create("source setup attachment quest")
+    target_quest = app.quest_service.create("target launch quest")
+
+    app.handlers.chat_upload_create(
+        source_quest["quest_id"],
+        {
+            "draft_id": "draft-source-001",
+            "file_name": "notes.txt",
+            "mime_type": "text/plain",
+            "content_base64": base64.b64encode(b"setup attachment payload").decode("ascii"),
+        },
+    )
+    source_message = app.handlers.chat(
+        source_quest["quest_id"],
+        {
+            "text": "Please keep this setup note.",
+            "source": "web-react",
+            "client_message_id": "setup-client-001",
+            "attachment_draft_ids": ["draft-source-001"],
+        },
+    )
+    source_attachment = dict((source_message["message"].get("attachments") or [])[0])
+
+    imported = app.handlers.chat_upload_import(
+        target_quest["quest_id"],
+        {
+            "source_quest_id": source_quest["quest_id"],
+            "attachments": [
+                {
+                    "name": "notes.txt",
+                    "quest_relative_path": source_attachment["quest_relative_path"],
+                }
+            ],
+        },
+    )
+
+    assert imported["ok"] is True
+    assert imported["imported_count"] == 1
+    attachments = list(imported.get("attachments") or [])
+    assert len(attachments) == 1
+    draft_id = str(attachments[0]["draft_id"])
+    staged_path = Path(str(attachments[0]["path"]))
+    assert draft_id
+    assert staged_path.exists()
+    assert target_quest["quest_id"] in str(staged_path)
+
+
 def test_read_now_endpoint_consumes_unread_queue_and_restarts_quiet_turn(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     manager = ConfigManager(temp_home)
@@ -6553,11 +6604,11 @@ def test_daemon_auto_resume_notifies_bound_connector(temp_home: Path) -> None:
 
     sent: list[tuple[str, dict]] = []
 
-    def fake_send_to_channel(channel_name, payload, *, connectors=None):  # noqa: ANN001
+    def fake_deliver_to_channel(channel_name, payload, *, connectors=None):  # noqa: ANN001
         sent.append((channel_name, dict(payload)))
-        return True
+        return {"ok": True, "queued": False, "transport": "fake"}
 
-    app.artifact_service._send_to_channel = fake_send_to_channel  # type: ignore[method-assign]
+    app.artifact_service._deliver_to_channel = fake_deliver_to_channel  # type: ignore[method-assign]
 
     recovered = app._resume_reconciled_quests()
     assert any(item["quest_id"] == quest_id for item in recovered)
@@ -6647,11 +6698,11 @@ def test_daemon_suppresses_auto_resume_after_repeated_crash_loop(temp_home: Path
 
     sent: list[tuple[str, dict]] = []
 
-    def fake_send_to_channel(channel_name, payload, *, connectors=None):  # noqa: ANN001
+    def fake_deliver_to_channel(channel_name, payload, *, connectors=None):  # noqa: ANN001
         sent.append((channel_name, dict(payload)))
-        return True
+        return {"ok": True, "queued": False, "transport": "fake"}
 
-    app.artifact_service._send_to_channel = fake_send_to_channel  # type: ignore[method-assign]
+    app.artifact_service._deliver_to_channel = fake_deliver_to_channel  # type: ignore[method-assign]
 
     recovered = app._resume_reconciled_quests()
     assert recovered == []
@@ -6854,11 +6905,14 @@ def test_daemon_reconcile_runtime_state_preserves_external_progress_policy_in_co
     assert snapshot["continuation_reason"] == "background_external_progress_active"
 
 
-def test_auto_continue_parks_after_repeated_unchanged_finalize_state(temp_home: Path) -> None:
+def test_autonomous_auto_continue_auto_resumes_repeated_unchanged_finalize_state(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
     app = DaemonApp(temp_home)
-    quest = app.quest_service.create("finalize auto park quest")
+    quest = app.quest_service.create(
+        "finalize auto park quest",
+        startup_contract={"workspace_mode": "autonomous", "decision_policy": "autonomous"},
+    )
     quest_id = quest["quest_id"]
     quest_root = Path(quest["quest_root"])
 
@@ -6878,8 +6932,119 @@ def test_auto_continue_parks_after_repeated_unchanged_finalize_state(temp_home: 
 
     app._normalize_status_after_turn(quest_id, turn_reason="auto_continue")
     second_snapshot = app.quest_service.snapshot(quest_id)
-    assert second_snapshot["continuation_policy"] == "wait_for_user_or_resume"
-    assert second_snapshot["continuation_reason"] == "unchanged_finalize_state"
+    assert second_snapshot["continuation_policy"] == "auto"
+    assert second_snapshot["continuation_reason"] == "unchanged_finalize_state_auto_resumed"
+    assert second_snapshot["waiting_notice"]["status"] == "auto_resumed"
+    assert second_snapshot["waiting_notice"]["reason"] == "unchanged_finalize_state"
+
+
+def test_user_gated_auto_continue_parks_after_repeated_unchanged_finalize_state(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create(
+        "user gated finalize auto park quest",
+        startup_contract={"workspace_mode": "autonomous", "decision_policy": "user_gated"},
+    )
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+
+    app.quest_service.update_settings(quest_id, active_anchor="finalize")
+    app.quest_service.set_continuation_state(
+        quest_root,
+        policy="auto",
+        anchor="finalize",
+        reason="finalize_loop_test",
+    )
+
+    app._normalize_status_after_turn(quest_id, turn_reason="auto_continue")
+    app._normalize_status_after_turn(quest_id, turn_reason="auto_continue")
+    snapshot = app.quest_service.snapshot(quest_id)
+
+    assert snapshot["continuation_policy"] == "wait_for_user_or_resume"
+    assert snapshot["continuation_reason"] == "unchanged_finalize_state"
+
+
+def test_waiting_notice_is_sent_for_user_gated_policy(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+    connectors = manager.load_named("connectors")
+    connectors["qq"]["enabled"] = True
+    connectors["qq"]["app_id"] = "1903299925"
+    connectors["qq"]["app_secret"] = "qq-secret"
+    write_yaml(manager.path_for("connectors"), connectors)
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create(
+        "user gated waiting notice quest",
+        startup_contract={"workspace_mode": "autonomous", "decision_policy": "user_gated", "user_language": "en"},
+    )
+    quest_root = Path(quest["quest_root"])
+    app.update_quest_binding(quest["quest_id"], "qq:direct:UserABC123", force=True)
+
+    sent: list[tuple[str, dict]] = []
+
+    def fake_deliver_to_channel(channel_name, payload, *, connectors=None):  # noqa: ANN001
+        sent.append((channel_name, dict(payload)))
+        return {"ok": True, "queued": False, "transport": "fake"}
+
+    app.artifact_service._deliver_to_channel = fake_deliver_to_channel  # type: ignore[method-assign]
+
+    result = app.artifact_service._set_waiting_or_auto_resume(
+        quest_root,
+        reason="paper_bundle_submitted",
+        anchor="decision",
+    )
+    snapshot = app.quest_service.snapshot(quest["quest_id"])
+
+    assert result["action"] == "waiting"
+    assert snapshot["continuation_policy"] == "wait_for_user_or_resume"
+    assert snapshot["waiting_notice"]["status"] == "waiting"
+    assert any(
+        "Waiting for feedback" in payload.get("message", "") or "等待反馈" in payload.get("message", "")
+        for _, payload in sent
+    )
+
+
+def test_waiting_notice_auto_resumes_for_autonomous_policy(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+    connectors = manager.load_named("connectors")
+    connectors["qq"]["enabled"] = True
+    connectors["qq"]["app_id"] = "1903299925"
+    connectors["qq"]["app_secret"] = "qq-secret"
+    write_yaml(manager.path_for("connectors"), connectors)
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create(
+        "autonomous waiting notice quest",
+        startup_contract={"workspace_mode": "autonomous", "decision_policy": "autonomous", "user_language": "en"},
+    )
+    quest_root = Path(quest["quest_root"])
+    app.update_quest_binding(quest["quest_id"], "qq:direct:UserABC123", force=True)
+
+    sent: list[tuple[str, dict]] = []
+
+    def fake_deliver_to_channel(channel_name, payload, *, connectors=None):  # noqa: ANN001
+        sent.append((channel_name, dict(payload)))
+        return {"ok": True, "queued": False, "transport": "fake"}
+
+    app.artifact_service._deliver_to_channel = fake_deliver_to_channel  # type: ignore[method-assign]
+
+    result = app.artifact_service._set_waiting_or_auto_resume(
+        quest_root,
+        reason="paper_bundle_submitted",
+        anchor="decision",
+    )
+    snapshot = app.quest_service.snapshot(quest["quest_id"])
+
+    assert result["action"] == "auto_resumed"
+    assert snapshot["continuation_policy"] == "auto"
+    assert snapshot["waiting_notice"]["status"] == "auto_resumed"
+    assert any(
+        "Auto-resumed" in payload.get("message", "") or "自动继续" in payload.get("message", "")
+        for _, payload in sent
+    )
 
 
 def test_autonomous_auto_continue_keeps_running_without_external_progress(temp_home: Path) -> None:

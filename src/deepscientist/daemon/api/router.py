@@ -157,6 +157,7 @@ ROUTES: list[tuple[str, re.Pattern[str], str]] = [
     ("POST", re.compile(r"^/api/quests/(?P<quest_id>[^/]+)/documents/assets$"), "document_asset_upload"),
     ("PUT", re.compile(r"^/api/quests/(?P<quest_id>[^/]+)/documents/(?P<document_id>.+)$"), "document_save"),
     ("POST", re.compile(r"^/api/quests/(?P<quest_id>[^/]+)/chat/uploads$"), "chat_upload_create"),
+    ("POST", re.compile(r"^/api/quests/(?P<quest_id>[^/]+)/chat/imports$"), "chat_upload_import"),
     ("DELETE", re.compile(r"^/api/quests/(?P<quest_id>[^/]+)/chat/uploads/(?P<draft_id>[^/]+)$"), "chat_upload_delete"),
     ("POST", re.compile(r"^/api/quests/(?P<quest_id>[^/]+)/chat$"), "chat"),
     ("POST", re.compile(r"^/api/quests/(?P<quest_id>[^/]+)/commands$"), "command"),

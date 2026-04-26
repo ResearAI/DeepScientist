@@ -334,6 +334,12 @@ This is the main public knob for round depth.
 - `user_gated`
   - the agent may raise a blocking decision only when continuation truly depends on the user
 
+Waiting-state visibility:
+
+- When the runtime intentionally parks a quest, Studio shows a **Waiting for feedback** banner and the bound connector receives a matching notice.
+- If `decision_policy=autonomous`, ordinary wait states such as paper-bundle checkpoints are converted back into automatic continuation and surfaced as **Auto-resumed** instead of silently blocking.
+- True blocking cases can still wait in autonomous mode when user input is required for credentials, privacy/data-export boundaries, high external cost, or final quest-completion approval.
+
 Practical note on workspace mode:
 
 - DeepScientist also distinguishes a user-directed `copilot` workspace mode from the default `autonomous` mode.

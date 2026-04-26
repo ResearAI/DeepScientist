@@ -1449,9 +1449,11 @@ npm --prefix src/ui run build</pre>
     def quest_message_read_now(self, quest_id: str, body: dict) -> dict:
         source = str(body.get("source") or "local-ui").strip() or "local-ui"
         message_id = str(body.get("message_id") or "").strip() or None
+        client_message_id = str(body.get("client_message_id") or "").strip() or None
         return self.app.read_queued_user_messages_now(
             quest_id,
             message_id=message_id,
+            client_message_id=client_message_id,
             source=source,
         )
 
@@ -2081,6 +2083,22 @@ npm --prefix src/ui run build</pre>
         except FileNotFoundError:
             return 404, {"ok": False, "message": f"Unknown quest `{quest_id}`."}
 
+    def chat_upload_import(self, quest_id: str, body: dict) -> dict:
+        source_quest_id = str(body.get("source_quest_id") or "").strip()
+        attachments = [dict(item) for item in (body.get("attachments") or []) if isinstance(item, dict)]
+        if not source_quest_id:
+            return {"ok": False, "message": "`source_quest_id` is required."}
+        if not attachments:
+            return {"ok": False, "message": "`attachments` is required."}
+        try:
+            return self.app.quest_service.import_chat_attachment_drafts(
+                quest_id,
+                source_quest_id=source_quest_id,
+                attachments=attachments,
+            )
+        except FileNotFoundError as exc:
+            return 404, {"ok": False, "message": str(exc)}
+
     def latex_init(self, project_id: str, body: dict) -> dict:
         return self.app.latex_service.init_project(
             project_id,
@@ -2553,12 +2571,16 @@ npm --prefix src/ui run build</pre>
         return self.app.config_manager.test_deepxiv_payload(payload)
 
     def asset(self, asset_path: str) -> tuple[int, dict, bytes]:
+        dist_root = self._ui_dist_root()
         candidate_roots = [
+            dist_root / "assets" if dist_root is not None else None,
             self.app.repo_root / "src" / "ui" / "public" / "assets",
             self.app.repo_root / "assets",
         ]
         path = None
         for root in candidate_roots:
+            if root is None:
+                continue
             candidate = resolve_within(root, asset_path)
             if candidate.exists() and candidate.is_file():
                 path = candidate
@@ -2566,7 +2588,7 @@ npm --prefix src/ui run build</pre>
         if path is None:
             return 404, {"Content-Type": "text/plain; charset=utf-8"}, b"Not Found"
         mime_type = self._guess_static_mime_type(path)
-        return 200, {"Content-Type": mime_type}, path.read_bytes()
+        return 200, self._asset_headers(mime_type), path.read_bytes()
 
     @staticmethod
     def parse_query(path: str) -> dict[str, list[str]]:

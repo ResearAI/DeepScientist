@@ -58,7 +58,39 @@ def extract_start_setup_patch_from_text(text: str) -> dict[str, Any] | None:
         payload = json.loads(candidate)
     except json.JSONDecodeError:
         return None
-    return dict(payload) if isinstance(payload, dict) else None
+    if not isinstance(payload, dict):
+        return None
+    if isinstance(payload.get("form_patch"), dict):
+        return dict(payload.get("form_patch") or {})
+    if isinstance(payload.get("suggested_form"), dict):
+        suggested_form = payload.get("suggested_form") or {}
+        if isinstance(suggested_form.get("form_patch"), dict):
+            return dict(suggested_form.get("form_patch") or {})
+    return dict(payload)
+
+
+def extract_start_setup_session_patch_from_text(text: str) -> dict[str, Any] | None:
+    source = str(text or "").strip()
+    if not source:
+        return None
+    match = _START_SETUP_PATCH_BLOCK_RE.search(source)
+    if not match:
+        return None
+    candidate = match.group(1).strip()
+    if not candidate:
+        return None
+    try:
+        payload = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if isinstance(payload.get("session_patch"), dict):
+        return dict(payload.get("session_patch") or {})
+    suggested_form = payload.get("suggested_form")
+    if isinstance(suggested_form, dict) and isinstance(suggested_form.get("session_patch"), dict):
+        return dict(suggested_form.get("session_patch") or {})
+    return None
 
 
 @dataclass(frozen=True)

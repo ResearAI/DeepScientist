@@ -344,6 +344,12 @@ type StartResearchContractFields = {
 - `user_gated`
   - 只有真正依赖用户偏好时，才允许阻塞式决策请求
 
+等待状态可见性：
+
+- 当运行时有意停驻 quest 时，Studio 会显示 **等待反馈** 横幅，已绑定 connector 也会收到对应提醒。
+- 如果 `decision_policy=autonomous`，paper bundle checkpoint 这类普通等待状态会被自动转换回继续执行，并以 **自动继续** 形式显式提示，而不是静默阻塞。
+- 真正需要用户输入的情况仍可在 autonomous 模式下等待，例如凭据、隐私/数据外发边界、高额外部成本或最终任务完成审批。
+
 关于 workspace mode 的实际含义：
 
 - DeepScientist 还会区分用户导向的 `copilot` 模式和默认的 `autonomous` 模式。
