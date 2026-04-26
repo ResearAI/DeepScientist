@@ -730,6 +730,27 @@ class DaemonApp:
         )
         self.request_shutdown(source=f"signal:{str(signame).lower()}")
 
+    def _kick_runner_health_probe(self) -> None:
+        """Spawn a one-shot runner health probe in a background thread.
+
+        The probe runs the same `probe_runner_bootstrap` call that `ds doctor`
+        uses for each enabled runner, so credential / auth failures (e.g. claude
+        OAuth expiry) surface to daemon.jsonl on startup rather than waiting for
+        the first quest turn to fail. Per-runner probes can take up to 90s, so
+        the work runs off the HTTP serving thread.
+        """
+        from .runner_health import probe_runner_health_at_startup
+
+        def _run() -> None:
+            try:
+                probe_runner_health_at_startup(self.config_manager, self.logger)
+            except Exception as exc:  # pragma: no cover - defensive
+                self.logger.log("warning", "daemon.runner_probe_dispatch_failed", error=str(exc))
+
+        threading.Thread(
+            target=_run, name="ds-runner-health-probe", daemon=True,
+        ).start()
+
     def _install_process_observability(self) -> None:
         if self._process_hooks_installed:
             return
@@ -8532,6 +8553,7 @@ class DaemonApp:
 
     def serve(self, host: str, port: int) -> None:
         self._install_process_observability()
+        self._kick_runner_health_probe()
         app = self
 
         class RequestHandler(BaseHTTPRequestHandler):
