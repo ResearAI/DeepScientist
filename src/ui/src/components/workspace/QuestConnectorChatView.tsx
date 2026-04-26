@@ -116,6 +116,7 @@ function MessageBubble({
 }) {
   const isUser = item.role === 'user'
   const isAssistant = item.role === 'assistant'
+  const readActionMessageId = item.messageId || item.clientMessageId || null
   const contentRef = React.useRef<HTMLDivElement | null>(null)
 
   useTokenStream({
@@ -148,7 +149,7 @@ function MessageBubble({
         <div
           ref={contentRef}
           className={cn(
-            'ds-copilot-markdown prose prose-sm max-w-none whitespace-pre-wrap break-words text-[12.5px] leading-[1.68] [overflow-wrap:anywhere]',
+            'ds-copilot-markdown prose prose-sm prose-pre:!text-[#1f1b16] prose-code:!text-[#1f1b16] max-w-none whitespace-pre-wrap break-words text-[12.5px] leading-[1.68] [overflow-wrap:anywhere] dark:prose-pre:!text-[#1f1b16] dark:prose-code:!text-[#1f1b16]',
             isUser ? 'prose-invert text-white' : 'text-foreground dark:prose-invert'
           )}
         >
@@ -169,7 +170,7 @@ function MessageBubble({
             <QuestUserReadStateMeta
               readState={item.readState}
               readReason={item.readReason}
-              messageId={item.messageId}
+              messageId={readActionMessageId}
               busyAction={busyAction}
               onReadNow={onReadNow}
               onWithdraw={onWithdraw}
@@ -181,7 +182,7 @@ function MessageBubble({
         <QuestUserReadStateMeta
           readState={item.readState}
           readReason={item.readReason}
-          messageId={item.messageId}
+          messageId={readActionMessageId}
           busyAction={busyAction}
           onReadNow={onReadNow}
           onWithdraw={onWithdraw}
@@ -579,7 +580,8 @@ export function QuestConnectorChatView({
                     Boolean(item.streaming || streaming)
                   }
                   busyAction={
-                    messageAction && messageAction.messageId === item.messageId
+                    messageAction &&
+                    messageAction.messageId === (item.messageId || item.clientMessageId || null)
                       ? messageAction.kind
                       : null
                   }

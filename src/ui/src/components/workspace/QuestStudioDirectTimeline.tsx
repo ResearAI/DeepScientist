@@ -308,7 +308,7 @@ function StudioMessageBlock({
         <StreamMarkdownBlock
           content={block.item.content || ''}
           streaming={false}
-          className="ds-copilot-markdown prose prose-sm prose-p:my-0 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1.5 prose-pre:rounded-md prose-pre:px-3 prose-pre:py-2 prose-code:text-[12px] max-w-none break-words text-[12.5px] leading-[1.72] [overflow-wrap:anywhere] text-foreground dark:prose-invert"
+          className="ds-copilot-markdown prose prose-sm prose-p:my-0 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1.5 prose-pre:rounded-md prose-pre:px-3 prose-pre:py-2 prose-pre:!text-[#1f1b16] prose-code:!text-[#1f1b16] prose-code:text-[12px] max-w-none break-words text-[12.5px] leading-[1.72] [overflow-wrap:anywhere] text-foreground dark:prose-invert dark:prose-pre:!text-[#1f1b16] dark:prose-code:!text-[#1f1b16]"
           components={markdownComponents}
         />
       )}
@@ -355,7 +355,7 @@ function StudioReasoningBlock({
         <StreamMarkdownBlock
           content={block.item.content}
           streaming={Boolean(block.item.stream)}
-          className="ds-copilot-markdown prose prose-sm prose-p:my-0 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1.5 prose-pre:rounded-md prose-pre:px-3 prose-pre:py-2 prose-code:text-[11px] max-w-none break-words text-[12px] leading-[1.65] [overflow-wrap:anywhere] text-foreground dark:prose-invert"
+          className="ds-copilot-markdown prose prose-sm prose-p:my-0 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1.5 prose-pre:rounded-md prose-pre:px-3 prose-pre:py-2 prose-pre:!text-[#1f1b16] prose-code:!text-[#1f1b16] prose-code:text-[11px] max-w-none break-words text-[12px] leading-[1.65] [overflow-wrap:anywhere] text-foreground dark:prose-invert dark:prose-pre:!text-[#1f1b16] dark:prose-code:!text-[#1f1b16]"
           components={markdownComponents}
         />
       </div>
@@ -557,6 +557,7 @@ function UserTurn({
   if (!messageBlock || messageBlock.kind !== 'message') {
     return null
   }
+  const readActionMessageId = messageBlock.item.messageId || messageBlock.item.clientMessageId || null
 
   return (
     <div className="flex min-w-0 items-start gap-3 border-l border-[#2F3437]/18 pl-3 dark:border-white/[0.10]">
@@ -571,9 +572,9 @@ function UserTurn({
           <QuestUserReadStateMeta
             readState={messageBlock.item.readState}
             readReason={messageBlock.item.readReason}
-            messageId={messageBlock.item.messageId}
+            messageId={readActionMessageId}
             busyAction={
-              messageAction && messageAction.messageId === messageBlock.item.messageId
+              messageAction && readActionMessageId && messageAction.messageId === readActionMessageId
                 ? messageAction.kind
                 : null
             }
@@ -581,7 +582,7 @@ function UserTurn({
             onWithdraw={onWithdraw}
           />
         </div>
-        <div className="ds-copilot-markdown prose prose-sm prose-p:my-0 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1.5 prose-pre:rounded-md prose-pre:px-3 prose-pre:py-2 prose-code:text-[12px] max-w-none whitespace-pre-wrap break-words text-[12.5px] leading-[1.72] [overflow-wrap:anywhere] text-foreground dark:prose-invert">
+        <div className="ds-copilot-markdown prose prose-sm prose-p:my-0 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1.5 prose-pre:rounded-md prose-pre:px-3 prose-pre:py-2 prose-pre:!text-[#1f1b16] prose-code:!text-[#1f1b16] prose-code:text-[12px] max-w-none whitespace-pre-wrap break-words text-[12.5px] leading-[1.72] [overflow-wrap:anywhere] text-foreground dark:prose-invert dark:prose-pre:!text-[#1f1b16] dark:prose-code:!text-[#1f1b16]">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
             {messageBlock.item.content || ''}
           </ReactMarkdown>

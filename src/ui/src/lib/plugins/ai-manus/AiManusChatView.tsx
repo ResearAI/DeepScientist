@@ -4544,6 +4544,8 @@ export function AiManusChatView({
     try {
       const project = await getProject(projectId)
       setAgentsForProject(project.id, project.agents ?? [])
+    } catch (error) {
+      console.warn('[AiManus] Failed to refresh project agents', error)
     } finally {
       refreshingAgentsRef.current = false
     }

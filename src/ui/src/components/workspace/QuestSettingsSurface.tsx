@@ -203,6 +203,9 @@ export function QuestSettingsSurface({
     try {
       const payload = await client.connectors()
       setConnectors(payload.filter((item) => item.name !== 'local'))
+    } catch (error) {
+      console.warn('[QuestSettingsSurface] Failed to reload connectors', error)
+      setConnectors([])
     } finally {
       setLoadingConnectors(false)
     }
@@ -236,7 +239,9 @@ export function QuestSettingsSurface({
   }, [snapshot?.default_runner, snapshot?.runner])
 
   React.useEffect(() => {
-    void reloadRunnerEnv()
+    void reloadRunnerEnv().catch((error) => {
+      console.warn('[QuestSettingsSurface] Failed to reload runner env', error)
+    })
   }, [reloadRunnerEnv])
 
   React.useEffect(() => {

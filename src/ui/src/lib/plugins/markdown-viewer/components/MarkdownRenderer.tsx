@@ -307,13 +307,19 @@ function buildMarkdownComponents(
       <hr {...props} className={cn("md-hr", className)} />
     ),
     pre: ({ className, ...props }) => (
-      <pre {...props} className={cn("code-block", className)} />
+      <pre
+        {...props}
+        className={cn(
+          "code-block !text-[#1f1b16] [&_code]:!text-[#1f1b16] dark:!text-[#1f1b16] dark:[&_code]:!text-[#1f1b16]",
+          className
+        )}
+      />
     ),
     code: ({ className, inline, ...props }: MarkdownCodeProps) =>
       inline ? (
-        <code {...props} className={cn("inline-code", className)} />
+        <code {...props} className={cn("inline-code !text-[#1f1b16] dark:!text-[#1f1b16]", className)} />
       ) : (
-        <code {...props} className={className} />
+        <code {...props} className={cn("!text-[#1f1b16] dark:!text-[#1f1b16]", className)} />
       ),
   };
 }
