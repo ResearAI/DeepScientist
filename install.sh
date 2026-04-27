@@ -352,19 +352,26 @@ build_ui() {
   print_step "Building web UI in install tree"
   npm --prefix "$1/src/ui" install --include=dev --no-audit --no-fund
   # Vite/rollup intermittently fails to resolve hoisted deps (clsx, framer-motion,
-  # react-router) on this fuse-overlayfs container even though npm install reports
-  # success. Retry the build (not the install) until it converges; observed
-  # failure rate ~10-30%, retry max 5 keeps p(all-fail) below 1%.
+  # react-router, scheduler) on this fuse-overlayfs container. Two failure modes:
+  #   1. npm run build exits non-zero — retried directly.
+  #   2. build exits 0 but emits bare specifiers like `import"scheduler"` into the
+  #      bundle, which the browser can't resolve at runtime. Verify the bundle
+  #      after a successful build and treat that as a soft failure to retry too.
+  # Observed failure rate ~10-30%; max 5 attempts keeps p(all-fail) below 1%.
   local attempt=1 max_attempts=5
   while :; do
     if npm --prefix "$1/src/ui" run build; then
-      break
+      if ! grep -qhE 'import"(scheduler|clsx|framer-motion|react-router)"' "$1/src/ui/dist/assets/"*.js 2>/dev/null; then
+        break
+      fi
+      echo "[install] Web UI build emitted unresolved bare specifier in bundle (attempt ${attempt}/${max_attempts})" >&2
     fi
     if [ "$attempt" -ge "$max_attempts" ]; then
       echo "[install] Web UI build failed after ${max_attempts} attempts" >&2
       return 1
     fi
-    echo "[install] Web UI build failed on attempt ${attempt}/${max_attempts}; retrying..." >&2
+    echo "[install] Retrying web UI build..." >&2
+    rm -rf "$1/src/ui/dist"
     attempt=$((attempt + 1))
   done
   rm -rf "$1/src/ui/node_modules" "$1/src/ui/lib/node_modules"
