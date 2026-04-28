@@ -1,6 +1,6 @@
 ---
 name: distill
-description: "Use when the finalize gate fires. Inspect the batch of undistilled completed runs, then write 0..N reusable knowledge cards and one bookkeeping `decision(action='distill_review')` artifact."
+description: "Use when the finalize gate fires. Inspect the batch of undistilled completed runs, then write 0..N reusable experience knowledge cards and one bookkeeping `decision(action='distill_review')` artifact."
 skill_role: companion
 ---
 
