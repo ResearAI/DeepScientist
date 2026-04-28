@@ -5132,6 +5132,90 @@ def test_duplicate_progress_is_suppressed_when_message_is_unchanged(temp_home: P
     assert len(outbound) == 1
 
 
+def test_noop_progress_is_suppressed_when_blocking_interaction_is_pending(temp_home: Path) -> None:
+    # Reproduces quest 014's behavior: while a blocking
+    # quest_completion_approval is waiting on the user, every mailbox-poll
+    # cycle should NOT record another `__noop__` progress artifact (which
+    # would push the actual approval request further down the feed and
+    # produce a stream of cosmetic git commits / connector notifications).
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create(
+        "noop suppression while blocking quest",
+        startup_contract={"decision_policy": "autonomous"},
+    )
+    quest_root = Path(quest["quest_root"])
+    artifact = ArtifactService(temp_home)
+
+    request = artifact.interact(
+        quest_root,
+        kind="decision_request",
+        message="Quest looks complete. May I close it?",
+        deliver_to_bound_conversations=False,
+        include_recent_inbound_messages=False,
+        reply_mode="blocking",
+        reply_schema={"decision_type": "quest_completion_approval"},
+    )
+    assert request["status"] == "ok"
+    assert request["reply_mode"] == "blocking"
+    progress_dir = quest_root / "artifacts" / "progress"
+    progress_count_before = len(list(progress_dir.glob("*.json"))) if progress_dir.exists() else 0
+
+    suppressed = artifact.interact(
+        quest_root,
+        kind="progress",
+        message="__noop__",
+        deliver_to_bound_conversations=False,
+        include_recent_inbound_messages=True,
+        suppress_if_unchanged=True,
+        dedupe_key="mailbox-poll-only-test",
+    )
+    assert suppressed["status"] == "suppressed_blocking_pending"
+    assert suppressed["suppressed_reason"] == "blocking_pending"
+    assert suppressed["artifact_id"] is None
+    assert suppressed["open_request_count"] == 1
+    progress_count_after = len(list(progress_dir.glob("*.json"))) if progress_dir.exists() else 0
+    assert progress_count_after == progress_count_before
+
+
+def test_substantive_progress_passes_through_when_blocking_interaction_is_pending(temp_home: Path) -> None:
+    # Sanity guard: only `__noop__` / `__mailbox_poll__` heartbeats are
+    # suppressed during a blocking wait — a substantive progress message
+    # (e.g. "training crashed at step 1200") must still record so the user
+    # learns the situation has changed.
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create(
+        "substantive progress while blocking quest",
+        startup_contract={"decision_policy": "autonomous"},
+    )
+    quest_root = Path(quest["quest_root"])
+    artifact = ArtifactService(temp_home)
+
+    request = artifact.interact(
+        quest_root,
+        kind="decision_request",
+        message="Quest looks complete. May I close it?",
+        deliver_to_bound_conversations=False,
+        include_recent_inbound_messages=False,
+        reply_mode="blocking",
+        reply_schema={"decision_type": "quest_completion_approval"},
+    )
+    assert request["status"] == "ok"
+
+    real_update = artifact.interact(
+        quest_root,
+        kind="progress",
+        message="Training crashed at step 1200; restarting from checkpoint.",
+        deliver_to_bound_conversations=False,
+        include_recent_inbound_messages=False,
+    )
+    assert real_update["status"] == "ok"
+    assert real_update["artifact_id"]
+
+
 def test_interact_preserves_full_message_for_delivery_and_records_summary_preview(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()

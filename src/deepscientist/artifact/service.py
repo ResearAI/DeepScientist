@@ -73,6 +73,7 @@ from .metrics import (
 from .schemas import ARTIFACT_DIRS, guidance_for_kind, validate_artifact_payload
 
 QUEST_COMPLETION_DECISION_TYPE = "quest_completion_approval"
+_NOOP_HEARTBEAT_MARKERS = frozenset({"__noop__", "__mailbox_poll__"})
 _COMPLETION_APPROVAL_TERMS = (
     "同意完成",
     "确认完成",
@@ -13024,6 +13025,52 @@ class ArtifactService:
         suppress_resolved = (kind == "progress") if suppress_if_unchanged is None else bool(suppress_if_unchanged)
         dedupe_key_resolved = str(dedupe_key or self._normalize_interaction_message(full_message)).strip() or None
         pending_user_message_count = int(self.quest_service.snapshot(self._quest_id(quest_root)).get("pending_user_message_count") or 0)
+        normalized_message = self._normalize_interaction_message(full_message)
+        if (
+            kind == "progress"
+            and pending_user_message_count == 0
+            and normalized_message in _NOOP_HEARTBEAT_MARKERS
+            and self._has_unresolved_blocking_interaction(quest_root)
+        ):
+            interaction_state = self._read_interaction_state(quest_root)
+            waiting_requests = [
+                dict(item)
+                for item in (interaction_state.get("open_requests") or [])
+                if str(item.get("status") or "") == "waiting"
+            ]
+            return {
+                "status": "suppressed_blocking_pending",
+                "artifact_id": None,
+                "interaction_id": None,
+                "expects_reply": False,
+                "reply_mode": "threaded",
+                "surface_actions": [],
+                "connector_hints": connector_hints_resolved,
+                "normalized_attachments": attachments_resolved,
+                "attachment_issues": attachment_issues,
+                "delivered": False,
+                "delivery_results": [],
+                "response_phase": response_phase,
+                "delivery_targets": [],
+                "delivery_policy": self._delivery_policy(self._connectors_config()),
+                "preferred_connector": self._preferred_connector(self._connectors_config()),
+                "recent_inbound_messages": [],
+                "delivery_batch": None,
+                "recent_interaction_records": self.quest_service.latest_artifact_interaction_records(quest_root, limit=10),
+                "agent_instruction": self.quest_service.localized_copy(
+                    quest_root=quest_root,
+                    zh="当前已有一个等待用户回复的阻塞 interaction，再发心跳只会把它压到下方。请安静等待，不要再 record __noop__ progress。",
+                    en="A blocking interaction is already waiting on the user. Recording another __noop__ heartbeat would only push it further down the feed. Stay quiet until the user replies.",
+                ),
+                "queued_message_count_before_delivery": 0,
+                "queued_message_count_after_delivery": 0,
+                "open_request_count": len(waiting_requests),
+                "active_request": waiting_requests[-1] if waiting_requests else None,
+                "default_reply_interaction_id": interaction_state.get("default_reply_interaction_id"),
+                "guidance": "Noop heartbeat suppressed because a blocking interaction is still waiting for the user.",
+                "suppressed_reason": "blocking_pending",
+                "dedupe_key": dedupe_key_resolved,
+            }
         if (
             kind == "progress"
             and suppress_resolved
@@ -13953,6 +14000,25 @@ class ArtifactService:
     def _interaction_decision_type(item: dict[str, Any]) -> str:
         reply_schema = item.get("reply_schema") if isinstance(item.get("reply_schema"), dict) else {}
         return str(reply_schema.get("decision_type") or "").strip()
+
+    def _has_unresolved_blocking_interaction(self, quest_root: Path) -> bool:
+        # An "unresolved blocking interaction" is any open_request that has
+        # not yet been answered (status='waiting'). Entries in open_requests
+        # are only created for blocking decision_request / approval calls in
+        # _update_interaction_state, so a waiting entry is by construction
+        # waiting on an explicit user reply — no further reply_mode check is
+        # needed (and indeed the reply_mode field is not copied into the
+        # open_requests record). Used to suppress noop progress heartbeats so
+        # the actual blocking artifact stays near the top of the user's feed
+        # instead of being pushed down by ack pings.
+        state = self._read_interaction_state(quest_root)
+        for item in state.get("open_requests") or []:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("status") or "").lower() != "waiting":
+                continue
+            return True
+        return False
 
     def _latest_completion_request(self, quest_root: Path) -> dict[str, Any] | None:
         state = self._read_interaction_state(quest_root)
