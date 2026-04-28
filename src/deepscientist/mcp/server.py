@@ -928,7 +928,8 @@ def build_memory_server(context: McpContext) -> FastMCP:
         name="write",
         description=(
             "Write a Markdown memory card with YAML frontmatter. "
-            "Use after a non-trivial paper finding, reusable lesson, failure pattern, or idea rationale that should survive beyond chat."
+            "Use after a non-trivial paper finding, reusable lesson, failure pattern, or idea rationale that should survive beyond chat. "
+            "Default scope is global; pass scope='quest' for quest-internal task tracking."
         ),
     )
     def write(
@@ -936,7 +937,7 @@ def build_memory_server(context: McpContext) -> FastMCP:
         title: str,
         body: str = "",
         markdown: str | None = None,
-        scope: str = "quest",
+        scope: str = "global",
         tags: list[str] | str | None = None,
         metadata: dict[str, Any] | None = None,
         comment: str | dict[str, Any] | None = None,

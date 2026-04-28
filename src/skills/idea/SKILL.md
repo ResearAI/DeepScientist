@@ -1326,7 +1326,7 @@ Store reusable reasoning in memory, such as:
 
 Do not let the only copy of the idea rationale live in chat.
 
-Preferred memory usage:
+Preferred memory usage (the new default scope is `global`; pass `scope='quest'` explicitly for the `quest *` rows below):
 
 - quest `papers`:
   - literature survey summaries

@@ -165,6 +165,7 @@ def test_memory_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
                     "title": "MCP Memory Demo",
                     "body": "memory body",
                     "tags": ["mcp"],
+                    "scope": "quest",
                 },
             )
         )
@@ -206,6 +207,48 @@ def test_memory_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
         promote_result = _unwrap_tool_result(await server.call_tool("promote_to_global", {"card_id": write_result["id"]}))
         assert promote_result["scope"] == "global"
         assert Path(promote_result["path"]).exists()
+
+    asyncio.run(scenario())
+
+
+def test_memory_mcp_write_defaults_to_global_scope(temp_home: Path) -> None:
+    async def scenario() -> None:
+        ensure_home_layout(temp_home)
+        ConfigManager(temp_home).ensure_files()
+        quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create(
+            "mcp memory default scope quest"
+        )
+        quest_root = Path(quest["quest_root"])
+        context = McpContext(
+            home=temp_home,
+            quest_id=quest["quest_id"],
+            quest_root=quest_root,
+            run_id="run-mcp-default-scope",
+            active_anchor="baseline",
+            conversation_id="quest:test-default-scope",
+            agent_role="baseline",
+            worker_id="worker-main",
+            worktree_root=None,
+            team_mode="single",
+        )
+        server = build_memory_server(context)
+
+        # No explicit scope — should land in global, not the quest dir.
+        write_result = _unwrap_tool_result(
+            await server.call_tool(
+                "write",
+                {
+                    "kind": "knowledge",
+                    "title": "Default scope lesson",
+                    "body": "should go global by default",
+                },
+            )
+        )
+        assert write_result["scope"] == "global"
+        card_path = Path(write_result["path"])
+        assert card_path.exists()
+        # Must not be located inside the quest's memory dir.
+        assert quest_root not in card_path.parents
 
     asyncio.run(scenario())
 

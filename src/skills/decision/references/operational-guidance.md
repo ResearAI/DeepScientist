@@ -82,7 +82,7 @@ Keep decision requests narrow; if local evidence can resolve the route safely, d
 
 Write memory only when the decision created a reusable lesson or changed the authoritative resume point for later turns.
 
-When the authoritative resume point changes, write one compact checkpoint-style quest memory card.
+When the authoritative resume point changes, write one compact checkpoint-style quest memory card with `memory.write(scope='quest', ...)`.
 Mark it with `type:checkpoint-memory`.
 The card should include:
 

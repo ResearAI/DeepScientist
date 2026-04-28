@@ -401,7 +401,7 @@ Purpose:
 
 Current built-in tools:
 
-- `memory.write(...)`
+- `memory.write(...)` — default `scope='global'`; pass `scope='quest'` explicitly for quest-internal task tracking
 - `memory.read(...)`
 - `memory.search(...)`
 - `memory.list_recent(...)`

@@ -115,6 +115,8 @@ memory.read(path="~/DeepScientist/quests/q-xxxx/memory/knowledge/metric-contract
 
 - 写入可复用的持久化发现
 
+默认 scope 为 `global`。仅在写 quest 内部任务追踪（TODO 列表、草稿大纲、进行中的 checkpoint、resume packet 等）时显式传 `scope='quest'`。
+
 适合写在：
 
 - 有价值的论文阅读总结之后

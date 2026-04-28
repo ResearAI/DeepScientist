@@ -130,6 +130,8 @@ Purpose:
 
 - persist a durable reusable finding
 
+Default scope is `global`. Pass `scope='quest'` explicitly for quest-internal task tracking such as TODO lists, draft outlines, in-progress checkpoints, or resume packets.
+
 Use it after:
 
 - a useful paper reading result

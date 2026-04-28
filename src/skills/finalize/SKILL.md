@@ -323,7 +323,7 @@ Write to memory only when the lesson is reusable across quests, such as:
 - robust baseline lessons
 - durable writing or evaluation lessons
 
-If later continuation remains plausible, also write or refresh one compact checkpoint-style quest memory card that mirrors the live resume packet.
+If later continuation remains plausible, also write or refresh one compact checkpoint-style quest memory card with `memory.write(scope='quest', ...)` that mirrors the live resume packet.
 That checkpoint-style memory should usually state:
 
 - current route
@@ -347,8 +347,8 @@ Use `references/checkpoint-memory-template.md` when helpful so the current node 
 
 Stage-end requirement:
 
-- if finalize produced a durable cross-quest lesson worth reusing later, write at least one `memory.write(...)` before leaving the stage
-- if the quest is stopping at continue-later / pause-ready rather than true completion, write or refresh one checkpoint-style quest memory card before leaving the stage
+- if finalize produced a durable cross-quest lesson worth reusing later, write at least one `memory.write(...)` before leaving the stage; the default scope is `global`, which is what these reusable lessons want
+- if the quest is stopping at continue-later / pause-ready rather than true completion, write or refresh one checkpoint-style quest memory card with `memory.write(scope='quest', ...)` before leaving the stage
 
 Quest-specific closure state belongs in files and artifacts first, not only memory.
 

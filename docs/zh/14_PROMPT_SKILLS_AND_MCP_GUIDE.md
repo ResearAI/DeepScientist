@@ -401,7 +401,7 @@ DeepScientist 故意把内建 MCP 面压得很小。
 
 当前内建工具有：
 
-- `memory.write(...)`
+- `memory.write(...)` — 默认 `scope='global'`；写 quest 内部任务追踪时显式传 `scope='quest'`
 - `memory.read(...)`
 - `memory.search(...)`
 - `memory.list_recent(...)`
