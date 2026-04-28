@@ -560,4 +560,4 @@ artifact 名字虽然多，但本质上还是一个家族。
 
 ## 13. 跨 quest 经验蒸馏
 
-`experience_distill` 开关、finalize 终结门、`distill_review` 制品、`recall_priors` 提示、以及 `memory.list_knowledge_summaries` / `artifact.list_distill_candidates` 这两个 MCP 工具，统一在 [34 经验蒸馏指南](./34_EXPERIENCE_DISTILL_GUIDE.md) 中说明。
+`experience_distill` 开关、finalize 终结门、`decision(action='distill_review')` 制品、`recall_priors` 提示、以及 `memory.list_knowledge_summaries` / `artifact.list_distill_candidates` 这两个 MCP 工具，统一在 [34 Experience Distillation Guide](../en/34_EXPERIENCE_DISTILL_GUIDE.md) 中说明（中文版已移除）。

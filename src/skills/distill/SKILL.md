@@ -1,6 +1,6 @@
 ---
 name: distill
-description: "Use when the finalize gate fires. Inspect the batch of undistilled completed runs, then write 0..N reusable knowledge cards (`subtype: experience`) and one bookkeeping `decision(action='distill_review')` artifact."
+description: "Use when the finalize gate fires. Inspect the batch of undistilled completed runs, then write 0..N reusable knowledge cards and one bookkeeping `decision(action='distill_review')` artifact."
 skill_role: companion
 ---
 
@@ -18,66 +18,27 @@ Your job is **not** to write a lab notebook entry — it is to decide whether th
 {"tool": "artifact.list_distill_candidates", "arguments": {}}
 ```
 
-The tool returns:
-- `experience_distill_on`: skip the skill if `false`
-- `candidates`: undistilled run records (`artifact_id`, `run_id`, `run_kind`, `status`, `summary`, `branch`, `created_at`, `path`)
-- `reviewed_run_ids`: already covered, do not redo
-- `cursor_run_created_at`: timestamp of the last `distill_review`
+Returns `experience_distill_on` (skip if false), `candidates` (undistilled run records), `reviewed_run_ids` (already covered), and `cursor_run_created_at`.
 
-If `candidates` is empty, you should not have been routed here — recording a minimal `decision(action='distill_review')` with `reviewed_run_ids=[]` is **not** valid (schema rejects it). Instead, exit the skill and record a `decision(action='continue')` noting that the gate was already clear.
+If `candidates` is empty you should not have been routed here — exit and record a `decision(action='continue')` instead.
 
 ### 1. For each candidate, decide one of three outcomes
 
-For each `candidate`, look at the run record (`path`) and any related artifacts the run references.
-
-**A. Patch an existing global card (default when a neighbor is found)**
-
-**Search for neighbors via the keyword summary index.**
+Look at the run record (`path`) and any artifacts it references. Search for neighbor cards via the keyword summary index:
 
 ```json
 {"tool": "memory.list_knowledge_summaries", "arguments": {"scope": "global"}}
 ```
 
-The tool returns one row per global knowledge card with
-`card_id / title / claim / keywords / tags / subtype / updated_at`. Scan
-the rows for any card whose `task:` tag, `claim`, or `keywords` overlap
-the candidate run you are processing.
+Each row carries `card_id / title / claim / keywords / tags / subtype / updated_at`. Scan for cards whose `task:` tag, `claim`, or `keywords` overlap the candidate; fetch full bodies via `memory.read` for plausible neighbors. Then decide one of:
 
-For each row that looks like a plausible neighbor, fetch the full card:
+- **patch** — existing card and candidate share a causal mechanism. Append a `lineage` entry; `claim` is immutable across quests (same-quest patches may edit it).
+- **new** — no existing card covers the mechanism; write a fresh card with `memory.write`.
+- **neighbor_but_separate** — a related card exists but the mechanism is genuinely different. Note the relationship in the body and write a new card anyway.
 
-```json
-{"tool": "memory.read", "arguments": {"card_id": "knowledge-..."}}
-```
+Record one `neighbor_decisions` entry per inspected neighbor in the final `decision(action='distill_review')` — including the negative cases.
 
-For each inspection, decide one of:
-
-- **patch** — the existing card and the candidate run share a causal
-  mechanism. Append a `lineage` entry, possibly downgrade `confidence`,
-  narrow `conditions`, and update `keywords` per the cross-quest rule
-  in step 2.
-- **new** — no existing card covers the candidate's mechanism; write a
-  fresh card with `memory.write`.
-- **neighbor_but_separate** — a related card exists but the candidate's
-  mechanism is genuinely different. Note the relationship in the body
-  and write a new card anyway.
-
-Record one `neighbor_decisions` entry per inspected neighbor in the
-final `decision(action='distill_review')` (see step 3) — including
-the negative cases (`new`, `neighbor_but_separate`).
-
-If the decision is **patch**, `memory.write` to patch:
-- append one `lineage` entry `{quest, run, direction, note}`
-- adjust `confidence` (monotone non-increasing across quests)
-- narrow `conditions` if this candidate revealed a scoping limit
-- `claim` is **immutable** when patching across quests; only same-quest patches may edit it
-
-**B. Create a new global card (only when no neighbor exists)**
-
-`memory.write` with `scope="global"`, `kind="knowledge"`. Only two
-frontmatter fields are validated: `claim` (non-empty) and `lineage`
-(non-empty list, each entry has at least `quest` + `run`). Other
-fields below are conventional but not enforced — include them when
-they help future readers, omit them when they would be filler:
+For **new** cards, `memory.write` with `scope="global"`, `kind="knowledge"`. Only two frontmatter fields are validated: `claim` (non-empty) and `lineage` (non-empty list, each entry has at least `quest` + `run`). Other fields are conventional, not enforced:
 
 ```yaml
 claim: <one sentence, mechanism-bearing, falsifiable>     # required
@@ -86,43 +47,21 @@ lineage:                                                   # required, non-empty
     run: <candidate.run_id or candidate.artifact_id>
     direction: <direction or goal id>
     note: <one-phrase takeaway>
-# optional but conventional:
-subtype: experience
-mechanism: <causal chain — why this plausibly holds>
-conditions:
-  - <scoping tag 1>
-keywords:
-  - <kw 1>            # 3..8 short noun phrases or compound tokens; lowercased
-confidence: <0.0..1.0; 0.4 is a fine starting value>
-tags:
-  - task:<short-id>
-  - stage:<stage>
-  - domain:<domain>
-  - method:<method>
+# optional, conventional — not validated:
+keywords: [...]
+tags: [task:<short-id>, stage:<stage>, ...]
 ```
 
 Body: 3–8 lines of prose explaining the reasoning. No experiment-log dumps.
 
-**C. No card from this candidate**
+Skipping a candidate (no card written) is acceptable for smoke tests, inconclusive runs, or duplicates of prior cards. `reason_if_empty` in the review artifact is only required when the entire batch produces zero cards.
 
-Acceptable when the run was a smoke test, the result was inconclusive, or it duplicated a prior card with no new condition. Just skip writing a card for this entry. The `decision(action='distill_review')` artifact (Step 3) records *which* candidates were skipped via `reason_if_empty` (only required when the entire batch produces zero cards).
+### 2. Cross-quest patch invariants
 
-### 2. Hard constraints on new/patched cards
-
-- `claim` must name a **mechanism**, not just an outcome. ("X improved accuracy" → reject; "X helps because it shortens the gradient path through Y" → accept.)
-- `conditions` must name at least one scoping tag.
+- `claim` must name a **mechanism**, not just an outcome.
 - `lineage[*]` must cite a real `quest` and `run`. Forge nothing.
 - No numeric forecasts in the card body.
-- Every new or patched card must include a `task:<short-id>` tag in
-  the top-level `tags:` list. The `<short-id>` is a stable
-  low-cardinality slug for the task family the experience belongs to
-  (e.g. `task:snake-10x10`, `task:cifar10-classification`,
-  `task:gsm8k`). Reuse existing slugs when patching; coin a new slug
-  only when no neighbor card uses one.
-- Every new card must include a top-level `keywords` list of 3–8 short
-  noun phrases (lowercased, hyphenated). Cross-quest patches may
-  *append* keywords but must not delete existing ones; same-quest
-  patches may freely edit.
+- Cross-quest patches may *append* optional fields (`keywords`, `tags`) but must not delete them; same-quest patches may freely edit.
 
 ### 3. Record the batch summary
 
@@ -144,28 +83,20 @@ After processing all candidates, write exactly one `decision(action='distill_rev
     "reason_if_empty": "<required iff cards_written is empty>",
     "notes": "<optional free text>",
     "neighbor_decisions": [
-      {"candidate_card_id": "knowledge-...", "decision": "patch",  "reason": "same mechanism", "target_run_id": "run-..."},
+      {"candidate_card_id": "knowledge-...", "decision": "patch", "reason": "same mechanism", "target_run_id": "run-..."},
       {"candidate_card_id": "knowledge-...", "decision": "neighbor_but_separate", "reason": "different conditions", "target_run_id": "run-..."}
     ]
   }
 }
 ```
 
-`kind`, `action`, `verdict`, and `reason` are the standard `decision`
-artifact fields. The remaining fields (`reviewed_run_ids`,
-`cards_written`, `reason_if_empty`, `neighbor_decisions`) are
-review-specific and only validated when `action == 'distill_review'`.
-
-> `neighbor_decisions` is optional but strongly recommended: record one
-> entry per neighbor card you inspected, including the negative cases
-> (where the decision was `new` or `neighbor_but_separate`). This makes
-> the review log show what you considered, not just what you wrote.
+`kind`, `action`, `verdict`, and `reason` are the standard `decision` fields. The rest (`reviewed_run_ids`, `cards_written`, `reason_if_empty`, `neighbor_decisions`) are review-specific and only validated when `action == 'distill_review'`.
 
 `reviewed_run_ids` MUST list every candidate you actually inspected (not skipped). The cursor advances based on this list.
 
 ### 4. Resume the original route
 
-After the `decision(action='distill_review')` lands, the finalize gate clears (the cursor advances past your reviewed runs). The agent's previous intent — `write` or `finalize` — is preserved in the guidance payload as `previous_recommended_skill`. Resume that route by recording a fresh `decision(action='write'|'finalize')` or proceeding to the corresponding skill directly.
+After the `decision(action='distill_review')` lands, the finalize gate clears. The agent's previous intent — `write` or `finalize` — is preserved in the guidance payload as `previous_recommended_skill`. Resume that route by recording a fresh `decision(action='write'|'finalize')` or proceeding to the corresponding skill directly.
 
 ## Output
 
