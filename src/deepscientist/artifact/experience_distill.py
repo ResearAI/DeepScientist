@@ -1,17 +1,17 @@
 """Experience distillation helpers.
 
 Experience is a `subtype` of the `knowledge` memory kind — not a new kind.
-Frontmatter schema enforced here:
+The slim frontmatter contract enforced here is intentionally minimal:
 
-    subtype: experience
-    claim: <one-sentence mechanism-bearing claim>
-    mechanism: <why the claim plausibly holds>
-    conditions: [<scoping tags>, ...]
-    confidence: 0.0..1.0
-    lineage: [{quest, run, direction, note}, ...]
+    claim:   <one-sentence mechanism-bearing claim>           (required)
+    lineage: [{quest, run, ...}, ...]                          (required, non-empty)
 
-Cross-quest patches may append lineage and downgrade confidence only;
-the `claim` text is locked once the card spans more than one quest.
+Cards may carry additional fields (subtype, mechanism, conditions,
+confidence, keywords, tags, ...); the validator does not reject when
+they are absent because agents tend to game shallow taxonomy fields.
+The cross-quest patch invariant (`validate_cross_quest_patch`) only ever
+needed lineage: claim text is locked across quests, confidence is
+non-increasing, and lineage may only grow.
 """
 
 from __future__ import annotations
@@ -48,18 +48,15 @@ def _canonical_lineage_entry(entry: dict[str, Any]) -> dict[str, str]:
 
 
 def validate_experience_metadata(meta: dict[str, Any]) -> None:
-    """Raise ValueError if the frontmatter does not satisfy the experience contract."""
-    if str(meta.get("subtype") or "").strip() != "experience":
-        raise ValueError("Experience frontmatter must have subtype: experience")
-    for field in ("claim", "mechanism"):
-        if not str(meta.get(field) or "").strip():
-            raise ValueError(f"Experience frontmatter missing required field `{field}`")
-    conditions = meta.get("conditions") or []
-    if not isinstance(conditions, list) or not any(str(item).strip() for item in conditions):
-        raise ValueError("Experience frontmatter `conditions` must be a non-empty list of scoping tags")
-    confidence = meta.get("confidence")
-    if not isinstance(confidence, (int, float)) or not 0.0 <= float(confidence) <= 1.0:
-        raise ValueError("Experience frontmatter `confidence` must be a float in [0.0, 1.0]")
+    """Raise ValueError if the frontmatter does not satisfy the experience contract.
+
+    Slim contract: only `claim` (non-empty string) and `lineage` (non-empty list,
+    each entry a dict with at least `quest` + `run`) are enforced. Other fields
+    (subtype, mechanism, conditions, confidence, ...) may be present but are not
+    rejected when absent — agents tend to game shallow taxonomy fields.
+    """
+    if not str(meta.get("claim") or "").strip():
+        raise ValueError("Experience frontmatter missing required field `claim`")
     lineage = meta.get("lineage") or []
     if not isinstance(lineage, list) or not lineage:
         raise ValueError("Experience frontmatter `lineage` must be a non-empty list")

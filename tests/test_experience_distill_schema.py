@@ -17,11 +17,7 @@ def test_build_experience_metadata_sets_required_fields():
         confidence=0.6,
         lineage=[{"quest": "q_alpha", "run": "run_7", "direction": "optim_sweep", "note": "first sighting"}],
     )
-    assert meta["subtype"] == "experience"
     assert meta["claim"].startswith("Warm-up")
-    assert meta["mechanism"].startswith("Damps")
-    assert meta["confidence"] == 0.6
-    assert len(meta["conditions"]) == 3
     assert meta["lineage"][0]["quest"] == "q_alpha"
 
 
@@ -36,27 +32,28 @@ def test_validate_accepts_well_formed_metadata():
     validate_experience_metadata(meta)  # no raise
 
 
+def test_validate_accepts_minimal_claim_plus_lineage_only():
+    """Slim contract regression: a card with only claim + lineage validates."""
+    meta = {
+        "claim": "Warm-up helps Adam on small-batch CNNs",
+        "lineage": [{"quest": "q", "run": "r"}],
+    }
+    validate_experience_metadata(meta)  # no raise
+
+
 @pytest.mark.parametrize(
     "missing_field, expected_error_fragment",
     [
-        ("mechanism", "mechanism"),
-        ("conditions", "conditions"),
         ("lineage", "lineage"),
         ("claim", "claim"),
     ],
 )
 def test_validate_rejects_missing_required_field(missing_field, expected_error_fragment):
     meta = {
-        "subtype": "experience",
         "claim": "X",
-        "mechanism": "Y",
-        "conditions": ["Z"],
-        "confidence": 0.5,
         "lineage": [{"quest": "q", "run": "r", "direction": "d", "note": "n"}],
     }
-    if missing_field == "conditions":
-        meta[missing_field] = []
-    elif missing_field == "lineage":
+    if missing_field == "lineage":
         meta[missing_field] = []
     else:
         meta[missing_field] = ""
@@ -65,23 +62,11 @@ def test_validate_rejects_missing_required_field(missing_field, expected_error_f
 
 
 def test_validate_rejects_lineage_entry_missing_quest_or_run():
-    meta = build_experience_metadata(
-        claim="X",
-        mechanism="Y",
-        conditions=["Z"],
-        confidence=0.5,
-        lineage=[{"quest": "q", "direction": "d", "note": "n"}],  # no run
-    )
+    meta = {
+        "claim": "X",
+        "lineage": [{"quest": "q", "direction": "d", "note": "n"}],  # no run
+    }
     with pytest.raises(ValueError, match="run"):
-        validate_experience_metadata(meta)
-
-
-def test_validate_confidence_bounds():
-    meta = build_experience_metadata(
-        claim="X", mechanism="Y", conditions=["Z"], confidence=1.5,
-        lineage=[{"quest": "q", "run": "r", "direction": "d", "note": "n"}],
-    )
-    with pytest.raises(ValueError, match="confidence"):
         validate_experience_metadata(meta)
 
 

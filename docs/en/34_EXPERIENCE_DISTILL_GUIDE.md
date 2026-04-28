@@ -91,8 +91,12 @@ The validator checks that every `target_run_id` in `cards_written` and
 `neighbor_decisions` appears in `reviewed_run_ids`, and that every
 `reviewed_run_ids` entry references a known run somewhere in the
 quest's workspace dirs (worktrees included). The card-frontmatter
-validator additionally requires `subtype: experience` plus a `lineage`
-block citing `quest:<id>` and `run:<id>` for cross-quest auditability.
+validator only requires two fields: a non-empty `claim` and a
+non-empty `lineage` list whose entries each cite at least `quest:<id>`
+and `run:<id>` for cross-quest auditability. Cards may carry
+additional fields (`subtype`, `mechanism`, `conditions`, `confidence`,
+`keywords`, `tags`, ...) but their presence is not enforced — shallow
+taxonomy fields tend to be gamed.
 
 ## 7. Cross-quest recall
 

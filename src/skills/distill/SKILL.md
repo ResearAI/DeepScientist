@@ -73,29 +73,32 @@ If the decision is **patch**, `memory.write` to patch:
 
 **B. Create a new global card (only when no neighbor exists)**
 
-`memory.write` with `scope="global"`, `kind="knowledge"`, frontmatter:
+`memory.write` with `scope="global"`, `kind="knowledge"`. Only two
+frontmatter fields are validated: `claim` (non-empty) and `lineage`
+(non-empty list, each entry has at least `quest` + `run`). Other
+fields below are conventional but not enforced — include them when
+they help future readers, omit them when they would be filler:
 
 ```yaml
-subtype: experience
-claim: <one sentence, mechanism-bearing, falsifiable>
-mechanism: <causal chain — why this plausibly holds>
-conditions:
-  - <scoping tag 1>
-  - <scoping tag 2>
-keywords:
-  - <kw 1>            # 3..8 short noun phrases or compound tokens; lowercased
-  - <kw 2>
-confidence: <0.0..1.0; 0.4 is a fine starting value>
-tags:
-  - task:<short-id>   # required
-  - stage:<stage>     # optional
-  - domain:<domain>   # optional
-  - method:<method>   # optional
-lineage:
+claim: <one sentence, mechanism-bearing, falsifiable>     # required
+lineage:                                                   # required, non-empty
   - quest: <quest_id>
     run: <candidate.run_id or candidate.artifact_id>
     direction: <direction or goal id>
     note: <one-phrase takeaway>
+# optional but conventional:
+subtype: experience
+mechanism: <causal chain — why this plausibly holds>
+conditions:
+  - <scoping tag 1>
+keywords:
+  - <kw 1>            # 3..8 short noun phrases or compound tokens; lowercased
+confidence: <0.0..1.0; 0.4 is a fine starting value>
+tags:
+  - task:<short-id>
+  - stage:<stage>
+  - domain:<domain>
+  - method:<method>
 ```
 
 Body: 3–8 lines of prose explaining the reasoning. No experiment-log dumps.
