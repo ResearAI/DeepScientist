@@ -782,6 +782,8 @@ class PromptBuilder:
             [
                 f"- path: {path}",
                 "- rule: treat this file as the highest-priority durable summary of the user's current requirements and constraints",
+                "- manuscript_boundary_rule: user requirements are planning constraints and acceptance criteria, not paper-ready source text",
+                "- manuscript_transduction_rule: when writing papers, convert only scientifically relevant requirements into neutral protocol language and keep operator/user/restart/provenance wording out of manuscript prose",
                 "",
                 text,
             ]
@@ -2038,6 +2040,9 @@ class PromptBuilder:
                         "- paper_contract_health: "
                         f"evidence_ready={bool(paper_contract_health.get('evidence_ready', paper_contract_health.get('writing_ready')))}, "
                         f"analysis_ready={bool(paper_contract_health.get('analysis_ready', paper_contract_health.get('writing_ready')))}, "
+                        f"academic_outline_ready={bool(paper_contract_health.get('academic_outline_ready'))}, "
+                        f"analysis_plan_ready={bool(paper_contract_health.get('analysis_plan_ready'))}, "
+                        f"language_firewall_ok={bool(paper_contract_health.get('language_firewall_ok', True))}, "
                         f"draft_checkpoint_ready={bool(paper_contract_health.get('draft_checkpoint_ready'))}, "
                         f"manuscript_ready={bool(paper_contract_health.get('manuscript_ready'))}, "
                         f"submission_ready={bool(paper_contract_health.get('submission_ready'))}"
@@ -2050,12 +2055,24 @@ class PromptBuilder:
                     "- paper_contract_tool: call artifact.get_paper_contract(detail='full') before evidence-grounded paper prose.",
                     "- paper_health_tool: call artifact.get_paper_contract_health(detail='full') before write/finalize routing.",
                     "- paper_coverage_tool: call artifact.validate_manuscript_coverage(detail='full') before full-manuscript or submission claims.",
+                    "- paper_academic_outline_tool: call artifact.validate_academic_outline(detail='full') before writing from an outline.",
+                    "- paper_language_tool: call artifact.validate_manuscript_language(detail='full') before submission or after major prose edits.",
+                    "- paper_writing_plan_tool: call artifact.compile_outline_to_writing_plan(detail='full') after the academic outline passes and before drafting.",
                     "- paper_outline_tool: call artifact.list_paper_outlines(...) when outline inventory or a valid outline_id is needed.",
                     "- paper_campaign_tool: call artifact.get_analysis_campaign(campaign_id='active') when exact supplementary slice status matters.",
                 ]
             )
             lines.append(
                 "- paper_contract_rule: do not finalize unless submission_ready is true."
+            )
+            lines.append(
+                "- paper_view_rule: a selected outline must separate `paper_view` (paper idea, claims, method, analyses) from `evidence_view` (result rows, run ids, paths, reproducibility details)."
+            )
+            lines.append(
+                "- paper_language_rule: keep quest/worktree/port/batch/route wording out of main manuscript text; turn it into benchmark, baseline, budget, method, or appendix wording."
+            )
+            lines.append(
+                "- paper_story_rule: write the paper around one defensible idea and what the reader learns from the results, not around the order in which the agent ran experiments."
             )
         return "\n".join(lines)
 

@@ -205,6 +205,10 @@ ARTIFACT_STATE_CHANGE_WATCHDOG_NOTES = {
         "Paper outline state changed durably and this tool does not send a user-visible summary on its own. "
         "Send one concise artifact.interact(...) update now."
     ),
+    "compile_outline_to_writing_plan": (
+        "Paper writing plan state changed durably and this tool does not send a user-visible summary on its own. "
+        "Send one concise artifact.interact(...) update now."
+    ),
     "publish_baseline": (
         "Baseline publication changed durable state and this tool does not send a user-visible summary "
         "on its own. Send one concise artifact.interact(...) update now."
@@ -1453,6 +1457,71 @@ def build_artifact_server(context: McpContext) -> FastMCP:
         )
 
     @server.tool(
+        name="validate_academic_outline",
+        description=(
+            "Validate that the selected outline is a real paper plan before drafting. "
+            "Checks the one-sentence paper idea, story spine, evidence boundaries, core claims, method, evaluation plan, "
+            "4-8 planned analyses or an explicit waiver, and implementation wording leakage."
+        ),
+        annotations=_read_only_tool_annotations(title="Validate academic outline"),
+    )
+    def validate_academic_outline(
+        detail: str = "summary",
+        comment: str | dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return service.validate_academic_outline(
+            context.require_quest_root(),
+            detail=detail,
+        )
+
+    @server.tool(
+        name="validate_manuscript_language",
+        description=(
+            "Scan paper draft/LaTeX for main-text implementation or route terms that should stay in artifact records "
+            "or appendix reproducibility details."
+        ),
+        annotations=_read_only_tool_annotations(title="Validate manuscript language"),
+    )
+    def validate_manuscript_language(
+        detail: str = "summary",
+        scope: str = "main_text",
+        comment: str | dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return service.validate_manuscript_language(
+            context.require_quest_root(),
+            detail=detail,
+            scope=scope,
+        )
+
+    @server.tool(
+        name="compile_outline_to_writing_plan",
+        description=(
+            "Turn the selected outline into concrete writing jobs for introduction, method, setup, results, analyses, "
+            "limitations, and abstract. Use after validate_academic_outline and before drafting."
+        ),
+    )
+    def compile_outline_to_writing_plan(
+        detail: str = "summary",
+        comment: str | dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            result = service.compile_outline_to_writing_plan(
+                context.require_quest_root(),
+                detail=detail,
+            )
+            return finalize_state_changing_artifact_tool(result, tool_name="compile_outline_to_writing_plan")
+        except (ValueError, FileNotFoundError, RuntimeError) as exc:
+            return finalize_artifact_tool(
+                _artifact_guided_error_payload(
+                    service,
+                    context.require_quest_root(),
+                    tool_name="compile_outline_to_writing_plan",
+                    exc=exc,
+                ),
+                tool_name="compile_outline_to_writing_plan",
+            )
+
+    @server.tool(
         name="get_quest_state",
         description=(
             "Read the current quest runtime state without mutating anything. "
@@ -1728,7 +1797,11 @@ def build_artifact_server(context: McpContext) -> FastMCP:
         name="submit_paper_outline",
         description=(
             "Persist a paper outline candidate, select an approved outline, or revise the selected outline. "
-            "Use this before analysis campaigns that should support final writing claims."
+            "Use this before analysis campaigns that should support final writing claims. "
+            "For paper-facing work, put the paper idea and section plan in detailed_outline.paper_view, "
+            "and keep result rows, paths, run ids, and reproducibility details in detailed_outline.evidence_view. "
+            "Good paper_view records a one-sentence thesis, what the reader should learn, evidence boundaries, "
+            "and a 4-8 item analysis plan when the paper is mature."
         ),
     )
     def submit_paper_outline(

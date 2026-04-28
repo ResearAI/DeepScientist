@@ -72,6 +72,40 @@ from .metrics import (
 )
 from .schemas import ARTIFACT_DIRS, guidance_for_kind, validate_artifact_payload
 
+_PAPER_VIEW_STORY_KEYS = ("problem", "gap", "method", "main_result", "scope_limit")
+_PAPER_VIEW_ANALYSIS_MIN = 4
+_PAPER_VIEW_ANALYSIS_MAX = 8
+_PAPER_VIEW_FULL_ANALYSIS_TYPES = {
+    "full_empirical",
+    "method",
+    "benchmark",
+    "evaluation",
+    "systems",
+    "dataset",
+}
+_PAPER_VIEW_EARLY_MATURITY = {"idea_seed", "early", "sketch", "outline_seed"}
+_PAPER_VIEW_FORBIDDEN_PATTERNS: tuple[tuple[str, str, str, str], ...] = (
+    ("quest", r"\bquest\b", "blocker", "Do not mention quest/runtime identity in paper text."),
+    ("worktree", r"\bworktree\b", "blocker", "Keep branch/worktree provenance in artifact records only."),
+    ("selected outline", r"selected[_ -]?outline", "blocker", "Refer to the paper structure, not the outline artifact."),
+    ("paper restart", r"paper\s+restart", "blocker", "Omit restart/control history from manuscripts."),
+    ("latest user", r"latest\s+user", "blocker", "User instructions constrain scope; they are not manuscript evidence."),
+    (
+        "user request",
+        r"\bthe\s+user\s+(requested|asked|accepted|rejected|wanted)\b",
+        "blocker",
+        "Convert user constraints into neutral experimental scope or omit them.",
+    ),
+    ("64+64", r"\b64\s*\+\s*64\b", "blocker", "Move serving/batch shorthand to appendix reproducibility details."),
+    ("dual ports", r"\bdual[- ]?ports?\b", "blocker", "Describe the scientific evidence-acquisition design instead."),
+    ("dual endpoints", r"\bdual[- ]?endpoints?\b", "blocker", "Describe the scientific evidence-acquisition design instead."),
+    ("opposite port", r"\bopposite[- ]?ports?\b", "blocker", "Describe the scientific evidence-acquisition design instead."),
+    ("local endpoint", r"\blocal\s+endpoints?\b", "warning", "Usually appendix-only unless endpoint independence is central."),
+    ("source worktree", r"\bsource\s+worktree\b", "blocker", "Keep source worktree paths out of paper-facing prose."),
+    ("route overview", r"\broute\s+overview\b", "blocker", "Use a paper section role such as ablation, mechanism, or limitation analysis."),
+    ("full-test protocol", r"\b(?:fixed\s+)?full[- ]test\s+protocol\b", "blocker", "Use held-out benchmark or evaluation protocol."),
+)
+
 QUEST_COMPLETION_DECISION_TYPE = "quest_completion_approval"
 _COMPLETION_APPROVAL_TERMS = (
     "同意完成",
@@ -2144,6 +2178,270 @@ class ArtifactService:
         except OSError:
             return ""
 
+    @staticmethod
+    def _outline_scan_payload(value: object) -> object:
+        if isinstance(value, dict):
+            skipped = {
+                "appendix_only_details",
+                "appendix_reproducibility",
+                "forbidden_main_text_terms",
+                "source_paths",
+                "result_table",
+                "unmapped_items",
+            }
+            return {
+                str(key): ArtifactService._outline_scan_payload(item)
+                for key, item in value.items()
+                if str(key) not in skipped
+            }
+        if isinstance(value, list):
+            return [ArtifactService._outline_scan_payload(item) for item in value]
+        return value
+
+    @staticmethod
+    def _forbidden_language_violations(text: str, *, path: str | None = None) -> list[dict[str, Any]]:
+        violations: list[dict[str, Any]] = []
+        if not text:
+            return violations
+        lines = text.splitlines()
+        for term, pattern, severity, suggestion in _PAPER_VIEW_FORBIDDEN_PATTERNS:
+            regex = re.compile(pattern, flags=re.IGNORECASE)
+            for line_index, line in enumerate(lines, start=1):
+                match = regex.search(line)
+                if not match:
+                    continue
+                violations.append(
+                    {
+                        "term": term,
+                        "matched_text": match.group(0),
+                        "severity": severity,
+                        "path": path,
+                        "line": line_index,
+                        "suggestion": suggestion,
+                    }
+                )
+                break
+        return violations
+
+    def _academic_outline_validation_payload(
+        self,
+        quest_root: Path,
+        *,
+        workspace_root: Path | None = None,
+    ) -> dict[str, Any]:
+        outline_path, outline = self._read_selected_outline_for_sync(quest_root, workspace_root=workspace_root)
+        outline = outline if isinstance(outline, dict) else {}
+        blockers: list[str] = []
+        warnings: list[str] = []
+        if not outline:
+            return {
+                "schema_version": 1,
+                "ok": False,
+                "academic_outline_ready": False,
+                "analysis_plan_ready": False,
+                "outline_path": str(outline_path) if outline_path else None,
+                "outline_id": None,
+                "blockers": ["no selected outline is available"],
+                "warnings": [],
+                "language_violations": [],
+                "updated_at": utc_now(),
+            }
+        paper_view = dict(outline.get("paper_view") or {}) if isinstance(outline.get("paper_view"), dict) else {}
+        if not paper_view:
+            detailed = dict(outline.get("detailed_outline") or {}) if isinstance(outline.get("detailed_outline"), dict) else {}
+            sections = self._normalize_outline_sections(
+                outline.get("sections"),
+                experimental_designs=self._normalize_string_list(detailed.get("experimental_designs")),
+            )
+            paper_view = self._normalize_outline_paper_view(
+                detailed,
+                title=str(outline.get("title") or outline.get("outline_id") or "outline"),
+                story=str(outline.get("story") or ""),
+                sections=sections,
+            )
+        story_spine = dict(paper_view.get("story_spine") or {}) if isinstance(paper_view.get("story_spine"), dict) else {}
+        missing_story = [key for key in _PAPER_VIEW_STORY_KEYS if not str(story_spine.get(key) or "").strip()]
+        narrative = (
+            dict(paper_view.get("narrative_strategy") or {})
+            if isinstance(paper_view.get("narrative_strategy"), dict)
+            else {}
+        )
+        insight_ladder = [
+            dict(item) for item in (paper_view.get("insight_ladder") or []) if isinstance(item, dict)
+        ]
+        grounding = (
+            dict(paper_view.get("evidence_grounding") or {})
+            if isinstance(paper_view.get("evidence_grounding"), dict)
+            else {}
+        )
+        paper_type = str(paper_view.get("paper_type") or "full_empirical").strip().lower() or "full_empirical"
+        outline_maturity = str(paper_view.get("outline_maturity") or "").strip().lower()
+        early_outline = outline_maturity in _PAPER_VIEW_EARLY_MATURITY
+        central_thesis = str(narrative.get("central_thesis") or "").strip()
+        central_insight = str(narrative.get("central_insight") or narrative.get("reader_takeaway") or "").strip()
+        story_substance_count = sum(1 for key in _PAPER_VIEW_STORY_KEYS if str(story_spine.get(key) or "").strip())
+        if missing_story:
+            warnings.append("paper_view.story_spine is missing: " + ", ".join(missing_story))
+        if story_substance_count < 3 and not central_thesis:
+            blockers.append("paper_view needs a clear one-sentence paper idea or at least three story_spine fields")
+        if not central_insight and not insight_ladder:
+            warnings.append("paper_view lacks central_insight / insight_ladder; outline may read like a technical report")
+        claims = [dict(item) for item in (paper_view.get("core_claims") or []) if isinstance(item, dict)]
+        if not claims:
+            blockers.append("paper_view.core_claims is empty")
+        if len(claims) > 3:
+            warnings.append("paper_view.core_claims has more than three claims; consider narrowing the paper")
+        method = dict(paper_view.get("method_abstraction") or {}) if isinstance(paper_view.get("method_abstraction"), dict) else {}
+        if not (str(method.get("intuition") or "").strip() or central_insight):
+            blockers.append("paper_view.method_abstraction.intuition is empty")
+        if not self._normalize_string_list(method.get("mechanism_steps")):
+            if early_outline:
+                warnings.append("paper_view.method_abstraction.mechanism_steps is empty")
+            else:
+                blockers.append("paper_view.method_abstraction.mechanism_steps is empty")
+        evaluation = dict(paper_view.get("evaluation_plan") or {}) if isinstance(paper_view.get("evaluation_plan"), dict) else {}
+        if not (
+            str(evaluation.get("setting") or "").strip()
+            or self._normalize_string_list(evaluation.get("datasets_or_benchmarks"))
+        ):
+            blockers.append("paper_view.evaluation_plan needs a setting or benchmark/dataset list")
+        analysis_plan = [
+            dict(item) for item in (paper_view.get("analysis_plan") or []) if isinstance(item, dict)
+        ]
+        waiver = str(paper_view.get("analysis_budget_waiver") or "").strip()
+        analysis_plan_ready = True
+        full_analysis_expected = paper_type in _PAPER_VIEW_FULL_ANALYSIS_TYPES and not early_outline
+        if len(analysis_plan) < _PAPER_VIEW_ANALYSIS_MIN and not waiver and full_analysis_expected:
+            analysis_plan_ready = False
+            blockers.append(
+                f"paper_view.analysis_plan has fewer than {_PAPER_VIEW_ANALYSIS_MIN} entries and no analysis_budget_waiver"
+            )
+        elif len(analysis_plan) < _PAPER_VIEW_ANALYSIS_MIN and not waiver:
+            warnings.append(
+                f"paper_view.analysis_plan has fewer than {_PAPER_VIEW_ANALYSIS_MIN} entries; acceptable only for early/narrow outlines"
+            )
+        if len(analysis_plan) > _PAPER_VIEW_ANALYSIS_MAX:
+            warnings.append(
+                f"paper_view.analysis_plan has more than {_PAPER_VIEW_ANALYSIS_MAX} entries; split main-text and appendix roles explicitly"
+            )
+        for item in analysis_plan:
+            title = str(item.get("title") or item.get("analysis_id") or "analysis").strip() or "analysis"
+            for field in ("analysis_role", "reviewer_question", "target_display", "main_or_appendix"):
+                if str(item.get(field) or "").strip():
+                    continue
+                if full_analysis_expected:
+                    analysis_plan_ready = False
+                    blockers.append(f"analysis `{title}` is missing `{field}`")
+                else:
+                    warnings.append(f"analysis `{title}` is missing `{field}`")
+            if not self._normalize_string_list(item.get("claim_links")):
+                if full_analysis_expected:
+                    analysis_plan_ready = False
+                    blockers.append(f"analysis `{title}` is missing `claim_links`")
+                else:
+                    warnings.append(f"analysis `{title}` is missing `claim_links`")
+        observed_facts = self._normalize_string_list(grounding.get("observed_facts"))
+        allowed_interpretations = self._normalize_string_list(grounding.get("allowed_interpretations"))
+        must_not_claim = self._normalize_string_list(grounding.get("must_not_claim"))
+        claim_evidence_items = [
+            value
+            for claim in claims
+            for value in self._normalize_string_list(claim.get("evidence_needed"))
+        ]
+        ladder_evidence_items = [
+            value
+            for item in insight_ladder
+            for value in self._normalize_string_list(item.get("evidence"))
+        ]
+        if not (observed_facts or claim_evidence_items or ladder_evidence_items):
+            blockers.append("paper_view needs evidence grounding: observed_facts, claim evidence_needed, or insight_ladder evidence")
+        if (central_thesis or central_insight or self._normalize_string_list(narrative.get("interpretive_leaps"))) and not (
+            observed_facts and (allowed_interpretations or must_not_claim)
+        ):
+            warnings.append("paper_view expands beyond raw metrics; evidence_grounding should state facts, allowed interpretations, and must-not-claim limits")
+        scan_payload = self._outline_scan_payload(paper_view)
+        scan_text = json.dumps(scan_payload, ensure_ascii=False, sort_keys=True)
+        language_violations = self._forbidden_language_violations(scan_text, path=str(outline_path) if outline_path else None)
+        if any(str(item.get("severity")) == "blocker" for item in language_violations):
+            blockers.append("paper_view contains implementation/control wording that should not be in main paper text")
+        if any(str(item.get("severity")) == "warning" for item in language_violations):
+            warnings.append("paper_view contains terms that are usually appendix-only")
+        ok = not blockers
+        return {
+            "schema_version": 1,
+            "ok": ok,
+            "academic_outline_ready": ok,
+            "analysis_plan_ready": analysis_plan_ready and not any("analysis `" in item for item in blockers),
+            "outline_path": str(outline_path) if outline_path else None,
+            "outline_id": str(outline.get("outline_id") or "").strip() or None,
+            "paper_type": paper_type,
+            "outline_maturity": outline_maturity or None,
+            "central_thesis": central_thesis or None,
+            "central_insight": central_insight or None,
+            "story_missing": missing_story,
+            "claim_count": len(claims),
+            "insight_count": len(insight_ladder),
+            "analysis_count": len(analysis_plan),
+            "analysis_budget_waiver": waiver or None,
+            "blockers": blockers,
+            "warnings": warnings,
+            "language_violations": language_violations,
+            "updated_at": utc_now(),
+        }
+
+    def _paper_manuscript_text_files(
+        self,
+        quest_root: Path,
+        *,
+        workspace_root: Path | None = None,
+        scope: str = "main_text",
+    ) -> list[Path]:
+        workspace = self._workspace_root_for(quest_root, workspace_root)
+        paper_root = self._paper_root(quest_root, workspace_root=workspace, create=True)
+        paths: list[Path] = []
+        draft_path = paper_root / "draft.md"
+        if draft_path.exists() and draft_path.is_file():
+            paths.append(draft_path)
+        latex_root = paper_root / "latex"
+        if latex_root.exists() and latex_root.is_dir():
+            for path in sorted(latex_root.rglob("*.tex"))[:120]:
+                lowered = "/".join(part.lower() for part in path.relative_to(latex_root).parts)
+                if scope == "main_text" and any(token in lowered for token in ("appendix", "supplement", "supplementary")):
+                    continue
+                paths.append(path)
+        return paths
+
+    def _manuscript_language_validation_payload(
+        self,
+        quest_root: Path,
+        *,
+        workspace_root: Path | None = None,
+        scope: str = "main_text",
+    ) -> dict[str, Any]:
+        normalized_scope = str(scope or "main_text").strip().lower().replace("-", "_") or "main_text"
+        if normalized_scope not in {"main_text", "all"}:
+            normalized_scope = "main_text"
+        workspace = self._workspace_root_for(quest_root, workspace_root)
+        paths = self._paper_manuscript_text_files(quest_root, workspace_root=workspace, scope=normalized_scope)
+        violations: list[dict[str, Any]] = []
+        for path in paths:
+            text = self._read_text_sample(path)
+            relative = self._paper_bundle_relative_path(quest_root, path, workspace_root=workspace)
+            violations.extend(self._forbidden_language_violations(text, path=relative))
+        blocker_count = sum(1 for item in violations if str(item.get("severity")) == "blocker")
+        warning_count = sum(1 for item in violations if str(item.get("severity")) == "warning")
+        return {
+            "schema_version": 1,
+            "ok": blocker_count == 0,
+            "language_firewall_ok": blocker_count == 0,
+            "scope": normalized_scope,
+            "file_count": len(paths),
+            "blocker_count": blocker_count,
+            "warning_count": warning_count,
+            "violations": violations[:80],
+            "updated_at": utc_now(),
+        }
+
     def _paper_manuscript_coverage_payload(
         self,
         quest_root: Path,
@@ -2285,12 +2583,27 @@ class ArtifactService:
 
         analysis_group_count = len(analysis_keys)
         ready_analysis_group_count = len(ready_analysis_keys)
+        academic_outline = self._academic_outline_validation_payload(quest_root, workspace_root=workspace)
+        manuscript_language = self._manuscript_language_validation_payload(
+            quest_root,
+            workspace_root=workspace,
+            scope="main_text",
+        )
+        academic_outline_ready = bool(academic_outline.get("academic_outline_ready"))
+        analysis_plan_ready = bool(academic_outline.get("analysis_plan_ready"))
+        language_firewall_ok = bool(manuscript_language.get("language_firewall_ok"))
         draft_checkpoint_ready = draft_present or bool(manifest_path.exists())
         manuscript_blockers: list[str] = []
+        if not academic_outline_ready:
+            manuscript_blockers.append("academic outline paper_view is incomplete or contaminated")
+        if not analysis_plan_ready:
+            manuscript_blockers.append("paper_view analysis plan is incomplete")
         if not analysis_ready:
             manuscript_blockers.append("paper evidence or required analysis is not ready")
         if not draft_present:
             manuscript_blockers.append("no draft or LaTeX source detected")
+        if draft_present and not language_firewall_ok:
+            manuscript_blockers.append("manuscript main text contains implementation/control wording")
         if section_like_count < minimum_sections:
             manuscript_blockers.append(f"manuscript has fewer than {minimum_sections} section-like units")
         if missing_core_sections:
@@ -2352,6 +2665,11 @@ class ArtifactService:
             "ready_analysis_group_count": ready_analysis_group_count,
             "minimum_analysis_group_count": minimum_analysis_groups,
             "analysis_quantity_ready": ready_analysis_group_count >= minimum_analysis_groups,
+            "academic_outline_ready": academic_outline_ready,
+            "analysis_plan_ready": analysis_plan_ready,
+            "language_firewall_ok": language_firewall_ok,
+            "academic_outline_validation": academic_outline,
+            "manuscript_language_validation": manuscript_language,
             "evidence_ready": evidence_ready,
             "analysis_ready": analysis_ready,
             "draft_checkpoint_ready": draft_checkpoint_ready,
@@ -2387,6 +2705,11 @@ class ArtifactService:
                 "slice_id": str(raw.get("slice_id") or "").strip() or None,
                 "run_id": str(raw.get("run_id") or "").strip() or None,
                 "paper_role": str(raw.get("paper_role") or raw.get("paper_placement") or "").strip() or None,
+                "analysis_role": str(raw.get("analysis_role") or "").strip() or None,
+                "reviewer_question": str(raw.get("reviewer_question") or raw.get("research_question") or "").strip() or None,
+                "target_display": str(raw.get("target_display") or "").strip() or None,
+                "main_or_appendix": str(raw.get("main_or_appendix") or raw.get("paper_placement") or raw.get("paper_role") or "").strip() or None,
+                "failure_interpretation": str(raw.get("failure_interpretation") or "").strip() or None,
                 "status": str(raw.get("status") or "").strip() or None,
                 "claim_links": self._normalize_string_list(raw.get("claim_links")),
                 "setup_note": str(raw.get("setup_note") or raw.get("setup") or "").strip() or None,
@@ -2394,6 +2717,7 @@ class ArtifactService:
                 "result_summary": str(raw.get("result_summary") or "").strip() or None,
                 "impact_summary": str(raw.get("impact_summary") or raw.get("claim_impact") or "").strip() or None,
                 "source_paths": self._normalize_string_list(raw.get("source_paths")),
+                "mapping_status": str(raw.get("mapping_status") or "").strip() or None,
                 "updated_at": str(raw.get("updated_at") or "").strip() or None,
             }
             if row["item_id"] or row["title"] or row["result_summary"]:
@@ -2449,6 +2773,280 @@ class ArtifactService:
                 }
             )
         return generated
+
+    def _normalize_outline_story_spine(self, raw: object, *, story: str | None = None) -> dict[str, str | None]:
+        payload = dict(raw or {}) if isinstance(raw, dict) else {}
+        aliases = {
+            "problem": ("problem", "motivation", "background_problem"),
+            "gap": ("gap", "research_gap", "limitation"),
+            "method": ("method", "approach", "core_method"),
+            "main_result": ("main_result", "result", "headline_result"),
+            "scope_limit": ("scope_limit", "limitation", "boundary", "scope"),
+        }
+        resolved: dict[str, str | None] = {}
+        for key, candidates in aliases.items():
+            text = ""
+            for candidate in candidates:
+                text = str(payload.get(candidate) or "").strip()
+                if text:
+                    break
+            resolved[key] = text or None
+        if story and not any(resolved.values()):
+            resolved["problem"] = str(story or "").strip() or None
+        return resolved
+
+    def _normalize_outline_claims(self, raw: object, *, fallback: object = None) -> list[dict[str, Any]]:
+        values = raw if isinstance(raw, list) and raw else fallback
+        claims: list[dict[str, Any]] = []
+        if isinstance(values, list):
+            for index, item in enumerate(values, start=1):
+                if isinstance(item, dict):
+                    claim_text = str(item.get("claim") or item.get("claim_text") or item.get("text") or "").strip()
+                    claim_id = str(item.get("claim_id") or item.get("id") or f"C{index}").strip() or f"C{index}"
+                    claims.append(
+                        {
+                            "claim_id": claim_id,
+                            "claim": claim_text or str(item.get("title") or claim_id).strip() or claim_id,
+                            "scope": str(item.get("scope") or "").strip() or None,
+                            "evidence_needed": self._normalize_string_list(item.get("evidence_needed") or item.get("required_items")),
+                            "what_would_falsify_it": str(
+                                item.get("what_would_falsify_it") or item.get("falsification") or ""
+                            ).strip()
+                            or None,
+                        }
+                    )
+                else:
+                    text = str(item or "").strip()
+                    if text:
+                        claims.append(
+                            {
+                                "claim_id": f"C{index}",
+                                "claim": text,
+                                "scope": None,
+                                "evidence_needed": [],
+                                "what_would_falsify_it": None,
+                            }
+                        )
+        return claims
+
+    def _normalize_outline_method_abstraction(self, raw: object, *, methodology: object = None) -> dict[str, Any]:
+        payload = dict(raw or {}) if isinstance(raw, dict) else {}
+        methodology_text = str(methodology or "").strip()
+        return {
+            "paper_name": str(payload.get("paper_name") or payload.get("name") or "").strip() or None,
+            "intuition": str(payload.get("intuition") or payload.get("one_sentence_intuition") or methodology_text).strip()
+            or None,
+            "mechanism_steps": self._normalize_string_list(payload.get("mechanism_steps") or payload.get("steps")),
+            "appendix_only_details": self._normalize_string_list(payload.get("appendix_only_details")),
+            "forbidden_main_text_terms": self._normalize_string_list(payload.get("forbidden_main_text_terms")),
+        }
+
+    def _normalize_outline_narrative_strategy(self, raw: object) -> dict[str, Any]:
+        payload = dict(raw or {}) if isinstance(raw, dict) else {}
+        return {
+            "paper_archetype": str(payload.get("paper_archetype") or payload.get("archetype") or "").strip() or None,
+            "central_thesis": str(payload.get("central_thesis") or payload.get("thesis") or "").strip() or None,
+            "central_insight": str(payload.get("central_insight") or payload.get("insight") or "").strip() or None,
+            "reader_takeaway": str(payload.get("reader_takeaway") or payload.get("takeaway") or "").strip() or None,
+            "story_moves": self._normalize_string_list(payload.get("story_moves") or payload.get("moves")),
+            "interpretive_leaps": self._normalize_string_list(
+                payload.get("interpretive_leaps") or payload.get("expansion_moves")
+            ),
+            "reader_should_learn": self._normalize_string_list(payload.get("reader_should_learn")),
+        }
+
+    def _normalize_outline_insight_ladder(self, raw: object) -> list[dict[str, Any]]:
+        if not isinstance(raw, list):
+            return []
+        ladder: list[dict[str, Any]] = []
+        for index, item in enumerate(raw, start=1):
+            if isinstance(item, dict):
+                ladder.append(
+                    {
+                        "level": str(item.get("level") or item.get("name") or f"L{index}").strip() or f"L{index}",
+                        "statement": str(item.get("statement") or item.get("text") or "").strip() or None,
+                        "evidence": self._normalize_string_list(item.get("evidence") or item.get("evidence_items")),
+                        "claim_links": self._normalize_string_list(item.get("claim_links")),
+                        "risk": str(item.get("risk") or "").strip() or None,
+                    }
+                )
+            else:
+                text = str(item or "").strip()
+                if text:
+                    ladder.append(
+                        {
+                            "level": f"L{index}",
+                            "statement": text,
+                            "evidence": [],
+                            "claim_links": [],
+                            "risk": None,
+                        }
+                    )
+        return ladder
+
+    def _normalize_outline_evidence_grounding(self, raw: object) -> dict[str, Any]:
+        payload = dict(raw or {}) if isinstance(raw, dict) else {}
+        return {
+            "observed_facts": self._normalize_string_list(payload.get("observed_facts") or payload.get("facts")),
+            "allowed_interpretations": self._normalize_string_list(
+                payload.get("allowed_interpretations") or payload.get("interpretations")
+            ),
+            "must_not_claim": self._normalize_string_list(payload.get("must_not_claim") or payload.get("forbidden_claims")),
+            "evidence_gaps": self._normalize_string_list(payload.get("evidence_gaps") or payload.get("open_gaps")),
+        }
+
+    def _normalize_outline_evaluation_plan(self, raw: object, *, experimental_designs: object = None) -> dict[str, Any]:
+        payload = dict(raw or {}) if isinstance(raw, dict) else {}
+        return {
+            "setting": str(payload.get("setting") or payload.get("evaluation_setting") or "").strip() or None,
+            "datasets_or_benchmarks": self._normalize_string_list(
+                payload.get("datasets_or_benchmarks") or payload.get("benchmarks") or payload.get("datasets")
+            ),
+            "baselines": self._normalize_string_list(payload.get("baselines") or payload.get("comparators")),
+            "metrics": self._normalize_string_list(payload.get("metrics")),
+            "controlled_factors": self._normalize_string_list(
+                payload.get("controlled_factors") or payload.get("controls") or experimental_designs
+            ),
+        }
+
+    def _normalize_outline_analysis_plan(self, raw: object) -> list[dict[str, Any]]:
+        analyses: list[dict[str, Any]] = []
+        if not isinstance(raw, list):
+            return analyses
+        for index, item in enumerate(raw, start=1):
+            if isinstance(item, dict):
+                analysis_id = str(item.get("analysis_id") or item.get("id") or item.get("slice_id") or f"A{index}").strip()
+                analyses.append(
+                    {
+                        "analysis_id": analysis_id or f"A{index}",
+                        "title": str(item.get("title") or item.get("name") or analysis_id or f"A{index}").strip()
+                        or f"A{index}",
+                        "analysis_role": str(item.get("analysis_role") or item.get("role") or item.get("kind") or "").strip()
+                        or None,
+                        "reviewer_question": str(item.get("reviewer_question") or item.get("research_question") or "").strip()
+                        or None,
+                        "claim_links": self._normalize_string_list(item.get("claim_links")),
+                        "target_display": str(item.get("target_display") or item.get("display") or "").strip() or None,
+                        "main_or_appendix": str(
+                            item.get("main_or_appendix") or item.get("paper_placement") or item.get("paper_role") or ""
+                        ).strip()
+                        or None,
+                        "failure_interpretation": str(item.get("failure_interpretation") or "").strip() or None,
+                    }
+                )
+            else:
+                text = str(item or "").strip()
+                if text:
+                    analyses.append(
+                        {
+                            "analysis_id": f"A{index}",
+                            "title": text,
+                            "analysis_role": None,
+                            "reviewer_question": text,
+                            "claim_links": [],
+                            "target_display": None,
+                            "main_or_appendix": None,
+                            "failure_interpretation": None,
+                        }
+                    )
+        return analyses
+
+    def _normalize_outline_section_plan(
+        self,
+        raw: object,
+        *,
+        sections: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        source = raw if isinstance(raw, list) and raw else sections
+        plan: list[dict[str, Any]] = []
+        for index, item in enumerate(source or [], start=1):
+            if not isinstance(item, dict):
+                continue
+            section_id = str(item.get("section_id") or "").strip() or slugify(
+                str(item.get("title") or item.get("name") or f"section-{index}"), f"section-{index}"
+            )
+            plan.append(
+                {
+                    "section_id": section_id,
+                    "title": str(item.get("title") or item.get("name") or section_id).strip() or section_id,
+                    "paper_role": str(item.get("paper_role") or item.get("main_or_appendix") or "main_text").strip()
+                    or "main_text",
+                    "claims": self._normalize_string_list(item.get("claims")),
+                    "writing_job": str(item.get("writing_job") or item.get("note") or "").strip() or None,
+                    "status": str(item.get("status") or "planned").strip() or "planned",
+                }
+            )
+        return plan
+
+    def _normalize_outline_paper_view(
+        self,
+        normalized_detailed: dict[str, Any],
+        *,
+        title: str,
+        story: str | None,
+        sections: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        raw = dict(normalized_detailed.get("paper_view") or {}) if isinstance(normalized_detailed.get("paper_view"), dict) else {}
+        method_abstraction = self._normalize_outline_method_abstraction(
+            raw.get("method_abstraction") or normalized_detailed.get("method_abstraction"),
+            methodology=normalized_detailed.get("methodology"),
+        )
+        return {
+            "paper_type": str(raw.get("paper_type") or normalized_detailed.get("paper_type") or "full_empirical").strip()
+            or "full_empirical",
+            "outline_maturity": str(
+                raw.get("outline_maturity") or normalized_detailed.get("outline_maturity") or ""
+            ).strip()
+            or None,
+            "working_title": str(raw.get("working_title") or normalized_detailed.get("title") or title).strip() or title,
+            "story_spine": self._normalize_outline_story_spine(raw.get("story_spine"), story=story),
+            "narrative_strategy": self._normalize_outline_narrative_strategy(
+                raw.get("narrative_strategy") or normalized_detailed.get("narrative_strategy")
+            ),
+            "insight_ladder": self._normalize_outline_insight_ladder(
+                raw.get("insight_ladder") or normalized_detailed.get("insight_ladder")
+            ),
+            "evidence_grounding": self._normalize_outline_evidence_grounding(
+                raw.get("evidence_grounding") or normalized_detailed.get("evidence_grounding")
+            ),
+            "core_claims": self._normalize_outline_claims(
+                raw.get("core_claims") or normalized_detailed.get("core_claims"),
+                fallback=normalized_detailed.get("contributions"),
+            ),
+            "method_abstraction": method_abstraction,
+            "evaluation_plan": self._normalize_outline_evaluation_plan(
+                raw.get("evaluation_plan") or normalized_detailed.get("evaluation_plan"),
+                experimental_designs=normalized_detailed.get("experimental_designs"),
+            ),
+            "analysis_plan": self._normalize_outline_analysis_plan(
+                raw.get("analysis_plan") or normalized_detailed.get("analysis_plan")
+            ),
+            "analysis_budget_waiver": str(
+                raw.get("analysis_budget_waiver") or normalized_detailed.get("analysis_budget_waiver") or ""
+            ).strip()
+            or None,
+            "section_plan": self._normalize_outline_section_plan(raw.get("section_plan"), sections=sections),
+            "terminology_map": raw.get("terminology_map") if isinstance(raw.get("terminology_map"), dict) else {},
+            "forbidden_main_text_terms": self._normalize_string_list(raw.get("forbidden_main_text_terms"))
+            or method_abstraction.get("forbidden_main_text_terms")
+            or [item[0] for item in _PAPER_VIEW_FORBIDDEN_PATTERNS],
+        }
+
+    def _normalize_outline_evidence_view(
+        self,
+        normalized_detailed: dict[str, Any],
+        *,
+        sections: list[dict[str, Any]],
+        evidence_contract: dict[str, Any],
+    ) -> dict[str, Any]:
+        raw = dict(normalized_detailed.get("evidence_view") or {}) if isinstance(normalized_detailed.get("evidence_view"), dict) else {}
+        return {
+            "claim_to_items": raw.get("claim_to_items") if isinstance(raw.get("claim_to_items"), list) else [],
+            "sections": sections,
+            "evidence_contract": evidence_contract,
+            "unmapped_items": self._normalize_outline_result_table(raw.get("unmapped_items")),
+            "appendix_reproducibility": self._normalize_string_list(raw.get("appendix_reproducibility")),
+        }
 
     def _paper_baseline_inventory_path(self, quest_root: Path, *, workspace_root: Path | None = None) -> Path:
         return self._paper_root(quest_root, workspace_root=workspace_root, create=True) / "baseline_inventory.json"
@@ -2733,6 +3331,11 @@ class ArtifactService:
                     "tier": str(raw.get("tier") or "").strip() or None,
                     "paper_placement": str(raw.get("paper_placement") or "").strip() or None,
                     "paper_role": str(raw.get("paper_role") or raw.get("paper_placement") or "").strip() or None,
+                    "analysis_role": str(raw.get("analysis_role") or "").strip() or None,
+                    "reviewer_question": str(raw.get("reviewer_question") or raw.get("research_question") or "").strip() or None,
+                    "target_display": str(raw.get("target_display") or "").strip() or None,
+                    "main_or_appendix": str(raw.get("main_or_appendix") or raw.get("paper_placement") or raw.get("paper_role") or "").strip() or None,
+                    "failure_interpretation": str(raw.get("failure_interpretation") or "").strip() or None,
                     "section_id": str(raw.get("section_id") or "").strip() or None,
                     "item_id": str(raw.get("item_id") or raw.get("exp_id") or raw.get("slice_id") or "").strip() or None,
                     "claim_links": self._normalize_string_list(raw.get("claim_links")),
@@ -2769,8 +3372,22 @@ class ArtifactService:
             str(title or normalized_detailed.get("title") or outline_id).strip()
             or outline_id
         )
+        evidence_contract = self._normalize_outline_evidence_contract(
+            normalized_detailed.get("evidence_contract")
+        )
+        paper_view = self._normalize_outline_paper_view(
+            normalized_detailed,
+            title=resolved_title,
+            story=story,
+            sections=sections,
+        )
+        evidence_view = self._normalize_outline_evidence_view(
+            normalized_detailed,
+            sections=sections,
+            evidence_contract=evidence_contract,
+        )
         record = {
-            "schema_version": 1,
+            "schema_version": 2,
             "outline_id": outline_id,
             "status": status,
             "title": resolved_title,
@@ -2785,10 +3402,10 @@ class ArtifactService:
                 "experimental_designs": experimental_designs,
                 "contributions": self._normalize_string_list(normalized_detailed.get("contributions")),
             },
+            "paper_view": paper_view,
+            "evidence_view": evidence_view,
             "sections": sections,
-            "evidence_contract": self._normalize_outline_evidence_contract(
-                normalized_detailed.get("evidence_contract")
-            ),
+            "evidence_contract": evidence_contract,
             "review_result": str(review_result or "").strip() or None,
             "created_at": created_at or utc_now(),
             "updated_at": utc_now(),
@@ -2815,6 +3432,103 @@ class ArtifactService:
         optional_items = self._normalize_string_list(section.get("optional_items"))
         lines.extend([f"- `{item}`" for item in optional_items] or ["- None recorded."])
         lines.extend(["", "## Note", "", str(section.get("note") or "Not recorded."), ""])
+        return "\n".join(lines).rstrip() + "\n"
+
+    def _render_outline_paper_view_markdown(self, paper_view: dict[str, Any]) -> str:
+        story = dict(paper_view.get("story_spine") or {}) if isinstance(paper_view.get("story_spine"), dict) else {}
+        method = (
+            dict(paper_view.get("method_abstraction") or {})
+            if isinstance(paper_view.get("method_abstraction"), dict)
+            else {}
+        )
+        evaluation = (
+            dict(paper_view.get("evaluation_plan") or {})
+            if isinstance(paper_view.get("evaluation_plan"), dict)
+            else {}
+        )
+        narrative = (
+            dict(paper_view.get("narrative_strategy") or {})
+            if isinstance(paper_view.get("narrative_strategy"), dict)
+            else {}
+        )
+        grounding = (
+            dict(paper_view.get("evidence_grounding") or {})
+            if isinstance(paper_view.get("evidence_grounding"), dict)
+            else {}
+        )
+        lines = [
+            f"# {str(paper_view.get('working_title') or 'Paper View').strip() or 'Paper View'}",
+            "",
+            f"- Paper type: `{str(paper_view.get('paper_type') or 'full_empirical').strip() or 'full_empirical'}`",
+            f"- Outline maturity: `{str(paper_view.get('outline_maturity') or 'not_recorded').strip() or 'not_recorded'}`",
+            "",
+            "## One-Sentence Paper Idea",
+            "",
+            f"- Central thesis: {str(narrative.get('central_thesis') or 'Not recorded').strip() or 'Not recorded'}",
+            f"- What readers learn: {str(narrative.get('central_insight') or narrative.get('reader_takeaway') or 'Not recorded').strip() or 'Not recorded'}",
+            "",
+            "## Story Spine",
+            "",
+        ]
+        labels = {
+            "problem": "Problem",
+            "gap": "Gap",
+            "method": "Method",
+            "main_result": "Main result",
+            "scope_limit": "Scope limit",
+        }
+        for key in _PAPER_VIEW_STORY_KEYS:
+            lines.append(f"- {labels.get(key, key)}: {str(story.get(key) or 'Not recorded').strip() or 'Not recorded'}")
+        lines.extend(["", "## Core Claims", ""])
+        claims = [dict(item) for item in (paper_view.get("core_claims") or []) if isinstance(item, dict)]
+        if claims:
+            for item in claims:
+                claim_id = str(item.get("claim_id") or "claim").strip() or "claim"
+                lines.append(f"- `{claim_id}` {str(item.get('claim') or '').strip() or 'Not recorded'}")
+        else:
+            lines.append("- None recorded.")
+        lines.extend(["", "## From Facts To Interpretation", ""])
+        ladder = [dict(item) for item in (paper_view.get("insight_ladder") or []) if isinstance(item, dict)]
+        if ladder:
+            for item in ladder:
+                lines.append(
+                    f"- `{str(item.get('level') or 'level').strip() or 'level'}` "
+                    + f"{str(item.get('statement') or '').strip() or 'Not recorded'}"
+                )
+        else:
+            lines.append("- None recorded.")
+        lines.extend(["", "## Evidence Boundaries", ""])
+        boundary_labels = {
+            "observed_facts": "Observed facts",
+            "allowed_interpretations": "Allowed interpretations",
+            "must_not_claim": "Do not claim",
+            "evidence_gaps": "Evidence gaps",
+        }
+        for key in ("observed_facts", "allowed_interpretations", "must_not_claim", "evidence_gaps"):
+            values = self._normalize_string_list(grounding.get(key))
+            lines.append(f"- {boundary_labels[key]}: {', '.join(values) if values else 'Not recorded'}")
+        lines.extend(["", "## Method", ""])
+        lines.append(f"- Paper name: {str(method.get('paper_name') or 'Not recorded').strip() or 'Not recorded'}")
+        lines.append(f"- Intuition: {str(method.get('intuition') or 'Not recorded').strip() or 'Not recorded'}")
+        for step in self._normalize_string_list(method.get("mechanism_steps")):
+            lines.append(f"- Step: {step}")
+        lines.extend(["", "## Evaluation", ""])
+        lines.append(f"- Setting: {str(evaluation.get('setting') or 'Not recorded').strip() or 'Not recorded'}")
+        for key in ("datasets_or_benchmarks", "baselines", "metrics", "controlled_factors"):
+            values = self._normalize_string_list(evaluation.get(key))
+            lines.append(f"- {key}: {', '.join(values) if values else 'Not recorded'}")
+        lines.extend(["", "## Analysis Plan", ""])
+        analyses = [dict(item) for item in (paper_view.get("analysis_plan") or []) if isinstance(item, dict)]
+        if analyses:
+            for item in analyses:
+                lines.append(
+                    "- "
+                    + f"`{str(item.get('analysis_id') or 'analysis').strip() or 'analysis'}` "
+                    + f"{str(item.get('title') or '').strip() or 'Untitled'}"
+                    + f" ({str(item.get('analysis_role') or 'role TBD').strip() or 'role TBD'})"
+                )
+        else:
+            lines.append("- None recorded.")
         return "\n".join(lines).rstrip() + "\n"
 
     def _render_outline_section_setup_markdown(self, section: dict[str, Any]) -> str:
@@ -2895,7 +3609,7 @@ class ArtifactService:
             ),
         )
         manifest = {
-            "schema_version": 1,
+            "schema_version": 2,
             "outline_id": str(record.get("outline_id") or "").strip() or None,
             "status": str(record.get("status") or "selected").strip() or "selected",
             "title": str(record.get("title") or "").strip() or None,
@@ -2907,6 +3621,8 @@ class ArtifactService:
                 if isinstance(record.get("detailed_outline"), dict)
                 else {}
             ),
+            "paper_view": dict(record.get("paper_view") or {}) if isinstance(record.get("paper_view"), dict) else {},
+            "evidence_view": dict(record.get("evidence_view") or {}) if isinstance(record.get("evidence_view"), dict) else {},
             "evidence_contract": self._normalize_outline_evidence_contract(record.get("evidence_contract")),
             "section_order": [
                 str(section.get("section_id") or "").strip()
@@ -2932,6 +3648,11 @@ class ArtifactService:
         for paper_root in self._paper_active_sync_roots(quest_root, workspace_root=workspace_root):
             outline_root = ensure_dir(paper_root / "outline")
             write_json(outline_root / "manifest.json", manifest)
+            paper_view = dict(manifest.get("paper_view") or {})
+            evidence_view = dict(manifest.get("evidence_view") or {})
+            write_json(outline_root / "paper_view.json", paper_view)
+            write_text(outline_root / "paper_view.md", self._render_outline_paper_view_markdown(paper_view))
+            write_json(outline_root / "evidence_view.json", evidence_view)
             sections_root = ensure_dir(outline_root / "sections")
             expected: set[str] = set()
             for section in sections:
@@ -2971,6 +3692,12 @@ class ArtifactService:
         if not isinstance(manifest, dict) or not manifest:
             return {}
         manifest_sections = [dict(item) for item in (manifest.get("sections") or []) if isinstance(item, dict)]
+        paper_view_path = outline_root / "paper_view.json"
+        evidence_view_path = outline_root / "evidence_view.json"
+        paper_view_payload = read_json(paper_view_path, {}) if paper_view_path.exists() else {}
+        evidence_view_payload = read_json(evidence_view_path, {}) if evidence_view_path.exists() else {}
+        paper_view_payload = paper_view_payload if isinstance(paper_view_payload, dict) else {}
+        evidence_view_payload = evidence_view_payload if isinstance(evidence_view_payload, dict) else {}
         section_order = [
             str(item).strip() for item in (manifest.get("section_order") or []) if str(item).strip()
         ]
@@ -3017,8 +3744,9 @@ class ArtifactService:
             if section_id in emitted:
                 continue
             ordered_sections.append(section)
+        evidence_contract = self._normalize_outline_evidence_contract(manifest.get("evidence_contract"))
         record = {
-            "schema_version": 1,
+            "schema_version": 2,
             "outline_id": str(manifest.get("outline_id") or "").strip() or None,
             "status": str(manifest.get("status") or "selected").strip() or "selected",
             "title": str(manifest.get("title") or "").strip() or None,
@@ -3030,11 +3758,19 @@ class ArtifactService:
                 if isinstance(manifest.get("detailed_outline"), dict)
                 else {}
             ),
+            "paper_view": paper_view_payload
+            or (dict(manifest.get("paper_view") or {}) if isinstance(manifest.get("paper_view"), dict) else {}),
+            "evidence_view": evidence_view_payload
+            or (dict(manifest.get("evidence_view") or {}) if isinstance(manifest.get("evidence_view"), dict) else {}),
             "sections": ordered_sections,
-            "evidence_contract": self._normalize_outline_evidence_contract(manifest.get("evidence_contract")),
+            "evidence_contract": evidence_contract,
             "created_at": str(manifest.get("created_at") or "").strip() or None,
             "updated_at": str(manifest.get("updated_at") or "").strip() or utc_now(),
         }
+        evidence_view = dict(record.get("evidence_view") or {})
+        evidence_view["sections"] = ordered_sections
+        evidence_view["evidence_contract"] = evidence_contract
+        record["evidence_view"] = evidence_view
         return record
 
     def _read_selected_outline_record(
@@ -3530,7 +4266,42 @@ class ArtifactService:
             item_id = str(raw.get("item_id") or "").strip()
             if not item_id:
                 continue
-            section_id = str(raw.get("section_id") or "").strip() or "main-results"
+            section_id = str(raw.get("section_id") or "").strip()
+            if not section_id:
+                evidence_view = (
+                    dict(record.get("evidence_view") or {})
+                    if isinstance(record.get("evidence_view"), dict)
+                    else {}
+                )
+                unmapped = self._normalize_outline_result_table(evidence_view.get("unmapped_items"))
+                unmapped.append(
+                    {
+                        "item_id": item_id,
+                        "title": str(raw.get("title") or item_id).strip() or item_id,
+                        "kind": str(raw.get("kind") or "").strip() or None,
+                        "campaign_id": str(raw.get("campaign_id") or "").strip() or None,
+                        "slice_id": str(raw.get("slice_id") or "").strip() or None,
+                        "run_id": str(raw.get("run_id") or "").strip() or None,
+                        "paper_role": str(raw.get("paper_role") or "").strip() or None,
+                        "analysis_role": str(raw.get("analysis_role") or "").strip() or None,
+                        "reviewer_question": str(raw.get("reviewer_question") or "").strip() or None,
+                        "target_display": str(raw.get("target_display") or "").strip() or None,
+                        "main_or_appendix": str(raw.get("main_or_appendix") or "").strip() or None,
+                        "failure_interpretation": str(raw.get("failure_interpretation") or "").strip() or None,
+                        "status": str(raw.get("status") or "pending").strip() or "pending",
+                        "claim_links": self._normalize_string_list(raw.get("claim_links")),
+                        "setup_note": str(raw.get("setup_note") or raw.get("setup") or "").strip() or None,
+                        "metric_summary": str(raw.get("metric_summary") or "").strip() or None,
+                        "result_summary": str(raw.get("result_summary") or "").strip() or None,
+                        "impact_summary": str(raw.get("impact_summary") or raw.get("claim_impact") or "").strip() or None,
+                        "source_paths": self._normalize_string_list(raw.get("source_paths")),
+                        "updated_at": utc_now(),
+                        "mapping_status": "unmapped",
+                    }
+                )
+                evidence_view["unmapped_items"] = unmapped
+                record["evidence_view"] = evidence_view
+                continue
             section = dict(by_id.get(section_id) or {})
             if not section:
                 section = {
@@ -3570,6 +4341,11 @@ class ArtifactService:
                 "slice_id": str(raw.get("slice_id") or "").strip() or None,
                 "run_id": str(raw.get("run_id") or "").strip() or None,
                 "paper_role": paper_role,
+                "analysis_role": str(raw.get("analysis_role") or "").strip() or None,
+                "reviewer_question": str(raw.get("reviewer_question") or "").strip() or None,
+                "target_display": str(raw.get("target_display") or "").strip() or None,
+                "main_or_appendix": str(raw.get("main_or_appendix") or "").strip() or None,
+                "failure_interpretation": str(raw.get("failure_interpretation") or "").strip() or None,
                 "status": str(raw.get("status") or "pending").strip() or "pending",
                 "claim_links": self._normalize_string_list(raw.get("claim_links")),
                 "setup_note": str(raw.get("setup_note") or raw.get("setup") or "").strip() or None,
@@ -3684,6 +4460,11 @@ class ArtifactService:
                     "slice_id": item.get("slice_id"),
                     "run_id": item.get("run_id"),
                     "paper_role": item.get("paper_role"),
+                    "analysis_role": item.get("analysis_role"),
+                    "reviewer_question": item.get("reviewer_question"),
+                    "target_display": item.get("target_display"),
+                    "main_or_appendix": item.get("main_or_appendix"),
+                    "failure_interpretation": item.get("failure_interpretation"),
                     "status": item.get("status"),
                     "claim_links": item.get("claim_links"),
                     "section_id": item.get("section_id"),
@@ -3849,6 +4630,9 @@ class ArtifactService:
         package_type = str(coverage.get("package_type") or "draft_checkpoint").strip() or "draft_checkpoint"
         evidence_ready = bool(coverage.get("evidence_ready"))
         analysis_ready = bool(coverage.get("analysis_ready"))
+        academic_outline_ready = bool(coverage.get("academic_outline_ready"))
+        analysis_plan_ready = bool(coverage.get("analysis_plan_ready"))
+        language_firewall_ok = bool(coverage.get("language_firewall_ok"))
         draft_checkpoint_ready = bool(coverage.get("draft_checkpoint_ready"))
         manuscript_ready = bool(coverage.get("manuscript_ready"))
         submission_ready = bool(coverage.get("submission_ready"))
@@ -3877,7 +4661,16 @@ class ArtifactService:
             closure_state = "delivered_continue_research" if "continue" in overall_status else "delivered_parked"
             keep_bundle_fixed_by_default = True
 
-        if unmapped_completed_items:
+        if not academic_outline_ready:
+            recommended_next_stage = "write"
+            recommended_action = "repair_academic_outline_with_paper_outline"
+        elif not analysis_plan_ready:
+            recommended_next_stage = "analysis-campaign"
+            recommended_action = "repair_analysis_plan_with_paper_outline"
+        elif not language_firewall_ok and draft_checkpoint_ready:
+            recommended_next_stage = "write"
+            recommended_action = "remove_operational_language_from_manuscript"
+        elif unmapped_completed_items:
             recommended_next_stage = "write"
             recommended_action = "sync_paper_contract"
         elif unresolved_required_items or normalized_pending_slices > 0:
@@ -3904,6 +4697,9 @@ class ArtifactService:
             "writing_ready": writing_ready,
             "evidence_ready": evidence_ready,
             "analysis_ready": analysis_ready,
+            "academic_outline_ready": academic_outline_ready,
+            "analysis_plan_ready": analysis_plan_ready,
+            "language_firewall_ok": language_firewall_ok,
             "draft_checkpoint_ready": draft_checkpoint_ready,
             "manuscript_ready": manuscript_ready,
             "submission_ready": submission_ready,
@@ -4014,6 +4810,9 @@ class ArtifactService:
             "writing_ready": bool(health.get("writing_ready")),
             "evidence_ready": bool(health.get("evidence_ready")),
             "analysis_ready": bool(health.get("analysis_ready")),
+            "academic_outline_ready": bool(health.get("academic_outline_ready")),
+            "analysis_plan_ready": bool(health.get("analysis_plan_ready")),
+            "language_firewall_ok": bool(health.get("language_firewall_ok")),
             "draft_checkpoint_ready": bool(health.get("draft_checkpoint_ready")),
             "manuscript_ready": bool(health.get("manuscript_ready")),
             "submission_ready": bool(health.get("submission_ready")),
@@ -6869,6 +7668,222 @@ class ArtifactService:
             "detail": normalized_detail,
             "coverage_path": str(self._paper_manuscript_coverage_path(quest_root, workspace_root=workspace_root)),
             "manuscript_coverage": result_coverage,
+        }
+
+    def validate_academic_outline(
+        self,
+        quest_root: Path,
+        *,
+        detail: str = "summary",
+    ) -> dict[str, Any]:
+        normalized_detail = str(detail or "summary").strip().lower() or "summary"
+        if normalized_detail not in {"summary", "full"}:
+            raise ValueError("validate_academic_outline detail must be `summary` or `full`.")
+        workspace_root = self.quest_service.active_workspace_root(quest_root)
+        validation = self._academic_outline_validation_payload(quest_root, workspace_root=workspace_root)
+        validation_path = self._paper_root(quest_root, workspace_root=workspace_root, create=True) / "academic_outline_validation.json"
+        write_json(validation_path, validation)
+        result_validation = dict(validation)
+        if normalized_detail == "summary":
+            result_validation["language_violations"] = list(result_validation.get("language_violations") or [])[:12]
+        return {
+            "ok": bool(validation.get("ok")),
+            "detail": normalized_detail,
+            "validation_path": str(validation_path),
+            "academic_outline_validation": result_validation,
+        }
+
+    def validate_manuscript_language(
+        self,
+        quest_root: Path,
+        *,
+        detail: str = "summary",
+        scope: str = "main_text",
+    ) -> dict[str, Any]:
+        normalized_detail = str(detail or "summary").strip().lower() or "summary"
+        if normalized_detail not in {"summary", "full"}:
+            raise ValueError("validate_manuscript_language detail must be `summary` or `full`.")
+        workspace_root = self.quest_service.active_workspace_root(quest_root)
+        validation = self._manuscript_language_validation_payload(
+            quest_root,
+            workspace_root=workspace_root,
+            scope=scope,
+        )
+        validation_path = self._paper_root(quest_root, workspace_root=workspace_root, create=True) / "manuscript_language_validation.json"
+        write_json(validation_path, validation)
+        result_validation = dict(validation)
+        if normalized_detail == "summary":
+            result_validation["violations"] = list(result_validation.get("violations") or [])[:12]
+        return {
+            "ok": bool(validation.get("ok")),
+            "detail": normalized_detail,
+            "validation_path": str(validation_path),
+            "manuscript_language_validation": result_validation,
+        }
+
+    def compile_outline_to_writing_plan(
+        self,
+        quest_root: Path,
+        *,
+        detail: str = "summary",
+    ) -> dict[str, Any]:
+        normalized_detail = str(detail or "summary").strip().lower() or "summary"
+        if normalized_detail not in {"summary", "full"}:
+            raise ValueError("compile_outline_to_writing_plan detail must be `summary` or `full`.")
+        workspace_root = self.quest_service.active_workspace_root(quest_root)
+        outline_path, outline = self._read_selected_outline_for_sync(quest_root, workspace_root=workspace_root)
+        outline = outline if isinstance(outline, dict) else {}
+        if not outline:
+            raise ValueError("compile_outline_to_writing_plan requires a selected outline.")
+        paper_view = dict(outline.get("paper_view") or {}) if isinstance(outline.get("paper_view"), dict) else {}
+        validation = self._academic_outline_validation_payload(quest_root, workspace_root=workspace_root)
+        story_spine = dict(paper_view.get("story_spine") or {}) if isinstance(paper_view.get("story_spine"), dict) else {}
+        narrative = (
+            dict(paper_view.get("narrative_strategy") or {})
+            if isinstance(paper_view.get("narrative_strategy"), dict)
+            else {}
+        )
+        grounding = (
+            dict(paper_view.get("evidence_grounding") or {})
+            if isinstance(paper_view.get("evidence_grounding"), dict)
+            else {}
+        )
+        method = dict(paper_view.get("method_abstraction") or {}) if isinstance(paper_view.get("method_abstraction"), dict) else {}
+        evaluation = dict(paper_view.get("evaluation_plan") or {}) if isinstance(paper_view.get("evaluation_plan"), dict) else {}
+        claims = [dict(item) for item in (paper_view.get("core_claims") or []) if isinstance(item, dict)]
+        analyses = [dict(item) for item in (paper_view.get("analysis_plan") or []) if isinstance(item, dict)]
+        section_plan = [dict(item) for item in (paper_view.get("section_plan") or []) if isinstance(item, dict)]
+        jobs: list[dict[str, Any]] = [
+            {
+                "job_id": "intro",
+                "section": "Introduction",
+                "source": "paper_view.narrative_strategy + paper_view.story_spine + paper_view.core_claims",
+                "write_when": "early",
+                "must_do": [
+                    "Open with the research problem and the one-sentence paper idea, not route history.",
+                    "State the method at the level of the idea, not local engineering details.",
+                    "State claim scope and limits before broadening the interpretation.",
+                ],
+                "evidence_lookup": [item.get("claim_id") for item in claims if item.get("claim_id")],
+            },
+            {
+                "job_id": "method",
+                "section": "Method",
+                "source": "paper_view.method_abstraction",
+                "write_when": "after the intro idea is stable",
+                "must_do": method.get("mechanism_steps") or [],
+                "evidence_lookup": [],
+            },
+            {
+                "job_id": "evaluation",
+                "section": "Experimental Setup",
+                "source": "paper_view.evaluation_plan",
+                "write_when": "before results",
+                "must_do": [
+                    "Describe benchmark, baselines, metrics, and controlled factors.",
+                    "Move local serving or batch settings to appendix reproducibility details.",
+                ],
+                "evidence_lookup": evaluation,
+            },
+        ]
+        for item in section_plan:
+            jobs.append(
+                {
+                    "job_id": str(item.get("section_id") or slugify(str(item.get("title") or "section"), "section")),
+                    "section": str(item.get("title") or item.get("section_id") or "Section"),
+                    "source": "paper_view.section_plan",
+                    "write_when": "after required evidence is ready",
+                    "must_do": [str(item.get("writing_job") or "").strip()] if str(item.get("writing_job") or "").strip() else [],
+                    "claim_links": self._normalize_string_list(item.get("claims")),
+                    "paper_role": str(item.get("paper_role") or "main_text").strip() or "main_text",
+                }
+            )
+        for item in analyses:
+            jobs.append(
+                {
+                    "job_id": str(item.get("analysis_id") or slugify(str(item.get("title") or "analysis"), "analysis")),
+                    "section": str(item.get("title") or item.get("analysis_id") or "Analysis"),
+                    "source": "paper_view.analysis_plan",
+                    "write_when": "after slice evidence is recorded",
+                    "analysis_role": item.get("analysis_role"),
+                    "reviewer_question": item.get("reviewer_question"),
+                    "target_display": item.get("target_display"),
+                    "claim_links": self._normalize_string_list(item.get("claim_links")),
+                    "paper_role": item.get("main_or_appendix"),
+                }
+            )
+        jobs.extend(
+            [
+                {
+                    "job_id": "limitations",
+                    "section": "Limitations",
+                    "source": "paper_view.story_spine.scope_limit",
+                    "write_when": "after results and analysis",
+                    "must_do": [str(story_spine.get("scope_limit") or "").strip()] if str(story_spine.get("scope_limit") or "").strip() else [],
+                },
+                {
+                    "job_id": "abstract",
+                    "section": "Abstract",
+                    "source": "stable full writing plan",
+                    "write_when": "last",
+                    "must_do": [
+                        "Summarize problem, method, result, and limitation in paper-native terms.",
+                        "Do not include ports, batch shorthand, route history, quest state, or artifact ids.",
+                    ],
+                },
+            ]
+        )
+        plan = {
+            "schema_version": 1,
+            "outline_id": str(outline.get("outline_id") or "").strip() or None,
+            "outline_path": str(outline_path) if outline_path else None,
+            "validation_ok": bool(validation.get("ok")),
+            "validation_blockers": list(validation.get("blockers") or []),
+            "working_title": str(paper_view.get("working_title") or outline.get("title") or "").strip() or None,
+            "paper_type": str(paper_view.get("paper_type") or "full_empirical").strip() or "full_empirical",
+            "outline_maturity": str(paper_view.get("outline_maturity") or "").strip() or None,
+            "narrative_strategy": narrative,
+            "story_spine": story_spine,
+            "insight_ladder": [dict(item) for item in (paper_view.get("insight_ladder") or []) if isinstance(item, dict)],
+            "evidence_grounding": grounding,
+            "core_claims": claims,
+            "writing_jobs": jobs,
+            "updated_at": utc_now(),
+        }
+        paper_root = self._paper_root(quest_root, workspace_root=workspace_root, create=True)
+        json_path = paper_root / "writing_plan.json"
+        md_path = paper_root / "writing_plan.md"
+        write_json(json_path, plan)
+        lines = [
+            "# Writing Plan",
+            "",
+            f"- Outline: `{plan.get('outline_id') or 'none'}`",
+            f"- Validation ok: `{bool(plan.get('validation_ok'))}`",
+            "",
+            "## Jobs",
+            "",
+        ]
+        for job in jobs:
+            lines.extend(
+                [
+                    f"### {job.get('job_id')} · {job.get('section')}",
+                    "",
+                    f"- Source: {job.get('source') or 'none'}",
+                    f"- Write when: {job.get('write_when') or 'TBD'}",
+                    f"- Paper role: {job.get('paper_role') or 'main_text'}",
+                    "",
+                ]
+            )
+        write_text(md_path, "\n".join(lines).rstrip() + "\n")
+        result_plan = dict(plan)
+        if normalized_detail == "summary":
+            result_plan["writing_jobs"] = jobs[:8]
+        return {
+            "ok": True,
+            "detail": normalized_detail,
+            "writing_plan_path": str(json_path),
+            "writing_plan_md_path": str(md_path),
+            "writing_plan": result_plan,
         }
 
     def get_paper_contract(
@@ -10596,6 +11611,10 @@ class ArtifactService:
                     missing_contract_fields.append(f"{title}:{field}")
                 if not self._normalize_string_list(item.get("claim_links")):
                     missing_contract_fields.append(f"{title}:claim_links")
+                for field in ("analysis_role", "reviewer_question", "target_display", "main_or_appendix"):
+                    if str(item.get(field) or "").strip():
+                        continue
+                    missing_contract_fields.append(f"{title}:{field}")
             if missing_contract_fields:
                 raise ValueError(
                     "Writing-facing analysis campaigns require outline-bound paper contract fields for every todo item. "
@@ -10665,6 +11684,26 @@ class ArtifactService:
                 str(raw.get("paper_placement") or matched_todo.get("paper_placement") or paper_role or "").strip()
                 or None
             )
+            analysis_role = str(raw.get("analysis_role") or matched_todo.get("analysis_role") or "").strip() or None
+            reviewer_question = (
+                str(
+                    raw.get("reviewer_question")
+                    or matched_todo.get("reviewer_question")
+                    or raw.get("research_question")
+                    or matched_todo.get("research_question")
+                    or ""
+                ).strip()
+                or None
+            )
+            target_display = str(raw.get("target_display") or matched_todo.get("target_display") or "").strip() or None
+            main_or_appendix = (
+                str(raw.get("main_or_appendix") or matched_todo.get("main_or_appendix") or paper_placement or "").strip()
+                or None
+            )
+            failure_interpretation = (
+                str(raw.get("failure_interpretation") or matched_todo.get("failure_interpretation") or "").strip()
+                or None
+            )
             tier = str(raw.get("tier") or matched_todo.get("tier") or "").strip() or None
             exp_id = str(raw.get("exp_id") or matched_todo.get("exp_id") or "").strip() or None
             why_now = str(raw.get("why_now") or matched_todo.get("why_now") or "").strip()
@@ -10687,7 +11726,7 @@ class ArtifactService:
                 "",
                 "## Research Question",
                 "",
-                str(raw.get("research_question") or matched_todo.get("research_question") or "").strip() or "TBD",
+                reviewer_question or "TBD",
                 "",
                     "## Experimental Design",
                     "",
@@ -10700,8 +11739,11 @@ class ArtifactService:
                     f"- Exp id: `{exp_id or 'none'}`",
                     f"- Paper role: `{paper_role or 'none'}`",
                     f"- Paper placement: `{paper_placement or 'none'}`",
+                    f"- Main or appendix: `{main_or_appendix or 'none'}`",
                     f"- Tier: `{tier or 'none'}`",
                     f"- Claim links: {', '.join(claim_links) or 'none'}",
+                    f"- Analysis role: `{analysis_role or 'none'}`",
+                    f"- Target display: `{target_display or 'none'}`",
                     "",
                     "## Why Now",
                     "",
@@ -10745,6 +11787,10 @@ class ArtifactService:
                     "",
                     abandonment_criteria or "TBD",
                     "",
+                    "## Failure Interpretation",
+                    "",
+                    failure_interpretation or "TBD",
+                    "",
                     "## Completion Condition",
                     "",
                     str(raw.get("completion_condition") or matched_todo.get("completion_condition") or "").strip()
@@ -10776,9 +11822,7 @@ class ArtifactService:
                     "plan_path": str(plan_path),
                     "run_kind": str(raw.get("run_kind") or "analysis.slice").strip() or "analysis.slice",
                     "goal": str(raw.get("goal") or "").strip(),
-                    "research_question": str(
-                        raw.get("research_question") or matched_todo.get("research_question") or ""
-                    ).strip(),
+                    "research_question": str(reviewer_question or "").strip(),
                     "experimental_design": str(
                         raw.get("experimental_design") or matched_todo.get("experimental_design") or ""
                     ).strip(),
@@ -10787,6 +11831,11 @@ class ArtifactService:
                     "exp_id": exp_id,
                     "paper_role": paper_role,
                     "paper_placement": paper_placement,
+                    "analysis_role": analysis_role,
+                    "reviewer_question": reviewer_question,
+                    "target_display": target_display,
+                    "main_or_appendix": main_or_appendix,
+                    "failure_interpretation": failure_interpretation,
                     "tier": tier,
                     "claim_links": claim_links,
                     "why_now": why_now,
@@ -10846,6 +11895,11 @@ class ArtifactService:
                     "tier": item.get("tier") or context.get("tier"),
                     "paper_placement": item.get("paper_placement") or context.get("paper_placement"),
                     "paper_role": item.get("paper_role") or context.get("paper_role"),
+                    "analysis_role": item.get("analysis_role") or context.get("analysis_role"),
+                    "reviewer_question": item.get("reviewer_question") or context.get("reviewer_question"),
+                    "target_display": item.get("target_display") or context.get("target_display"),
+                    "main_or_appendix": item.get("main_or_appendix") or context.get("main_or_appendix"),
+                    "failure_interpretation": item.get("failure_interpretation") or context.get("failure_interpretation"),
                     "section_id": item.get("section_id") or context.get("section_id"),
                     "item_id": item.get("item_id") or context.get("item_id"),
                     "claim_links": item.get("claim_links") or context.get("claim_links") or [],
@@ -10911,7 +11965,12 @@ class ArtifactService:
                     f"- Item id: `{item['item_id'] or 'none'}`",
                     f"- Exp id: `{item['exp_id'] or 'none'}`",
                     f"- Paper role: `{item['paper_role'] or 'none'}`",
+                    f"- Main or appendix: `{item['main_or_appendix'] or 'none'}`",
+                    f"- Analysis role: `{item['analysis_role'] or 'none'}`",
+                    f"- Target display: `{item['target_display'] or 'none'}`",
                     f"- Claim links: {', '.join(item['claim_links']) or 'none'}",
+                    f"- Reviewer question: {item['reviewer_question'] or item['research_question'] or 'TBD'}",
+                    f"- Failure interpretation: {item['failure_interpretation'] or 'TBD'}",
                     f"- Why now: {item['why_now'] or 'TBD'}",
                     f"- Required baselines: {', '.join(self._analysis_baseline_label(entry) for entry in item['required_baselines']) or 'none'}",
                     f"- Success criteria: {item['success_criteria'] or 'TBD'}",
@@ -10979,6 +12038,11 @@ class ArtifactService:
                         "exp_id": item["exp_id"],
                         "paper_role": item["paper_role"],
                         "paper_placement": item["paper_placement"],
+                        "analysis_role": item["analysis_role"],
+                        "reviewer_question": item["reviewer_question"],
+                        "target_display": item["target_display"],
+                        "main_or_appendix": item["main_or_appendix"],
+                        "failure_interpretation": item["failure_interpretation"],
                         "tier": item["tier"],
                         "claim_links": item["claim_links"],
                         "why_now": item["why_now"],
@@ -11038,6 +12102,11 @@ class ArtifactService:
                             "exp_id": item["exp_id"],
                             "paper_role": item["paper_role"],
                             "paper_placement": item["paper_placement"],
+                            "analysis_role": item["analysis_role"],
+                            "reviewer_question": item["reviewer_question"],
+                            "target_display": item["target_display"],
+                            "main_or_appendix": item["main_or_appendix"],
+                            "failure_interpretation": item["failure_interpretation"],
                             "tier": item["tier"],
                             "claim_links": item["claim_links"],
                             "why_now": item["why_now"],
@@ -11065,6 +12134,11 @@ class ArtifactService:
                         "title": item.get("title"),
                         "kind": "analysis_slice",
                         "paper_role": item.get("paper_role"),
+                        "analysis_role": item.get("analysis_role"),
+                        "reviewer_question": item.get("reviewer_question"),
+                        "target_display": item.get("target_display"),
+                        "main_or_appendix": item.get("main_or_appendix"),
+                        "failure_interpretation": item.get("failure_interpretation"),
                         "status": "pending",
                         "claim_links": item.get("claim_links"),
                         "section_id": item.get("section_id"),
@@ -11488,6 +12562,20 @@ class ArtifactService:
                 + "; ".join(problems)
                 + "."
             )
+        if normalized_package_type == "submission_package":
+            outline_gate = self._academic_outline_validation_payload(quest_root, workspace_root=workspace_root)
+            language_gate = self._manuscript_language_validation_payload(quest_root, workspace_root=workspace_root)
+            submission_blockers: list[str] = []
+            if not bool(outline_gate.get("ok")):
+                submission_blockers.append("academic outline validation is not ready")
+            if not bool(language_gate.get("ok")):
+                submission_blockers.append("manuscript wording validation is not clean")
+            if submission_blockers:
+                raise ValueError(
+                    "submit_paper_bundle blocked because the manuscript is not submission-ready: "
+                    + "; ".join(str(item) for item in submission_blockers[:8])
+                    + "."
+                )
 
         manifest_path = self._paper_bundle_manifest_path(quest_root, workspace_root=workspace_root)
         baseline_inventory = self._write_paper_baseline_inventory(quest_root, workspace_root=workspace_root)
@@ -11887,6 +12975,11 @@ class ArtifactService:
             "item_id": target.get("item_id"),
             "paper_role": target.get("paper_role"),
             "paper_placement": target.get("paper_placement"),
+            "analysis_role": target.get("analysis_role"),
+            "reviewer_question": target.get("reviewer_question") or target.get("research_question"),
+            "target_display": target.get("target_display"),
+            "main_or_appendix": target.get("main_or_appendix"),
+            "failure_interpretation": target.get("failure_interpretation"),
             "tier": target.get("tier"),
             "claim_links": target.get("claim_links") or [],
             "required_baselines": target.get("required_baselines") or [],
@@ -11933,6 +13026,9 @@ class ArtifactService:
             f"- Item id: `{str(target.get('item_id') or slice_id).strip() or slice_id}`",
             f"- Exp id: `{str(target.get('exp_id') or 'none').strip() or 'none'}`",
             f"- Paper role: `{str(target.get('paper_role') or 'none').strip() or 'none'}`",
+            f"- Analysis role: `{str(target.get('analysis_role') or 'none').strip() or 'none'}`",
+            f"- Reviewer question: {str(target.get('reviewer_question') or target.get('research_question') or 'TBD').strip() or 'TBD'}",
+            f"- Target display: `{str(target.get('target_display') or 'none').strip() or 'none'}`",
             f"- Claim links: {', '.join(str(value).strip() for value in (target.get('claim_links') or []) if str(value).strip()) or 'none'}",
             "",
             "## Core Requirement",
@@ -12012,6 +13108,11 @@ class ArtifactService:
                     "exp_id": target.get("exp_id"),
                     "paper_role": target.get("paper_role"),
                     "paper_placement": target.get("paper_placement"),
+                    "analysis_role": target.get("analysis_role"),
+                    "reviewer_question": target.get("reviewer_question") or target.get("research_question"),
+                    "target_display": target.get("target_display"),
+                    "main_or_appendix": target.get("main_or_appendix"),
+                    "failure_interpretation": target.get("failure_interpretation"),
                     "tier": target.get("tier"),
                     "claim_links": target.get("claim_links") or [],
                     "metric_rows": normalized_metric_rows,
@@ -12051,6 +13152,11 @@ class ArtifactService:
             updated["result_json_path"] = str(result_json_path)
             updated["mirror_path"] = str(mirror_path)
             updated["selected_outline_ref"] = str(manifest.get("selected_outline_ref") or "").strip() or None
+            updated["analysis_role"] = target.get("analysis_role")
+            updated["reviewer_question"] = target.get("reviewer_question") or target.get("research_question")
+            updated["target_display"] = target.get("target_display")
+            updated["main_or_appendix"] = target.get("main_or_appendix")
+            updated["failure_interpretation"] = target.get("failure_interpretation")
             updated["claim_impact"] = normalized_claim_impact
             updated["reviewer_resolution"] = normalized_reviewer_resolution
             updated["manuscript_update_hint"] = normalized_manuscript_update_hint
@@ -12079,6 +13185,11 @@ class ArtifactService:
                 "status": status,
                 "paper_role": str(target.get("paper_role") or target.get("paper_placement") or "").strip() or None,
                 "section_id": str(target.get("section_id") or "").strip() or None,
+                "analysis_role": target.get("analysis_role"),
+                "reviewer_question": target.get("reviewer_question") or target.get("research_question"),
+                "target_display": target.get("target_display"),
+                "main_or_appendix": target.get("main_or_appendix"),
+                "failure_interpretation": target.get("failure_interpretation"),
                 "claim_links": self._normalize_string_list(target.get("claim_links")),
                 "setup": setup.strip() or None,
                 "result_summary": results.strip() or normalized_claim_impact or normalized_manuscript_update_hint or None,

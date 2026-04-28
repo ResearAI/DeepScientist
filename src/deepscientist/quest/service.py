@@ -2160,6 +2160,8 @@ class QuestService:
             "selected_outline_ref": str(selected_outline.get("outline_id") or bundle_manifest.get("selected_outline_ref") or "").strip() or None,
             "title": str(selected_outline.get("title") or bundle_manifest.get("title") or "").strip() or None,
             "story": str(selected_outline.get("story") or "").strip() or None,
+            "paper_view": selected_outline.get("paper_view") if isinstance(selected_outline.get("paper_view"), dict) else None,
+            "evidence_view": selected_outline.get("evidence_view") if isinstance(selected_outline.get("evidence_view"), dict) else None,
             "research_questions": detailed_outline.get("research_questions") if isinstance(detailed_outline.get("research_questions"), list) else [],
             "experimental_designs": detailed_outline.get("experimental_designs") if isinstance(detailed_outline.get("experimental_designs"), list) else [],
             "contributions": detailed_outline.get("contributions") if isinstance(detailed_outline.get("contributions"), list) else [],
@@ -2712,6 +2714,9 @@ class QuestService:
         keep_bundle_fixed_by_default = False
         evidence_ready = contract_ok
         analysis_ready = writing_ready
+        academic_outline_ready = bool(manuscript_coverage.get("academic_outline_ready"))
+        analysis_plan_ready = bool(manuscript_coverage.get("analysis_plan_ready"))
+        language_firewall_ok = bool(manuscript_coverage.get("language_firewall_ok"))
         draft_checkpoint_ready = bool(active_line.get("draft_checkpoint_ready")) or draft_status == "present" or bundle_status == "present"
         manuscript_ready = bool(active_line.get("manuscript_ready")) or bool(manuscript_coverage.get("manuscript_ready"))
         submission_ready = bool(active_line.get("submission_ready")) or bool(manuscript_coverage.get("submission_ready"))
@@ -2732,9 +2737,18 @@ class QuestService:
         if unmapped_completed_items:
             recommended_next_stage = "write"
             recommended_action = "sync_paper_contract"
+        elif manuscript_coverage and not academic_outline_ready:
+            recommended_next_stage = "write"
+            recommended_action = "repair_academic_outline_with_paper_outline"
+        elif manuscript_coverage and not analysis_plan_ready:
+            recommended_next_stage = "write"
+            recommended_action = "repair_analysis_plan_with_paper_outline"
         elif unresolved_required_items or blocking_pending_slices:
             recommended_next_stage = "analysis-campaign"
             recommended_action = "complete_required_supplementary"
+        elif manuscript_coverage and not language_firewall_ok and draft_checkpoint_ready:
+            recommended_next_stage = "write"
+            recommended_action = "repair_manuscript_language"
         elif draft_status != "present":
             recommended_next_stage = "write"
             recommended_action = "draft_paper"
@@ -2767,6 +2781,9 @@ class QuestService:
             "writing_ready": writing_ready,
             "evidence_ready": evidence_ready,
             "analysis_ready": analysis_ready,
+            "academic_outline_ready": academic_outline_ready,
+            "analysis_plan_ready": analysis_plan_ready,
+            "language_firewall_ok": language_firewall_ok,
             "draft_checkpoint_ready": draft_checkpoint_ready,
             "manuscript_ready": manuscript_ready,
             "submission_ready": submission_ready,
