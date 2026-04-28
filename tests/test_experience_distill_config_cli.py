@@ -1,3 +1,17 @@
+"""Configuration toggles, retroactive CLI, and skill discovery for
+experience-distill.
+
+Folds in:
+- (was) tests/test_experience_distill_config.py — coerce_*/read_* toggles
+  for `experience_distill` and `recall_priors` startup_contract entries.
+- (was) tests/test_experience_distill_cli.py — `ds distill-quest` and
+  `emit_experience_drafts` retroactive draft emission.
+- (was) tests/test_experience_distill_skill_bundle.py — distill skill
+  registration + bundle discoverability.
+
+These three are user-facing surfaces that don't share state — but each is
+small enough that splitting hurts more than it helps.
+"""
 from __future__ import annotations
 
 import json
@@ -6,11 +20,146 @@ from pathlib import Path
 import pytest
 
 from deepscientist.artifact import ArtifactService
-from deepscientist.artifact.experience_distill import emit_experience_drafts
+from deepscientist.artifact.experience_distill import (
+    coerce_distill_mode,
+    coerce_recall_priors_mode,
+    emit_experience_drafts,
+    is_distill_on,
+    is_recall_priors_on,
+    read_distill_mode,
+    read_recall_priors_mode,
+)
 from deepscientist.config import ConfigManager
 from deepscientist.home import ensure_home_layout, repo_root
 from deepscientist.quest import QuestService
 from deepscientist.skills import SkillInstaller
+from deepscientist.skills.registry import _DEFAULT_COMPANION_SKILLS
+
+
+def _write_quest_yaml(quest_root: Path, body: str) -> None:
+    quest_root.mkdir(parents=True, exist_ok=True)
+    (quest_root / "quest.yaml").write_text(body, encoding="utf-8")
+
+
+# ===== experience_distill mode toggles ===================================
+
+
+def test_coerce_string_on_off():
+    assert coerce_distill_mode("on") == {"mode": "on"}
+    assert coerce_distill_mode("OFF") == {"mode": "off"}
+    assert coerce_distill_mode("") == {"mode": "off"}
+    assert coerce_distill_mode(None) == {"mode": "off"}
+
+
+def test_coerce_dict_passthrough():
+    assert coerce_distill_mode({"mode": "on"}) == {"mode": "on"}
+    assert coerce_distill_mode({"mode": "bogus"}) == {"mode": "off"}
+    assert coerce_distill_mode({}) == {"mode": "off"}
+    # YAML parses `mode: on` as boolean True inside a dict; must still resolve to on.
+    assert coerce_distill_mode({"mode": True}) == {"mode": "on"}
+    assert coerce_distill_mode({"mode": False}) == {"mode": "off"}
+
+
+def test_read_distill_mode_defaults_off(tmp_path: Path):
+    qr = tmp_path / "q_demo"
+    _write_quest_yaml(qr, "startup_contract: {}\n")
+    assert read_distill_mode(qr) == {"mode": "off"}
+    assert is_distill_on(qr) is False
+
+
+def test_read_distill_mode_on(tmp_path: Path):
+    qr = tmp_path / "q_demo"
+    _write_quest_yaml(
+        qr,
+        "startup_contract:\n  experience_distill:\n    mode: on\n",
+    )
+    assert read_distill_mode(qr) == {"mode": "on"}
+    assert is_distill_on(qr) is True
+
+
+def test_read_distill_mode_accepts_bare_string(tmp_path: Path):
+    qr = tmp_path / "q_demo"
+    _write_quest_yaml(
+        qr,
+        "startup_contract:\n  experience_distill: on\n",
+    )
+    assert is_distill_on(qr) is True
+
+
+def test_read_distill_mode_missing_quest_yaml_defaults_off(tmp_path: Path):
+    qr = tmp_path / "q_demo"
+    qr.mkdir()
+    assert is_distill_on(qr) is False
+
+
+def test_is_distill_on_accepts_none_quest_root():
+    assert is_distill_on(None) is False
+
+
+# ===== recall_priors mode toggles ========================================
+
+
+def test_coerce_recall_priors_mode_accepts_bool() -> None:
+    assert coerce_recall_priors_mode(True) == {"mode": "on"}
+    assert coerce_recall_priors_mode(False) == {"mode": "off"}
+
+
+def test_coerce_recall_priors_mode_accepts_string() -> None:
+    assert coerce_recall_priors_mode("on") == {"mode": "on"}
+    assert coerce_recall_priors_mode("OFF") == {"mode": "off"}
+    assert coerce_recall_priors_mode("garbage") == {"mode": "off"}
+
+
+def test_coerce_recall_priors_mode_accepts_dict() -> None:
+    assert coerce_recall_priors_mode({"mode": "on"}) == {"mode": "on"}
+    assert coerce_recall_priors_mode({"mode": True}) == {"mode": "on"}
+    assert coerce_recall_priors_mode({"mode": False}) == {"mode": "off"}
+
+
+def test_coerce_recall_priors_mode_default_off() -> None:
+    assert coerce_recall_priors_mode(None) == {"mode": "off"}
+    assert coerce_recall_priors_mode(42) == {"mode": "off"}
+
+
+def test_read_recall_priors_mode_reads_quest_yaml(tmp_path: Path) -> None:
+    quest_root = tmp_path / "quest"
+    quest_root.mkdir()
+    (quest_root / "quest.yaml").write_text(
+        "startup_contract:\n  recall_priors: on\n", encoding="utf-8"
+    )
+    assert read_recall_priors_mode(quest_root) == {"mode": "on"}
+    assert is_recall_priors_on(quest_root) is True
+
+
+def test_read_recall_priors_mode_defaults_off_when_missing(tmp_path: Path) -> None:
+    quest_root = tmp_path / "quest"
+    quest_root.mkdir()
+    (quest_root / "quest.yaml").write_text("startup_contract: {}\n", encoding="utf-8")
+    assert read_recall_priors_mode(quest_root) == {"mode": "off"}
+    assert is_recall_priors_on(quest_root) is False
+
+
+def test_read_recall_priors_mode_defaults_off_when_no_yaml(tmp_path: Path) -> None:
+    quest_root = tmp_path / "quest"
+    quest_root.mkdir()
+    assert is_recall_priors_on(quest_root) is False
+
+
+def test_read_recall_priors_mode_independent_of_distill(tmp_path: Path) -> None:
+    """recall_priors and experience_distill are separate fields."""
+    from deepscientist.artifact.experience_distill import is_distill_on
+
+    quest_root = tmp_path / "quest"
+    quest_root.mkdir()
+    (quest_root / "quest.yaml").write_text(
+        "startup_contract:\n  recall_priors: on\n  experience_distill: off\n",
+        encoding="utf-8",
+    )
+    assert is_recall_priors_on(quest_root) is True
+    assert is_distill_on(quest_root) is False
+
+
+# ===== emit_experience_drafts (pure) =====================================
 
 
 def test_emit_experience_drafts_writes_one_file_per_slice(tmp_path: Path):
@@ -79,6 +228,9 @@ def test_emit_experience_drafts_escapes_title_with_quote(tmp_path: Path):
     assert meta["lineage"][0]["note"] == 'effect of "warm-up" on CNNs'
 
 
+# ===== ds distill-quest CLI ==============================================
+
+
 def test_distill_quest_cli_end_to_end(tmp_path: Path, capsys):
     home = tmp_path / "DeepScientistHome"
     ensure_home_layout(home)
@@ -112,11 +264,6 @@ def test_distill_quest_cli_end_to_end(tmp_path: Path, capsys):
 def test_distill_quest_command_includes_main_experiment_and_experiment_kinds(tmp_path: Path):
     """Retroactive CLI must emit drafts for analysis.slice + main_experiment + experiment, not just analysis.slice."""
     from deepscientist.cli import distill_quest_command
-    from deepscientist.config import ConfigManager
-    from deepscientist.home import ensure_home_layout, repo_root
-    from deepscientist.quest import QuestService
-    from deepscientist.skills import SkillInstaller
-    from deepscientist.artifact import ArtifactService
     import yaml
 
     home = tmp_path / "DSHome"
@@ -150,11 +297,6 @@ def test_distill_quest_command_includes_main_experiment_and_experiment_kinds(tmp
 def test_distill_quest_command_excludes_already_reviewed_runs(tmp_path: Path):
     """Retroactive CLI must skip runs already covered by distill_review records."""
     from deepscientist.cli import distill_quest_command
-    from deepscientist.config import ConfigManager
-    from deepscientist.home import ensure_home_layout, repo_root
-    from deepscientist.quest import QuestService
-    from deepscientist.skills import SkillInstaller
-    from deepscientist.artifact import ArtifactService
     import yaml
 
     home = tmp_path / "DSHome"
@@ -195,7 +337,6 @@ def test_distill_quest_command_excludes_already_reviewed_runs(tmp_path: Path):
 
 def test_distill_quest_command_returns_error_for_nonexistent_quest(tmp_path: Path, capsys):
     from deepscientist.cli import distill_quest_command
-    from deepscientist.home import ensure_home_layout
 
     home = tmp_path / "DSHome"
     ensure_home_layout(home)
@@ -205,3 +346,24 @@ def test_distill_quest_command_returns_error_for_nonexistent_quest(tmp_path: Pat
     captured = capsys.readouterr()
     assert "Quest not found" in captured.err
     assert "no-such-quest" in captured.err
+
+
+# ===== distill skill bundle ==============================================
+
+
+def test_distill_in_default_companions():
+    assert "distill" in _DEFAULT_COMPANION_SKILLS
+
+
+def test_distill_skill_bundle_is_discoverable():
+    from deepscientist.skills.registry import discover_skill_bundles
+
+    root = repo_root()
+    bundles = discover_skill_bundles(root)
+    ids = {bundle.skill_id for bundle in bundles}
+    assert "distill" in ids, f"Expected distill skill; got {sorted(ids)}"
+    distill = next(bundle for bundle in bundles if bundle.skill_id == "distill")
+    assert distill.skill_md.exists()
+    assert distill.metadata.get("name") == "distill"
+    assert "experience" in (distill.metadata.get("description") or "").lower()
+    assert distill.metadata.get("skill_role") == "companion"

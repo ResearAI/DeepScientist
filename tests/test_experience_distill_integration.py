@@ -1,3 +1,14 @@
+"""End-to-end tests for experience-distill.
+
+Folds in:
+- (was) tests/test_experience_distill_integration.py — full guidance_vm
+  lifecycle through ArtifactService.record().
+- (was) tests/test_experience_distill_candidates.py —
+  iter_distill_candidate_records / DISTILL_CANDIDATE_RUN_KINDS unit tests.
+
+Both exercise the candidate-discovery surface; the unit tests pin shape
+on the iterator the integration tests rely on.
+"""
 from __future__ import annotations
 
 import json
@@ -6,11 +17,102 @@ from pathlib import Path
 import pytest
 
 from deepscientist.artifact import ArtifactService
-from deepscientist.artifact.experience_distill import maybe_inject_distill_finalize_gate
+from deepscientist.artifact.experience_distill import (
+    DISTILL_CANDIDATE_RUN_KINDS,
+    iter_distill_candidate_records,
+    maybe_inject_distill_finalize_gate,
+)
 from deepscientist.config import ConfigManager
 from deepscientist.home import ensure_home_layout, repo_root
 from deepscientist.quest import QuestService
 from deepscientist.skills import SkillInstaller
+
+from tests._distill_fixtures import enable_distill_in_quest
+
+
+# ===== iter_distill_candidate_records (unit) =============================
+
+
+def _write_index(artifacts_dir: Path, lines: list[dict]) -> None:
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    runs_dir = artifacts_dir / "runs"
+    runs_dir.mkdir(exist_ok=True)
+    index_lines = []
+    for line in lines:
+        record_path = runs_dir / f"{line['artifact_id']}.json"
+        record_path.write_text(json.dumps(line), encoding="utf-8")
+        index_entry = {
+            "artifact_id": line["artifact_id"],
+            "kind": line.get("kind", "run"),
+            "status": line.get("status", "completed"),
+            "path": str(record_path),
+        }
+        index_lines.append(json.dumps(index_entry))
+    (artifacts_dir / "_index.jsonl").write_text("\n".join(index_lines) + "\n", encoding="utf-8")
+
+
+def test_default_candidate_kinds_cover_three_run_kinds():
+    assert DISTILL_CANDIDATE_RUN_KINDS == frozenset(
+        {"analysis.slice", "main_experiment", "experiment"}
+    )
+
+
+def test_iter_returns_completed_runs_in_default_kinds(tmp_path: Path):
+    _write_index(
+        tmp_path,
+        [
+            {"artifact_id": "run-1", "kind": "run", "run_kind": "main_experiment", "status": "completed"},
+            {"artifact_id": "run-2", "kind": "run", "run_kind": "experiment", "status": "succeeded"},
+            {"artifact_id": "run-3", "kind": "run", "run_kind": "analysis.slice", "status": "done"},
+            {"artifact_id": "run-4", "kind": "run", "run_kind": "idea", "status": "completed"},        # excluded by kind
+            {"artifact_id": "run-5", "kind": "run", "run_kind": "main_experiment", "status": "running"},  # excluded by status
+        ],
+    )
+    out = list(iter_distill_candidate_records(tmp_path))
+    ids = {r["artifact_id"] for r in out}
+    assert ids == {"run-1", "run-2", "run-3"}
+
+
+def test_iter_respects_explicit_run_kinds(tmp_path: Path):
+    _write_index(
+        tmp_path,
+        [
+            {"artifact_id": "run-1", "kind": "run", "run_kind": "main_experiment", "status": "completed"},
+            {"artifact_id": "run-2", "kind": "run", "run_kind": "analysis.slice", "status": "done"},
+        ],
+    )
+    out = list(iter_distill_candidate_records(tmp_path, run_kinds={"analysis.slice"}))
+    ids = {r["artifact_id"] for r in out}
+    assert ids == {"run-2"}
+
+
+def test_iter_skips_missing_record_paths(tmp_path: Path):
+    artifacts_dir = tmp_path
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    (artifacts_dir / "_index.jsonl").write_text(
+        json.dumps({"artifact_id": "run-x", "kind": "run", "status": "completed", "path": "/nope"}) + "\n",
+        encoding="utf-8",
+    )
+    assert list(iter_distill_candidate_records(artifacts_dir)) == []
+
+
+def test_iter_returns_empty_when_index_missing(tmp_path: Path):
+    assert list(iter_distill_candidate_records(tmp_path)) == []
+
+
+def test_iter_skips_malformed_record_json(tmp_path: Path):
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True)
+    bad = runs_dir / "bad.json"
+    bad.write_text("not json", encoding="utf-8")
+    (tmp_path / "_index.jsonl").write_text(
+        json.dumps({"artifact_id": "bad", "kind": "run", "path": str(bad)}) + "\n",
+        encoding="utf-8",
+    )
+    assert list(iter_distill_candidate_records(tmp_path)) == []
+
+
+# ===== integration tests through ArtifactService =========================
 
 
 @pytest.fixture
@@ -25,16 +127,7 @@ def home_with_quest(tmp_path: Path) -> tuple[Path, str]:
 
 
 def _enable_distill(home: Path, quest_id: str) -> Path:
-    import yaml
-
-    quest_root = home / "quests" / quest_id
-    quest_yaml = quest_root / "quest.yaml"
-    payload = yaml.safe_load(quest_yaml.read_text(encoding="utf-8")) or {}
-    contract = payload.get("startup_contract") if isinstance(payload.get("startup_contract"), dict) else {}
-    contract["experience_distill"] = {"mode": "on"}
-    payload["startup_contract"] = contract
-    quest_yaml.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    return quest_root
+    return enable_distill_in_quest(home, quest_id)
 
 
 def test_main_experiment_run_not_redirected(home_with_quest):
@@ -292,29 +385,16 @@ def test_e2e_finalize_gate_uses_imperative_routing_no_fallback(tmp_path: Path) -
     """End-to-end: from quest with one completed run + recall_priors=on,
     a write decision routes to distill with the new imperative wording and
     no write fallback in alternative_routes."""
+    from tests._distill_fixtures import seed_runs, write_quest_yaml
+
     quest_root = tmp_path / "quest-e2e"
     quest_root.mkdir()
-    (quest_root / "quest.yaml").write_text(
-        "startup_contract:\n"
-        "  experience_distill: on\n"
-        "  recall_priors: on\n",
-        encoding="utf-8",
-    )
+    write_quest_yaml(quest_root, distill_on=True, recall_priors=True, bare_string=True)
     artifacts_dir = quest_root / "artifacts"
-    artifacts_dir.mkdir()
-    run_path = artifacts_dir / "runs" / "run-main.json"
-    run_path.parent.mkdir(parents=True)
-    run_path.write_text(
-        json.dumps({
-            "kind": "run", "run_kind": "main_experiment",
-            "status": "completed", "artifact_id": "run-main",
-            "summary": "main experiment ok",
-        }),
-        encoding="utf-8",
-    )
-    (artifacts_dir / "_index.jsonl").write_text(
-        json.dumps({"kind": "run", "path": str(run_path)}) + "\n", encoding="utf-8"
-    )
+    seed_runs(artifacts_dir, [{
+        "artifact_id": "run-main", "kind": "run", "run_kind": "main_experiment",
+        "status": "completed", "summary": "main experiment ok",
+    }])
 
     decision = {"kind": "decision", "action": "write", "artifact_id": "decision-write-1"}
     inbound = {"recommended_skill": "write", "recommended_action": "Draft paper."}
