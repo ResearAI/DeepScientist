@@ -1668,6 +1668,28 @@ def build_artifact_server(context: McpContext) -> FastMCP:
         return service.list_distill_candidates(context.require_quest_root())
 
     @server.tool(
+        name="list_recent",
+        description=(
+            "List the most recent artifacts in the active quest, newest first. "
+            "Use at stage entry to see 'what did I just do' — recent runs, "
+            "decisions, milestones, progress — without going to the memory store. "
+            "Optional kind filter; default limit 20 (max 200)."
+        ),
+        annotations=_read_only_tool_annotations(title="List recent artifacts"),
+    )
+    def list_recent(
+        kind: str | None = None,
+        limit: int = 20,
+        comment: str | dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        items = service.list_recent(
+            context.require_quest_root(),
+            kind=kind,
+            limit=limit,
+        )
+        return {"items": items}
+
+    @server.tool(
         name="record_main_experiment",
         description=(
             "Record the completed main experiment on the active idea workspace. "

@@ -39,6 +39,8 @@ Use `artifact` when the output changes or reports quest state:
 - decisions and approvals
 - connector-facing interaction state
 
+For a runtime "what did I just do" view, prefer `artifact.list_recent(kind=None, limit=20)` (newest-first across the quest's main and worktree `_index.jsonl`) over `memory.list_recent` — runtime state belongs in artifacts, not in memory cards.
+
 Use `bash_exec` when a command should stay durable and inspectable:
 
 - training runs

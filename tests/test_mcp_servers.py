@@ -581,6 +581,7 @@ def test_artifact_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
             "get_conversation_context",
             "get_analysis_campaign",
             "list_distill_candidates",
+            "list_recent",
             "record_main_experiment",
             "create_analysis_campaign",
             "submit_paper_outline",
@@ -2966,3 +2967,234 @@ def test_sanitize_start_setup_accepts_recall_priors_bool() -> None:
     assert patch == {"recall_priors": True}
     patch = _sanitize_start_setup_form_patch({"recall_priors": "on"})
     assert patch == {"recall_priors": True}
+
+
+# ---------------------------------------------------------------------------
+# artifact.list_recent (service + MCP) — RFC #64 slim N3
+# ---------------------------------------------------------------------------
+
+
+def _seed_artifact_index(
+    artifacts_dir: Path,
+    entries: list[dict[str, object]],
+) -> None:
+    """Write index entries directly into `<artifacts_dir>/_index.jsonl`.
+
+    Matches the index shape produced by `ArtifactService._index_line` so
+    `list_recent` can sort by `updated_at` and filter by `kind`.
+    """
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    lines = [json.dumps(entry, ensure_ascii=False) for entry in entries]
+    (artifacts_dir / "_index.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_artifact_list_recent_service_returns_main_index_newest_first(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create(
+        "list-recent main"
+    )
+    quest_root = Path(quest["quest_root"])
+    service = ArtifactService(temp_home)
+
+    _seed_artifact_index(
+        quest_root / "artifacts",
+        [
+            {
+                "artifact_id": "run-old",
+                "kind": "run",
+                "status": "completed",
+                "quest_id": quest["quest_id"],
+                "path": str(quest_root / "artifacts" / "run-old.json"),
+                "summary": "older run",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+            },
+            {
+                "artifact_id": "run-new",
+                "kind": "run",
+                "status": "completed",
+                "quest_id": quest["quest_id"],
+                "path": str(quest_root / "artifacts" / "run-new.json"),
+                "summary": "newer run",
+                "updated_at": "2026-04-28T12:00:00+00:00",
+            },
+            {
+                "artifact_id": "decision-mid",
+                "kind": "decision",
+                "status": "pending",
+                "quest_id": quest["quest_id"],
+                "path": str(quest_root / "artifacts" / "decision-mid.json"),
+                "summary": "mid decision",
+                "updated_at": "2026-03-01T00:00:00+00:00",
+            },
+        ],
+    )
+
+    items = service.list_recent(quest_root)
+    assert [item["artifact_id"] for item in items] == ["run-new", "decision-mid", "run-old"]
+    assert items[0]["updated_at"] == "2026-04-28T12:00:00+00:00"
+
+
+def test_artifact_list_recent_service_aggregates_worktree_indexes(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create(
+        "list-recent worktree"
+    )
+    quest_root = Path(quest["quest_root"])
+    service = ArtifactService(temp_home)
+
+    _seed_artifact_index(
+        quest_root / "artifacts",
+        [
+            {
+                "artifact_id": "main-run",
+                "kind": "run",
+                "status": "completed",
+                "quest_id": quest["quest_id"],
+                "path": str(quest_root / "artifacts" / "main-run.json"),
+                "summary": "main workspace run",
+                "updated_at": "2026-02-15T08:00:00+00:00",
+            },
+        ],
+    )
+    worktree_artifacts = quest_root / ".ds" / "worktrees" / "feat-x" / "artifacts"
+    _seed_artifact_index(
+        worktree_artifacts,
+        [
+            {
+                "artifact_id": "wt-run",
+                "kind": "run",
+                "status": "completed",
+                "quest_id": quest["quest_id"],
+                "path": str(worktree_artifacts / "wt-run.json"),
+                "summary": "worktree run",
+                "updated_at": "2026-04-20T09:00:00+00:00",
+            },
+        ],
+    )
+
+    items = service.list_recent(quest_root)
+    ids = [item["artifact_id"] for item in items]
+    assert ids == ["wt-run", "main-run"], (
+        f"expected worktree entry first, got {ids}"
+    )
+
+
+def test_artifact_list_recent_service_filters_by_kind_and_caps_limit(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create(
+        "list-recent filter"
+    )
+    quest_root = Path(quest["quest_root"])
+    service = ArtifactService(temp_home)
+
+    base = datetime(2026, 4, 1, tzinfo=UTC)
+    entries: list[dict[str, object]] = []
+    for i in range(6):
+        ts = (base + timedelta(hours=i)).isoformat()
+        entries.append(
+            {
+                "artifact_id": f"run-{i}",
+                "kind": "run",
+                "status": "completed",
+                "quest_id": quest["quest_id"],
+                "path": str(quest_root / "artifacts" / f"run-{i}.json"),
+                "summary": f"run {i}",
+                "updated_at": ts,
+            }
+        )
+    for i in range(3):
+        ts = (base + timedelta(hours=10 + i)).isoformat()
+        entries.append(
+            {
+                "artifact_id": f"decision-{i}",
+                "kind": "decision",
+                "status": "pending",
+                "quest_id": quest["quest_id"],
+                "path": str(quest_root / "artifacts" / f"decision-{i}.json"),
+                "summary": f"decision {i}",
+                "updated_at": ts,
+            }
+        )
+    _seed_artifact_index(quest_root / "artifacts", entries)
+
+    runs_only = service.list_recent(quest_root, kind="run")
+    assert all(item["kind"] == "run" for item in runs_only)
+    assert {item["artifact_id"] for item in runs_only} == {f"run-{i}" for i in range(6)}
+
+    capped = service.list_recent(quest_root, limit=3)
+    assert len(capped) == 3
+    # Decisions are newest (hours 10..12), so they top the list.
+    assert [item["artifact_id"] for item in capped] == ["decision-2", "decision-1", "decision-0"]
+
+    decisions_capped = service.list_recent(quest_root, kind="decision", limit=2)
+    assert [item["artifact_id"] for item in decisions_capped] == ["decision-2", "decision-1"]
+
+
+def test_artifact_mcp_list_recent_tool_returns_items(temp_home: Path) -> None:
+    async def scenario() -> None:
+        ensure_home_layout(temp_home)
+        ConfigManager(temp_home).ensure_files()
+        quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create(
+            "list-recent mcp"
+        )
+        quest_root = Path(quest["quest_root"])
+
+        _seed_artifact_index(
+            quest_root / "artifacts",
+            [
+                {
+                    "artifact_id": "art-old",
+                    "kind": "milestone",
+                    "status": "completed",
+                    "quest_id": quest["quest_id"],
+                    "path": str(quest_root / "artifacts" / "art-old.json"),
+                    "summary": "old milestone",
+                    "updated_at": "2026-04-01T00:00:00+00:00",
+                },
+                {
+                    "artifact_id": "art-new",
+                    "kind": "milestone",
+                    "status": "completed",
+                    "quest_id": quest["quest_id"],
+                    "path": str(quest_root / "artifacts" / "art-new.json"),
+                    "summary": "new milestone",
+                    "updated_at": "2026-04-27T00:00:00+00:00",
+                },
+            ],
+        )
+
+        context = McpContext(
+            home=temp_home,
+            quest_id=quest["quest_id"],
+            quest_root=quest_root,
+            run_id="run-list-recent",
+            active_anchor="baseline",
+            conversation_id="quest:test",
+            agent_role="pi",
+            worker_id="worker-main",
+            worktree_root=None,
+            team_mode="single",
+        )
+        server = build_artifact_server(context)
+        tools = await server.list_tools()
+        tool_map = {tool.name: tool for tool in tools}
+        assert "list_recent" in tool_map
+        assert tool_map["list_recent"].annotations.readOnlyHint is True
+
+        result = _unwrap_tool_result(
+            await server.call_tool("list_recent", {"kind": "milestone", "limit": 5})
+        )
+        assert "items" in result
+        assert [item["artifact_id"] for item in result["items"]] == ["art-new", "art-old"]
+        assert all(item["kind"] == "milestone" for item in result["items"])
+
+    asyncio.run(scenario())
+
+
+def test_codex_runner_approves_artifact_list_recent() -> None:
+    from deepscientist.runners.codex import _BUILTIN_MCP_TOOL_APPROVALS
+
+    assert "list_recent" in _BUILTIN_MCP_TOOL_APPROVALS["artifact"]

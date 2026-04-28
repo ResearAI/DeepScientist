@@ -71,6 +71,7 @@ When `recall_priors: on`, a `recall_priors_rule` cue is injected into stage-skil
 Under existing `artifact` and `memory` namespaces (no new public namespaces):
 
 - `artifact.list_distill_candidates` — completed runs not yet covered by any `decision(action='distill_review')` under the active workspace.
+- `artifact.list_recent` — newest-first listing of recent quest artifacts (optional `kind` filter, default `limit=20`). Stage skills use this for the runtime "what did I just do" view instead of co-opting `memory.list_recent`.
 - `memory.list_knowledge_summaries` — keyword/scope-filtered browse over global `knowledge/` cards from any quest.
 
 Codex auto-approves both. Claude allows them via `--allowedTools mcp__memory,mcp__artifact`. OpenCode allows them under default `permission_mode: allow`.

@@ -37,6 +37,8 @@
 - 决策与 approval
 - connector 侧需要看到的交互状态
 
+要看“我刚刚做了什么”这种运行态视图，优先用 `artifact.list_recent(kind=None, limit=20)`（按 `updated_at` 倒序聚合主仓库和每个 worktree 的 `_index.jsonl`），而不是 `memory.list_recent`——运行态属于 artifact，不属于 memory cards。
+
 当需要运行“可持续跟踪、可回放”的命令时，用 `bash_exec`：
 
 - 训练/评测

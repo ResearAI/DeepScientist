@@ -426,6 +426,7 @@ artifact 名字虽然多，但本质上还是一个家族。
 #### A. 通用持久记录
 
 - `artifact.record(...)`
+- `artifact.list_recent(...)` — 按 `updated_at` 倒序列出当前 quest 最近的制品（可选 `kind` 过滤，默认 `limit=20`），用于 stage 入口的 "我刚刚做了什么" 运行态视图
 - `artifact.refresh_summary(...)`
 - `artifact.render_git_graph(...)`
 

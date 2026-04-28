@@ -7443,6 +7443,69 @@ class ArtifactService:
             "manifest": manifest,
         }
 
+    def list_recent(
+        self,
+        quest_root: Path,
+        *,
+        kind: str | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Return recent artifacts under the active quest, newest first.
+
+        Aggregates `quest_root/artifacts/_index.jsonl` plus every
+        `quest_root/.ds/worktrees/*/artifacts/_index.jsonl`, sorted by the
+        index's `updated_at` timestamp descending, optionally filtered by
+        `kind`, capped at `limit`.
+
+        Each returned dict contains the index entry shape:
+        `artifact_id`, `kind`, `status`, `quest_id`, `path`, `summary`,
+        `updated_at`. Malformed lines and missing files are skipped.
+
+        `limit` is clamped to the inclusive range [1, 200] so callers cannot
+        accidentally trigger an unbounded read.
+        """
+        from .experience_distill import _quest_workspace_artifact_dirs
+
+        try:
+            limit_int = int(limit)
+        except (TypeError, ValueError):
+            limit_int = 20
+        if limit_int < 1:
+            limit_int = 1
+        if limit_int > 200:
+            limit_int = 200
+
+        kind_filter = (str(kind).strip() if kind is not None else "") or None
+
+        entries: list[dict[str, Any]] = []
+        for artifacts_dir in _quest_workspace_artifact_dirs(quest_root):
+            index_path = artifacts_dir / "_index.jsonl"
+            if not index_path.exists():
+                continue
+            try:
+                raw = index_path.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            for line in raw.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except Exception:
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                if kind_filter is not None and str(entry.get("kind") or "") != kind_filter:
+                    continue
+                entries.append(entry)
+
+        entries.sort(
+            key=lambda item: str(item.get("updated_at") or ""),
+            reverse=True,
+        )
+        return entries[:limit_int]
+
     def list_distill_candidates(self, quest_root: Path) -> dict[str, Any]:
         """Return undistilled completed-run candidates for the active quest.
 

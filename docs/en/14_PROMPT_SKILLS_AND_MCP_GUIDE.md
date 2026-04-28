@@ -426,6 +426,7 @@ The artifact namespace is large, but it is still one family.
 #### A. Generic durable records
 
 - `artifact.record(...)`
+- `artifact.list_recent(...)` — newest-first listing of recent quest artifacts (optional `kind` filter, default `limit=20`); use at stage entry for a "what did I just do" runtime view
 - `artifact.refresh_summary(...)`
 - `artifact.render_git_graph(...)`
 
