@@ -815,13 +815,22 @@ function collectSealedAssistantRunIds(updates: Array<Record<string, unknown>>) {
   return Array.from(sealed)
 }
 
-function findReplyTargetId(feed: FeedItem[]) {
+export function findReplyTargetId(feed: FeedItem[]) {
+  // Prefer the most recent unresolved blocking interaction (decision_request,
+  // approval, blocking question) so that a free-text reply like "同意" lands on
+  // the artifact actually waiting for a user verdict — not on a `progress`
+  // heartbeat that happens to be more recent in the feed. Only when no such
+  // blocking interaction exists do we fall back to the latest threaded one.
   for (let index = feed.length - 1; index >= 0; index -= 1) {
     const item = feed[index]
     if (item.type !== 'artifact') continue
     if (item.replyMode === 'blocking' || item.expectsReply) {
       return item.interactionId || item.id
     }
+  }
+  for (let index = feed.length - 1; index >= 0; index -= 1) {
+    const item = feed[index]
+    if (item.type !== 'artifact') continue
     if (item.replyMode === 'threaded' && item.interactionId) {
       return item.interactionId
     }
