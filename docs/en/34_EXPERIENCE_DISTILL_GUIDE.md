@@ -75,20 +75,28 @@ Under existing `artifact` and `memory` namespaces (no new public namespaces):
 
 Codex auto-approves both. Claude allows them via `--allowedTools mcp__memory,mcp__artifact`. OpenCode allows them under default `permission_mode: allow`.
 
-## 8. Operational notes
+## 8. The retroactive CLI
+
+```
+ds distill-quest <quest_id>
+```
+
+Emits one draft per uncovered completed run under `~/DeepScientist/drafts/experiences/<quest_id>/`. The agent (or the user) reviews the drafts and records the `decision(action='distill_review')` through the normal MCP path. Returns `1` and prints `Quest not found: <id>` to stderr if the quest does not exist.
+
+## 9. Operational notes
 
 - **Default off.** Both toggles default off; existing quests are unaffected.
 - **Multi-workspace aggregation.** The gate, the validator, and `list_distill_candidates` all scan `quest_root/artifacts` plus every `.ds/worktrees/*/artifacts/`. A run sitting in an idea worktree still trips the gate.
 - **No automatic merging.** Two cards from different quests on a similar topic are kept separate by default. Merging is an explicit `action: patch` with an appended `lineage` entry.
 - **Cross-quest patch invariant.** When patching across quests, `claim` is immutable and existing optional fields may only be appended to; same-quest patches may freely edit.
 
-## 9. Failure modes and debugging
+## 10. Failure modes and debugging
 
 - **Submission rejected with `lack a distill_review`.** Run the `distill` skill and record `decision(action='distill_review')`; resubmit.
 - **`distill_review decision references unknown run artifact_ids`.** The validator scans every workspace artifact dir; if the run is real but the error fires anyway, the run record was never indexed. Check that the run's worktree `_index.jsonl` actually contains the run id.
 - **Cards not appearing in the next quest.** Check `~/DeepScientist/memory/knowledge/_index.jsonl` for the right `quest_id` entry, and confirm the next quest has `recall_priors: on`.
 
-## 10. Cross-links
+## 11. Cross-links
 
 - [07 Memory and MCP](./07_MEMORY_AND_MCP.md) — how memory cards are stored, scoped, and surfaced
 - [14 Prompt, Skills and MCP Guide](./14_PROMPT_SKILLS_AND_MCP_GUIDE.md) — how stage skills are wired and how MCP tool approvals work
