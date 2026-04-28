@@ -1,6 +1,6 @@
 ---
 name: distill
-description: "Use when the finalize gate fires (or when an analysis-slice just landed). Inspect the batch of undistilled completed runs, then write 0..N reusable knowledge cards (`subtype: experience`) and one bookkeeping `distill_review` artifact."
+description: "Use when the finalize gate fires (or when an analysis-slice just landed). Inspect the batch of undistilled completed runs, then write 0..N reusable knowledge cards (`subtype: experience`) and one bookkeeping `decision(action='distill_review')` artifact."
 skill_role: companion
 ---
 
@@ -8,7 +8,7 @@ skill_role: companion
 
 Run this skill when the distill gate routes you here — either immediately after an `analysis.slice` lands (per-slice trigger) or before write/finalize when the quest has undistilled completed runs (finalize gate).
 
-Your job is **not** to write a lab notebook entry — it is to decide whether the batch produced reusable, mechanism-bearing intuition, persist it as global knowledge cards, and record one `distill_review` artifact summarizing what was inspected.
+Your job is **not** to write a lab notebook entry — it is to decide whether the batch produced reusable, mechanism-bearing intuition, persist it as global knowledge cards, and record one `decision(action='distill_review')` artifact summarizing what was inspected.
 
 ## Protocol
 
@@ -24,7 +24,7 @@ The tool returns:
 - `reviewed_run_ids`: already covered, do not redo
 - `cursor_run_created_at`: timestamp of the last `distill_review`
 
-If `candidates` is empty, you should not have been routed here — record a minimal `distill_review` with `reviewed_run_ids=[]` is **not** valid (schema rejects it). Instead, exit the skill and record a `decision(action='continue')` noting that the gate was already clear.
+If `candidates` is empty, you should not have been routed here — recording a minimal `decision(action='distill_review')` with `reviewed_run_ids=[]` is **not** valid (schema rejects it). Instead, exit the skill and record a `decision(action='continue')` noting that the gate was already clear.
 
 ### 1. For each candidate, decide one of three outcomes
 
@@ -62,8 +62,8 @@ For each inspection, decide one of:
   and write a new card anyway.
 
 Record one `neighbor_decisions` entry per inspected neighbor in the
-final `distill_review` (see step 3) — including the negative cases
-(`new`, `neighbor_but_separate`).
+final `decision(action='distill_review')` (see step 3) — including
+the negative cases (`new`, `neighbor_but_separate`).
 
 If the decision is **patch**, `memory.write` to patch:
 - append one `lineage` entry `{quest, run, direction, note}`
@@ -102,7 +102,7 @@ Body: 3–8 lines of prose explaining the reasoning. No experiment-log dumps.
 
 **C. No card from this candidate**
 
-Acceptable when the run was a smoke test, the result was inconclusive, or it duplicated a prior card with no new condition. Just skip writing a card for this entry. The `distill_review` (Step 2) records *which* candidates were skipped via `reason_if_empty` (only required when the entire batch produces zero cards).
+Acceptable when the run was a smoke test, the result was inconclusive, or it duplicated a prior card with no new condition. Just skip writing a card for this entry. The `decision(action='distill_review')` artifact (Step 3) records *which* candidates were skipped via `reason_if_empty` (only required when the entire batch produces zero cards).
 
 ### 2. Hard constraints on new/patched cards
 
@@ -123,13 +123,16 @@ Acceptable when the run was a smoke test, the result was inconclusive, or it dup
 
 ### 3. Record the batch summary
 
-After processing all candidates, write exactly one `distill_review`:
+After processing all candidates, write exactly one `decision(action='distill_review')`:
 
 ```json
 {
   "tool": "artifact.record",
   "arguments": {
-    "kind": "distill_review",
+    "kind": "decision",
+    "action": "distill_review",
+    "verdict": "covered",
+    "reason": "<one-line summary of the batch outcome>",
     "reviewed_run_ids": ["<candidate.artifact_id>", "..."],
     "cards_written": [
       {"card_id": "knowledge-...", "scope": "global", "action": "new",   "target_run_id": "run-..."},
@@ -145,6 +148,11 @@ After processing all candidates, write exactly one `distill_review`:
 }
 ```
 
+`kind`, `action`, `verdict`, and `reason` are the standard `decision`
+artifact fields. The remaining fields (`reviewed_run_ids`,
+`cards_written`, `reason_if_empty`, `neighbor_decisions`) are
+review-specific and only validated when `action == 'distill_review'`.
+
 > `neighbor_decisions` is optional but strongly recommended: record one
 > entry per neighbor card you inspected, including the negative cases
 > (where the decision was `new` or `neighbor_but_separate`). This makes
@@ -154,12 +162,12 @@ After processing all candidates, write exactly one `distill_review`:
 
 ### 4. Resume the original route
 
-After the `distill_review` lands, the finalize gate clears (the cursor advances past your reviewed runs). The agent's previous intent — `write` or `finalize` — is preserved in the guidance payload as `previous_recommended_skill`. Resume that route by recording a fresh `decision(action='write'|'finalize')` or proceeding to the corresponding skill directly.
+After the `decision(action='distill_review')` lands, the finalize gate clears (the cursor advances past your reviewed runs). The agent's previous intent — `write` or `finalize` — is preserved in the guidance payload as `previous_recommended_skill`. Resume that route by recording a fresh `decision(action='write'|'finalize')` or proceeding to the corresponding skill directly.
 
 ## Output
 
 End with one JSON line for downstream tooling:
 
 ```json
-{"outcome": "patch_only" | "new_only" | "mixed" | "no_cards", "review_id": "distill-review-...", "card_ids": ["..."]}
+{"outcome": "patch_only" | "new_only" | "mixed" | "no_cards", "review_id": "decision-...", "card_ids": ["..."]}
 ```

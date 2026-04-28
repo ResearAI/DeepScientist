@@ -51,19 +51,22 @@ def _seed_worktree_pending_run(quest_root: Path, *, worktree_name: str, run_id: 
 
 def _seed_distill_review(quest_root: Path, *, reviewed_run_ids: list[str]) -> None:
     artifacts = quest_root / "artifacts"
-    reviews_dir = artifacts / "distill_reviews"
+    reviews_dir = artifacts / "decisions"
     reviews_dir.mkdir(parents=True, exist_ok=True)
     review_id = "distill-review-1"
     record = {
         "artifact_id": review_id,
-        "kind": "distill_review",
+        "kind": "decision",
+        "action": "distill_review",
+        "verdict": "covered",
+        "reason": "test seed",
         "reviewed_run_ids": reviewed_run_ids,
         "created_at": "2026-04-26T00:00:00+00:00",
     }
     (reviews_dir / f"{review_id}.json").write_text(json.dumps(record), encoding="utf-8")
     line = json.dumps({
         "artifact_id": review_id,
-        "kind": "distill_review",
+        "kind": "decision",
         "status": "completed",
         "path": str(reviews_dir / f"{review_id}.json"),
     })
@@ -278,7 +281,10 @@ def test_distill_review_accepts_run_recorded_only_in_worktree(temp_home: Path) -
     review = artifact.record(
         quest_root,
         {
-            "kind": "distill_review",
+            "kind": "decision",
+            "action": "distill_review",
+            "verdict": "covered",
+            "reason": "worktree-resident run reviewed",
             "reviewed_run_ids": ["run-only-in-worktree"],
             "cards_written": [
                 {
@@ -294,4 +300,4 @@ def test_distill_review_accepts_run_recorded_only_in_worktree(temp_home: Path) -
         workspace_root=quest_root,
     )
     assert review.get("ok", True) is not False
-    assert str(review.get("artifact_id") or "").startswith("distill_review")
+    assert str(review.get("artifact_id") or "").startswith("decision")

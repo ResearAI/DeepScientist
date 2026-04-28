@@ -7993,7 +7993,10 @@ class ArtifactService:
                     "semantic_key": semantic_key,
                     "suppressed": True,
                 }
-        if str(payload.get("kind") or "") == "distill_review":
+        if (
+            str(payload.get("kind") or "") == "decision"
+            and str(payload.get("action") or "") == "distill_review"
+        ):
             from .experience_distill import (
                 iter_distill_candidate_records,
                 _quest_workspace_artifact_dirs,
@@ -8030,7 +8033,8 @@ class ArtifactService:
             ]
             if unknown:
                 raise ValueError(
-                    f"distill_review references unknown run artifact_ids: {unknown}"
+                    "distill_review decision references unknown run artifact_ids: "
+                    f"{unknown}"
                 )
         record = self._build_record(quest_root, payload, workspace_root=write_root)
         if semantic_key:
@@ -11581,7 +11585,7 @@ class ArtifactService:
                 f"{gate_payload['pending_distill_count']} completed run(s) lack a "
                 f"distill_review (pending: {pending_ids}). "
                 "Run the distill skill and record an "
-                "artifact.record(kind='distill_review', ...) before resubmitting."
+                "artifact.record(kind='decision', action='distill_review', ...) before resubmitting."
             )
         normalized_package_type = self._normalize_paper_bundle_package_type(package_type)
         paper_context = self._ensure_active_paper_workspace(quest_root)
@@ -13505,7 +13509,7 @@ class ArtifactService:
                     "Quest completion blocked: experience_distill is on and "
                     f"{gate_payload['pending_distill_count']} completed run(s) lack a "
                     "distill_review. Run the distill skill and "
-                    "artifact.record(kind='distill_review', ...) covering the pending runs."
+                    "artifact.record(kind='decision', action='distill_review', ...) covering the pending runs."
                 ),
             }
 

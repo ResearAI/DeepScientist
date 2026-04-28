@@ -2762,7 +2762,10 @@ def test_list_distill_candidates_returns_pending_only(tmp_path):
     run_b = service.record(quest_root, {"kind": "run", "run_kind": "main_experiment", "status": "completed", "run_id": "main:2", "summary": "B"})
     # Mark run A as reviewed
     service.record(quest_root, {
-        "kind": "distill_review",
+        "kind": "decision",
+        "action": "distill_review",
+        "verdict": "covered",
+        "reason": "smoke test",
         "reviewed_run_ids": [run_a["artifact_id"]],
         "cards_written": [],
         "reason_if_empty": "smoke test",

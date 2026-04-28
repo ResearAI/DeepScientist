@@ -11,7 +11,6 @@ ARTIFACT_DIRS = {
     "report": "reports",
     "approval": "approvals",
     "graph": "graphs",
-    "distill_review": "distill_reviews",
 }
 
 DECISION_ACTIONS = {
@@ -31,6 +30,7 @@ DECISION_ACTIONS = {
     "write",
     "finalize",
     "request_user_decision",
+    "distill_review",
 }
 
 DISTILL_CARD_ACTIONS = {"new", "patch"}
@@ -53,7 +53,7 @@ def validate_artifact_payload(payload: dict) -> list[str]:
             errors.append(f"Unknown decision action: {action}")
     if kind == "run" and not payload.get("run_kind"):
         errors.append("Run artifact requires `run_kind`.")
-    if kind == "distill_review":
+    if kind == "decision" and payload.get("action") == "distill_review":
         reviewed = payload.get("reviewed_run_ids") or []
         if not isinstance(reviewed, list) or not reviewed:
             errors.append("distill_review artifact requires non-empty `reviewed_run_ids`.")
@@ -77,10 +77,10 @@ def validate_artifact_payload(payload: dict) -> list[str]:
                     f"distill_review.cards_written[{idx}].target_run_id `{target}` "
                     f"must be present in `reviewed_run_ids`."
                 )
-            action = str(card.get("action") or "")
-            if action not in DISTILL_CARD_ACTIONS:
+            card_action = str(card.get("action") or "")
+            if card_action not in DISTILL_CARD_ACTIONS:
                 errors.append(
-                    f"distill_review.cards_written[{idx}].action `{action}` "
+                    f"distill_review.cards_written[{idx}].action `{card_action}` "
                     f"must be one of {sorted(DISTILL_CARD_ACTIONS)}."
                 )
             scope = str(card.get("scope") or "")
@@ -139,6 +139,4 @@ def guidance_for_kind(kind: str) -> str:
         return "Approval captured. The quest may proceed with the approved step."
     if kind == "graph":
         return "Graph exported. Share the preview or attach it to a status response."
-    if kind == "distill_review":
-        return "Distill review recorded. The finalize gate cursor advances; resume the original write/finalize route."
     return "Artifact stored. Refresh quest status and continue from the latest durable state."

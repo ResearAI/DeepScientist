@@ -31,11 +31,14 @@ def _seed_runs(artifacts_dir: Path, runs: list[dict]) -> None:
 
 
 def _seed_distill_review(artifacts_dir: Path, review_id: str, reviewed_run_ids: list[str]) -> None:
-    reviews_dir = artifacts_dir / "distill_reviews"
+    reviews_dir = artifacts_dir / "decisions"
     reviews_dir.mkdir(parents=True, exist_ok=True)
     record = {
         "artifact_id": review_id,
-        "kind": "distill_review",
+        "kind": "decision",
+        "action": "distill_review",
+        "verdict": "covered",
+        "reason": "test",
         "reviewed_run_ids": reviewed_run_ids,
         "cards_written": [],
         "reason_if_empty": "test",
@@ -45,7 +48,7 @@ def _seed_distill_review(artifacts_dir: Path, review_id: str, reviewed_run_ids: 
     record_path.write_text(json.dumps(record), encoding="utf-8")
     index_path = artifacts_dir / "_index.jsonl"
     existing = index_path.read_text(encoding="utf-8") if index_path.exists() else ""
-    line = json.dumps({"artifact_id": review_id, "kind": "distill_review", "status": "completed", "path": str(record_path)})
+    line = json.dumps({"artifact_id": review_id, "kind": "decision", "status": "completed", "path": str(record_path)})
     index_path.write_text(existing + line + "\n", encoding="utf-8")
 
 
@@ -132,8 +135,8 @@ def test_cursor_run_created_at_returns_latest_review_timestamp(tmp_path: Path):
     _seed_distill_review(artifacts, "distill-review-new", ["run-new"])
     # Manually overwrite created_at after seeding because _seed_distill_review pins a fixed timestamp.
     import json
-    old_path = artifacts / "distill_reviews" / "distill-review-old.json"
-    new_path = artifacts / "distill_reviews" / "distill-review-new.json"
+    old_path = artifacts / "decisions" / "distill-review-old.json"
+    new_path = artifacts / "decisions" / "distill-review-new.json"
     old = json.loads(old_path.read_text(encoding="utf-8"))
     old["created_at"] = "2026-04-25T00:00:00+00:00"
     old_path.write_text(json.dumps(old), encoding="utf-8")

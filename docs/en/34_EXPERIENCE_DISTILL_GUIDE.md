@@ -12,7 +12,7 @@ If you only need the conceptual layout of memory and MCP tools, read [07 Memory 
 
 ## 1. One-sentence summary
 
-When `experience_distill` is on, a quest must convert each completed run into a `distill_review` artifact (and the knowledge cards it cites) before paper-bundle submission or quest completion will succeed. When `recall_priors` is on, stage prompts cue the agent to browse those cards from prior quests before committing to an idea or experiment design.
+When `experience_distill` is on, a quest must convert each completed run into a `decision(action='distill_review')` artifact (and the knowledge cards it cites) before paper-bundle submission or quest completion will succeed. When `recall_priors` is on, stage prompts cue the agent to browse those cards from prior quests before committing to an idea or experiment design.
 
 ## 2. Where you choose this
 
@@ -28,8 +28,8 @@ Existing quests with neither toggle set are unaffected by anything on this page.
 The end-to-end shape is:
 
 1. Quest runs experiments. Each `main_experiment` / `experiment` / `analysis.slice` run is a candidate for distillation once `status: completed`.
-2. After completion, when the agent attempts `decision(action='write'|'finalize')`, the **finalize gate** intercepts: if there are completed runs not yet covered by any `distill_review`, guidance is rerouted to the `distill` skill.
-3. The `distill` skill reviews the candidate batch, decides whether to write a new global knowledge card or patch an existing one, and records a `distill_review` artifact citing the run ids and explicit `neighbor_decisions` against existing cards.
+2. After completion, when the agent attempts `decision(action='write'|'finalize')`, the **finalize gate** intercepts: if there are completed runs not yet covered by any `decision(action='distill_review')`, guidance is rerouted to the `distill` skill.
+3. The `distill` skill reviews the candidate batch, decides whether to write a new global knowledge card or patch an existing one, and records a `decision(action='distill_review')` artifact citing the run ids and explicit `neighbor_decisions` against existing cards.
 4. The cards land under `~/DeepScientist/memory/knowledge/` as global memory.
 5. The next quest, if `recall_priors: on`, sees a stage-prompt cue and the `memory.list_knowledge_summaries` MCP tool, and can browse the prior cards before idea selection / experiment design.
 
@@ -40,7 +40,7 @@ The gate fires on `artifact.record(kind='decision', action='write'|'finalize')`.
 - `quest_root/artifacts/`
 - every `quest_root/.ds/worktrees/*/artifacts/`
 
-Candidates and reviews are deduped by `artifact_id`. If any completed run lacks a `distill_review` covering it, the gate:
+Candidates and reviews are deduped by `artifact_id`. If any completed run lacks a `decision(action='distill_review')` covering it, the gate:
 
 - swaps `guidance_vm.recommended_skill` to `distill`
 - drops the `write` / `finalize` route from `alternative_routes` (no fallback)
@@ -57,7 +57,7 @@ Independent of the soft routing above, the same multi-workspace check is enforce
 
 Both guards no-op when `experience_distill` is off, when no candidates exist, or when the quest is already in a terminal status.
 
-## 6. The `distill` skill and `distill_review` artifact
+## 6. The `distill` skill and `decision(action='distill_review')` artifact
 
 The `distill` skill follows a per-batch summary-scan pattern:
 
@@ -67,10 +67,13 @@ The `distill` skill follows a per-batch summary-scan pattern:
    - `merge` — the candidate's lesson is the same as the existing card; merge in-place
    - `neighbor_but_separate` — related but a different mechanism / direction; keep both
    - `skip` — the candidate adds nothing the existing card doesn't already say
-4. Record one `distill_review` artifact for the batch:
+4. Record one `decision(action='distill_review')` artifact for the batch:
 
 ```yaml
-kind: distill_review
+kind: decision
+action: distill_review
+verdict: covered
+reason: "<one-line summary of the batch>"
 reviewed_run_ids: [run-..., ...]
 cards_written:
   - {card_id: knowledge-..., scope: global, action: new|patch, target_run_id: run-...}
@@ -80,7 +83,16 @@ neighbor_decisions:
 notes: "free-form summary"
 ```
 
-The `record(distill_review)` call validates that every `target_run_id` in `cards_written` and `neighbor_decisions` appears in `reviewed_run_ids`, and that every `reviewed_run_ids` entry references a known run somewhere in the quest's workspace dirs (worktrees included). The card-frontmatter validator additionally requires `subtype: experience` plus a `lineage` block citing `quest:<id>` and `run:<id>` for cross-quest auditability.
+`kind`, `action`, `verdict`, and `reason` are the standard `decision`
+artifact fields. The remaining fields (`reviewed_run_ids`,
+`cards_written`, `neighbor_decisions`, `reason_if_empty`, `notes`) are
+review-specific and only validated when `action == 'distill_review'`.
+The validator checks that every `target_run_id` in `cards_written` and
+`neighbor_decisions` appears in `reviewed_run_ids`, and that every
+`reviewed_run_ids` entry references a known run somewhere in the
+quest's workspace dirs (worktrees included). The card-frontmatter
+validator additionally requires `subtype: experience` plus a `lineage`
+block citing `quest:<id>` and `run:<id>` for cross-quest auditability.
 
 ## 7. Cross-quest recall
 
@@ -95,7 +107,7 @@ The cue and the tool are independent of `experience_distill` — you can turn pr
 
 Under existing `artifact` and `memory` namespaces (no new public namespaces):
 
-- `artifact.list_distill_candidates` — completed runs not yet covered by any `distill_review` under the active workspace.
+- `artifact.list_distill_candidates` — completed runs not yet covered by any `decision(action='distill_review')` under the active workspace.
 - `memory.list_knowledge_summaries` — keyword/scope-filtered browse over global `knowledge/` cards from any quest.
 
 Codex auto-approves both. Claude allows them via `--allowedTools mcp__memory,mcp__artifact` (server-namespace allowlist). OpenCode allows them under default `permission_mode: allow`.
@@ -108,7 +120,7 @@ For quests that finished before the gate existed, you can re-emit the distill dr
 ds distill-quest <quest_id>
 ```
 
-This emits one draft per uncovered completed run under `~/DeepScientist/drafts/experiences/<quest_id>/`. The agent (or the user) can then review the drafts and record the `distill_review` artifact through the normal MCP path. The CLI returns `1` and prints `Quest not found: <id>` to stderr if the quest does not exist.
+This emits one draft per uncovered completed run under `~/DeepScientist/drafts/experiences/<quest_id>/`. The agent (or the user) can then review the drafts and record the `decision(action='distill_review')` artifact through the normal MCP path. The CLI returns `1` and prints `Quest not found: <id>` to stderr if the quest does not exist.
 
 ## 10. Operational notes
 
@@ -120,10 +132,10 @@ This emits one draft per uncovered completed run under `~/DeepScientist/drafts/e
 
 ## 11. Failure modes and debugging
 
-- **Submission rejected with `lack a distill_review`.** Run the `distill` skill and record `distill_review`; resubmit. Confirm the run id in the error message exists somewhere under the workspace tree.
-- **`distill_review references unknown run artifact_ids`.** The validator scans every workspace artifact dir; if the run is real but the error fires anyway, the run record was never indexed. Check that the run's worktree `_index.jsonl` actually contains the run id.
+- **Submission rejected with `lack a distill_review`.** Run the `distill` skill and record `decision(action='distill_review')`; resubmit. Confirm the run id in the error message exists somewhere under the workspace tree.
+- **`distill_review decision references unknown run artifact_ids`.** The validator scans every workspace artifact dir; if the run is real but the error fires anyway, the run record was never indexed. Check that the run's worktree `_index.jsonl` actually contains the run id.
 - **Cards not appearing in the next quest.** Check `~/DeepScientist/memory/knowledge/_index.jsonl` for an entry with the right `quest_id`. Then check that the next quest has `recall_priors: on` and that stage prompts mention `recall_priors_rule`.
-- **`ds doctor`** does not currently surface distill state explicitly; inspect `quest_root/artifacts/distill_reviews/` and the canonical `_index.jsonl` directly.
+- **`ds doctor`** does not currently surface distill state explicitly; inspect `quest_root/artifacts/decisions/` (filter for `action: distill_review`) and the canonical `_index.jsonl` directly.
 
 ## 12. Cross-links
 

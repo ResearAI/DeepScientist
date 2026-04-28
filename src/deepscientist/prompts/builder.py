@@ -2099,7 +2099,7 @@ class PromptBuilder:
                     f"{gate_payload['pending_distill_count']} completed run(s) without a "
                     f"distill_review (ids: {pending_ids}). Before calling "
                     "`submit_paper_bundle` or `complete_quest`, run the distill skill and "
-                    "`artifact.record(kind='distill_review', ...)` covering the pending runs. "
+                    "`artifact.record(kind='decision', action='distill_review', ...)` covering the pending runs. "
                     "Both closure tools hard-reject until the review lands."
                 )
         selected: list[dict] = []

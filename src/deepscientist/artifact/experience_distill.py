@@ -408,7 +408,7 @@ def read_distill_reviews(artifacts_dir: Path) -> list[dict[str, Any]]:
             entry = json.loads(line)
         except Exception:
             continue
-        if entry.get("kind") != "distill_review":
+        if entry.get("kind") != "decision":
             continue
         record_path = Path(str(entry.get("path") or ""))
         if not record_path.exists():
@@ -416,6 +416,8 @@ def read_distill_reviews(artifacts_dir: Path) -> list[dict[str, Any]]:
         try:
             record = json.loads(record_path.read_text(encoding="utf-8"))
         except Exception:
+            continue
+        if record.get("action") != "distill_review":
             continue
         out.append(record)
     return out

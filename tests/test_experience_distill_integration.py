@@ -180,7 +180,10 @@ def test_finalize_gate_clears_after_distill_review(home_with_quest):
     service.record(
         quest_root,
         {
-            "kind": "distill_review",
+            "kind": "decision",
+            "action": "distill_review",
+            "verdict": "covered",
+            "reason": "smoke test only",
             "reviewed_run_ids": [main_run_id],
             "cards_written": [],
             "reason_if_empty": "smoke test only",
@@ -251,13 +254,16 @@ def test_full_finalize_gate_lifecycle(home_with_quest):
     review = service.record(
         quest_root,
         {
-            "kind": "distill_review",
+            "kind": "decision",
+            "action": "distill_review",
+            "verdict": "covered",
+            "reason": "smoke test",
             "reviewed_run_ids": [main_run_id],
             "cards_written": [],
             "reason_if_empty": "smoke test",
         },
     )
-    assert review["artifact_id"].startswith("distill_review")
+    assert review["artifact_id"].startswith("decision")
 
     # Step 6: Second decision(write) — gate clears.
     second_decision = service.record(
@@ -289,7 +295,10 @@ def test_distill_review_rejects_fabricated_reviewed_run_ids(home_with_quest):
         service.record(
             quest_root,
             {
-                "kind": "distill_review",
+                "kind": "decision",
+                "action": "distill_review",
+                "verdict": "covered",
+                "reason": "test",
                 "reviewed_run_ids": ["run-does-not-exist"],
                 "cards_written": [],
                 "reason_if_empty": "test",
@@ -342,11 +351,14 @@ def test_e2e_finalize_gate_uses_imperative_routing_no_fallback(tmp_path: Path) -
     )
 
     # Now the agent records a distill_review with neighbor_decisions covering the run.
-    review_path = artifacts_dir / "distill_reviews" / "distill-review-1.json"
+    review_path = artifacts_dir / "decisions" / "decision-distill-review-1.json"
     review_path.parent.mkdir(parents=True)
     review_payload = {
-        "kind": "distill_review",
-        "artifact_id": "distill-review-1",
+        "kind": "decision",
+        "action": "distill_review",
+        "verdict": "covered",
+        "reason": "single run reviewed",
+        "artifact_id": "decision-distill-review-1",
         "created_at": "2026-04-25T10:00:00+00:00",
         "reviewed_run_ids": ["run-main"],
         "cards_written": [
@@ -368,7 +380,7 @@ def test_e2e_finalize_gate_uses_imperative_routing_no_fallback(tmp_path: Path) -
     }
     review_path.write_text(json.dumps(review_payload), encoding="utf-8")
     with (artifacts_dir / "_index.jsonl").open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"kind": "distill_review", "path": str(review_path)}) + "\n")
+        fh.write(json.dumps({"kind": "decision", "path": str(review_path)}) + "\n")
 
     # Schema check passes.
     from deepscientist.artifact.schemas import validate_artifact_payload
