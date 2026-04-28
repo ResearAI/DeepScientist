@@ -17,6 +17,7 @@ from ..codex_cli_compat import (
     provider_profile_metadata_from_home,
 )
 from ..config import ConfigManager
+from ..evidence_packets import compact_runner_tool_event
 from ..gitops import export_git_graph
 from ..process_control import process_session_popen_kwargs
 from ..prompts import PromptBuilder
@@ -130,6 +131,40 @@ _WINDOWS_GBK_SAFE_REPLACEMENTS: dict[str, str] = {
     "̀": "",
     "́": "",
 }
+
+
+def _usage_metrics_from_event(event: dict[str, Any]) -> dict[str, int]:
+    candidates: list[dict[str, Any]] = []
+    for key in ("usage", "token_usage", "turn_usage"):
+        value = event.get(key)
+        if isinstance(value, dict):
+            candidates.append(value)
+    item = event.get("item")
+    if isinstance(item, dict):
+        for key in ("usage", "token_usage", "turn_usage"):
+            value = item.get(key)
+            if isinstance(value, dict):
+                candidates.append(value)
+    aliases = {
+        "input_tokens": ("input_tokens", "prompt_tokens"),
+        "cached_input_tokens": ("cached_input_tokens", "cached_tokens", "cached_prompt_tokens"),
+        "output_tokens": ("output_tokens", "completion_tokens"),
+        "total_tokens": ("total_tokens",),
+    }
+    merged: dict[str, int] = {}
+    for candidate in candidates:
+        for target, source_keys in aliases.items():
+            if target in merged:
+                continue
+            for key in source_keys:
+                value = candidate.get(key)
+                if isinstance(value, int):
+                    merged[target] = value
+                    break
+                if isinstance(value, float):
+                    merged[target] = int(value)
+                    break
+    return merged
 
 
 def _compact_text(value: object, *, limit: int = 1200) -> str:
@@ -873,6 +908,30 @@ class CodexRunner:
                 "windows_gbk_replacements": prompt_sanitization,
             },
         )
+        telemetry: dict[str, Any] = {
+            "version": 1,
+            "quest_id": request.quest_id,
+            "run_id": request.run_id,
+            "skill_id": request.skill_id,
+            "turn_reason": request.turn_reason,
+            "turn_intent": request.turn_intent,
+            "turn_mode": request.turn_mode,
+            "model": request.model,
+            "model_inherited": str(request.model or "").strip().lower()
+            in {"", "inherit", "default", "codex-default", "inherit_local_codex_default"},
+            "reasoning_effort": request.reasoning_effort,
+            "runner_profile": str(runner_config.get("profile") or "").strip() or None,
+            "prompt_bytes": len(prompt.encode("utf-8", errors="replace")),
+            "stdout_event_count": 0,
+            "stdout_bytes": 0,
+            "tool_call_count": 0,
+            "tool_result_count": 0,
+            "tool_result_bytes_total": 0,
+            "compacted_tool_result_count": 0,
+            "full_detail_tool_call_count": 0,
+            "token_usage": {},
+            "created_at": utc_now(),
+        }
 
         env = dict(**os.environ)
         runner_env = runner_config.get("env") if isinstance(runner_config.get("env"), dict) else {}
@@ -985,10 +1044,17 @@ class CodexRunner:
                 line = raw_line.rstrip("\n")
                 if not line:
                     continue
+                telemetry["stdout_event_count"] = int(telemetry.get("stdout_event_count") or 0) + 1
+                telemetry["stdout_bytes"] = int(telemetry.get("stdout_bytes") or 0) + len(
+                    line.encode("utf-8", errors="replace")
+                )
                 try:
                     payload = json.loads(line)
                 except json.JSONDecodeError:
                     payload = {"raw": line}
+                usage_metrics = _usage_metrics_from_event(payload)
+                if usage_metrics:
+                    telemetry["token_usage"] = usage_metrics
                 timestamp = utc_now()
                 append_jsonl(history_events, {"timestamp": timestamp, "event": payload})
                 append_jsonl(stdout_events, {"timestamp": timestamp, "line": line})
@@ -1008,6 +1074,28 @@ class CodexRunner:
                     created_at=timestamp,
                 )
                 if tool_event is not None:
+                    if str(tool_event.get("type") or "") == "runner.tool_call":
+                        telemetry["tool_call_count"] = int(telemetry.get("tool_call_count") or 0) + 1
+                        args_text = str(tool_event.get("args") or "")
+                        if "detail" in args_text and "full" in args_text.lower():
+                            telemetry["full_detail_tool_call_count"] = int(
+                                telemetry.get("full_detail_tool_call_count") or 0
+                            ) + 1
+                    if str(tool_event.get("type") or "") == "runner.tool_result":
+                        compacted_tool_event, compaction_meta = compact_runner_tool_event(
+                            tool_event,
+                            quest_root=request.quest_root,
+                            run_id=request.run_id,
+                        )
+                        tool_event = compacted_tool_event
+                        telemetry["tool_result_count"] = int(telemetry.get("tool_result_count") or 0) + 1
+                        telemetry["tool_result_bytes_total"] = int(
+                            telemetry.get("tool_result_bytes_total") or 0
+                        ) + int(compaction_meta.get("output_bytes") or compaction_meta.get("payload_bytes") or 0)
+                        if bool(compaction_meta.get("compacted")):
+                            telemetry["compacted_tool_result_count"] = int(
+                                telemetry.get("compacted_tool_result_count") or 0
+                            ) + 1
                     append_jsonl(quest_events, tool_event)
                 message_events, message_output_parts = _message_events(
                     payload,
@@ -1043,6 +1131,12 @@ class CodexRunner:
                 output_text=output_text,
                 quest_events=quest_events,
             )
+            telemetry["exit_code"] = exit_code
+            telemetry["stderr_bytes"] = len(stderr_text.encode("utf-8", errors="replace"))
+            telemetry["output_text_bytes"] = len(output_text.encode("utf-8", errors="replace"))
+            telemetry["completed_at"] = utc_now()
+            telemetry_path = run_root / "telemetry.json"
+            write_json(telemetry_path, telemetry)
             append_jsonl(
                 quest_events,
                 {
@@ -1059,6 +1153,27 @@ class CodexRunner:
                     "created_at": utc_now(),
                 },
             )
+            append_jsonl(
+                quest_events,
+                {
+                    "event_id": generate_id("evt"),
+                    "type": "runner.turn_telemetry",
+                    "quest_id": request.quest_id,
+                    "run_id": request.run_id,
+                    "source": "codex",
+                    "skill_id": request.skill_id,
+                    "model": request.model,
+                    "prompt_bytes": telemetry.get("prompt_bytes"),
+                    "stdout_bytes": telemetry.get("stdout_bytes"),
+                    "tool_call_count": telemetry.get("tool_call_count"),
+                    "tool_result_bytes_total": telemetry.get("tool_result_bytes_total"),
+                    "compacted_tool_result_count": telemetry.get("compacted_tool_result_count"),
+                    "full_detail_tool_call_count": telemetry.get("full_detail_tool_call_count"),
+                    "token_usage": telemetry.get("token_usage"),
+                    "telemetry_path": str(telemetry_path),
+                    "created_at": utc_now(),
+                },
+            )
             write_text(history_root / "assistant.md", (output_text or "") + ("\n" if output_text else ""))
             write_text(run_root / "stderr.txt", stderr_text)
             result_payload = {
@@ -1068,6 +1183,7 @@ class CodexRunner:
                 "exit_code": exit_code,
                 "history_root": str(history_root),
                 "run_root": str(run_root),
+                "telemetry_path": str(telemetry_path),
                 "output_text": output_text,
                 "stderr_text": stderr_text,
                 "completed_at": utc_now(),

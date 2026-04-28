@@ -175,6 +175,216 @@ def test_codex_compacts_extreme_tool_result_payload_before_event_write() -> None
     assert rendered["metadata"]["bash_id"] == "bash-extreme"
 
 
+def test_codex_runner_sidecars_oversized_tool_result_event(temp_home: Path) -> None:
+    from deepscientist.evidence_packets import compact_runner_tool_event
+
+    quest_root = temp_home / "quest"
+    quest_root.mkdir(parents=True, exist_ok=True)
+    large_result = {
+        "ok": True,
+        "status": "completed",
+        "items": [{"path": f"file-{index}.txt", "status": "current"} for index in range(600)],
+        "blockers": ["missing required source file"],
+    }
+    event = {
+        "event_id": "evt-large-tool",
+        "type": "runner.tool_result",
+        "quest_id": "q-001",
+        "run_id": "run-001",
+        "source": "codex",
+        "skill_id": "baseline",
+        "tool_call_id": "tool-large",
+        "tool_name": "artifact.read_quest_documents",
+        "status": "completed",
+        "args": '{"detail": "summary"}',
+        "output": json.dumps(large_result, ensure_ascii=False),
+    }
+
+    compacted, meta = compact_runner_tool_event(event, quest_root=quest_root, run_id="run-001")
+
+    assert meta["compacted"] is True
+    assert compacted["output_compacted"] is True
+    assert compacted["output_sha256"]
+    rendered = json.loads(compacted["output"])
+    packet = rendered["evidence_packet"]
+    assert packet["tool_name"] == "artifact.read_quest_documents"
+    assert packet["payload_bytes"] > 8_000
+    assert packet["summary"].startswith("artifact.read_quest_documents:")
+    sidecar_path = Path(packet["sidecar_path"])
+    assert sidecar_path.exists()
+    sidecar = read_json(sidecar_path, {})
+    assert sidecar["payload_sha256"] == packet["payload_sha256"]
+    assert sidecar["payload"]["items"][0]["path"] == "file-0.txt"
+    assert "missing required source file" in sidecar["key_blockers"]
+
+
+def test_codex_runner_leaves_normal_tool_result_event_parseable(temp_home: Path) -> None:
+    from deepscientist.evidence_packets import compact_runner_tool_event
+
+    quest_root = temp_home / "quest"
+    quest_root.mkdir(parents=True, exist_ok=True)
+    event = {
+        "event_id": "evt-small-tool",
+        "type": "runner.tool_result",
+        "quest_id": "q-001",
+        "run_id": "run-001",
+        "source": "codex",
+        "skill_id": "baseline",
+        "tool_call_id": "tool-small",
+        "tool_name": "artifact.get_quest_state",
+        "status": "completed",
+        "args": '{"detail": "summary"}',
+        "output": json.dumps({"ok": True, "status": "ready"}, ensure_ascii=False),
+    }
+
+    compacted, meta = compact_runner_tool_event(event, quest_root=quest_root, run_id="run-001")
+
+    assert meta["compacted"] is False
+    assert compacted == event
+    assert json.loads(compacted["output"])["status"] == "ready"
+
+
+def test_codex_runner_writes_tool_result_telemetry_and_sidecar(
+    monkeypatch,
+    temp_home: Path,
+) -> None:  # type: ignore[no-untyped-def]
+    quest_root = temp_home / "quest"
+    quest_root.mkdir(parents=True, exist_ok=True)
+    write_yaml(quest_root / "quest.yaml", {"quest_id": "q-telemetry", "active_anchor": "baseline"})
+    large_log = "\n".join(f"line {index}: {'x' * 160}" for index in range(300))
+    tool_result_payload = {
+        "bash_id": "bash-large",
+        "status": "completed",
+        "command": "cat huge.log",
+        "cwd": str(quest_root),
+        "log": large_log,
+        "exit_code": 0,
+    }
+    stdout_payloads = [
+        {
+            "type": "item.started",
+            "item_type": "mcp_tool_call",
+            "item": {
+                "type": "mcp_tool_call",
+                "id": "tool-large",
+                "server": "bash_exec",
+                "tool": "bash_exec",
+                "status": "in_progress",
+                "arguments": {"mode": "read", "id": "bash-large", "detail": "full"},
+            },
+        },
+        {
+            "type": "item.completed",
+            "item_type": "mcp_tool_call",
+            "item": {
+                "type": "mcp_tool_call",
+                "id": "tool-large",
+                "server": "bash_exec",
+                "tool": "bash_exec",
+                "status": "completed",
+                "arguments": {"mode": "read", "id": "bash-large", "detail": "full"},
+                "result": {"structured_content": tool_result_payload},
+            },
+            "usage": {"input_tokens": 11, "output_tokens": 7, "total_tokens": 18},
+        },
+        {
+            "type": "item.completed",
+            "item_type": "agent_message",
+            "item": {
+                "type": "agent_message",
+                "id": "msg-final",
+                "content": [{"type": "output_text", "text": "Done."}],
+            },
+        },
+    ]
+
+    class _Pipe:
+        def __init__(self, lines: list[str] | None = None, read_text: str = "") -> None:
+            self._lines = lines or []
+            self._read_text = read_text
+            self.written = ""
+
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            return iter(self._lines)
+
+        def write(self, value: str) -> None:
+            self.written += value
+
+        def close(self) -> None:
+            return None
+
+        def read(self) -> str:
+            return self._read_text
+
+    class _Process:
+        pid = 12345
+
+        def __init__(self) -> None:
+            self.stdin = _Pipe()
+            self.stdout = _Pipe([json.dumps(payload, ensure_ascii=False) + "\n" for payload in stdout_payloads])
+            self.stderr = _Pipe(read_text="")
+            self.returncode: int | None = None
+
+        def wait(self, timeout: float | None = None) -> int:
+            self.returncode = 0
+            return 0
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+    monkeypatch.setattr("deepscientist.runners.codex.subprocess.Popen", lambda *args, **kwargs: _Process())
+    monkeypatch.setattr("deepscientist.runners.codex.export_git_graph", lambda *args, **kwargs: None)
+    monkeypatch.setattr(CodexRunner, "_load_runner_config", lambda self: {})
+    monkeypatch.setattr(
+        CodexRunner,
+        "_prepare_project_codex_home",
+        lambda self, workspace_root, *, quest_root, quest_id, run_id, runner_config=None: quest_root / ".ds" / "codex-home",
+    )
+    artifact_service = SimpleNamespace(
+        quest_service=SimpleNamespace(schedule_projection_refresh=lambda *args, **kwargs: None),
+        record=lambda *args, **kwargs: {"ok": True},
+    )
+    runner = CodexRunner(
+        home=temp_home,
+        repo_root=temp_home,
+        binary="codex",
+        logger=SimpleNamespace(log=lambda *args, **kwargs: None),
+        prompt_builder=SimpleNamespace(build=lambda **kwargs: "Prompt body"),
+        artifact_service=artifact_service,
+    )
+
+    result = runner.run(
+        RunRequest(
+            quest_id="q-telemetry",
+            quest_root=quest_root,
+            worktree_root=None,
+            run_id="run-telemetry",
+            skill_id="baseline",
+            message="continue",
+            model="inherit",
+            approval_policy="never",
+            sandbox_mode="danger-full-access",
+        )
+    )
+
+    assert result.ok is True
+    telemetry = read_json(quest_root / ".ds" / "runs" / "run-telemetry" / "telemetry.json", {})
+    assert telemetry["prompt_bytes"] == len("Prompt body".encode("utf-8"))
+    assert telemetry["tool_result_count"] == 1
+    assert telemetry["compacted_tool_result_count"] == 1
+    assert telemetry["full_detail_tool_call_count"] == 1
+    assert telemetry["tool_result_bytes_total"] > 8_000
+    assert telemetry["token_usage"] == {"input_tokens": 11, "output_tokens": 7, "total_tokens": 18}
+    quest_events = read_jsonl(quest_root / ".ds" / "events.jsonl")
+    telemetry_events = [event for event in quest_events if event.get("type") == "runner.turn_telemetry"]
+    assert telemetry_events
+    assert telemetry_events[-1]["compacted_tool_result_count"] == 1
+    tool_results = [event for event in quest_events if event.get("type") == "runner.tool_result"]
+    assert tool_results[-1]["output_compacted"] is True
+    packet = tool_results[-1]["evidence_packet"]
+    assert Path(packet["sidecar_path"]).exists()
+
+
 def test_codex_tool_event_carries_bash_id_from_id_only_monitor_call() -> None:
     event = {
         "type": "item.started",
