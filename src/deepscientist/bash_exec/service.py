@@ -35,6 +35,8 @@ DEFAULT_TERMINAL_SESSION_ID = "terminal-main"
 BASH_WATCHDOG_AFTER_SECONDS = 1800
 SUMMARY_RECENT_SESSION_LIMIT = 256
 SUMMARY_RUNNING_SESSION_LIMIT = 64
+COMPLETED_RUNTIME_LOG_COMPACT_BYTES = 1_000_000
+COMPLETED_RUNTIME_LOG_WINDOW_BYTES = 256_000
 INPUT_ESCAPE_SEQUENCE_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[@-_]")
 
 
@@ -172,6 +174,83 @@ def _compact_command(command: object, *, max_length: int = 140) -> str:
     if len(normalized) <= max_length:
         return normalized
     return normalized[: max(0, max_length - 3)].rstrip() + "..."
+
+
+def _unique_sibling_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    stem = path.stem
+    suffix = path.suffix
+    for index in range(1, 10_000):
+        candidate = path.with_name(f"{stem}.{index}{suffix}")
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"unable_to_allocate_backup_path:{path}")
+
+
+def _relative_to_root(path: Path, root: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _read_head_tail_bytes(path: Path, *, edge_bytes: int) -> tuple[bytes, bytes, int]:
+    size = path.stat().st_size
+    resolved_edge = max(0, min(edge_bytes, max(0, size // 2)))
+    with path.open("rb") as handle:
+        head = handle.read(resolved_edge)
+        if resolved_edge > 0:
+            handle.seek(max(0, size - resolved_edge))
+            tail = handle.read(resolved_edge)
+        else:
+            tail = b""
+    return head, tail, size
+
+
+def _compact_completed_text_log(
+    path: Path,
+    *,
+    quest_root: Path,
+    max_bytes: int = COMPLETED_RUNTIME_LOG_COMPACT_BYTES,
+    edge_bytes: int = COMPLETED_RUNTIME_LOG_WINDOW_BYTES,
+) -> dict[str, Any] | None:
+    if not path.exists() or not path.is_file():
+        return None
+    try:
+        original_bytes = path.stat().st_size
+    except OSError:
+        return None
+    if original_bytes <= max(1, max_bytes):
+        return None
+
+    backup_path = _unique_sibling_path(path.with_name(f"{path.stem}.full{path.suffix}"))
+    shutil.move(str(path), str(backup_path))
+    head, tail, original_bytes = _read_head_tail_bytes(backup_path, edge_bytes=edge_bytes)
+    omitted = max(0, original_bytes - len(head) - len(tail))
+    backup_ref = _relative_to_root(backup_path, quest_root)
+    compact_ref = _relative_to_root(path, quest_root)
+    marker = (
+        "\n"
+        f"[compacted completed runtime log: omitted {omitted} bytes; "
+        f"full log backup={backup_ref}]\n"
+    )
+    compact_text = (
+        head.decode("utf-8", errors="replace")
+        + marker
+        + tail.decode("utf-8", errors="replace")
+    )
+    ensure_dir(path.parent)
+    path.write_text(compact_text, encoding="utf-8")
+    return {
+        "mode": "text_head_tail_bytes",
+        "compact_path": compact_ref,
+        "backup_path": backup_ref,
+        "original_bytes": original_bytes,
+        "compact_bytes": path.stat().st_size,
+        "omitted_bytes": omitted,
+        "compacted_at": utc_now(),
+    }
 
 
 class BashExecService:
@@ -669,6 +748,38 @@ class BashExecService:
             )
         return self._write_summary(quest_root, summary)
 
+    def compact_completed_session_logs(
+        self,
+        quest_root: Path,
+        bash_id: str,
+        *,
+        max_text_bytes: int = COMPLETED_RUNTIME_LOG_COMPACT_BYTES,
+    ) -> dict[str, Any]:
+        meta_path = self.meta_path(quest_root, bash_id)
+        meta = read_json(meta_path, {})
+        if not isinstance(meta, dict) or not meta:
+            return {}
+        if _coerce_session_status(meta.get("status")) not in TERMINAL_STATUSES:
+            return {}
+
+        existing = meta.get("runtime_log_compaction")
+        compaction: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
+        terminal_compaction = _compact_completed_text_log(
+            self.terminal_log_path(quest_root, bash_id),
+            quest_root=quest_root,
+            max_bytes=max_text_bytes,
+        )
+        if terminal_compaction is not None:
+            compaction["terminal_log"] = terminal_compaction
+
+        if not compaction or compaction == existing:
+            return compaction
+
+        meta["runtime_log_compaction"] = compaction
+        meta["updated_at"] = utc_now()
+        self._write_meta(quest_root, bash_id, meta)
+        return compaction
+
     def reconcile_session(self, quest_root: Path, bash_id: str) -> dict[str, Any]:
         meta_path = self.meta_path(quest_root, bash_id)
         meta = read_json(meta_path, {})
@@ -676,6 +787,8 @@ class BashExecService:
             raise FileNotFoundError(f"Unknown bash session `{bash_id}`.")
         status = _coerce_session_status(meta.get("status"))
         if status in TERMINAL_STATUSES:
+            self.compact_completed_session_logs(quest_root, bash_id)
+            meta = read_json(meta_path, meta) or meta
             return self._session_payload(quest_root, meta)
         kind = _normalize_string(meta.get("kind")).lower()
         if kind == "terminal":
@@ -695,9 +808,12 @@ class BashExecService:
             return self._session_payload(quest_root, meta)
         stop_reason = _normalize_string(meta.get("stop_reason"))
         meta["status"] = "terminated" if stop_reason else "failed"
-        meta.setdefault("finished_at", utc_now())
+        if not _normalize_string(meta.get("finished_at")):
+            meta["finished_at"] = utc_now()
         meta["updated_at"] = utc_now()
         self._write_meta(quest_root, bash_id, meta)
+        self.compact_completed_session_logs(quest_root, bash_id)
+        meta = read_json(meta_path, meta) or meta
         return self._session_payload(quest_root, meta)
 
     def get_session(self, quest_root: Path, bash_id: str) -> dict[str, Any]:

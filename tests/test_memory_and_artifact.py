@@ -4160,6 +4160,31 @@ def test_explorer_search_finds_paths_and_normalizes_legacy_glob_wrappers(temp_ho
     assert any(item["path"] == "experiments/analysis/new-slice/scripts/run_probe.py" for item in wrapped_result["items"])
 
 
+def test_explorer_search_skips_heavy_runtime_mirrors_by_default(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("explorer search runtime hygiene quest")
+    quest_root = Path(quest["quest_root"])
+
+    note_path = quest_root / "notes" / "runtime-note.md"
+    note_path.parent.mkdir(parents=True, exist_ok=True)
+    note_path.write_text("needle-runtime-hygiene in user content\n", encoding="utf-8")
+    terminal_log = quest_root / ".ds" / "bash_exec" / "bash-001" / "terminal.log"
+    terminal_log.parent.mkdir(parents=True, exist_ok=True)
+    terminal_log.write_text("needle-runtime-hygiene in heavy runtime mirror\n", encoding="utf-8")
+    run_prompt = quest_root / ".ds" / "runs" / "run-001" / "prompt.md"
+    run_prompt.parent.mkdir(parents=True, exist_ok=True)
+    run_prompt.write_text("needle-runtime-hygiene in runner prompt mirror\n", encoding="utf-8")
+
+    result = quest_service.search_files(quest["quest_id"], "needle-runtime-hygiene", limit=10)
+
+    paths = {item["path"] for item in result["items"]}
+    assert "notes/runtime-note.md" in paths
+    assert ".ds/bash_exec/bash-001/terminal.log" not in paths
+    assert ".ds/runs/run-001/prompt.md" not in paths
+
+
 def test_explorer_opens_image_files_as_assets(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()

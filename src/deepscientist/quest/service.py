@@ -7614,6 +7614,20 @@ class QuestService:
             return True
         if relative.startswith(".ds/worktrees/"):
             return True
+        heavy_runtime_roots = {
+            ".ds/bash_exec",
+            ".ds/runs",
+            ".ds/codex_history",
+            ".ds/codex_homes",
+            ".ds/claude-home",
+            ".ds/opencode-home",
+            ".ds/evidence_packets",
+            ".ds/slim_backups",
+            ".ds/cold_archive",
+        }
+        normalized = relative.strip("/")
+        if any(normalized == root or normalized.startswith(f"{root}/") for root in heavy_runtime_roots):
+            return True
         parts = PurePosixPath(relative).parts
         return "__pycache__" in parts or ".pytest_cache" in parts
 

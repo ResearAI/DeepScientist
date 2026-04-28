@@ -33,6 +33,9 @@ from ..shared import append_jsonl, ensure_dir, iter_jsonl, read_json, read_jsonl
 
 DEFAULT_STOP_GRACE_SECONDS = 5
 TERMINAL_IO_POLL_SECONDS = 0.02
+MAX_BUFFERED_LINE_CHARS = 128_000
+MAX_TERMINAL_LOG_LINE_CHARS = 32_768
+TERMINAL_LOG_PREVIEW_EDGE_CHARS = 4_096
 
 
 def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
@@ -209,6 +212,7 @@ def _drain_buffer(
     *,
     flush_partial: bool = False,
     carriage_mode: str = "marker",
+    max_buffer_chars: int = MAX_BUFFERED_LINE_CHARS,
 ) -> str:
     while True:
         index_r = buffer.find("\r")
@@ -230,10 +234,32 @@ def _drain_buffer(
         segment = buffer[:index_n]
         buffer = buffer[index_n + 1 :]
         append_line(segment)
+    while max_buffer_chars > 0 and len(buffer) > max_buffer_chars:
+        append_line(buffer[:max_buffer_chars], stream="partial")
+        buffer = buffer[max_buffer_chars:]
     if flush_partial and buffer:
         append_line(buffer, stream="partial")
         return ""
     return buffer
+
+
+def _render_terminal_log_line(
+    line: str,
+    *,
+    max_chars: int = MAX_TERMINAL_LOG_LINE_CHARS,
+    edge_chars: int = TERMINAL_LOG_PREVIEW_EDGE_CHARS,
+) -> str:
+    if max_chars <= 0 or len(line) <= max_chars:
+        return line
+    preview_chars = max(0, min(edge_chars, max_chars // 2))
+    if preview_chars <= 0:
+        return f"[truncated oversized output line: original_length={len(line)} chars]"
+    omitted = len(line) - (preview_chars * 2)
+    return (
+        f"{line[:preview_chars]}"
+        f"[... omitted {omitted} chars from oversized output line; full content remains in log.jsonl ...]"
+        f"{line[-preview_chars:]}"
+    )
 
 
 def _parse_terminal_prompt_marker(line: str) -> dict[str, str] | None:
@@ -354,13 +380,14 @@ def run_monitor(session_dir: Path) -> int:
             return
         seq += 1
         timestamp = utc_now()
+        terminal_line = _render_terminal_log_line(line)
         with terminal_log_path.open("a", encoding="utf-8") as handle:
             if stream == "partial":
-                handle.write(line)
+                handle.write(terminal_line)
             elif stream == "carriage":
-                handle.write(f"\r{line}")
+                handle.write(f"\r{terminal_line}")
             else:
-                handle.write(f"{line}\n")
+                handle.write(f"{terminal_line}\n")
         _append_jsonl(
             log_path,
             {
