@@ -1,12 +1,12 @@
 ---
 name: distill
-description: "Use when the finalize gate fires (or when an analysis-slice just landed). Inspect the batch of undistilled completed runs, then write 0..N reusable knowledge cards (`subtype: experience`) and one bookkeeping `decision(action='distill_review')` artifact."
+description: "Use when the finalize gate fires. Inspect the batch of undistilled completed runs, then write 0..N reusable knowledge cards (`subtype: experience`) and one bookkeeping `decision(action='distill_review')` artifact."
 skill_role: companion
 ---
 
 # Distill
 
-Run this skill when the distill gate routes you here — either immediately after an `analysis.slice` lands (per-slice trigger) or before write/finalize when the quest has undistilled completed runs (finalize gate).
+Run this skill when the finalize gate routes you here — before write/finalize when the quest has undistilled completed runs.
 
 Your job is **not** to write a lab notebook entry — it is to decide whether the batch produced reusable, mechanism-bearing intuition, persist it as global knowledge cards, and record one `decision(action='distill_review')` artifact summarizing what was inspected.
 

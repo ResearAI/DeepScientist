@@ -37,25 +37,6 @@ def _enable_distill(home: Path, quest_id: str) -> Path:
     return quest_root
 
 
-def test_completed_analysis_slice_redirects_guidance_to_distill(home_with_quest):
-    home, quest_id = home_with_quest
-    quest_root = _enable_distill(home, quest_id)
-    service = ArtifactService(home)
-    record = service.record(
-        quest_root,
-        {
-            "kind": "run",
-            "run_kind": "analysis.slice",
-            "status": "completed",
-            "run_id": "cmp_1:s_1",
-            "summary": "Slice 1 done",
-        },
-    )
-    gvm = record["guidance_vm"]
-    assert gvm["recommended_skill"] == "distill"
-    assert gvm["experience_distill"] is True
-
-
 def test_main_experiment_run_not_redirected(home_with_quest):
     home, quest_id = home_with_quest
     quest_root = _enable_distill(home, quest_id)

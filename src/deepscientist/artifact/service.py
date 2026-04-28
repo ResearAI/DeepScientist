@@ -8041,12 +8041,8 @@ class ArtifactService:
             record["semantic_key"] = semantic_key
         guidance_vm = build_guidance_for_record(record)
         try:
-            from .experience_distill import (
-                maybe_inject_distill_finalize_gate,
-                maybe_inject_distill_routing,
-            )
+            from .experience_distill import maybe_inject_distill_finalize_gate
 
-            guidance_vm = maybe_inject_distill_routing(quest_root, record, guidance_vm)
             guidance_vm = maybe_inject_distill_finalize_gate(
                 quest_root, write_root / "artifacts", record, guidance_vm,
             )

@@ -6,10 +6,7 @@ from pathlib import Path
 import pytest
 
 from deepscientist.artifact import ArtifactService
-from deepscientist.artifact.experience_distill import (
-    emit_experience_drafts,
-    iter_analysis_slice_records,
-)
+from deepscientist.artifact.experience_distill import emit_experience_drafts
 from deepscientist.config import ConfigManager
 from deepscientist.home import ensure_home_layout, repo_root
 from deepscientist.quest import QuestService
@@ -80,33 +77,6 @@ def test_emit_experience_drafts_escapes_title_with_quote(tmp_path: Path):
     frontmatter_text = body.split("---\n", 2)[1]
     meta = yaml.safe_load(frontmatter_text)
     assert meta["lineage"][0]["note"] == 'effect of "warm-up" on CNNs'
-
-
-def test_iter_analysis_slice_records_filters_index(tmp_path: Path):
-    artifacts = tmp_path / "artifacts"
-    run_dir = artifacts / "runs"
-    run_dir.mkdir(parents=True)
-    index = artifacts / "_index.jsonl"
-    a1 = {
-        "artifact_id": "a1", "kind": "run", "run_kind": "analysis.slice",
-        "status": "completed", "run_id": "c:1", "campaign_id": "c", "slice_id": "s1",
-    }
-    a2 = {"artifact_id": "a2", "kind": "run", "run_kind": "main.experiment", "status": "completed"}
-    (run_dir / "a1.json").write_text(json.dumps(a1), encoding="utf-8")
-    (run_dir / "a2.json").write_text(json.dumps(a2), encoding="utf-8")
-    index.write_text(
-        "\n".join(
-            json.dumps({"artifact_id": x["artifact_id"], "kind": x["kind"], "status": x["status"], "path": str(run_dir / f'{x["artifact_id"]}.json')})
-            for x in (a1, a2)
-        ) + "\n",
-        encoding="utf-8",
-    )
-    # Malformed line (bad JSON) and missing-file path should be skipped, not crash.
-    with index.open("a", encoding="utf-8") as fh:
-        fh.write("not-json-garbage\n")
-        fh.write(json.dumps({"artifact_id": "a3", "kind": "run", "status": "completed", "path": str(run_dir / "a3.json")}) + "\n")  # file doesn't exist
-    records = list(iter_analysis_slice_records(artifacts))
-    assert [r["artifact_id"] for r in records] == ["a1"]
 
 
 def test_distill_quest_cli_end_to_end(tmp_path: Path, capsys):
