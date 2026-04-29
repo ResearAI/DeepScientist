@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/researai-deepscientist-badge.png)](https://mseep.ai/app/researai-deepscientist)
+
 <h1 align="center" style="font-size: 3.25rem; line-height: 1.02; margin-bottom: 0.4rem;">
   <img src="assets/branding/logo.svg" alt="DeepScientist logo" width="50" />
   DeepScientist
