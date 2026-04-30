@@ -45,6 +45,7 @@ It should convert “the draft feels almost done” into a durable, skeptical, t
 Default review stance: independent audit before celebration.
 Do not treat “looks polished” as “is defensible”.
 Do not accept structural green lights as paper-quality proof. Coverage, compile success, and file counts must still survive a skeptical claim/evidence/reviewer-risk audit.
+Apply the publishability stop-loss rule during review: when novelty, evidence sufficiency, or reader value has collapsed beyond reasonable claim narrowing, the correct recommendation is `decision` with `stop`, `branch`, or a non-paper objective, not another cosmetic revision pass.
 
 ## Use when
 
@@ -71,6 +72,7 @@ Do not accept structural green lights as paper-quality proof. Coverage, compile 
 - Keep every serious criticism evidence-grounded.
 - Do not recommend more experiments when the real problem is wording, positioning, or claim scope.
 - Do not recommend rhetoric when the real problem is missing evidence.
+- Do not recommend continued paper revision when the review finds a fatal publishability or value collapse; make the stop/branch route explicit.
 - If novelty or positioning is uncertain, treat that as a literature-audit question first, not an automatic experiment request.
 - If a claim is too broad for the evidence, prefer narrowing or downgrading the claim over defending it with style.
 - If `startup_contract.review_followup_policy` is present, honor it:

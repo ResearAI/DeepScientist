@@ -73,6 +73,7 @@ Turn the current objective, board state, and bottleneck into a small differentia
 9. Filter aggressively.
    Use `references/selection-gate.md`.
    Remove candidates that only improve a surrogate, reopen a stale route without new evidence, violate leakage or submission-time boundaries, or lack a cheap falsification path.
+   Apply the publishability stop-loss rule: if the literature comparison, closest-prior-work check, or current evidence shows that no surviving route can plausibly support a differentiated and useful paper, do not submit a weak idea just to keep the paper loop moving. Record the stop/branch reason and route to `decision` with either `stop`, `branch`, or a narrowed non-paper objective.
 10. Select and hand off.
    The selected package must include the route, why now, novelty type, main risk, anti-win condition, core hypothesis, mechanism sketch, strongest falsification experiment, minimal validation, abandonment condition, and the next stage.
 
@@ -122,6 +123,7 @@ When a candidate is promoted, `artifacts/idea/selected_idea.md` should point bac
 - Do not treat novelty as “totally unprecedented”; it may come from a new problem, view, mechanism, method, setting, evaluation, or boundary condition.
 - Do not promote a direction that fails a value/feasibility screen simply because it sounds exciting.
 - Do not promote a direction without a cheap falsification path and a visible anti-win condition.
+- Do not continue a paper-oriented route after publishability, novelty, or reader value has collapsed; branch to a stronger route or stop the paper objective explicitly.
 
 ## Constraints
 

@@ -51,6 +51,7 @@ Make one route judgment from durable evidence, record the verdict and smallest v
 - Do not choose among candidate packages without naming why the alternatives lost.
 - Do not imply baseline reuse is resolved unless the concrete attachment and confirmation path is clear.
 - Do not choose `finalize` for a paper line unless manuscript coverage reports `submission_ready=true`; a draft checkpoint routes back to `write`, and a review package routes to `review`.
+- Do not keep a paper route alive after a publishability stop-loss finding. If durable evidence shows that novelty, evidence sufficiency, or reader value has collapsed beyond reasonable narrowing, choose `stop`, `branch`, or a non-paper objective and record the reason.
 
 ## Constraints
 
@@ -145,6 +146,7 @@ Choose the smallest action that genuinely resolves the current state.
 For paper-outline decisions, use `artifact.submit_paper_outline(mode='select', ...)` when selecting an existing candidate and `artifact.submit_paper_outline(mode='revise', ...)` when the selected outline needs repair.
 For paper-bundle decisions, use `artifact.submit_paper_bundle(...)` only when the draft or package state is durable enough for that package type.
 When deciding whether a paper line can advance, judge method fidelity and story coherence as well as metric coverage.
+For paper routes, apply the publishability stop-loss rule before choosing `write`, `review`, or `finalize`: if the line cannot plausibly become a useful and defensible paper, stop the paper objective or branch to a stronger route instead of adding another writing pass.
 For resume-changing route decisions, write one compact checkpoint-style quest memory card so later turns know the current active node, node history, what not to reopen by default, and the first files to read.
 Use `type:checkpoint-memory` and `references/checkpoint-memory-template.md` for that card.
 

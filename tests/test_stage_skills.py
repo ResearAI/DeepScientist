@@ -530,3 +530,11 @@ def test_review_and_rebuttal_skills_route_extra_evidence_into_shared_campaign_pr
     assert "do not invent a rebuttal-only experiment system" in rebuttal_text
     assert "artifact.resolve_runtime_refs(...)" in rebuttal_text
     assert "paper/paper_experiment_matrix.md" in rebuttal_text
+
+
+def test_publishability_stop_loss_guidance_is_prompt_only() -> None:
+    root = repo_root() / "src" / "skills"
+    for skill_id in ("idea", "write", "review", "decision"):
+        text = (root / skill_id / "SKILL.md").read_text(encoding="utf-8")
+        assert "publishability stop-loss" in text
+        assert "publishability_gate_mode" not in text

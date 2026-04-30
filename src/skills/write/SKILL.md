@@ -44,6 +44,7 @@ Do not let structural readiness stand in for paper quality.
 - Normally expect 5-10 ready paper-facing experiment/analysis groups total; if the user asked for a concrete count such as 4-8 analyses, treat that as the active tracked target.
 - If the count is below the target, either route to `analysis-campaign`, write an explicit analysis-budget waiver that downgrades the paper scope, or narrow the claims. Do not hide the shortage with prose.
 - If duplicate item ids, stale outline refs, or pending main-text rows inflate the count, repair the paper contract before writing claims from those rows.
+- Apply the publishability stop-loss rule: if the current evidence, novelty boundary, or reader value cannot support a defensible paper after reasonable claim narrowing, stop drafting and route to `decision` for `stop`, `branch`, or a non-paper objective. Do not use polished prose to keep an unpublishable paper line alive.
 
 ## Tool Use
 - `artifact.get_paper_contract_health(detail='full')`:
@@ -91,6 +92,7 @@ For ordinary active work, prefer a concise progress update once work has crossed
 - Do not treat `evidence_ready` or `analysis_ready` as equivalent to `manuscript_ready` or `submission_ready`.
 - Do not submit a paper-shot memo as a final paper package; checkpoint it and continue writing/review.
 - Do not use rows that are not clearly bound to the current `selected_outline_ref` / active paper line.
+- Do not keep revising a paper line whose publishability has collapsed; record the blocker and route to `decision` instead of accumulating more draft text.
 - Do not keep appending new material to the top control block until it turns back into prose-heavy documentation; keep the top short and use the longer guidance below only when the task actually matches it.
 - Do not paste or paraphrase user requests, route decisions, branch/worktree state, checklist language, command names, prompt state, or artifact-management history into manuscript prose.
 - Do not write phrases such as `the user requested`, `the latest user requirement`, `paper restart`, `this quest`, `the agent`, `the worktree`, `we were told`, `he accepted`, `paper should`, or `remaining work on this manuscript` inside a paper draft.
