@@ -2025,6 +2025,85 @@ class ArtifactService:
     def _paper_bundle_manifest_path(self, quest_root: Path, *, workspace_root: Path | None = None) -> Path:
         return self._paper_root(quest_root, workspace_root=workspace_root, create=True) / "paper_bundle_manifest.json"
 
+    def _paper_artifact_deltas_root(self, quest_root: Path, *, workspace_root: Path | None = None) -> Path:
+        return ensure_dir(self._paper_root(quest_root, workspace_root=workspace_root, create=True) / "artifact_deltas")
+
+    def _paper_artifact_delta_entry(
+        self,
+        quest_root: Path,
+        *,
+        workspace_root: Path | None,
+        label: str,
+        path: Path | str | None,
+    ) -> dict[str, Any] | None:
+        if path is None:
+            return None
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            candidate = self._workspace_root_for(quest_root, workspace_root) / candidate
+        resolved = candidate.resolve()
+        entry: dict[str, Any] = {
+            "label": label,
+            "path": self._paper_bundle_relative_path(quest_root, resolved, workspace_root=workspace_root)
+            or self._workspace_relative(quest_root, resolved)
+            or str(resolved),
+            "absolute_path": str(resolved),
+            "exists": resolved.exists(),
+        }
+        if resolved.exists():
+            try:
+                stat = resolved.stat()
+            except OSError:
+                return entry
+            entry["size_bytes"] = stat.st_size
+            entry["mtime_ns"] = stat.st_mtime_ns
+        return entry
+
+    def _write_paper_artifact_delta(
+        self,
+        quest_root: Path,
+        *,
+        workspace_root: Path | None,
+        tool_name: str,
+        delta_kind: str,
+        paths: list[tuple[str, Path | str | None]],
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        delta_id = generate_id("delta")
+        entries: list[dict[str, Any]] = []
+        for label, path in paths:
+            entry = self._paper_artifact_delta_entry(
+                quest_root,
+                workspace_root=workspace_root,
+                label=label,
+                path=path,
+            )
+            if entry is not None:
+                entries.append(entry)
+        sidecar_path = self._paper_artifact_deltas_root(quest_root, workspace_root=workspace_root) / f"{delta_id}.json"
+        payload = {
+            "schema_version": 1,
+            "delta_id": delta_id,
+            "delta_kind": delta_kind,
+            "tool_name": tool_name,
+            "created_at": utc_now(),
+            "quest_root": str(quest_root),
+            "workspace_root": str(self._workspace_root_for(quest_root, workspace_root)),
+            "paths": entries,
+            "metadata": metadata or {},
+        }
+        write_json(sidecar_path, payload)
+        return {
+            "schema_version": 1,
+            "delta_id": delta_id,
+            "delta_kind": delta_kind,
+            "sidecar_path": str(sidecar_path),
+            "sidecar_rel_path": self._paper_bundle_relative_path(quest_root, sidecar_path, workspace_root=workspace_root)
+            or self._workspace_relative(quest_root, sidecar_path),
+            "path_count": len(entries),
+            "changed_paths": [str(entry.get("path") or "") for entry in entries if str(entry.get("path") or "").strip()],
+        }
+
     def _paper_evidence_ledger_path(self, quest_root: Path) -> Path:
         return ensure_dir(quest_root / "paper") / "evidence_ledger.json"
 
@@ -12436,6 +12515,23 @@ class ArtifactService:
                 checkpoint=False,
                 workspace_root=workspace_root,
             )
+            delta_paths: list[tuple[str, Path | str | None]] = [("outline_json", candidate_path)]
+            if canonical_candidate_path.resolve() != candidate_path.resolve():
+                delta_paths.append(("canonical_outline_json", canonical_candidate_path))
+            if artifact.get("path"):
+                delta_paths.append(("artifact_json", str(artifact.get("path"))))
+            artifact_delta = self._write_paper_artifact_delta(
+                quest_root,
+                workspace_root=workspace_root,
+                tool_name="submit_paper_outline",
+                delta_kind="paper_outline_candidate",
+                paths=delta_paths,
+                metadata={
+                    "mode": normalized_mode,
+                    "outline_id": resolved_outline_id,
+                    "title": record.get("title"),
+                },
+            )
             return {
                 "ok": True,
                 "mode": normalized_mode,
@@ -12443,6 +12539,7 @@ class ArtifactService:
                 "outline_path": str(candidate_path),
                 "record": record,
                 "artifact": artifact,
+                "artifact_delta": artifact_delta,
             }
 
         source_outline_id = str(outline_id or existing_selected.get("outline_id") or "").strip()
@@ -12622,6 +12719,29 @@ class ArtifactService:
                 }
             ],
         )
+        delta_paths = [
+            ("selected_outline_json", selected_outline_path),
+            ("outline_manifest_json", self._paper_outline_manifest_path(quest_root, workspace_root=workspace_root)),
+            ("outline_selection_md", outline_selection_path),
+            ("paper_line_state_json", self._paper_line_state_path(quest_root, workspace_root=workspace_root)),
+            ("source_outline_json", source_candidate_path),
+            ("revised_outline_json", revised_outline_path),
+        ]
+        if artifact.get("path"):
+            delta_paths.append(("artifact_json", str(artifact.get("path"))))
+        artifact_delta = self._write_paper_artifact_delta(
+            quest_root,
+            workspace_root=workspace_root,
+            tool_name="submit_paper_outline",
+            delta_kind="paper_outline_selected" if normalized_mode == "select" else "paper_outline_revised",
+            paths=delta_paths,
+            metadata={
+                "mode": normalized_mode,
+                "outline_id": source_outline_id,
+                "title": resolved_record.get("title"),
+                "paper_line_id": paper_line_state.get("paper_line_id"),
+            },
+        )
         return {
             "ok": True,
             "mode": normalized_mode,
@@ -12635,6 +12755,7 @@ class ArtifactService:
             "paper_line_state": paper_line_state,
             "artifact": artifact,
             "interaction": interaction,
+            "artifact_delta": artifact_delta,
         }
 
     def submit_paper_bundle(
@@ -12938,6 +13059,30 @@ class ArtifactService:
                 }
             ],
         )
+        delta_paths = [
+            ("paper_bundle_manifest_json", manifest_path),
+            ("baseline_inventory_json", baseline_inventory_path),
+            ("evidence_ledger_json", evidence_ledger_path if evidence_ledger_path.exists() else None),
+            ("experiment_matrix_md", experiment_matrix_path if experiment_matrix_path.exists() else None),
+            ("experiment_matrix_json", experiment_matrix_json_path if experiment_matrix_json_path.exists() else None),
+            ("paper_line_state_json", self._paper_line_state_path(quest_root, workspace_root=workspace_root)),
+            ("manuscript_coverage_json", self._paper_manuscript_coverage_path(quest_root, workspace_root=workspace_root)),
+        ]
+        if artifact.get("path"):
+            delta_paths.append(("artifact_json", str(artifact.get("path"))))
+        artifact_delta = self._write_paper_artifact_delta(
+            quest_root,
+            workspace_root=workspace_root,
+            tool_name="submit_paper_bundle",
+            delta_kind=normalized_package_type,
+            paths=delta_paths,
+            metadata={
+                "title": manifest.get("title"),
+                "package_type": normalized_package_type,
+                "selected_outline_ref": manifest.get("selected_outline_ref"),
+                "paper_branch": paper_branch,
+            },
+        )
         return {
             "ok": True,
             "manifest_path": str(manifest_path),
@@ -12955,6 +13100,7 @@ class ArtifactService:
             "artifact": artifact,
             "interaction": interaction,
             "continuation": continuation_result,
+            "artifact_delta": artifact_delta,
         }
 
     def record_analysis_slice(
