@@ -1,6 +1,18 @@
 # 21 Local Model Backends Guide: vLLM, Ollama, and SGLang
 
-This guide explains how to run DeepScientist against a local OpenAI-compatible model backend through Codex.
+This guide explains how to run DeepScientist against local model backends such as vLLM, Ollama, and SGLang.
+
+First, keep the layering clear:
+
+- DeepScientist does not call the local model server directly
+- DeepScientist calls a runner CLI: `codex`, `claude`, or `opencode`
+- the local backend must work in that runner first, and DeepScientist then reuses it
+
+If you use the Codex runner, the `/v1/responses` checks below are important.
+If you use OpenCode or Claude Code, first read the Ollama sections in:
+
+- [24 Claude Code Setup](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [25 OpenCode Setup](./25_OPENCODE_PROVIDER_SETUP.md)
 
 The key point is simple:
 
@@ -261,7 +273,7 @@ If you must use that backend anyway, the realistic fallback is Codex `0.57.0` wi
 
 ## 8. What to do if you only have chat-completions
 
-If your backend only supports `/v1/chat/completions`, you currently have three practical options:
+If your backend only supports `/v1/chat/completions`, you currently have four practical options:
 
 1. switch to a Responses-compatible backend such as vLLM
 2. upgrade to an Ollama release that really exposes `/v1/responses`
@@ -269,6 +281,97 @@ If your backend only supports `/v1/chat/completions`, you currently have three p
 4. place a Responses-compatible proxy in front of the backend
 
 Right now, this is a Codex CLI limitation, not a DeepScientist-only setting mistake.
+
+## 8.1 Which Ollama route should you use?
+
+Ollama now documents several integration routes:
+
+- OpenAI-compatible API: `http://localhost:11434/v1`
+- Codex integration: `https://docs.ollama.com/integrations/codex`
+- Claude Code integration: `https://docs.ollama.com/integrations/claude-code`
+- OpenCode integration: `https://docs.ollama.com/integrations/opencode`
+
+So Ollama is not a single-path setup.
+
+| Goal | Recommended runner | Validate first |
+|---|---|---|
+| Stay close to the default DeepScientist Codex path | Codex | `ollama run`, `/v1/responses`, `codex exec --profile <ollama-profile>` |
+| Avoid Codex Responses compatibility details | OpenCode | `opencode run --model ollama/<model>` or a custom provider model string |
+| Use Claude Code with an Anthropic-compatible local endpoint | Claude Code | `claude -p --model <ollama-model>` with `ANTHROPIC_BASE_URL=http://localhost:11434` |
+
+Suggested order for new users:
+
+1. use OpenCode first if you just want Ollama running quickly
+2. use Codex if you already understand Codex profiles and `/v1/responses` passes
+3. use Claude Code if you specifically want the Claude runner path
+
+### Ollama + Codex minimum path
+
+```bash
+ollama serve
+ollama pull gpt-oss:20b
+ollama run gpt-oss:20b "Reply with exactly HELLO."
+
+curl http://localhost:11434/v1/responses \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-oss:20b","input":"Reply with exactly HELLO."}'
+```
+
+Then create `~/.codex/config.toml` profile:
+
+```toml
+[model_providers.local_ollama]
+name = "Local Ollama"
+base_url = "http://localhost:11434/v1"
+wire_api = "responses"
+requires_openai_auth = false
+
+[profiles.ollama-local]
+model = "gpt-oss:20b"
+model_provider = "local_ollama"
+```
+
+Validate:
+
+```bash
+codex exec --profile ollama-local "Reply with exactly OK."
+ds doctor --codex-profile ollama-local
+```
+
+### Ollama + OpenCode minimum path
+
+```bash
+ollama serve
+ollama pull gpt-oss:20b
+opencode run --format json --pure --model ollama/gpt-oss:20b "Reply with exactly HELLO."
+ds doctor --runner opencode
+```
+
+If OpenCode does not recognize `ollama/<model>`, use the `local_ollama` custom provider example in [25 OpenCode Setup](./25_OPENCODE_PROVIDER_SETUP.md).
+
+### Ollama + Claude Code minimum path
+
+```bash
+ollama serve
+ollama pull gpt-oss:20b
+
+export ANTHROPIC_AUTH_TOKEN=ollama
+export ANTHROPIC_BASE_URL=http://localhost:11434
+claude -p --output-format json --model gpt-oss:20b --tools "" "Reply with exactly HELLO."
+
+ds doctor --runner claude
+```
+
+DeepScientist Claude runner config:
+
+```yaml
+claude:
+  enabled: true
+  model: gpt-oss:20b
+  env:
+    ANTHROPIC_AUTH_TOKEN: "ollama"
+    ANTHROPIC_BASE_URL: "http://localhost:11434"
+```
 
 ## 9. Recommended workflow
 

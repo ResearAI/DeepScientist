@@ -18,6 +18,8 @@ Read the official Claude Code docs before editing DeepScientist settings:
 - Settings: `https://docs.anthropic.com/en/docs/claude-code/settings`
 - MCP: `https://docs.anthropic.com/en/docs/claude-code/mcp`
 - SDK / headless mode: `https://docs.anthropic.com/en/docs/claude-code/sdk`
+- Environment variables: `https://code.claude.com/docs/en/env-vars`
+- Ollama + Claude Code: `https://docs.ollama.com/integrations/claude-code`
 
 DeepScientist expects the same local Claude Code setup described there.
 
@@ -179,6 +181,84 @@ when `ANTHROPIC_API_KEY` is empty.
 This is a DeepScientist compatibility behavior, not a Claude Code guarantee.
 
 If your direct `claude` terminal run already works with `ANTHROPIC_API_KEY`, prefer that field.
+
+## Claude Code + Ollama
+
+Ollama exposes an Anthropic-compatible API, so Claude Code can point `ANTHROPIC_BASE_URL` at local Ollama.
+
+Use this path when:
+
+- you want DeepScientist to use the `claude` runner while the actual model is served by Ollama
+- the Ollama model has enough context for DeepScientist's long prompts and MCP tool use
+- a direct Claude Code headless smoke check works first
+
+Do not use this as the normal Gemini route. Gemini's official compatibility path is OpenAI-compatible, not Anthropic-compatible; use OpenCode for Gemini unless you have your own Anthropic-compatible Gemini gateway.
+
+### 1. Make an Ollama model available
+
+```bash
+ollama --version
+ollama serve
+```
+
+In another terminal:
+
+```bash
+ollama pull gpt-oss:20b
+ollama run gpt-oss:20b "Reply with exactly HELLO."
+```
+
+Replace `gpt-oss:20b` with the model you actually plan to run.
+
+### 2. Validate Claude Code directly
+
+```bash
+export ANTHROPIC_AUTH_TOKEN=ollama
+export ANTHROPIC_BASE_URL=http://localhost:11434
+
+claude -p \
+  --output-format json \
+  --model gpt-oss:20b \
+  --tools "" \
+  "Reply with exactly HELLO."
+```
+
+If this fails, fix Ollama, the model name, or Claude Code's provider env before changing DeepScientist.
+
+### 3. Put the same route in DeepScientist
+
+```yaml
+claude:
+  enabled: true
+  binary: claude
+  config_dir: ~/.claude
+  model: gpt-oss:20b
+  permission_mode: bypassPermissions
+  env:
+    ANTHROPIC_AUTH_TOKEN: "ollama"
+    ANTHROPIC_BASE_URL: "http://localhost:11434"
+```
+
+DeepScientist mirrors `ANTHROPIC_AUTH_TOKEN` to `ANTHROPIC_API_KEY` when `ANTHROPIC_API_KEY` is empty. Do not rely on an empty `ANTHROPIC_API_KEY: ""` entry in `runners.yaml`; empty env values are ignored.
+
+### 4. Validate DeepScientist
+
+```bash
+ds doctor --runner claude
+ds --runner claude
+```
+
+If `claude -p` works but `ds doctor --runner claude` fails, check `runners.claude.env` and make sure the daemon reads the same `~/DeepScientist/config/runners.yaml`.
+
+## Claude Code + Gemini
+
+Gemini is not a normal Claude Code provider path.
+
+- Claude Code uses Anthropic / Anthropic-compatible protocol
+- Gemini's easiest documented compatibility path is OpenAI-compatible Chat Completions
+- these are different protocols
+
+If you have a private Anthropic-compatible gateway in front of Gemini, configure it with `ANTHROPIC_BASE_URL`; otherwise use [25 OpenCode Setup](./25_OPENCODE_PROVIDER_SETUP.md) for Gemini.
 
 ## Step 4: map Claude Code into DeepScientist settings
 

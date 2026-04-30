@@ -13,10 +13,28 @@ DeepScientist 不会为 MiniMax、GLM、火山方舟、阿里百炼等 provider 
 
 如果 Codex 本身还没工作，先修 DeepScientist 是错误顺序。
 
-如果你要配置另外两条内建 runner，请同时参考：
+如果你要配置其他内建 runner，请同时参考：
 
 - [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [27 Kimi Code 配置指南](./27_KIMI_CODE_PROVIDER_SETUP.md)
 - [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
+
+## 官方文档先读哪些
+
+Codex provider 配置请以 OpenAI Codex 文档和目标 provider 文档为准：
+
+- Codex CLI reference：`https://developers.openai.com/codex/cli/reference`
+- Codex config reference：`https://developers.openai.com/codex/config-reference`
+- Ollama OpenAI compatibility：`https://docs.ollama.com/openai`
+- Ollama + Codex：`https://docs.ollama.com/integrations/codex`
+- Gemini OpenAI compatibility：`https://ai.google.dev/gemini-api/docs/openai`
+
+对 DeepScientist 来说，最重要的映射关系是：
+
+- Codex 的 provider、profile、模型名仍然写在 `~/.codex/config.toml`
+- DeepScientist 的 Codex runner 主要透传 `--profile`、`--model`、`approval_policy`、`sandbox_mode`、reasoning effort 和 env
+- DeepScientist 当前不会替 Codex 额外追加 `--oss` 或 `--local-provider`，所以要在 DeepScientist 中稳定复用 Ollama 时，优先使用 Codex profile，而不是只依赖一次性的 CLI 参数
+- 如果某个 provider 只提供 OpenAI Chat Completions，而没有 Responses API，最新版 Codex 路径可能不适合；这种场景优先考虑 [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
 
 ## 哪些文件最重要
 
@@ -333,6 +351,171 @@ codex:
   profile: ""
   model: gpt-5.4
 ```
+
+## Ollama
+
+Ollama 官方同时提供 OpenAI-compatible API 和 Codex 集成说明。对 DeepScientist 来说，推荐把它整理成一个 Codex profile，然后通过 `ds doctor --codex-profile <name>` 使用。
+
+### 什么时候适合走 Codex + Ollama
+
+适合：
+
+- 你已经能在本机稳定运行 Ollama
+- 目标模型能处理较长上下文、工具调用和代码修改
+- `http://localhost:11434/v1/responses` 能正常工作，或者你使用的是 Ollama 官方 Codex 集成生成的可用配置
+
+不适合：
+
+- 你的 Ollama 版本只有 `/v1/chat/completions` 可用
+- 模型上下文很短，无法承载 DeepScientist 的长任务 prompt
+- 你只是想接 Gemini 这类远程 OpenAI-compatible provider；那通常优先走 OpenCode
+
+### 1. 先安装和启动 Ollama
+
+```bash
+ollama --version
+ollama serve
+```
+
+另开一个终端，拉取并测试模型：
+
+```bash
+ollama pull gpt-oss:20b
+ollama run gpt-oss:20b "Reply with exactly HELLO."
+```
+
+如果你使用的是其他模型，把下面所有 `gpt-oss:20b` 替换成你实际准备使用的模型。
+
+### 2. 先直接验证 Ollama 的 OpenAI-compatible API
+
+```bash
+curl http://localhost:11434/v1/models
+```
+
+再测 Responses API：
+
+```bash
+curl http://localhost:11434/v1/responses \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-oss:20b",
+    "input": "Reply with exactly HELLO."
+  }'
+```
+
+如果 `/v1/responses` 失败，先升级 Ollama 或换模型，不要直接进入 DeepScientist。
+
+### 3. 用 Ollama 官方 Codex 集成生成配置
+
+Ollama 官方提供了面向 Codex 的启动命令。推荐先运行：
+
+```bash
+ollama launch codex --config
+```
+
+它会引导你把 Ollama 配进 Codex。完成后，检查：
+
+```bash
+sed -n '1,220p' ~/.codex/config.toml
+codex --help
+```
+
+如果你要让 DeepScientist 稳定复用这条路径，请确认 `~/.codex/config.toml` 里有一个命名 profile。形态可以类似这样：
+
+```toml
+[model_providers.ollama-launch]
+name = "Ollama"
+base_url = "http://localhost:11434/v1"
+wire_api = "responses"
+requires_openai_auth = false
+
+[profiles.ollama-launch]
+model = "gpt-oss:20b"
+model_provider = "ollama-launch"
+```
+
+注意：不要把自定义 provider 命名成 `ollama`，这个名字可能和 Codex 内置 provider 冲突。用 `ollama-launch`、`local_ollama` 这类别名更稳。
+
+### 4. 先直接验证 Codex
+
+```bash
+codex --profile ollama-launch
+codex exec --profile ollama-launch "Reply with exactly OK."
+```
+
+如果这里不通，先修 Ollama 或 Codex profile。
+
+### 5. 再映射到 DeepScientist
+
+一次性启动：
+
+```bash
+ds doctor --codex-profile ollama-launch
+ds --codex-profile ollama-launch
+```
+
+持久化到 `~/DeepScientist/config/runners.yaml`：
+
+```yaml
+codex:
+  enabled: true
+  binary: codex
+  config_dir: ~/.codex
+  profile: ollama-launch
+  model: inherit
+  model_reasoning_effort: high
+  approval_policy: never
+  sandbox_mode: workspace-write
+```
+
+如果 Ollama 端要求固定 token，可以在 Codex provider 里设置对应 `env_key`，然后把同名变量放到 `runners.codex.env`。默认本机 Ollama 通常不需要真实 API key。
+
+## Gemini
+
+Gemini 官方提供的是 OpenAI-compatible Chat Completions 路径，典型 base URL 是：
+
+```text
+https://generativelanguage.googleapis.com/v1beta/openai/
+```
+
+环境变量通常是：
+
+```bash
+export GEMINI_API_KEY="..."
+```
+
+但对 Codex + DeepScientist 来说，Gemini **不是首推路径**：
+
+- Gemini 官方 OpenAI compatibility 文档主打 Chat Completions
+- 最新 Codex provider 路线更偏向 Responses API
+- DeepScientist 的 Codex runner 依赖 Codex profile 稳定工作，不会替你在运行时改协议
+
+所以如果你想用 Gemini，优先看 [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md) 里的 Gemini 小节。
+
+如果你非常明确要试 Codex + Gemini，可以按“chat-only provider”的思路实验，但这不是推荐默认配置：
+
+```toml
+[model_providers.gemini_chat]
+name = "Gemini OpenAI-compatible Chat"
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+wire_api = "chat"
+env_key = "GEMINI_API_KEY"
+requires_openai_auth = false
+
+[profiles.gemini]
+model = "gemini-3-flash-preview"
+model_provider = "gemini_chat"
+```
+
+验证顺序仍然必须是：
+
+```bash
+export GEMINI_API_KEY="..."
+codex exec --profile gemini "Reply with exactly OK."
+ds doctor --codex-profile gemini
+```
+
+如果 `codex exec` 不通，就不要继续 `ds`。这时直接切到 OpenCode 通常更省时间。
 
 ## MiniMax
 

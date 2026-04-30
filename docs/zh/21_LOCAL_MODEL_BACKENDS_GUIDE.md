@@ -1,6 +1,18 @@
 # 21 本地模型后端指南：vLLM、Ollama 与 SGLang
 
-这篇文档说明如何通过 Codex，把 DeepScientist 接到本地 OpenAI-compatible 模型后端。
+这篇文档说明如何把 DeepScientist 接到本地模型后端，重点包括 vLLM、Ollama 和 SGLang。
+
+先分清一个基本事实：
+
+- DeepScientist 不直接调用本地模型服务
+- DeepScientist 调用的是 runner CLI：`codex`、`claude`、`opencode`
+- 本地模型后端要先被对应 runner CLI 接通，再由 DeepScientist 复用
+
+如果你使用的是 Codex runner，下面的 `/v1/responses` 检查很关键。
+如果你使用的是 OpenCode 或 Claude Code runner，请优先看对应 runner 文档里的 Ollama 小节：
+
+- [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
 
 最关键的一点只有一句话：
 
@@ -259,7 +271,7 @@ codex:
 
 ## 8. 如果你现在只有 chat-completions
 
-如果你的后端只有 `/v1/chat/completions`，当前有三种现实选择：
+如果你的后端只有 `/v1/chat/completions`，当前有四种现实选择：
 
 1. 切到支持 Responses 的 vLLM
 2. 升级到真正支持 `/v1/responses` 的 Ollama
@@ -267,6 +279,97 @@ codex:
 4. 在后端前面加一层 Responses-compatible 代理
 
 这里的问题本质上是 Codex CLI 的当前要求，不是 DeepScientist 单独某个配置写错了。
+
+## 8.1 Ollama 应该选哪条 runner 路线
+
+Ollama 官方现在同时覆盖：
+
+- OpenAI-compatible API：`http://localhost:11434/v1`
+- Codex 集成：`https://docs.ollama.com/integrations/codex`
+- Claude Code 集成：`https://docs.ollama.com/integrations/claude-code`
+- OpenCode 集成：`https://docs.ollama.com/integrations/opencode`
+
+所以 Ollama 不只有一条路。
+
+| 目标 | 推荐 runner | 你需要先验证什么 |
+|---|---|---|
+| 想沿用 DeepScientist 默认 Codex 路线 | Codex | `ollama run`、`/v1/responses`、`codex exec --profile <ollama-profile>` |
+| 想少处理 Codex Responses 兼容细节 | OpenCode | `opencode run --model ollama/<model>` 或 custom provider 模型名 |
+| 想复用 Claude Code 生态和 Anthropic-compatible 路线 | Claude Code | `claude -p --model <ollama-model>` 且 `ANTHROPIC_BASE_URL=http://localhost:11434` |
+
+对新用户的建议：
+
+1. 如果你只是想尽快把 Ollama 接进 DeepScientist，优先走 OpenCode。
+2. 如果你已经熟悉 Codex profile，并且 `/v1/responses` 测试通过，可以走 Codex。
+3. 如果你明确要使用 Claude Code runner，就按 Claude Code + Ollama 的 Anthropic-compatible 环境变量配置。
+
+### Ollama + Codex 最小路径
+
+```bash
+ollama serve
+ollama pull gpt-oss:20b
+ollama run gpt-oss:20b "Reply with exactly HELLO."
+
+curl http://localhost:11434/v1/responses \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-oss:20b","input":"Reply with exactly HELLO."}'
+```
+
+然后在 `~/.codex/config.toml` 中准备 profile：
+
+```toml
+[model_providers.local_ollama]
+name = "Local Ollama"
+base_url = "http://localhost:11434/v1"
+wire_api = "responses"
+requires_openai_auth = false
+
+[profiles.ollama-local]
+model = "gpt-oss:20b"
+model_provider = "local_ollama"
+```
+
+验证：
+
+```bash
+codex exec --profile ollama-local "Reply with exactly OK."
+ds doctor --codex-profile ollama-local
+```
+
+### Ollama + OpenCode 最小路径
+
+```bash
+ollama serve
+ollama pull gpt-oss:20b
+opencode run --format json --pure --model ollama/gpt-oss:20b "Reply with exactly HELLO."
+ds doctor --runner opencode
+```
+
+如果你的 OpenCode 没有内置识别 `ollama/<model>`，就按 [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md) 里的 custom provider 示例写 `local_ollama`。
+
+### Ollama + Claude Code 最小路径
+
+```bash
+ollama serve
+ollama pull gpt-oss:20b
+
+export ANTHROPIC_AUTH_TOKEN=ollama
+export ANTHROPIC_BASE_URL=http://localhost:11434
+claude -p --output-format json --model gpt-oss:20b --tools "" "Reply with exactly HELLO."
+
+ds doctor --runner claude
+```
+
+DeepScientist 的 Claude runner 配置里应写：
+
+```yaml
+claude:
+  enabled: true
+  model: gpt-oss:20b
+  env:
+    ANTHROPIC_AUTH_TOKEN: "ollama"
+    ANTHROPIC_BASE_URL: "http://localhost:11434"
+```
 
 ## 9. 推荐的实际顺序
 

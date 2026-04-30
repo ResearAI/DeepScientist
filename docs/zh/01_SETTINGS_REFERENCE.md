@@ -429,7 +429,7 @@ acp:
 
 `runners.yaml` 定义 DeepScientist 实际调用哪个 CLI runner、默认模型怎么选、失败后如何重试，以及不同 runner 的专属透传参数。
 
-当前内建 runner 有三种：
+当前内建 runner 有四种：
 
 - `codex`
   - OpenAI Codex CLI 路径，也包括已经在 Codex 里配置好的 provider-backed profile
@@ -439,6 +439,20 @@ acp:
   - 官方 Kimi Code CLI 路径，也包括已经在 `~/.kimi` 中工作的登录态和配置
 - `opencode`
   - OpenCode CLI 路径，也包括直接在 OpenCode 里管理的 provider/model 配置
+
+Settings 页面只负责把 DeepScientist 映射到一个已经可用的 CLI runner。Gemini、Ollama、MiniMax、GLM、百炼等 provider 的详细接入仍然先在对应 CLI 中完成：
+
+- Codex provider / profile：见 [15 Codex Provider 配置](./15_CODEX_PROVIDER_SETUP.md)
+- Claude Code / Anthropic-compatible / Ollama：见 [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- OpenCode / Gemini / Ollama：见 [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
+- vLLM、Ollama、SGLang 等本地模型后端总览：见 [21 本地模型后端指南](./21_LOCAL_MODEL_BACKENDS_GUIDE.md)
+
+推荐验证顺序永远是：
+
+1. 先让底层 CLI 自己能跑通，例如 `codex exec ...`、`claude -p ...`、`opencode run ...`
+2. 再在 Settings 里填写 `binary`、`config_dir`、`profile` / `model` 和 `env`
+3. 点击 `Test` 或运行 `ds doctor --runner <name>`
+4. 最后再启动真实 quest
 
 ### 结构
 

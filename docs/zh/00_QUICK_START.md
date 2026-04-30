@@ -49,7 +49,7 @@
 
 如果你还在选择合适的 Coding Plan / 订阅方案，可以先看这些官方页面：
 
-- 如果你只是想先有一个简单直接的推荐起点，优先从 GPT-5.4 + `xhigh` reasoning effort 开始；如果你更偏向 Google 路线，可以使用 Gemini 3 Pro，对应模型名 `gemini-3-pro-preview`。
+- 如果你只是想先有一个简单直接的推荐起点，优先从 Codex + OpenAI 登录路径开始。想用 Gemini 时，不要直接在 DeepScientist 里填一个模型名就开始试；先按 [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md) 把 OpenCode + Gemini 跑通。
 - ChatGPT 定价：https://openai.com/chatgpt/pricing/
 - ChatGPT Plus 帮助页：https://help.openai.com/en/articles/6950777-what-is-chatgpt-plus%3F.eps
 - MiniMax Coding Plan：https://platform.minimaxi.com/docs/guides/pricing-codingplan
@@ -65,6 +65,7 @@
 
 - [15 Codex Provider 配置](./15_CODEX_PROVIDER_SETUP.md)
 - [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [27 Kimi Code 配置指南](./27_KIMI_CODE_PROVIDER_SETUP.md)
 - [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
 
 ## 1. 先安装 Node.js，再安装 DeepScientist

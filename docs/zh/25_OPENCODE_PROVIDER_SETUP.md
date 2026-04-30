@@ -23,6 +23,9 @@ DeepScientist 对 OpenCode 也不会额外维护一层独立 provider 适配。
 - Providers：`https://opencode.ai/docs/providers/`
 - MCP servers：`https://opencode.ai/docs/mcp-servers`
 - Skills：`https://opencode.ai/docs/skills`
+- Gemini OpenAI compatibility：`https://ai.google.dev/gemini-api/docs/openai`
+- Ollama OpenAI compatibility：`https://docs.ollama.com/openai`
+- Ollama + OpenCode：`https://docs.ollama.com/integrations/opencode`
 
 DeepScientist 依赖的就是同一套本地 OpenCode 配置。
 
@@ -210,6 +213,224 @@ OpenCode 官方 provider 文档当前说明了：
 - DeepScientist 一般可以直接复用
 - 通常不需要再写 DeepScientist 私有 provider 适配
 
+## Gemini
+
+如果你想在 DeepScientist 里用 Gemini，当前最推荐的 runner 是 OpenCode。
+
+原因是：
+
+- Gemini 官方提供 OpenAI-compatible endpoint
+- OpenCode 官方支持自定义 OpenAI-compatible provider
+- DeepScientist 的 OpenCode runner 会复用 `~/.config/opencode/opencode.json`，并可以把 `runners.opencode.env` 里的 `GEMINI_API_KEY` 传给 OpenCode
+
+### 1. 先准备 Gemini API key
+
+从 Google AI Studio 或 Google Cloud 准备 key 后，先在当前 shell 验证变量可见：
+
+```bash
+export GEMINI_API_KEY="..."
+printenv GEMINI_API_KEY
+```
+
+Gemini OpenAI-compatible base URL 是：
+
+```text
+https://generativelanguage.googleapis.com/v1beta/openai/
+```
+
+### 2. 配置 OpenCode custom provider
+
+编辑：
+
+```bash
+${EDITOR:-vim} ~/.config/opencode/opencode.json
+```
+
+加入或合并下面的 `provider.gemini`：
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "gemini": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Gemini",
+      "options": {
+        "baseURL": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "apiKey": "{env:GEMINI_API_KEY}"
+      },
+      "models": {
+        "gemini-3-flash-preview": {
+          "name": "Gemini 3 Flash Preview"
+        }
+      }
+    }
+  }
+}
+```
+
+如果你的 `opencode.json` 里已经有其他 provider，不要整份覆盖，只把 `gemini` 这一段合并进去。
+
+### 3. 先直接验证 OpenCode
+
+```bash
+export GEMINI_API_KEY="..."
+opencode run \
+  --format json \
+  --pure \
+  --model gemini/gemini-3-flash-preview \
+  "Reply with exactly HELLO."
+```
+
+如果这一步失败，先修 OpenCode provider，不要先改 DeepScientist。
+
+### 4. 再映射到 DeepScientist
+
+如果你希望 OpenCode 自己决定默认模型，DeepScientist 里保持 `model: inherit`：
+
+```yaml
+opencode:
+  enabled: true
+  binary: opencode
+  config_dir: ~/.config/opencode
+  model: inherit
+  env:
+    GEMINI_API_KEY: "..."
+```
+
+如果你希望 DeepScientist 每次都强制用 Gemini：
+
+```yaml
+opencode:
+  enabled: true
+  binary: opencode
+  config_dir: ~/.config/opencode
+  model: gemini/gemini-3-flash-preview
+  env:
+    GEMINI_API_KEY: "..."
+```
+
+最后验证：
+
+```bash
+ds doctor --runner opencode
+ds --runner opencode
+```
+
+### 常见错误
+
+| 现象 | 常见原因 | 处理 |
+|---|---|---|
+| OpenCode 提示找不到 provider | `opencode.json` 没有正确合并 `provider.gemini` | 先运行 `opencode providers` 和 `opencode run --model ...` 排查 |
+| OpenCode 提示 key 缺失 | `GEMINI_API_KEY` 没被当前进程看到 | shell 里 `export`，长期运行则写入 `runners.opencode.env` |
+| `ds doctor` 失败但 `opencode run` 成功 | daemon 读不到同一份 env 或 config_dir | 检查 `runners.opencode.config_dir` 和 `runners.opencode.env` |
+| 模型回复弱或中途断 | 模型上下文、输出限制或工具能力不足 | 换更强 Gemini 模型，或先保持 `model: inherit` 让 OpenCode 默认配置生效 |
+
+## Ollama
+
+OpenCode 也是接 Ollama 的推荐路径之一。它比 Codex 路径少一个 Responses API 兼容判断，整体更直接。
+
+### 1. 先让 Ollama 模型可用
+
+```bash
+ollama --version
+ollama serve
+```
+
+另开一个终端：
+
+```bash
+ollama pull gpt-oss:20b
+ollama run gpt-oss:20b "Reply with exactly HELLO."
+```
+
+### 2. 配置 OpenCode 使用 Ollama
+
+如果你的 OpenCode 已经内置 Ollama provider，优先走 OpenCode 自己的 provider/auth 流程：
+
+```bash
+opencode providers
+opencode models ollama
+```
+
+如果你需要显式配置 OpenAI-compatible custom provider，可以把 Ollama 当作本地 OpenAI-compatible endpoint：
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "local_ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Local Ollama",
+      "options": {
+        "baseURL": "http://localhost:11434/v1",
+        "apiKey": "ollama"
+      },
+      "models": {
+        "gpt-oss:20b": {
+          "name": "gpt-oss:20b"
+        }
+      }
+    }
+  }
+}
+```
+
+### 3. 先直接验证 OpenCode
+
+如果使用 OpenCode 内置 Ollama provider：
+
+```bash
+opencode run \
+  --format json \
+  --pure \
+  --model ollama/gpt-oss:20b \
+  "Reply with exactly HELLO."
+```
+
+如果使用上面的 custom provider：
+
+```bash
+opencode run \
+  --format json \
+  --pure \
+  --model local_ollama/gpt-oss:20b \
+  "Reply with exactly HELLO."
+```
+
+哪个命令能通，DeepScientist 里的 `model` 就按哪个写。
+
+### 4. 再映射到 DeepScientist
+
+内置 Ollama provider 示例：
+
+```yaml
+opencode:
+  enabled: true
+  binary: opencode
+  config_dir: ~/.config/opencode
+  model: ollama/gpt-oss:20b
+```
+
+custom provider 示例：
+
+```yaml
+opencode:
+  enabled: true
+  binary: opencode
+  config_dir: ~/.config/opencode
+  model: local_ollama/gpt-oss:20b
+```
+
+最后：
+
+```bash
+ds doctor --runner opencode
+ds --runner opencode
+```
+
+如果 DeepScientist 里跑不通，但直接 `opencode run --model ...` 能通，优先检查 `runners.opencode.model` 是否和你验证过的模型字符串完全一致。
+
 ## Agents 和 skills
 
 OpenCode 官方支持：
@@ -304,7 +525,7 @@ ds
 
 ## 模型接入与其他 provider
 
-如果你想通过 OpenCode 接更多模型/provider，OpenCode 是当前 DeepScientist 三个 runner 里最灵活的一条路径。
+如果你想通过 OpenCode 接更多模型/provider，OpenCode 是当前 DeepScientist 内建 runner 里最灵活的一条路径。
 
 官方文档已经覆盖：
 

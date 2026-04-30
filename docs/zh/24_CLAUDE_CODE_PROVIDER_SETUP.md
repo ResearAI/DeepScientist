@@ -22,6 +22,8 @@ DeepScientist 不会为 Claude Code 额外再包一层私有适配器。
 - Settings：`https://docs.anthropic.com/en/docs/claude-code/settings`
 - MCP：`https://docs.anthropic.com/en/docs/claude-code/mcp`
 - SDK / headless mode：`https://docs.anthropic.com/en/docs/claude-code/sdk`
+- Environment variables：`https://code.claude.com/docs/en/env-vars`
+- Ollama + Claude Code：`https://docs.ollama.com/integrations/claude-code`
 
 DeepScientist 依赖的就是同一套本地 Claude Code 配置。
 
@@ -179,6 +181,96 @@ DeepScientist 现在会在 `ANTHROPIC_API_KEY` 为空时自动做：
 这是 DeepScientist 的兼容行为，不是 Claude Code 官方保证。
 
 如果你的直连 `claude` 终端已经能直接使用 `ANTHROPIC_API_KEY`，优先使用标准字段。
+
+## Claude Code + Ollama
+
+Ollama 官方提供了 Anthropic-compatible API，因此 Claude Code 可以通过 `ANTHROPIC_BASE_URL` 指向本地 Ollama。
+
+这条路适合：
+
+- 你想让 DeepScientist 使用 `claude` runner，但模型实际由本地 Ollama 提供
+- 你的 Ollama 模型上下文足够长，能承载 DeepScientist 的长 prompt 和工具调用
+- 你已经确认 Claude Code 的 headless 模式能和这个本地模型完成一次简单回复
+
+这条路不适合：
+
+- 你想使用 Gemini API；Gemini 官方提供的是 OpenAI-compatible 路线，不是 Anthropic-compatible 路线
+- 你的本地模型不支持工具调用或长上下文，容易在 DeepScientist 的 MCP 场景下失败
+
+### 1. 先让 Ollama 模型可用
+
+```bash
+ollama --version
+ollama serve
+```
+
+另开一个终端：
+
+```bash
+ollama pull gpt-oss:20b
+ollama run gpt-oss:20b "Reply with exactly HELLO."
+```
+
+这里的 `gpt-oss:20b` 只是示例。你也可以换成 Ollama 中已经存在、上下文更长、代码能力更强的模型。
+
+### 2. 先直接验证 Claude Code
+
+Ollama 官方的 Claude Code 路线本质是给 Claude Code 设置 Anthropic-compatible endpoint：
+
+```bash
+export ANTHROPIC_AUTH_TOKEN=ollama
+export ANTHROPIC_BASE_URL=http://localhost:11434
+
+claude -p \
+  --output-format json \
+  --model gpt-oss:20b \
+  --tools "" \
+  "Reply with exactly HELLO."
+```
+
+如果这一步失败，先查：
+
+- Ollama 是否在运行
+- 模型名是否正确
+- Claude Code 版本是否支持当前环境变量
+- 该模型是否能稳定按 Anthropic-compatible 协议返回
+
+### 3. 再写入 DeepScientist runner 配置
+
+```yaml
+claude:
+  enabled: true
+  binary: claude
+  config_dir: ~/.claude
+  model: gpt-oss:20b
+  permission_mode: bypassPermissions
+  env:
+    ANTHROPIC_AUTH_TOKEN: "ollama"
+    ANTHROPIC_BASE_URL: "http://localhost:11434"
+```
+
+DeepScientist 会在 `ANTHROPIC_API_KEY` 为空时把 `ANTHROPIC_AUTH_TOKEN` 镜像给 Claude Code 使用。不要在 `runners.yaml` 里写空字符串形式的 `ANTHROPIC_API_KEY: ""`；DeepScientist 会忽略空 env value。
+
+### 4. 最后验证 DeepScientist
+
+```bash
+ds doctor --runner claude
+ds --runner claude
+```
+
+如果 `claude -p` 能通但 `ds doctor --runner claude` 不通，优先检查 `runners.claude.env` 是否真的包含了 `ANTHROPIC_AUTH_TOKEN` 和 `ANTHROPIC_BASE_URL`，以及 daemon 是否读取的是同一个 `~/DeepScientist/config/runners.yaml`。
+
+## Claude Code + Gemini
+
+不建议把 Gemini 当作 Claude Code runner 的常规 provider。
+
+原因很简单：
+
+- Claude Code 使用 Anthropic / Anthropic-compatible 协议
+- Gemini 官方给 DeepScientist 用户最容易复用的是 OpenAI-compatible Chat Completions endpoint
+- 这两者不是同一种协议
+
+如果你手里有一个把 Gemini 包装成 Anthropic-compatible API 的私有网关，可以按上面的 `ANTHROPIC_BASE_URL` 网关方式配置；否则请优先通过 [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md) 接 Gemini。
 
 ## 第四步：映射到 DeepScientist 配置
 

@@ -30,7 +30,7 @@
 </p>
 
 <p align="center">
-  <strong>内建 runner：Codex（主路径）、Claude Code（supported experimental）、OpenCode（supported experimental）</strong>
+  <strong>内建 runner：Codex（主路径）、Claude Code、Kimi Code、OpenCode</strong>
 </p>
 
 <p align="center">
@@ -39,6 +39,7 @@
   <a href="docs/zh/12_GUIDED_WORKFLOW_TOUR.md">产品导览</a> •
   <a href="docs/zh/15_CODEX_PROVIDER_SETUP.md">Codex 配置</a> •
   <a href="docs/zh/24_CLAUDE_CODE_PROVIDER_SETUP.md">Claude 配置</a> •
+  <a href="docs/zh/27_KIMI_CODE_PROVIDER_SETUP.md">Kimi 配置</a> •
   <a href="docs/zh/25_OPENCODE_PROVIDER_SETUP.md">OpenCode 配置</a>
 </p>
 
@@ -255,14 +256,19 @@ DeepScientist 最容易让人持续使用的原因有四个：
 
 ## 🚀 30 秒开始上手
 
-如果你现在就想试一下，这里就是最短路径：
+如果你现在就想试一下，建议先按下面两种方式选择：自己执行 npm 命令，或者把安装交给已经在用的代码工具。
 
 平台说明：DeepScientist 完整支持 Linux 和 macOS。Windows 原生支持目前仍然是实验性的，强烈建议优先使用 WSL2。
 
-DeepScientist 现在内建三条 runner 路径：
+### 方式一：手动安装（npm）
+
+适合你已经知道要用哪个 runner，并且想自己控制安装、登录和启动命令。
+
+DeepScientist 现在内建四条 runner 路径：
 
 - `codex`：主路径，也是目前最稳妥的路径
 - `claude`：supported experimental，适合你本机里的 `claude` 已经能直接工作时使用
+- `kimi`：supported experimental，适合你本机里的 `kimi` 已经能直接工作时使用
 - `opencode`：supported experimental，适合你本机里的 `opencode` 已经能直接工作时使用
 
 如果你已经把其中一个 CLI 跑通了，DeepScientist 通常就可以直接接上它，不需要你把整套环境重新折腾一遍。
@@ -288,6 +294,15 @@ ds doctor --runner claude
 ds --here --runner claude
 ```
 
+如果 Kimi Code 已经在你的 shell 里直接可用，可以走这条：
+
+```bash
+npm install -g @researai/deepscientist
+kimi --version
+ds doctor --runner kimi
+ds --here --runner kimi
+```
+
 如果 OpenCode 已经在你的 shell 里直接可用，可以走这条：
 
 ```bash
@@ -296,6 +311,11 @@ opencode --version
 ds doctor --runner opencode
 ds --here --runner opencode
 ```
+
+如果你要接 Gemini 或 Ollama，先看对应 runner 文档，不要直接在 DeepScientist 里猜字段：
+
+- Gemini：优先看 [OpenCode 配置指南](docs/zh/25_OPENCODE_PROVIDER_SETUP.md)
+- Ollama：可选 Codex、Claude Code 或 OpenCode，先看 [本地模型后端指南](docs/zh/21_LOCAL_MODEL_BACKENDS_GUIDE.md)
 
 如需停止当前本地托管 daemon 和所有运行中的 agent：
 
@@ -310,6 +330,17 @@ git clone https://github.com/ResearAI/DeepScientist.git
 cd DeepScientist
 bash install.sh
 ds
+```
+
+### 方式二：让代码工具自动安装
+
+适合你已经在使用 Codex、Claude Code、OpenCode、Cursor 或其他代码 agent。步骤只有两步：
+
+1. 在一个你愿意安装 DeepScientist 的目录里启动代码工具。
+2. 复制下面这段 prompt 发给它：
+
+```text
+请帮我在当前机器安装并启动 DeepScientist。官方仓库是 https://github.com/ResearAI/DeepScientist ，中文文档入口是 https://github.com/ResearAI/DeepScientist/blob/main/docs/zh/README.md 。请先检查 Node.js/npm、git、Python、操作系统和 shell 环境；如果适合全局 npm 安装，优先执行 npm install -g @researai/deepscientist 并验证 ds --help；如果源码安装更稳，请 git clone https://github.com/ResearAI/DeepScientist.git，进入 DeepScientist，按 README 执行 bash install.sh。安装后请确认我本机至少有一个 runner 可用，例如 codex、claude、opencode 或 kimi；先让对应 CLI 完成登录并独立跑通，再运行 ds doctor --runner <name>，最后用 ds --here 启动，并把本地访问地址和后续配置文档告诉我。
 ```
 
 如果你还准备直接改 Web / TUI 源码，再额外安装前端依赖：
@@ -337,8 +368,9 @@ codex login
 
 关于 runner，还有一个重要说明：
 
-- `codex` 缺失时，DeepScientist 可以回退到 npm 安装里 bundled 的 helper copy
-- `claude` 和 `opencode` 不会由 DeepScientist 自动替你完成安装或登录；这两条路径都应先让 CLI 本身跑通，再执行 `ds doctor --runner <name>`
+- `codex`、`claude` 和 `opencode` 缺失时，DeepScientist 可以回退到 npm 安装里 bundled 的 helper copy；Kimi Code 默认按外部 CLI 处理，除非本地存在兼容的 `kimi` helper
+- runner 的登录和 provider 配置仍然属于底层 CLI。请先让 `codex`、`claude`、`kimi` 或 `opencode` 在 shell 里独立跑通，再执行 `ds doctor --runner <name>`
+- 你也可以先用默认 runner 启动 DeepScientist，之后再到 Web 工作区设置里切换或配置 Claude Code、Kimi Code、OpenCode
 
 启动后，默认本地地址是：
 
@@ -363,6 +395,7 @@ ds --auth true
 - [00 快速开始](docs/zh/00_QUICK_START.md)
 - [15 Codex Provider 配置](docs/zh/15_CODEX_PROVIDER_SETUP.md)
 - [24 Claude Code 配置指南](docs/zh/24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [27 Kimi Code 配置指南](docs/zh/27_KIMI_CODE_PROVIDER_SETUP.md)
 - [25 OpenCode 配置指南](docs/zh/25_OPENCODE_PROVIDER_SETUP.md)
 - [09 启动诊断](docs/zh/09_DOCTOR.md)
 
@@ -386,6 +419,7 @@ ds --auth true
 
 - [15 Codex Provider 配置](docs/zh/15_CODEX_PROVIDER_SETUP.md)
 - [24 Claude Code 配置指南](docs/zh/24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- [27 Kimi Code 配置指南](docs/zh/27_KIMI_CODE_PROVIDER_SETUP.md)
 - [25 OpenCode 配置指南](docs/zh/25_OPENCODE_PROVIDER_SETUP.md)
 - [21 本地模型后端指南](docs/zh/21_LOCAL_MODEL_BACKENDS_GUIDE.md)
 - [微信连接器指南](docs/zh/10_WEIXIN_CONNECTOR_GUIDE.md)

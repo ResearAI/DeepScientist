@@ -87,15 +87,15 @@ DeepScientist 灵活且易于使用，支持：
 - [05 TUI 端到端指南](./05_TUI_GUIDE.md)
   如果你主要在服务器或终端里工作，这篇会带你从 `ds --tui` 一路走到 quest、connector 和跨端协作跑通。
 - [15 Codex Provider 配置](./15_CODEX_PROVIDER_SETUP.md)
-  如果你准备通过 MiniMax、GLM、火山方舟、阿里百炼 Coding Plan 或其他 Codex profile 来运行 DeepScientist，先看这一篇。
+  如果你准备通过 OpenAI、Ollama、MiniMax、GLM、火山方舟、阿里百炼 Coding Plan 或其他 Codex profile 来运行 DeepScientist，先看这一篇。Gemini 只建议作为高级实验路线，通常优先走 OpenCode。
 - [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
-  如果 Claude Code 在你的机器上已经能正常工作，并且你想让 DeepScientist 直接复用它，先看这一篇。
+  如果 Claude Code 在你的机器上已经能正常工作，并且你想让 DeepScientist 直接复用它，或者你想通过 Ollama 的 Anthropic-compatible API 跑 Claude runner，先看这一篇。
 - [27 Kimi Code 配置指南](./27_KIMI_CODE_PROVIDER_SETUP.md)
   如果官方 `kimi` CLI 在你的机器上已经能正常工作，并且你想把它作为独立 builtin runner 使用，先看这一篇。
 - [25 OpenCode 配置指南](./25_OPENCODE_PROVIDER_SETUP.md)
-  如果 OpenCode 在你的机器上已经能正常工作，并且你想让 DeepScientist 直接复用它的 provider/model 配置，先看这一篇。
+  如果 OpenCode 在你的机器上已经能正常工作，并且你想让 DeepScientist 直接复用它的 provider/model 配置，尤其是接 Gemini 或 Ollama，先看这一篇。
 - [21 本地模型后端指南](./21_LOCAL_MODEL_BACKENDS_GUIDE.md)
-  如果你想通过 vLLM、Ollama、SGLang 等本地 OpenAI-compatible 后端运行 DeepScientist，先看这一篇。
+  如果你想通过 vLLM、Ollama、SGLang 等本地模型后端运行 DeepScientist，先看这一篇；它会帮你在 Codex、Claude Code、OpenCode 三条 runner 路线之间选路。
 - [26 引用与致谢说明](./26_CITATION_AND_ATTRIBUTION.md)
   如果 DeepScientist 对论文或报告已经产生了实质性帮助，想看推荐引用方式、致谢模板和归因边界，就看这一篇。
 - [12 引导式工作流教程](./12_GUIDED_WORKFLOW_TOUR.md)

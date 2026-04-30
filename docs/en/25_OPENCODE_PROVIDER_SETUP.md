@@ -19,6 +19,9 @@ Read the official OpenCode docs first:
 - Providers: `https://opencode.ai/docs/providers/`
 - MCP servers: `https://opencode.ai/docs/mcp-servers`
 - Skills: `https://opencode.ai/docs/skills`
+- Gemini OpenAI compatibility: `https://ai.google.dev/gemini-api/docs/openai`
+- Ollama OpenAI compatibility: `https://docs.ollama.com/openai`
+- Ollama + OpenCode: `https://docs.ollama.com/integrations/opencode`
 
 DeepScientist expects the same local OpenCode configuration described there.
 
@@ -201,6 +204,207 @@ A common provider example looks like:
 ```
 
 This matters for DeepScientist because the `opencode` runner does not bypass your OpenCode provider setup. It reuses it.
+
+## Gemini
+
+OpenCode is the recommended DeepScientist runner for Gemini.
+
+Why:
+
+- Gemini has an official OpenAI-compatible endpoint
+- OpenCode supports custom OpenAI-compatible providers
+- the DeepScientist OpenCode runner reuses `~/.config/opencode/opencode.json` and can pass `GEMINI_API_KEY` through `runners.opencode.env`
+
+### 1. Prepare the key
+
+```bash
+export GEMINI_API_KEY="..."
+printenv GEMINI_API_KEY
+```
+
+Gemini's OpenAI-compatible base URL is:
+
+```text
+https://generativelanguage.googleapis.com/v1beta/openai/
+```
+
+### 2. Configure a custom provider
+
+Edit:
+
+```bash
+${EDITOR:-vim} ~/.config/opencode/opencode.json
+```
+
+Merge in:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "gemini": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Gemini",
+      "options": {
+        "baseURL": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "apiKey": "{env:GEMINI_API_KEY}"
+      },
+      "models": {
+        "gemini-3-flash-preview": {
+          "name": "Gemini 3 Flash Preview"
+        }
+      }
+    }
+  }
+}
+```
+
+If `opencode.json` already has providers, merge the `gemini` object instead of replacing the file.
+
+### 3. Validate OpenCode directly
+
+```bash
+export GEMINI_API_KEY="..."
+opencode run \
+  --format json \
+  --pure \
+  --model gemini/gemini-3-flash-preview \
+  "Reply with exactly HELLO."
+```
+
+If this fails, fix OpenCode provider setup first.
+
+### 4. Map it into DeepScientist
+
+Let OpenCode decide the model:
+
+```yaml
+opencode:
+  enabled: true
+  binary: opencode
+  config_dir: ~/.config/opencode
+  model: inherit
+  env:
+    GEMINI_API_KEY: "..."
+```
+
+Force Gemini for every DeepScientist run:
+
+```yaml
+opencode:
+  enabled: true
+  binary: opencode
+  config_dir: ~/.config/opencode
+  model: gemini/gemini-3-flash-preview
+  env:
+    GEMINI_API_KEY: "..."
+```
+
+Then:
+
+```bash
+ds doctor --runner opencode
+ds --runner opencode
+```
+
+## Ollama
+
+OpenCode is also one of the simplest Ollama paths.
+
+### 1. Make the model available
+
+```bash
+ollama --version
+ollama serve
+```
+
+In another terminal:
+
+```bash
+ollama pull gpt-oss:20b
+ollama run gpt-oss:20b "Reply with exactly HELLO."
+```
+
+### 2. Configure OpenCode
+
+If OpenCode recognizes its built-in Ollama provider, prefer that:
+
+```bash
+opencode providers
+opencode models ollama
+```
+
+If you need an explicit custom provider, treat Ollama as a local OpenAI-compatible endpoint:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "local_ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Local Ollama",
+      "options": {
+        "baseURL": "http://localhost:11434/v1",
+        "apiKey": "ollama"
+      },
+      "models": {
+        "gpt-oss:20b": {
+          "name": "gpt-oss:20b"
+        }
+      }
+    }
+  }
+}
+```
+
+### 3. Validate OpenCode directly
+
+Built-in provider:
+
+```bash
+opencode run \
+  --format json \
+  --pure \
+  --model ollama/gpt-oss:20b \
+  "Reply with exactly HELLO."
+```
+
+Custom provider:
+
+```bash
+opencode run \
+  --format json \
+  --pure \
+  --model local_ollama/gpt-oss:20b \
+  "Reply with exactly HELLO."
+```
+
+Use the model string that works in your DeepScientist config:
+
+```yaml
+opencode:
+  enabled: true
+  binary: opencode
+  config_dir: ~/.config/opencode
+  model: ollama/gpt-oss:20b
+```
+
+or:
+
+```yaml
+opencode:
+  enabled: true
+  binary: opencode
+  config_dir: ~/.config/opencode
+  model: local_ollama/gpt-oss:20b
+```
+
+Then run:
+
+```bash
+ds doctor --runner opencode
+ds --runner opencode
+```
 
 ## Agents and skills
 

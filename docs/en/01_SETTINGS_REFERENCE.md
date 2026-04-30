@@ -676,6 +676,20 @@ Current built-in runners:
 - `opencode`
   - OpenCode CLI path, including provider/model configurations managed directly by OpenCode
 
+The Settings page maps DeepScientist to an already-working CLI runner. Gemini, Ollama, MiniMax, GLM, Bailian, and other providers still need to be configured in the corresponding CLI first:
+
+- Codex provider / profile: see [15 Codex Provider Setup](./15_CODEX_PROVIDER_SETUP.md)
+- Claude Code / Anthropic-compatible / Ollama: see [24 Claude Code Setup](./24_CLAUDE_CODE_PROVIDER_SETUP.md)
+- OpenCode / Gemini / Ollama: see [25 OpenCode Setup](./25_OPENCODE_PROVIDER_SETUP.md)
+- vLLM, Ollama, SGLang, and local backend overview: see [21 Local Model Backends Guide](./21_LOCAL_MODEL_BACKENDS_GUIDE.md)
+
+Recommended validation order:
+
+1. make the underlying CLI work first, such as `codex exec ...`, `claude -p ...`, or `opencode run ...`
+2. fill `binary`, `config_dir`, `profile` / `model`, and `env` in Settings
+3. click `Test` or run `ds doctor --runner <name>`
+4. only then start a real quest
+
 ### Schema
 
 ```yaml

@@ -256,9 +256,13 @@ If that sounds like the way you want to work, DeepScientist is worth trying now.
 
 ## 🚀 Get Started In 30 Seconds
 
-If you want to try it right now, here is the shortest path:
+If you want to try it right now, choose one of these two paths: run the npm commands yourself, or ask the coding tool you already use to install it for you.
 
 Platform note: DeepScientist fully supports Linux and macOS. Native Windows support is currently experimental (strongly recommend WSL2).
+
+### Option 1: Manual Install With npm
+
+Use this path when you already know which runner you want and prefer to control the install, login, and launch commands yourself.
 
 DeepScientist ships four built-in runners:
 
@@ -308,6 +312,11 @@ ds doctor --runner opencode
 ds --here --runner opencode
 ```
 
+If you want to connect Gemini or Ollama, first use the runner-specific docs instead of guessing DeepScientist fields:
+
+- Gemini: prefer [OpenCode Setup](docs/en/25_OPENCODE_PROVIDER_SETUP.md)
+- Ollama: choose Codex, Claude Code, or OpenCode with [Local Model Backends Guide](docs/en/21_LOCAL_MODEL_BACKENDS_GUIDE.md)
+
 To stop the managed local daemon and all currently running agents:
 
 ```bash
@@ -321,6 +330,17 @@ git clone https://github.com/ResearAI/DeepScientist.git
 cd DeepScientist
 bash install.sh
 ds
+```
+
+### Option 2: Let A Coding Tool Install It
+
+Use this path when you already work inside Codex, Claude Code, OpenCode, Cursor, or another coding agent. There are only two steps:
+
+1. Launch the coding tool in a directory where you are comfortable installing DeepScientist.
+2. Copy and send this prompt:
+
+```text
+Please install and launch DeepScientist on this machine. The official repo is https://github.com/ResearAI/DeepScientist and the docs start at https://github.com/ResearAI/DeepScientist/blob/main/docs/en/README.md . First inspect Node.js/npm, git, Python, OS, and shell environment. If global npm install is appropriate, run npm install -g @researai/deepscientist and verify ds --help. If source install is safer, git clone https://github.com/ResearAI/DeepScientist.git, cd DeepScientist, read the README, and run bash install.sh. After installation, confirm at least one runner works locally, such as codex, claude, opencode, or kimi; authenticate that CLI first, then run ds doctor --runner <name>, start with ds --here, and report the local URL plus the exact config docs I should read next.
 ```
 
 If you plan to edit the UI or TUI from source, also install the workspace dependencies:
