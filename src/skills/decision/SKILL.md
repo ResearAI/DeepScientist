@@ -147,6 +147,15 @@ For paper-outline decisions, use `artifact.submit_paper_outline(mode='select', .
 For paper-bundle decisions, use `artifact.submit_paper_bundle(...)` only when the draft or package state is durable enough for that package type.
 When deciding whether a paper line can advance, judge method fidelity and story coherence as well as metric coverage.
 For paper routes, apply the publishability stop-loss rule before choosing `write`, `review`, or `finalize`: if the line cannot plausibly become a useful and defensible paper, recommend stopping the paper objective or branching to a stronger route instead of adding another writing pass. If the proposed action is `stop` because paper quality is too low, first ask for a user decision with the evidence and the branch/narrow alternatives. If the user has given publication, scope, cost, or non-paper preferences, consider them explicitly; if those preferences are unclear and materially affect the stop/branch choice, ask for a user decision.
+
+Apply the symmetric **exploration-depth gate before recommending `close_round_write_paper` for an all-negative-result paper** (every attempted idea has been falsified or family-bounded, no positive lift survives). Before routing to `write`, answer all of these in the decision artifact:
+
+- Have you tested at least two structurally distinct idea families from `idea/references/idea-thinking-flow.md` (mechanism, objective, measurement, infrastructure, or model-architecture / ensemble / multi-agent), or only multiple variants inside one family?
+- Have you challenged the bottleneck framing itself — is "X is the locus of the residual gap" a conclusion or just an artefact of where you stopped looking?
+- Has the literature surfaced a structurally different route the current attempts did not cover (cross-domain mechanism transfer, different evaluator regime, different training-data composition, etc.)?
+- How much of the quest's `time_budget_hours` is unused, and could a third structurally distinct family fit inside the remainder?
+
+If any answer is "no" or "unsure" and the time budget allows, route back to `idea` for a re-ideation pass focused on a structurally different family before concluding. The negative-result paper is still the right outcome when the gate is honestly cleared; this gate just prevents premature closure when only one corner of the design space has been ruled out. Positive-result papers are not blocked by this gate.
 For resume-changing route decisions, write one compact checkpoint-style quest memory card so later turns know the current active node, node history, what not to reopen by default, and the first files to read.
 Use `type:checkpoint-memory` and `references/checkpoint-memory-template.md` for that card.
 
