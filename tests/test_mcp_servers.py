@@ -1132,6 +1132,105 @@ def test_start_setup_prepare_profile_artifact_server_exposes_only_prepare_form_t
     asyncio.run(scenario())
 
 
+def test_artifact_mcp_compacts_paper_write_tool_returns(temp_home: Path) -> None:
+    async def scenario() -> None:
+        ensure_home_layout(temp_home)
+        ConfigManager(temp_home).ensure_files()
+        quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+        quest = quest_service.create("mcp compact paper write quest")
+        quest_root = Path(quest["quest_root"])
+        context = McpContext(
+            home=temp_home,
+            quest_id=quest["quest_id"],
+            quest_root=quest_root,
+            run_id="run-mcp-compact-paper",
+            active_anchor="write",
+            conversation_id="quest:test",
+            agent_role="pi",
+            worker_id="worker-main",
+            worktree_root=None,
+            team_mode="single",
+        )
+        server = build_artifact_server(context)
+
+        candidate = _unwrap_tool_result(
+            await server.call_tool(
+                "submit_paper_outline",
+                {
+                    "mode": "candidate",
+                    "outline_id": "outline-compact",
+                    "title": "Compact outline",
+                    "note": "Keep the MCP return small.",
+                    "detailed_outline": {
+                        "title": "Compact outline",
+                        "research_questions": ["RQ-compact"],
+                        "experimental_designs": ["Exp-compact"],
+                        "contributions": ["C-compact"],
+                    },
+                },
+            )
+        )
+        assert candidate["ok"] is True
+        assert candidate["tool_name"] == "submit_paper_outline"
+        assert candidate["outline_id"] == "outline-compact"
+        assert candidate["paths"]["outline_path"].endswith("paper/outlines/candidates/outline-compact.json")
+        assert candidate["artifact_delta"]["sidecar_rel_path"].startswith("paper/artifact_deltas/")
+        assert Path(quest_service.active_workspace_root(quest_root) / candidate["artifact_delta"]["sidecar_rel_path"]).exists()
+        assert not {"record", "artifact", "interaction", "paper_line_state"} & set(candidate)
+        assert "sidecar_path" not in candidate["artifact_delta"]
+
+        selected = _unwrap_tool_result(
+            await server.call_tool(
+                "submit_paper_outline",
+                {
+                    "mode": "select",
+                    "outline_id": "outline-compact",
+                    "selected_reason": "Use the compact outline.",
+                },
+            )
+        )
+        assert selected["ok"] is True
+        assert selected["mode"] == "select"
+        assert selected["outline_id"] == "outline-compact"
+        assert selected["paths"]["selected_outline_path"] == "paper/selected_outline.json"
+        assert selected["paths"]["outline_manifest_path"] == "paper/outline/manifest.json"
+        assert selected["artifact_delta"]["delta_kind"] == "paper_outline_selected"
+        assert not {"record", "artifact", "interaction", "paper_line_state"} & set(selected)
+
+        paper_workspace = quest_service.active_workspace_root(quest_root)
+        paper_root = paper_workspace / "paper"
+        paper_root.mkdir(parents=True, exist_ok=True)
+        (paper_root / "draft.md").write_text("# Draft\n", encoding="utf-8")
+        (paper_root / "writing_plan.md").write_text("# Plan\n", encoding="utf-8")
+        (paper_root / "references.bib").write_text("@article{demo, title={Demo}}\n", encoding="utf-8")
+        (paper_root / "build").mkdir(parents=True, exist_ok=True)
+        write_json(paper_root / "build" / "compile_report.json", {"ok": True})
+        (paper_root / "paper.pdf").write_bytes(b"%PDF-1.4\n%paper\n")
+
+        bundle = _unwrap_tool_result(
+            await server.call_tool(
+                "submit_paper_bundle",
+                {
+                    "title": "Compact bundle",
+                    "summary": "Compact bundle return.",
+                    "pdf_path": "paper/paper.pdf",
+                },
+            )
+        )
+        assert bundle["ok"] is True
+        assert bundle["tool_name"] == "submit_paper_bundle"
+        assert bundle["package_type"] == "draft_checkpoint"
+        assert bundle["selected_outline_ref"] == "outline-compact"
+        assert bundle["paths"]["manifest_path"] == "paper/paper_bundle_manifest.json"
+        assert bundle["paths"]["paper_line_state_path"] == "paper/paper_line_state.json"
+        assert bundle["artifact_delta"]["delta_kind"] == "draft_checkpoint"
+        assert Path(quest_service.active_workspace_root(quest_root) / bundle["artifact_delta"]["sidecar_rel_path"]).exists()
+        assert not {"manifest", "artifact", "interaction", "paper_line_state", "continuation"} & set(bundle)
+        assert "sidecar_path" not in bundle["artifact_delta"]
+
+    asyncio.run(scenario())
+
+
 def test_artifact_mcp_copilot_workspace_keeps_branch_graph_visible(temp_home: Path) -> None:
     async def scenario() -> None:
         ensure_home_layout(temp_home)

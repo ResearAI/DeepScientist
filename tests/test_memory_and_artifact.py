@@ -22,6 +22,26 @@ from deepscientist.shared import ensure_dir, read_json, read_jsonl, read_yaml, w
 from deepscientist.skills import SkillInstaller
 
 
+def _assert_artifact_delta(
+    delta: dict[str, Any],
+    *,
+    delta_kind: str,
+    expected_labels: set[str],
+) -> dict[str, Any]:
+    assert delta["schema_version"] == 1
+    assert delta["delta_kind"] == delta_kind
+    assert delta["path_count"] >= len(expected_labels)
+    assert delta["sidecar_rel_path"].startswith("paper/artifact_deltas/")
+    sidecar = read_json(Path(delta["sidecar_path"]), {})
+    assert sidecar["schema_version"] == 1
+    assert sidecar["delta_id"] == delta["delta_id"]
+    assert sidecar["delta_kind"] == delta_kind
+    by_label = {item["label"]: item for item in sidecar["paths"]}
+    assert expected_labels.issubset(by_label)
+    assert all(by_label[label]["exists"] is True for label in expected_labels)
+    return sidecar
+
+
 def _detailed_metric_contract(
     metric_ids: list[str],
     *,
@@ -1426,6 +1446,12 @@ def test_paper_outline_flow_and_outline_bound_analysis_campaign(temp_home: Path)
     assert candidate_1["outline_id"] == "outline-001"
     assert candidate_2["outline_id"] == "outline-002"
     assert candidate_3["outline_id"] == "outline-003"
+    candidate_delta = _assert_artifact_delta(
+        candidate_1["artifact_delta"],
+        delta_kind="paper_outline_candidate",
+        expected_labels={"outline_json", "artifact_json"},
+    )
+    assert candidate_delta["metadata"]["outline_id"] == "outline-001"
 
     selected = artifact.submit_paper_outline(
         quest_root,
@@ -1438,6 +1464,18 @@ def test_paper_outline_flow_and_outline_bound_analysis_campaign(temp_home: Path)
     assert Path(selected["outline_manifest_path"]).exists()
     assert Path(selected["paper_line_state_path"]).exists()
     assert Path(selected["outline_selection_path"]).exists()
+    selected_delta = _assert_artifact_delta(
+        selected["artifact_delta"],
+        delta_kind="paper_outline_selected",
+        expected_labels={
+            "selected_outline_json",
+            "outline_manifest_json",
+            "outline_selection_md",
+            "paper_line_state_json",
+            "artifact_json",
+        },
+    )
+    assert selected_delta["metadata"]["outline_id"] == "outline-002"
     assert quest_service.snapshot(quest["quest_id"])["active_anchor"] == "write"
 
     campaign = artifact.create_analysis_campaign(
@@ -1458,6 +1496,8 @@ def test_paper_outline_flow_and_outline_bound_analysis_campaign(temp_home: Path)
                 "tier": "main_required",
                 "paper_placement": "main_text",
                 "paper_role": "main_text",
+                "analysis_role": "ablation",
+                "target_display": "Main ablation",
                 "section_id": "analysis-main",
                 "item_id": "AN-001",
                 "claim_links": ["C1"],
@@ -2221,6 +2261,19 @@ def test_submit_paper_bundle_writes_draft_checkpoint_without_finalize(temp_home:
     assert Path(result["evidence_ledger_path"]).exists()
     assert Path(result["paper_line_state_path"]).exists()
     assert result["open_source_manifest_path"] is None
+    bundle_delta = _assert_artifact_delta(
+        result["artifact_delta"],
+        delta_kind="draft_checkpoint",
+        expected_labels={
+            "paper_bundle_manifest_json",
+            "baseline_inventory_json",
+            "evidence_ledger_json",
+            "paper_line_state_json",
+            "manuscript_coverage_json",
+            "artifact_json",
+        },
+    )
+    assert bundle_delta["metadata"]["package_type"] == "draft_checkpoint"
     baseline_inventory = read_json(Path(result["baseline_inventory_path"]), {})
     assert baseline_inventory["schema_version"] == 1
     manifest = read_json(Path(result["manifest_path"]), {})

@@ -1114,6 +1114,113 @@ def build_artifact_server(context: McpContext) -> FastMCP:
             state_change_note=ARTIFACT_STATE_CHANGE_WATCHDOG_NOTES.get(tool_name),
         )
 
+    def _quest_relative_path(value: Any) -> str | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        path = Path(text)
+        if not path.is_absolute():
+            return text
+        quest_root = context.require_quest_root().resolve()
+        try:
+            active_workspace_root = quest_service.active_workspace_root(quest_root)
+        except Exception:
+            active_workspace_root = None
+        roots = [context.worktree_root, active_workspace_root, context.quest_root]
+        seen: set[str] = set()
+        for raw_root in roots:
+            if raw_root is None:
+                continue
+            root = raw_root.resolve()
+            key = str(root)
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                return path.resolve().relative_to(root).as_posix()
+            except ValueError:
+                continue
+        try:
+            return path.resolve().relative_to(quest_root).as_posix()
+        except ValueError:
+            return text
+
+    def _compact_artifact_delta(value: Any) -> dict[str, Any] | None:
+        if not isinstance(value, dict):
+            return None
+        return {
+            key: value.get(key)
+            for key in (
+                "schema_version",
+                "delta_id",
+                "delta_kind",
+                "sidecar_rel_path",
+                "path_count",
+                "changed_paths",
+            )
+            if value.get(key) is not None
+        }
+
+    def _compact_paths(payload: dict[str, Any], keys: tuple[str, ...]) -> dict[str, str]:
+        paths: dict[str, str] = {}
+        for key in keys:
+            relative = _quest_relative_path(payload.get(key))
+            if relative:
+                paths[key] = relative
+        return paths
+
+    def compact_paper_write_result(payload: dict[str, Any], *, tool_name: str) -> dict[str, Any]:
+        compact: dict[str, Any] = {
+            "ok": bool(payload.get("ok")),
+            "tool_name": tool_name,
+            "artifact_delta": _compact_artifact_delta(payload.get("artifact_delta")),
+            "hint": "Full paper artifact content was written to files; read the listed paths or artifact_delta sidecar only when needed.",
+        }
+        if tool_name == "submit_paper_outline":
+            compact.update(
+                {
+                    "mode": payload.get("mode"),
+                    "outline_id": payload.get("outline_id"),
+                    "paths": _compact_paths(
+                        payload,
+                        (
+                            "outline_path",
+                            "selected_outline_path",
+                            "outline_manifest_path",
+                            "paper_line_state_path",
+                            "outline_selection_path",
+                            "revised_outline_path",
+                        ),
+                    ),
+                }
+            )
+            return compact
+
+        manifest = payload.get("manifest") if isinstance(payload.get("manifest"), dict) else {}
+        paper_line_state = payload.get("paper_line_state") if isinstance(payload.get("paper_line_state"), dict) else {}
+        continuation = payload.get("continuation") if isinstance(payload.get("continuation"), dict) else {}
+        compact.update(
+            {
+                "package_type": manifest.get("package_type"),
+                "title": manifest.get("title"),
+                "selected_outline_ref": manifest.get("selected_outline_ref"),
+                "paper_branch": manifest.get("paper_branch") or paper_line_state.get("paper_branch"),
+                "next_anchor": continuation.get("anchor") or "decision",
+                "paths": _compact_paths(
+                    payload,
+                    (
+                        "manifest_path",
+                        "baseline_inventory_path",
+                        "evidence_ledger_path",
+                        "paper_line_state_path",
+                        "manuscript_coverage_path",
+                        "open_source_manifest_path",
+                    ),
+                ),
+            }
+        )
+        return compact
+
     if issue_only_profile:
         @server.tool(
             name="prepare_github_issue",
@@ -1829,7 +1936,10 @@ def build_artifact_server(context: McpContext) -> FastMCP:
                 review_result=review_result,
                 selected_reason=selected_reason,
             )
-            return finalize_state_changing_artifact_tool(result, tool_name="submit_paper_outline")
+            return finalize_state_changing_artifact_tool(
+                compact_paper_write_result(result, tool_name="submit_paper_outline"),
+                tool_name="submit_paper_outline",
+            )
         except (ValueError, FileNotFoundError, RuntimeError) as exc:
             return finalize_artifact_tool(
                 _artifact_guided_error_payload(
@@ -1873,7 +1983,7 @@ def build_artifact_server(context: McpContext) -> FastMCP:
         comment: str | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         try:
-            return service.submit_paper_bundle(
+            result = service.submit_paper_bundle(
                 context.require_quest_root(),
                 title=title,
                 summary=summary,
@@ -1886,6 +1996,10 @@ def build_artifact_server(context: McpContext) -> FastMCP:
                 pdf_path=pdf_path,
                 latex_root_path=latex_root_path,
                 package_type=package_type,
+            )
+            return finalize_state_changing_artifact_tool(
+                compact_paper_write_result(result, tool_name="submit_paper_bundle"),
+                tool_name="submit_paper_bundle",
             )
         except (ValueError, FileNotFoundError, RuntimeError) as exc:
             return finalize_artifact_tool(
