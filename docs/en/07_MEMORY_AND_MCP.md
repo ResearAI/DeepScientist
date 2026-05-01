@@ -275,7 +275,29 @@ The agent should normally follow this discipline:
 5. `bash_exec` for durable shell work
 6. `memory.write(...)` only after a real durable finding appears
 
-## 7. UI expectation
+## 7. Cross-quest recall via the file system
+
+Cards are quest-scoped by default and `memory.search` is substring-only, so the durable cross-quest channel is the file system rather than the card index. From `idea` and any other stage that benefits from prior-quest context, the agent should:
+
+1. enumerate sibling quests with `bash_exec ls -t ~/DeepScientist/quests/*/brief.md`
+2. read briefs to find same-domain prior quests
+3. for any material overlap, deep-read the source quest's `~/DeepScientist/quests/<id>/paper/latex/main.tex`, especially its `Conclusion` and `Limitations / Discussion` sections — that is where prescriptive guidance for follow-up quests is recorded (the `write` checklist now requires it)
+4. read `~/DeepScientist/framework_quirks.md` if it exists for known framework-layer pitfalls before committing to a route that would touch the same surfaces
+
+This works regardless of `memory.read_visibility_mode` — the channel is filesystem paths, not the memory service.
+
+## 8. Framework quirks
+
+`~/DeepScientist/framework_quirks.md` is a runtime-wide append-only document for framework-layer pitfalls (validator path quirks, closure-protocol gotchas, anything that cannot or will not be fixed in code and that future quests should know about before exercising the same surfaces). The file is scaffolded by `ensure_home_layout` with a usage header.
+
+Add an entry only when:
+
+- the surface cannot be fixed at the framework level, or
+- a fix is in flight but the workaround is durable enough to record while the fix lands.
+
+If a quirk should be fixed in code, file an issue and fix it; do not let the file accumulate permanent shims.
+
+## 9. UI expectation
 
 In `/projects/{id}` Studio trace:
 
