@@ -67,6 +67,21 @@ def ensure_home_layout(home: Path) -> dict[str, Path]:
     for kind in ("papers", "ideas", "decisions", "episodes", "knowledge", "templates"):
         ensure_dir(memory / kind)
 
+    framework_quirks = home / "framework_quirks.md"
+    if not framework_quirks.exists():
+        framework_quirks.write_text(
+            "# Framework Quirks\n\n"
+            "Append-only durable file for framework-layer pitfalls (validator path quirks, "
+            "closure-protocol gotchas, anything that cannot or will not be fixed in code "
+            "and that future quests should know about before exercising the same surfaces).\n\n"
+            "Each entry should name the surface, the symptom, and the workaround in 2-5 lines. "
+            "Stage skills (idea, decision, finalize) instruct agents to read this file before "
+            "committing to a route that would touch the relevant surface.\n\n"
+            "If a quirk should instead be fixed at the framework level, file an issue and fix the code; "
+            "do not add it here as a permanent shim.\n",
+            encoding="utf-8",
+        )
+
     quests = ensure_dir(home / "quests")
     plugins = ensure_dir(home / "plugins")
     logs = ensure_dir(home / "logs")
