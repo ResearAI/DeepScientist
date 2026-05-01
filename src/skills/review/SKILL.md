@@ -45,7 +45,7 @@ It should convert “the draft feels almost done” into a durable, skeptical, t
 Default review stance: independent audit before celebration.
 Do not treat “looks polished” as “is defensible”.
 Do not accept structural green lights as paper-quality proof. Coverage, compile success, and file counts must still survive a skeptical claim/evidence/reviewer-risk audit.
-Apply the publishability stop-loss rule during review: when novelty, evidence sufficiency, or reader value has collapsed beyond reasonable claim narrowing, the correct recommendation is `decision` with `stop` or `branch`, with any narrowed non-paper objective recorded as the next direction, not another cosmetic revision pass. Consider user publication, scope, cost, or non-paper preferences, and ask for a user decision when those preferences are unclear and would change the recommendation.
+Apply the publishability stop-loss rule during review: when novelty, evidence sufficiency, or reader value has collapsed beyond reasonable claim narrowing, the correct recommendation is `decision` with `stop` or `branch`, with any narrowed non-paper objective recorded as the next direction, not another cosmetic revision pass. If recommending `stop` because paper quality is too low, ask the user to confirm before ending the paper objective. Consider user publication, scope, cost, or non-paper preferences, and ask for a user decision when those preferences are unclear and would change the recommendation.
 
 ## Use when
 
@@ -73,6 +73,7 @@ Apply the publishability stop-loss rule during review: when novelty, evidence su
 - Do not recommend more experiments when the real problem is wording, positioning, or claim scope.
 - Do not recommend rhetoric when the real problem is missing evidence.
 - Do not recommend continued paper revision when the review finds a fatal publishability or value collapse; make the stop/branch route explicit.
+- Do not execute a stop route for a low-quality paper judgment without user confirmation; present the evidence, the stop recommendation, and any branch or narrowed non-paper alternative first.
 - Do not silently override a user's stated paper, report, or non-paper preference; consider it in the route recommendation, or ask when it is unclear.
 - If novelty or positioning is uncertain, treat that as a literature-audit question first, not an automatic experiment request.
 - If a claim is too broad for the evidence, prefer narrowing or downgrading the claim over defending it with style.
