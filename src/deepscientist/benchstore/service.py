@@ -474,6 +474,8 @@ class BenchStoreService:
         environment_raw = payload.get("environment") if isinstance(payload.get("environment"), dict) else payload.get("environment")
         commercial_raw = payload.get("commercial") if isinstance(payload.get("commercial"), dict) else {}
         display_raw = payload.get("display") if isinstance(payload.get("display"), dict) else {}
+        official_links_raw = payload.get("official_links") if isinstance(payload.get("official_links"), dict) else {}
+        discovery_raw = payload.get("discovery") if isinstance(payload.get("discovery"), dict) else {}
         image_path = _optional_str(payload.get("image_path"))
 
         entry = {
@@ -483,6 +485,12 @@ class BenchStoreService:
             "version": _optional_str(payload.get("version")),
             "one_line": _optional_str(payload.get("one_line")),
             "task_description": _optional_str(payload.get("task_description")),
+            "homepage": _optional_str(payload.get("homepage")),
+            "official_links": {
+                "homepage": _optional_str(official_links_raw.get("homepage")),
+                "github": _optional_str(official_links_raw.get("github")),
+                "docs": _optional_str(official_links_raw.get("docs")),
+            },
             "capability_tags": _normalize_string_list(payload.get("capability_tags"), field_name="capability_tags"),
             "aisb_direction": _optional_str(payload.get("aisb_direction")),
             "track_fit": _normalize_string_list(payload.get("track_fit"), field_name="track_fit"),
@@ -493,6 +501,13 @@ class BenchStoreService:
             "snapshot_status": _optional_str(payload.get("snapshot_status")),
             "support_level": _optional_str(payload.get("support_level")),
             "primary_outputs": _normalize_string_list(payload.get("primary_outputs"), field_name="primary_outputs"),
+            "discovery": {
+                "collection": _optional_str(discovery_raw.get("collection")),
+                "collection_priority": int(_optional_number(discovery_raw.get("collection_priority"))) if _optional_number(discovery_raw.get("collection_priority")) is not None else None,
+                "recommendation_weight": int(_optional_number(discovery_raw.get("recommendation_weight"))) if _optional_number(discovery_raw.get("recommendation_weight")) is not None else None,
+                "featured": bool(discovery_raw.get("featured")) if discovery_raw.get("featured") is not None else False,
+                "featured_reason": _optional_str(discovery_raw.get("featured_reason")),
+            },
             "launch_profiles": _normalize_launch_profiles(payload.get("launch_profiles")),
             "cost_band": _optional_str(payload.get("cost_band")),
             "time_band": _optional_str(payload.get("time_band")),
@@ -533,6 +548,9 @@ class BenchStoreService:
                 "palette_seed": _optional_str(display_raw.get("palette_seed")),
                 "art_style": _optional_str(display_raw.get("art_style")),
                 "accent_priority": _optional_str(display_raw.get("accent_priority")),
+                "placement": _optional_str(display_raw.get("placement")),
+                "card_size": _optional_str(display_raw.get("card_size")),
+                "badge": _optional_str(display_raw.get("badge")),
             },
             "image_path": image_path,
             "image_url": f"/api/benchstore/entries/{entry_id}/image" if image_path else None,

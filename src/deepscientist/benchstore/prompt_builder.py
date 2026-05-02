@@ -71,6 +71,7 @@ class BenchStorePromptBuilder:
             f"- benchmark_id: {benchmark_id}",
             f"- benchmark_name: {name}",
             f"- one_line: {one_line or 'none'}",
+            f"- homepage: {str(entry.get('homepage') or 'none').strip() or 'none'}",
             f"- aisb_direction: {str(entry.get('aisb_direction') or 'unknown').strip() or 'unknown'}",
             f"- task_mode: {str(entry.get('task_mode') or 'unknown').strip() or 'unknown'}",
             f"- requires_execution: {bool(entry.get('requires_execution'))}",
@@ -173,6 +174,21 @@ class BenchStorePromptBuilder:
         lines.extend(["", "## Tags and Routing Hints"])
         lines.extend(_format_optional_lines("capability_tags", capability_tags))
         lines.extend(_format_optional_lines("track_fit", track_fit))
+        # Official links
+        official_links = entry.get("official_links") if isinstance(entry.get("official_links"), dict) else {}
+        if official_links:
+            lines.extend(["", "## Official Links"])
+            for k in ("homepage", "github", "docs"):
+                v = str(official_links.get(k) or "").strip()
+                if v:
+                    lines.append(f"- {k}: {v}")
+        # Discovery metadata
+        discovery = entry.get("discovery") if isinstance(entry.get("discovery"), dict) else {}
+        if discovery:
+            lines.extend(["", "## Discovery"])
+            lines.append(f"- collection: {str(discovery.get('collection') or 'none').strip() or 'none'}")
+            lines.append(f"- recommendation_weight: {discovery.get('recommendation_weight', 0)}")
+            lines.append(f"- featured: {discovery.get('featured', False)}")
         lines.extend(["", "## Fit Advice"])
         lines.extend([f"- recommended_when: {recommended_when or 'none'}", f"- not_recommended_when: {not_recommended_when or 'none'}"])
         if raw_payload:

@@ -295,6 +295,7 @@ BenchStore 目前会读取这些顶层字段：
 - `schema_version`
 - `id`
 - `name`
+- `homepage`
 - `version`
 - `one_line`
 - `task_description`
@@ -324,6 +325,8 @@ BenchStore 目前会读取这些顶层字段：
 - `resources`
 - `environment`
 - `commercial`
+- `official_links`
+- `discovery`
 - `display`
 - `image_path`
 
@@ -371,11 +374,22 @@ BenchStore 目前会读取这些顶层字段：
 - `display.palette_seed`
 - `display.art_style`
 - `display.accent_priority`
+- `display.placement`
+- `display.card_size`
+- `display.badge`
+- `official_links.homepage`
+- `official_links.github`
+- `official_links.docs`
+- `discovery.collection`
+- `discovery.collection_priority`
+- `discovery.recommendation_weight`
+- `discovery.featured`
+- `discovery.featured_reason`
 - `launch_profiles[].id`
 - `launch_profiles[].label`
 - `launch_profiles[].description`
 
-如果你额外加了别的 key，不要默认当前 UI、安装器或推荐逻辑会用到它。
+如果你额外加了别的 key，它们会被保留在 `raw_payload` 中供下游使用，但不会直接影响当前 UI、安装器或推荐逻辑。如需提议新的 first-class 字段，请先开 RFC issue，并同步更新本文档及 `service.py`、`prompt_builder.py`。
 
 ## 5. 不需要手动填写的字段
 
