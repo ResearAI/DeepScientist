@@ -14227,8 +14227,12 @@ class ArtifactService:
                 payload = read_json(Path(item["path"]), {})
                 summary = payload.get("summary") or "No summary provided."
                 lines.append(f"- `{payload.get('run_id') or payload.get('artifact_id')}`: {summary}")
+        summary_body = "\n".join(lines).rstrip() + "\n"
         summary_path = workspace_root / "SUMMARY.md"
-        write_text(summary_path, "\n".join(lines).rstrip() + "\n")
+        write_text(summary_path, summary_body)
+        quest_root_summary_path = quest_root / "SUMMARY.md"
+        if quest_root_summary_path.resolve() != summary_path.resolve():
+            write_text(quest_root_summary_path, summary_body)
         artifact = self.record(
             quest_root,
             {
@@ -14238,7 +14242,10 @@ class ArtifactService:
                 "report_id": generate_id("report"),
                 "summary": "Quest summary refreshed from recent artifacts.",
                 "reason": reason or "Summary refreshed after artifact updates.",
-                "paths": {"summary_md": str(summary_path)},
+                "paths": {
+                    "summary_md": str(summary_path),
+                    "quest_root_summary_md": str(quest_root_summary_path),
+                },
                 "source": {"kind": "system", "role": "artifact"},
             },
             workspace_root=workspace_root,
@@ -14246,6 +14253,7 @@ class ArtifactService:
         return {
             "ok": True,
             "summary_path": str(summary_path),
+            "quest_root_summary_path": str(quest_root_summary_path),
             "artifact": artifact,
             "guidance": "Use the refreshed SUMMARY.md as the compact quest state for the next turn.",
         }
