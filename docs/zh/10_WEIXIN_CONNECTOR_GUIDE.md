@@ -148,6 +148,29 @@ userfiles/...
 
 如果二维码过期，DeepScientist 会自动刷新。
 
+### 代理环境下二维码不显示或登录一直等待
+
+如果启动 DeepScientist 时使用了 `ds --proxy ...`，或者当前 shell 里设置了
+`HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`，微信登录和长轮询请求可能会继承这条代理。
+有些本地 HTTP 代理隧道对模型请求可用，但会导致微信 iLink 二维码加载失败、二维码图片不显示，
+或者手机确认后页面仍然一直等待。
+
+遇到这种情况时，可以保留全局代理给模型、GitHub 等其他请求使用，同时通过 `NO_PROXY`
+和 `no_proxy` 让微信 iLink 与 CDN 域名直连：
+
+```bash
+export NO_PROXY="ilinkai.weixin.qq.com,novac2c.cdn.weixin.qq.com,127.0.0.1,localhost"
+export no_proxy="$NO_PROXY"
+ds --proxy http://127.0.0.1:7890
+```
+
+如果你原本已经设置了 `NO_PROXY`，不要直接覆盖；把上面的微信域名追加到原列表后面即可。
+
+这样做的效果是：模型请求、GitHub 下载等仍然走配置的代理，而微信二维码登录、长轮询和媒体 CDN
+请求会绕过代理直连。如果仍然无法显示二维码，可以临时取消
+`HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`http_proxy`、`https_proxy`、`all_proxy`，
+重启 DeepScientist 后重新绑定。
+
 ### 为什么我只看到文本，没有看到入站多媒体
 
 请用真实图片、视频或文件重测一次。成功后，quest 目录里应该能看到：

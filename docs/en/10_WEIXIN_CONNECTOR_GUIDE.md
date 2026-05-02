@@ -152,6 +152,32 @@ Check:
 
 If the QR expires, DeepScientist refreshes it automatically.
 
+### QR code does not appear behind a proxy
+
+If DeepScientist is started with `ds --proxy ...`, or if the shell has
+`HTTP_PROXY`, `HTTPS_PROXY`, or `ALL_PROXY` set, the Weixin login and polling
+requests can inherit that proxy. Some local HTTP proxy tunnels work for model
+traffic but make the Weixin iLink QR login stall, fail to render the QR image, or
+wait forever after the phone confirmation.
+
+When this happens, keep the global proxy for other outbound traffic but bypass
+the Weixin iLink and CDN hosts with `NO_PROXY` and `no_proxy`:
+
+```bash
+export NO_PROXY="ilinkai.weixin.qq.com,novac2c.cdn.weixin.qq.com,127.0.0.1,localhost"
+export no_proxy="$NO_PROXY"
+ds --proxy http://127.0.0.1:7890
+```
+
+If you already have a `NO_PROXY` value, append these hosts instead of replacing
+the existing list.
+
+This keeps model or GitHub requests on the configured proxy while allowing the
+Weixin QR login, long polling, and media CDN requests to connect directly. If QR
+login still does not work, temporarily unset `HTTP_PROXY`, `HTTPS_PROXY`,
+`ALL_PROXY`, `http_proxy`, `https_proxy`, and `all_proxy`, then restart
+DeepScientist and retry the binding flow.
+
 ### I only see text, but not inbound media
 
 Re-test with a real image, video, or file. After a successful inbound media message, confirm that the quest now contains:
