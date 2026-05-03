@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="AISB B10 Climate and Earth Science">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14213d"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" rx="48" fill="url(#g)"/>
+  <circle cx="980" cy="110" r="210" fill="#fca311" opacity="0.18"/>
+  <circle cx="180" cy="520" r="170" fill="#fca311" opacity="0.12"/>
+  <text x="80" y="120" fill="#fca311" font-family="Georgia, serif" font-size="42" font-weight="700">AISB BenchStore Pilot</text>
+  <text x="80" y="250" fill="#f8fafc" font-family="Georgia, serif" font-size="72" font-weight="700">AISB B10 Climate and Earth Science</text>
+  <foreignObject x="80" y="305" width="900" height="180">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Verdana, sans-serif; color: #f8fafc; font-size: 32px; line-height: 1.35;">ClimateBench-lite mini package for deterministic climate-emulation metric validation.</div>
+  </foreignObject>
+</svg>

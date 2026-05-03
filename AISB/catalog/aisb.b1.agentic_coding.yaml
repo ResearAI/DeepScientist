@@ -1,0 +1,245 @@
+schema_version: 1
+id: aisb.b1.agentic_coding
+name: AISB B1 Agentic Coding
+version: 0.1.0
+catalog_version: 0.1.0
+one_line: FeatureBench-lite public-dev package for repository navigation, code edits, and test-driven
+  repair.
+task_description: AISB B1 Agentic Coding is an AISB BenchStore catalog pilot entry. The package is intended
+  for public-dev workspace initialization, public evaluator checks, and paper/benchmark-track submission
+  scaffolding. Official leaderboard scores require organizer-side hidden replay.
+homepage: https://aisb.deepscientist.cc
+localized:
+  zh:
+    name: AISB B1 智能体编程
+    one_line: 面向仓库导航、代码编辑和测试驱动修复的 FeatureBench-lite public-dev 包。
+    task_description: AISB B1 智能体编程 是 AISB BenchStore catalog pilot 条目。公开包只用于 public-dev 工作区初始化、公开 evaluator
+      检查和论文/benchmark track 提交脚手架；正式 leaderboard 分数必须由组织方 hidden replay 产生。
+capability_tags:
+- agentic_coding
+- software_engineering
+- feature_implementation
+aisb_direction: B1
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: benchmark
+benchmark_mode: software_engineering_agent
+requires_execution: true
+requires_paper: true
+integrity_level: hidden_reference
+snapshot_status: partial
+support_level: preview
+discovery:
+  collection: AISB
+  collection_priority: 100
+  recommendation_weight: 700
+  featured: false
+  featured_reason: null
+display:
+  placement: grid
+  card_size: m
+  badge: AISB
+  accent_priority: normal
+official_links:
+  homepage: https://github.com/ResearAI/NLPCC-2026-Task9-AISB
+  github: https://github.com/ResearAI/NLPCC-2026-Task9-AISB
+  benchmark_overview: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B1_Agentic_Coding
+release_gate:
+  release_ready: false
+  status: registry_pending
+  full_real_replay: passed
+  reason: Public-dev and scorer-private replay paths exist locally, but final registry promotion, release
+    assets, and license review remain pending.
+  next_required_step: Publish BenchStore release asset, fill sha256/size_bytes, and complete clean-host
+    validation.
+primary_outputs:
+- results.json
+- paper/paper.pdf
+- paper/claims.json
+- logs/experiment_log.jsonl
+- logs/iterations.jsonl
+cost_band: medium
+time_band: 1-8h
+difficulty: hard
+data_access: public
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 0
+source:
+  benchmark_dir: benchmarks/aisb/B1_Agentic_Coding
+  bench_yaml: benchmarks/aisb/B1_Agentic_Coding/bench.yaml
+  source_repo: ResearAI/NLPCC-2026-Task9-AISB
+  source_commit: b6b7527a226ca7328697156608571f2cb7dcda3a
+download:
+  provider: local_download
+  repo: ResearAI/NLPCC-2026-Task9-AISB
+  tag: benchstore-assets-2026-04-30-pilot
+  asset_name: aisb.b1.agentic_coding-v0.1.0.zip
+  url: http://localhost:8080/aisb.b1.agentic_coding-v0.1.0.zip
+  source_url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B1_Agentic_Coding
+  archive_type: zip
+  local_dir_name: aisb.b1.agentic_coding
+  sha256: 5abe83b517511e83ce299fa009503f31a44bc3972acdd905630d0398f0664669
+  size_bytes: 47750
+  published_at: '2026-04-30T00:00:00Z'
+  asset_status: built_local_not_published
+dataset_download:
+  primary_method: packaged_public_dev
+  sources:
+  - kind: public_dev
+    access: public
+    url: null
+    note: Public-dev files are included in the future BenchStore package.
+  - kind: hidden_reference
+    access: private
+    url: null
+    note: Organizer-only hidden references are excluded from catalog packages.
+credential_requirements:
+  mode: none
+  notes:
+  - No credential is required for packaged public-dev evaluation.
+  - External model APIs are optional participant choices and not bundled.
+environment:
+  python: '>=3.11'
+  docker: true
+  key_packages:
+  - pytest
+  - PyYAML
+  notes:
+  - Use docker/Dockerfile when available for official replay parity.
+  - Do not copy organizer-private hidden references into participant workspaces.
+launch_profiles:
+- id: b1_public_dev_smoke
+  label: B1 public-dev smoke test
+  description: Initialize an AISB public-dev workspace, validate submission artifacts, and run the public
+    evaluator.
+  startup_contract:
+  - Use only files inside the installed benchmark workspace and the generated submission directory.
+  - Treat hidden references as organizer-only and unavailable to the agent.
+  - Produce benchmark outputs, paper artifacts, claims, and logs before packaging.
+  commands:
+  - python scripts/agent_tools.py workspace init B1 --dest .work/benchstore/B1
+  - python scripts/agent_tools.py evaluate B1 --bench-dir .work/benchstore/B1 --submission .work/benchstore/B1/submission
+  - python scripts/agent_tools.py submission validate .work/benchstore/B1/submission
+  - python scripts/agent_tools.py submission package .work/benchstore/B1/submission --output .work/benchstore/B1/submission.zip
+  - python scripts/agent_tools.py submission replay .work/benchstore/B1/submission --track B1
+  one_click_prompt: Start AISB B1 from the installed BenchStore package. Initialize the public-dev workspace,
+    inspect AGENT.md and README.md, run the baseline or your method, evaluate locally, validate/package
+    the submission, and record any release-gate risks in logs/experiment_log.jsonl.
+paper:
+  venue: AISB
+  year: 2026
+  track_fit:
+  - paper_track
+  - benchmark_track
+  requires_claims_json: true
+  url: null
+benchmark_track:
+  metric: task_completion
+  benchmark_source: FeatureBench public subset
+  packaged_data_status: real FeatureBench-lite public-dev rows plus scorer-private official harness replay
+    rows
+  official_score_requires_hidden_replay: true
+benchmarks:
+  primary:
+    name: FeatureBench-lite
+    source: LiberCoders/FeatureBench (HF)
+    tasks: 3
+    metric: task_completion
+    sota: 20% Lite (GPT-5.1-Codex, ICLR 2026)
+    public_score: 0.0
+  alternatives:
+  - name: SWE-bench Pro
+    source: ScaleAI/SWE-bench_Pro (HF)
+    tasks: 500+
+    metric: resolved_rate
+    sota: 59.10% (GPT-5.4 xHigh)
+    note: clean benchmark; B3 primary
+  - name: SWE-bench Verified
+    source: princeton-nlp/SWE-bench_Verified
+    note: DEPRECATED — contaminated; only legacy reference
+  - name: SWE-rebench
+    source: cais/re-bench
+    metric: task_success
+    note: research engineering benchmark; B1/B3 cross
+papers:
+  highlights:
+  - title: 'FeatureBench: Benchmarking Agentic Coding for Complex Feature Development'
+    arxiv: '2602.10975'
+    url: https://arxiv.org/abs/2602.10975
+    venue: ICLR 2026
+    why: Primary benchmark paper; SOTA 12.5% Full / 20% Lite
+  - title: 'SWE-Edit: Rethinking Code Editing for Efficient SWE-Agents'
+    arxiv: '2604.26102'
+    url: https://arxiv.org/abs/2604.26102
+    venue: April 2026
+    why: +2.1% resolved rate, -17.9% inference cost
+  - title: 'AgentForge: Execution-grounded Multi-Agent Framework'
+    arxiv: '2604.13120'
+    url: https://arxiv.org/abs/2604.13120
+    venue: April 2026
+    why: 5-agent architecture; SWE-Bench Lite 40.0%
+  - title: Many SWE-bench-Passing PRs Would Not Be Merged
+    url: https://metr.org/blog/2026-03-19-many-swe-bench-prs-not-merged/
+    source: METR blog, March 2026
+    why: 'Critical evaluation: patch correctness vs mergeability'
+  full_references_url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B1_*/references/papers.json
+nlpcc_tracks:
+- track: T1
+  name: AI/CS Reasoning & Engineering
+  url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/nlpcc/T1
+private_hidden_reference_strategy:
+  policy: organizer_only
+  public_package_includes_hidden_reference: false
+  public_catalog_discloses_private_paths: false
+  score_release: aggregate_only
+  notes:
+  - Hidden answers, labels, canaries, and private evaluator internals are never packaged.
+  - Official scores must record hidden_reference_version without disclosing hidden content.
+score_card:
+  required_fields:
+  - team_id
+  - system_name
+  - direction
+  - track
+  - benchmark_package_version
+  - evaluator_version
+  - hidden_reference_version
+  - docker_image_digest
+  - data_split_version
+  - benchmark_score
+  - paper_score
+  - cas_score
+  - final_score
+  - security_verdict
+  - license_verdict
+  - used_reference_scope
+  - official_score
+  - created_at
+  track_scoring:
+    paper_track: Final_A = 0.0 * S_benchmark + 1.0 * S_paper
+    benchmark_track: Final_B = 0.7 * S_benchmark + 0.3 * S_paper
+    cas: integrity gate, not bonus
+risk_flags:
+- hidden_reference_not_public
+- release_asset_pending
+- not_release_ready
+- registry_promotion_pending
+risk_notes:
+- This catalog entry is not release_ready.
+- Download checksum and size are placeholders until the GitHub release asset is published.
+- Official scores require organizer-side replay against private hidden references.
+recommended_when: Use this entry for AISB public-dev integration, local agent workflow checks, and catalog
+  UI validation.
+not_recommended_when: Do not treat this entry as an official release or public leaderboard claim until
+  release gates pass.
+image_path: AISB/image/aisb.b1.agentic_coding.svg

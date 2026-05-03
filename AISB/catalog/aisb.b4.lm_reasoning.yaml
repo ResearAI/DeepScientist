@@ -1,0 +1,241 @@
+schema_version: 1
+id: aisb.b4.lm_reasoning
+name: AISB B4 LM Reasoning
+version: 0.2.0
+catalog_version: 0.1.0
+one_line: HLE-Verified Gold text-only reasoning QA package with exact-match scoring.
+task_description: AISB B4 LM Reasoning is an AISB BenchStore catalog pilot entry. The package is intended
+  for public-dev workspace initialization, public evaluator checks, and paper/benchmark-track submission
+  scaffolding. Official leaderboard scores require organizer-side hidden replay.
+homepage: https://aisb.deepscientist.cc
+localized:
+  zh:
+    name: AISB B4 语言模型推理
+    one_line: 带精确匹配评分的 HLE-Verified Gold text-only 推理问答包。
+    task_description: AISB B4 语言模型推理 是 AISB BenchStore catalog pilot 条目。公开包只用于 public-dev 工作区初始化、公开 evaluator
+      检查和论文/benchmark track 提交脚手架；正式 leaderboard 分数必须由组织方 hidden replay 产生。
+capability_tags:
+- lm_reasoning
+- expert_qa
+- hle
+aisb_direction: B4
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: benchmark
+benchmark_mode: exact_match_reasoning_qa
+requires_execution: false
+requires_paper: true
+integrity_level: hidden_reference
+snapshot_status: partial
+support_level: preview
+discovery:
+  collection: AISB
+  collection_priority: 100
+  recommendation_weight: 700
+  featured: false
+  featured_reason: null
+display:
+  placement: grid
+  card_size: m
+  badge: AISB
+  accent_priority: normal
+official_links:
+  homepage: https://github.com/ResearAI/NLPCC-2026-Task9-AISB
+  github: https://github.com/ResearAI/NLPCC-2026-Task9-AISB
+  benchmark_overview: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B4_LMReasoning
+release_gate:
+  release_ready: false
+  status: registry_pending
+  full_real_replay: passed
+  reason: Public-dev and scorer-private replay paths exist locally, but final registry promotion, release
+    assets, and license review remain pending.
+  next_required_step: Publish BenchStore release asset, fill sha256/size_bytes, and complete clean-host
+    validation.
+primary_outputs:
+- results.json
+- paper/paper.pdf
+- paper/claims.json
+- logs/experiment_log.jsonl
+- logs/iterations.jsonl
+cost_band: low
+time_band: minutes
+difficulty: medium
+data_access: public
+resources:
+  minimum:
+    cpu_cores: 2
+    ram_gb: 4
+    disk_gb: 1
+    gpu_count: 0
+  recommended:
+    cpu_cores: 4
+    ram_gb: 8
+    disk_gb: 2
+    gpu_count: 0
+source:
+  benchmark_dir: benchmarks/aisb/B4_LMReasoning
+  bench_yaml: benchmarks/aisb/B4_LMReasoning/bench.yaml
+  source_repo: ResearAI/NLPCC-2026-Task9-AISB
+  source_commit: b6b7527a226ca7328697156608571f2cb7dcda3a
+download:
+  provider: local_download
+  repo: ResearAI/NLPCC-2026-Task9-AISB
+  tag: benchstore-assets-2026-04-30-pilot
+  asset_name: aisb.b4.lm_reasoning-v0.2.0.zip
+  url: http://localhost:8080/aisb.b4.lm_reasoning-v0.2.0.zip
+  source_url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B4_LMReasoning
+  archive_type: zip
+  local_dir_name: aisb.b4.lm_reasoning
+  sha256: f65a7c52d4eb27c594eaa80585f60ebe84969840890b8ea000553ca5c2cbd0e0
+  size_bytes: 30098
+  published_at: '2026-04-30T00:00:00Z'
+  asset_status: built_local_not_published
+dataset_download:
+  primary_method: packaged_public_dev
+  sources:
+  - kind: public_dev
+    access: public
+    url: null
+    note: Public-dev files are included in the future BenchStore package.
+  - kind: hidden_reference
+    access: private
+    url: null
+    note: Organizer-only hidden references are excluded from catalog packages.
+credential_requirements:
+  mode: none
+  notes:
+  - No credential is required for packaged public-dev evaluation.
+  - External model APIs are optional participant choices and not bundled.
+environment:
+  python: '>=3.11'
+  docker: false
+  key_packages:
+  - pytest
+  - PyYAML
+  notes:
+  - Use docker/Dockerfile when available for official replay parity.
+  - Do not copy organizer-private hidden references into participant workspaces.
+launch_profiles:
+- id: b4_public_dev_smoke
+  label: B4 public-dev smoke test
+  description: Initialize an AISB public-dev workspace, validate submission artifacts, and run the public
+    evaluator.
+  startup_contract:
+  - Use only files inside the installed benchmark workspace and the generated submission directory.
+  - Treat hidden references as organizer-only and unavailable to the agent.
+  - Produce benchmark outputs, paper artifacts, claims, and logs before packaging.
+  commands:
+  - python scripts/agent_tools.py workspace init B4 --dest .work/benchstore/B4
+  - python scripts/agent_tools.py evaluate B4 --bench-dir .work/benchstore/B4 --submission .work/benchstore/B4/submission
+  - python scripts/agent_tools.py submission validate .work/benchstore/B4/submission
+  - python scripts/agent_tools.py submission package .work/benchstore/B4/submission --output .work/benchstore/B4/submission.zip
+  - python scripts/agent_tools.py submission replay .work/benchstore/B4/submission --track B4
+  one_click_prompt: Start AISB B4 from the installed BenchStore package. Initialize the public-dev workspace,
+    inspect AGENT.md and README.md, run the baseline or your method, evaluate locally, validate/package
+    the submission, and record any release-gate risks in logs/experiment_log.jsonl.
+paper:
+  venue: AISB
+  year: 2026
+  track_fit:
+  - paper_track
+  - benchmark_track
+  requires_claims_json: true
+  url: null
+benchmark_track:
+  metric: exact_match_accuracy
+  benchmark_source: HLE-Verified Gold text-only (20 dev / 30 hidden)
+  packaged_data_status: real HLE-Verified Gold text-only split plus scorer-private hidden bootstrap
+  official_score_requires_hidden_replay: true
+benchmarks:
+  primary:
+    name: HLE-Verified Gold text-only
+    source: cais/hle (HF)
+    dev_count: 20
+    hidden_count: 30
+    metric: exact_match_accuracy
+    sota: 44.7% (Gemini 3.1 Pro Preview, Nature 2026)
+    public_score: 0.0
+  alternatives:
+  - name: MMLU-Pro
+    source: TIGER-Lab/MMLU-Pro (HF)
+    note: legacy sanity fixture; approaching saturation (89.8%)
+  - name: GPQA Diamond
+    source: Idavidrein/gpqa (HF)
+    note: saturated (94.1%); not primary
+  - name: PRL-Bench
+    source: arXiv:2604.15411
+    note: physics research reasoning; future B4/B6 cross
+papers:
+  highlights:
+  - title: 'HLE: Humanity''s Last Exam'
+    arxiv: '2501.14249'
+    url: https://arxiv.org/abs/2501.14249
+    venue: Nature 2026
+    why: 2500 expert-verified questions; new ultimate closed-book benchmark
+  - title: 'HLE-Verified: Systematic Validation and Revision of HLE'
+    arxiv: '2602.13964'
+    url: https://arxiv.org/abs/2602.13964
+    venue: Feb 2026
+    why: Gold/Revision/Uncertain classification; current B4 primary
+  - title: 'MMLU-Pro: A More Robust Multi-discipline Benchmark'
+    arxiv: '2406.01574'
+    url: https://arxiv.org/abs/2406.01574
+    venue: NeurIPS 2024
+    why: Legacy B4 benchmark; approaching saturation at 89.8%
+  - title: 'Nemotron-Cascade 2: Cascade RL for LLM Post-training'
+    arxiv: '2603.19220'
+    url: https://arxiv.org/abs/2603.19220
+    venue: Mar 2026
+    why: Gold-level IMO/IOI/ICPC with 30B MoE (3B active)
+  full_references_url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B4_*/references/papers.json
+nlpcc_tracks:
+- track: T1
+  name: AI/CS Reasoning & Engineering
+  url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/nlpcc/T1
+private_hidden_reference_strategy:
+  policy: organizer_only
+  public_package_includes_hidden_reference: false
+  public_catalog_discloses_private_paths: false
+  score_release: aggregate_only
+  notes:
+  - Hidden answers, labels, canaries, and private evaluator internals are never packaged.
+  - Official scores must record hidden_reference_version without disclosing hidden content.
+score_card:
+  required_fields:
+  - team_id
+  - system_name
+  - direction
+  - track
+  - benchmark_package_version
+  - evaluator_version
+  - hidden_reference_version
+  - docker_image_digest
+  - data_split_version
+  - benchmark_score
+  - paper_score
+  - cas_score
+  - final_score
+  - security_verdict
+  - license_verdict
+  - used_reference_scope
+  - official_score
+  - created_at
+  track_scoring:
+    paper_track: Final_A = 0.0 * S_benchmark + 1.0 * S_paper
+    benchmark_track: Final_B = 0.7 * S_benchmark + 0.3 * S_paper
+    cas: integrity gate, not bonus
+risk_flags:
+- hidden_reference_not_public
+- release_asset_pending
+- not_release_ready
+- registry_promotion_pending
+risk_notes:
+- This catalog entry is not release_ready.
+- Download checksum and size are placeholders until the GitHub release asset is published.
+- Official scores require organizer-side replay against private hidden references.
+recommended_when: Use this entry for AISB public-dev integration, local agent workflow checks, and catalog
+  UI validation.
+not_recommended_when: Do not treat this entry as an official release or public leaderboard claim until
+  release gates pass.
+image_path: AISB/image/aisb.b4.lm_reasoning.svg

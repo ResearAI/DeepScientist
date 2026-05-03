@@ -1,0 +1,236 @@
+schema_version: 1
+id: aisb.b5.math_proof
+name: AISB B5 Mathematical Proof
+version: 0.2.0
+catalog_version: 0.1.0
+one_line: FormalMATH-Lite Lean4 theorem-proving package with proof-rate scoring.
+task_description: AISB B5 Mathematical Proof is an AISB BenchStore catalog pilot entry. The package is
+  intended for public-dev workspace initialization, public evaluator checks, and paper/benchmark-track
+  submission scaffolding. Official leaderboard scores require organizer-side hidden replay.
+homepage: https://aisb.deepscientist.cc
+localized:
+  zh:
+    name: AISB B5 数学证明
+    one_line: 带证明通过率评分的 FormalMATH-Lite Lean4 定理证明包。
+    task_description: AISB B5 数学证明 是 AISB BenchStore catalog pilot 条目。公开包只用于 public-dev 工作区初始化、公开 evaluator
+      检查和论文/benchmark track 提交脚手架；正式 leaderboard 分数必须由组织方 hidden replay 产生。
+capability_tags:
+- formal_math
+- lean4
+- proof_verification
+aisb_direction: B5
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: benchmark
+benchmark_mode: lean_proof_verification
+requires_execution: true
+requires_paper: true
+integrity_level: hidden_reference
+snapshot_status: partial
+support_level: preview
+discovery:
+  collection: AISB
+  collection_priority: 100
+  recommendation_weight: 700
+  featured: false
+  featured_reason: null
+display:
+  placement: grid
+  card_size: m
+  badge: AISB
+  accent_priority: normal
+official_links:
+  homepage: https://github.com/ResearAI/NLPCC-2026-Task9-AISB
+  github: https://github.com/ResearAI/NLPCC-2026-Task9-AISB
+  benchmark_overview: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B5_MathProof
+release_gate:
+  release_ready: false
+  status: registry_pending
+  full_real_replay: passed
+  reason: Public-dev and scorer-private replay paths exist locally, but final registry promotion, release
+    assets, and license review remain pending.
+  next_required_step: Publish BenchStore release asset, fill sha256/size_bytes, and complete clean-host
+    validation.
+primary_outputs:
+- results.json
+- paper/paper.pdf
+- paper/claims.json
+- logs/experiment_log.jsonl
+- logs/iterations.jsonl
+cost_band: medium
+time_band: 1-4h
+difficulty: hard
+data_access: public
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 40
+    gpu_count: 0
+source:
+  benchmark_dir: benchmarks/aisb/B5_MathProof
+  bench_yaml: benchmarks/aisb/B5_MathProof/bench.yaml
+  source_repo: ResearAI/NLPCC-2026-Task9-AISB
+  source_commit: b6b7527a226ca7328697156608571f2cb7dcda3a
+download:
+  provider: local_download
+  repo: ResearAI/NLPCC-2026-Task9-AISB
+  tag: benchstore-assets-2026-04-30-pilot
+  asset_name: aisb.b5.math_proof-v0.2.0.zip
+  url: http://localhost:8080/aisb.b5.math_proof-v0.2.0.zip
+  source_url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B5_MathProof
+  archive_type: zip
+  local_dir_name: aisb.b5.math_proof
+  sha256: f518ca94849ee4b8cf3893083ccb02780c0afc80dc4c2ed93ce50612b836dca4
+  size_bytes: 27349
+  published_at: '2026-04-30T00:00:00Z'
+  asset_status: built_local_not_published
+dataset_download:
+  primary_method: packaged_public_dev
+  sources:
+  - kind: public_dev
+    access: public
+    url: null
+    note: Public-dev files are included in the future BenchStore package.
+  - kind: hidden_reference
+    access: private
+    url: null
+    note: Organizer-only hidden references are excluded from catalog packages.
+credential_requirements:
+  mode: none
+  notes:
+  - No credential is required for packaged public-dev evaluation.
+  - External model APIs are optional participant choices and not bundled.
+environment:
+  python: '>=3.11'
+  docker: true
+  key_packages:
+  - pytest
+  - PyYAML
+  notes:
+  - Use docker/Dockerfile when available for official replay parity.
+  - Do not copy organizer-private hidden references into participant workspaces.
+launch_profiles:
+- id: b5_public_dev_smoke
+  label: B5 public-dev smoke test
+  description: Initialize an AISB public-dev workspace, validate submission artifacts, and run the public
+    evaluator.
+  startup_contract:
+  - Use only files inside the installed benchmark workspace and the generated submission directory.
+  - Treat hidden references as organizer-only and unavailable to the agent.
+  - Produce benchmark outputs, paper artifacts, claims, and logs before packaging.
+  commands:
+  - python scripts/agent_tools.py workspace init B5 --dest .work/benchstore/B5
+  - python scripts/agent_tools.py evaluate B5 --bench-dir .work/benchstore/B5 --submission .work/benchstore/B5/submission
+  - python scripts/agent_tools.py submission validate .work/benchstore/B5/submission
+  - python scripts/agent_tools.py submission package .work/benchstore/B5/submission --output .work/benchstore/B5/submission.zip
+  - python scripts/agent_tools.py submission replay .work/benchstore/B5/submission --track B5
+  one_click_prompt: Start AISB B5 from the installed BenchStore package. Initialize the public-dev workspace,
+    inspect AGENT.md and README.md, run the baseline or your method, evaluate locally, validate/package
+    the submission, and record any release-gate risks in logs/experiment_log.jsonl.
+paper:
+  venue: AISB
+  year: 2026
+  track_fit:
+  - paper_track
+  - benchmark_track
+  requires_claims_json: true
+  url: null
+benchmark_track:
+  metric: proof_rate
+  benchmark_source: FormalMATH-Lite
+  packaged_data_status: real FormalMATH-Lite public-dev theorem split plus scorer-private hidden theorem
+  official_score_requires_hidden_replay: true
+benchmarks:
+  primary:
+    name: FormalMATH-Lite
+    source: SphereLab/FormalMATH-Lite (HF)
+    tasks: 5
+    hidden: 20
+    metric: proof_rate
+    sota: 56-62% (DeepSeek-V2-671B, pass@32-3200)
+    public_score: 0.0
+  alternatives:
+  - name: PutnamBench
+    source: github.com/trishullab/PutnamBench
+    note: 658 competition problems; future target
+  - name: ProverBench
+    source: DeepSeek-Prover-V2 paper
+    note: 325 formal problems; v1.1 candidate
+  - name: miniF2F
+    note: DEPRECATED — saturated (90.4%); not recommended
+papers:
+  highlights:
+  - title: 'FormalMATH: A Benchmark for Formal Mathematical Reasoning'
+    arxiv: '2505.02735'
+    url: https://arxiv.org/abs/2505.02735
+    venue: May 2025
+    why: 5560 Lean4 problems; primary B5 benchmark
+  - title: DeepSeek-Prover-V2
+    arxiv: '2504.21801'
+    url: https://arxiv.org/abs/2504.21801
+    venue: Apr 2025
+    why: FormalMATH-Lite SOTA 56-62%; miniF2F 88.9%; PutnamBench 49/658
+  - title: 'Goedel-Prover-V2: Small Models, Big Proofs'
+    arxiv: '2508.03613'
+    url: https://arxiv.org/abs/2508.03613
+    venue: Aug 2025
+    why: miniF2F 90.4% with 8B model; self-correction
+  full_references_url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B5_*/references/papers.json
+nlpcc_tracks:
+- track: T2
+  name: Formal Mathematical Proof
+  url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/nlpcc/T2
+private_hidden_reference_strategy:
+  policy: organizer_only
+  public_package_includes_hidden_reference: false
+  public_catalog_discloses_private_paths: false
+  score_release: aggregate_only
+  notes:
+  - Hidden answers, labels, canaries, and private evaluator internals are never packaged.
+  - Official scores must record hidden_reference_version without disclosing hidden content.
+score_card:
+  required_fields:
+  - team_id
+  - system_name
+  - direction
+  - track
+  - benchmark_package_version
+  - evaluator_version
+  - hidden_reference_version
+  - docker_image_digest
+  - data_split_version
+  - benchmark_score
+  - paper_score
+  - cas_score
+  - final_score
+  - security_verdict
+  - license_verdict
+  - used_reference_scope
+  - official_score
+  - created_at
+  track_scoring:
+    paper_track: Final_A = 0.0 * S_benchmark + 1.0 * S_paper
+    benchmark_track: Final_B = 0.7 * S_benchmark + 0.3 * S_paper
+    cas: integrity gate, not bonus
+risk_flags:
+- hidden_reference_not_public
+- release_asset_pending
+- not_release_ready
+- registry_promotion_pending
+- special_runtime_lean4
+risk_notes:
+- This catalog entry is not release_ready.
+- Download checksum and size are placeholders until the GitHub release asset is published.
+- Official scores require organizer-side replay against private hidden references.
+recommended_when: Use this entry for AISB public-dev integration, local agent workflow checks, and catalog
+  UI validation.
+not_recommended_when: Do not treat this entry as an official release or public leaderboard claim until
+  release gates pass.
+image_path: AISB/image/aisb.b5.math_proof.svg

@@ -1,0 +1,232 @@
+schema_version: 1
+id: aisb.b11.model_efficiency
+name: AISB B11 Model Efficiency
+version: 0.2.0
+catalog_version: 0.1.0
+one_line: LongBench-v2 mini request set for quality-latency-cost metric validation.
+task_description: AISB B11 Model Efficiency is an AISB BenchStore catalog pilot entry. The package is
+  intended for public-dev workspace initialization, public evaluator checks, and paper/benchmark-track
+  submission scaffolding. Official leaderboard scores require organizer-side hidden replay.
+homepage: https://aisb.deepscientist.cc
+localized:
+  zh:
+    name: AISB B11 模型效率
+    one_line: 用于质量、延迟和成本指标验证的 LongBench-v2 mini 请求集。
+    task_description: AISB B11 模型效率 是 AISB BenchStore catalog pilot 条目。公开包只用于 public-dev 工作区初始化、公开 evaluator
+      检查和论文/benchmark track 提交脚手架；正式 leaderboard 分数必须由组织方 hidden replay 产生。
+capability_tags:
+- model_efficiency
+- long_context
+- latency
+aisb_direction: B11
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: benchmark
+benchmark_mode: quality_latency_cost_logged_inference
+requires_execution: true
+requires_paper: true
+integrity_level: hidden_reference
+snapshot_status: partial
+support_level: preview
+discovery:
+  collection: AISB
+  collection_priority: 100
+  recommendation_weight: 500
+  featured: false
+  featured_reason: null
+display:
+  placement: grid
+  card_size: m
+  badge: AISB
+  accent_priority: normal
+official_links:
+  homepage: https://github.com/ResearAI/NLPCC-2026-Task9-AISB
+  github: https://github.com/ResearAI/NLPCC-2026-Task9-AISB
+  benchmark_overview: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B11_ModelEfficiency
+release_gate:
+  release_ready: false
+  status: registry_pending
+  full_real_replay: passed
+  reason: Public-dev and scorer-private replay paths exist locally, but final registry promotion, release
+    assets, and license review remain pending.
+  next_required_step: Publish BenchStore release asset, fill sha256/size_bytes, and complete clean-host
+    validation.
+primary_outputs:
+- results.json
+- paper/paper.pdf
+- paper/claims.json
+- logs/experiment_log.jsonl
+- logs/iterations.jsonl
+cost_band: medium
+time_band: 1-4h
+difficulty: hard
+data_access: public
+resources:
+  minimum:
+    cpu_cores: 2
+    ram_gb: 4
+    disk_gb: 4
+    gpu_count: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+source:
+  benchmark_dir: benchmarks/aisb/B11_ModelEfficiency
+  bench_yaml: benchmarks/aisb/B11_ModelEfficiency/bench.yaml
+  source_repo: ResearAI/NLPCC-2026-Task9-AISB
+  source_commit: b6b7527a226ca7328697156608571f2cb7dcda3a
+download:
+  provider: local_download
+  repo: ResearAI/NLPCC-2026-Task9-AISB
+  tag: benchstore-assets-2026-04-30-pilot
+  asset_name: aisb.b11.model_efficiency-v0.2.0.zip
+  url: http://localhost:8080/aisb.b11.model_efficiency-v0.2.0.zip
+  source_url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B11_ModelEfficiency
+  archive_type: zip
+  local_dir_name: aisb.b11.model_efficiency
+  sha256: 890c432a9beed8912271a6fa72dde4c08fd58b89d74df5674e741e4a04c904db
+  size_bytes: 974447
+  published_at: '2026-04-30T00:00:00Z'
+  asset_status: built_local_not_published
+dataset_download:
+  primary_method: packaged_public_dev
+  sources:
+  - kind: public_dev
+    access: public
+    url: null
+    note: Public-dev files are included in the future BenchStore package.
+  - kind: hidden_reference
+    access: private
+    url: null
+    note: Organizer-only hidden references are excluded from catalog packages.
+credential_requirements:
+  mode: none
+  notes:
+  - No credential is required for packaged public-dev evaluation.
+  - External model APIs are optional participant choices and not bundled.
+environment:
+  python: '>=3.11'
+  docker: false
+  key_packages:
+  - pytest
+  - PyYAML
+  notes:
+  - Use docker/Dockerfile when available for official replay parity.
+  - Do not copy organizer-private hidden references into participant workspaces.
+launch_profiles:
+- id: b11_public_dev_smoke
+  label: B11 public-dev smoke test
+  description: Initialize an AISB public-dev workspace, validate submission artifacts, and run the public
+    evaluator.
+  startup_contract:
+  - Use only files inside the installed benchmark workspace and the generated submission directory.
+  - Treat hidden references as organizer-only and unavailable to the agent.
+  - Produce benchmark outputs, paper artifacts, claims, and logs before packaging.
+  commands:
+  - python scripts/agent_tools.py workspace init B11 --dest .work/benchstore/B11
+  - python scripts/agent_tools.py evaluate B11 --bench-dir .work/benchstore/B11 --submission .work/benchstore/B11/submission
+  - python scripts/agent_tools.py submission validate .work/benchstore/B11/submission
+  - python scripts/agent_tools.py submission package .work/benchstore/B11/submission --output .work/benchstore/B11/submission.zip
+  - python scripts/agent_tools.py submission replay .work/benchstore/B11/submission --track B11
+  one_click_prompt: Start AISB B11 from the installed BenchStore package. Initialize the public-dev workspace,
+    inspect AGENT.md and README.md, run the baseline or your method, evaluate locally, validate/package
+    the submission, and record any release-gate risks in logs/experiment_log.jsonl.
+paper:
+  venue: AISB
+  year: 2026
+  track_fit:
+  - paper_track
+  - benchmark_track
+  requires_claims_json: true
+  url: null
+benchmark_track:
+  metric: quality_latency_cost_score
+  benchmark_source: LongBench-v2 mini request set
+  packaged_data_status: real LongBench-v2 public-dev request set plus scorer-private hidden rows
+  official_score_requires_hidden_replay: true
+benchmarks:
+  primary:
+    name: LongBench-v2 mini
+    source: THUDM/LongBench-v2 (HF, Apache-2.0)
+    tasks: 3
+    hidden: 3
+    metric: quality_latency_cost_score (quality 0.55, latency 0.20, memory 0.10, tokens 0.10, cost 0.05)
+    sota: 63.3% (Gemini-2.5-Pro, w/ CoT)
+    our_baseline: 0.3529
+  alternatives:
+  - name: RULER
+    source: github.com/hsiehjackson/RULER
+    note: long-context efficiency; alternative metric
+  - name: MLPerf Inference
+    source: mlcommons.org
+    note: hardware-normalized; future candidate
+papers:
+  highlights:
+  - title: 'LongBench v2: Towards Deeper Understanding on Realistic Long-Context Multitasks'
+    source: THUDM/LongBench-v2 (HF, Apache-2.0)
+    why: Primary benchmark; SOTA 63.3% (Gemini-2.5-Pro)
+  - title: 'Youtu-LLM: Unleashing Native Agent Potential for Lightweight LLMs'
+    arxiv: '2512.24618'
+    url: https://arxiv.org/abs/2512.24618
+    venue: Dec 2025
+    why: 1.96B params; sub-2B SOTA; quality-latency-cost balance
+  - title: 'MARS: Efficient Adaptive Co-Scheduling for Heterogeneous Agent Systems'
+    arxiv: '2604.26963'
+    url: https://arxiv.org/abs/2604.26963
+    venue: April 2026
+    why: 5.94x end-to-end latency reduction; GPU-CPU co-scheduling
+  full_references_url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B11_*/references/papers.json
+nlpcc_tracks:
+- track: T1
+  name: AI/CS Reasoning & Engineering
+  url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/nlpcc/T1
+private_hidden_reference_strategy:
+  policy: organizer_only
+  public_package_includes_hidden_reference: false
+  public_catalog_discloses_private_paths: false
+  score_release: aggregate_only
+  notes:
+  - Hidden answers, labels, canaries, and private evaluator internals are never packaged.
+  - Official scores must record hidden_reference_version without disclosing hidden content.
+score_card:
+  required_fields:
+  - team_id
+  - system_name
+  - direction
+  - track
+  - benchmark_package_version
+  - evaluator_version
+  - hidden_reference_version
+  - docker_image_digest
+  - data_split_version
+  - benchmark_score
+  - paper_score
+  - cas_score
+  - final_score
+  - security_verdict
+  - license_verdict
+  - used_reference_scope
+  - official_score
+  - created_at
+  track_scoring:
+    paper_track: Final_A = 0.0 * S_benchmark + 1.0 * S_paper
+    benchmark_track: Final_B = 0.7 * S_benchmark + 0.3 * S_paper
+    cas: integrity gate, not bonus
+risk_flags:
+- hidden_reference_not_public
+- release_asset_pending
+- not_release_ready
+- registry_promotion_pending
+- hardware_normalization_pending
+risk_notes:
+- This catalog entry is not release_ready.
+- Download checksum and size are placeholders until the GitHub release asset is published.
+- Official scores require organizer-side replay against private hidden references.
+recommended_when: Use this entry for AISB public-dev integration, local agent workflow checks, and catalog
+  UI validation.
+not_recommended_when: Do not treat this entry as an official release or public leaderboard claim until
+  release gates pass.
+image_path: AISB/image/aisb.b11.model_efficiency.svg
