@@ -48,6 +48,10 @@ def test_prompt_builder_includes_layered_runtime_context(temp_home: Path) -> Non
     assert "research_head_branch:" in prompt
     assert "current_workspace_root:" in prompt
     assert "built_in_mcp_namespaces: memory, artifact, bash_exec" in prompt
+    assert "## Cross-Quest Recall Policy" not in prompt
+    assert "cross_quest_recall_enabled" not in prompt
+    assert "framework_quirks.md" not in prompt
+    assert "system_quirks.md" not in prompt
     assert "artifact.arxiv(paper_id=..., full_text=False)" in prompt
     assert "artifact.activate_branch(...)" in prompt
     assert "artifact.confirm_baseline(...)" in prompt
@@ -72,6 +76,30 @@ def test_prompt_builder_includes_layered_runtime_context(temp_home: Path) -> Non
     assert "AutoFigure-Edit" in prompt
     assert len(prompt.splitlines()) < 1800
     assert len(prompt) < 125000
+
+
+def test_prompt_builder_enables_cross_quest_recall_only_for_shared_memory(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    config_manager = ConfigManager(temp_home)
+    config_manager.ensure_files()
+    config = config_manager.load_named("config")
+    config["memory"] = {"read_visibility_mode": "shared_across_quests"}
+    config_manager.save_named_payload("config", config)
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    snapshot = service.create("shared recall prompt quest")
+
+    prompt = PromptBuilder(repo_root(), temp_home).build(
+        quest_id=snapshot["quest_id"],
+        skill_id="idea",
+        user_message="Find a new idea.",
+        model="gpt-5.4",
+    )
+
+    assert "memory_read_visibility_mode: shared_across_quests" in prompt
+    assert "cross_quest_recall_enabled: true" in prompt
+    assert "framework_quirks_path:" in prompt
+    assert "system_quirks_path:" in prompt
+    assert "sibling_quest_brief_glob:" in prompt
 
 
 def test_prompt_builder_includes_recovery_resume_packet_for_daemon_recovery(temp_home: Path) -> None:
@@ -1563,6 +1591,7 @@ def test_prompt_builder_settings_issue_includes_explicit_session_packet_and_mess
     assert "settings_issue_tool_schema_summary" in prompt
     assert "\"tool\": \"prepare_github_issue\"" in prompt
     assert "\"runner_namespaced_tool\": \"mcp__artifact__prepare_github_issue\"" in prompt
+    assert "\"include_system_quirks\"" in prompt
 
 
 def test_prompt_builder_start_setup_expands_recent_messages(temp_home: Path) -> None:

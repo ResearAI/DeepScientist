@@ -22,6 +22,8 @@ def test_init_creates_required_files(temp_home: Path) -> None:
     assert (temp_home / "runtime" / "python").exists()
     assert (temp_home / "runtime" / "uv-cache").exists()
     assert not (temp_home / "runtime" / "venv").exists()
+    assert (temp_home / "framework_quirks.md").exists()
+    assert (temp_home / "system_quirks.md").exists()
     assert (temp_home / "config" / "config.yaml").exists()
     assert (temp_home / "config" / "runners.yaml").exists()
     assert (temp_home / "config" / "connectors.yaml").exists()

@@ -1006,17 +1006,22 @@ def test_artifact_prepare_github_issue_tool_returns_route_effect(
             custom_profile="settings_issue",
         )
         server = build_artifact_server(context)
+        captured_kwargs: dict[str, object] = {}
 
-        monkeypatch.setattr(
-            "deepscientist.mcp.server._prepare_github_issue_payload_via_daemon",
-            lambda home, **kwargs: {
+        def fake_prepare_issue(home: Path, **kwargs):
+            captured_kwargs.update(kwargs)
+            return {
                 "ok": True,
                 "title": "GPU scheduling issue on local daemon",
                 "body_markdown": "# Summary\n\nGPU scheduling issue on local daemon\n",
                 "issue_url_base": "https://github.com/ResearAI/DeepScientist/issues/new",
                 "repo_url": "https://github.com/ResearAI/DeepScientist",
                 "generated_at": "2026-04-14T00:00:00+00:00",
-            },
+            }
+
+        monkeypatch.setattr(
+            "deepscientist.mcp.server._prepare_github_issue_payload_via_daemon",
+            fake_prepare_issue,
         )
 
         result = _unwrap_tool_result(
@@ -1025,6 +1030,7 @@ def test_artifact_prepare_github_issue_tool_returns_route_effect(
                 {
                     "summary": "GPU scheduling issue on local daemon",
                     "user_notes": "Generated from MCP test.",
+                    "include_system_quirks": True,
                 },
             )
         )
@@ -1034,6 +1040,7 @@ def test_artifact_prepare_github_issue_tool_returns_route_effect(
         assert result["ui_effects"][0]["name"] == "route:navigate"
         assert result["ui_effects"][0]["data"]["to"] == "/settings/issues"
         assert result["ui_effects"][0]["data"]["issueDraft"]["title"] == result["title"]
+        assert captured_kwargs["include_system_quirks"] is True
 
     asyncio.run(scenario())
 

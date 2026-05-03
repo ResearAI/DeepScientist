@@ -478,6 +478,7 @@ npm --prefix src/ui run build</pre>
             user_notes=str(payload.get("user_notes") or "").strip() or None,
             include_doctor=payload.get("include_doctor") is not False,
             include_logs=payload.get("include_logs") is not False,
+            include_system_quirks=payload.get("include_system_quirks") is True,
         )
 
     def admin_controllers(self) -> dict:

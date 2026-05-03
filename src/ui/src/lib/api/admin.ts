@@ -5,6 +5,7 @@ import type {
   AdminDoctorPayload,
   AdminErrorsPayload,
   AdminFailurePayload,
+  AdminIssueDraftRequest,
   AdminIssueDraftPayload,
   AdminLogSourcesPayload,
   AdminLogTailPayload,
@@ -126,12 +127,7 @@ export async function getAdminSearch(query: string, limit = 100) {
   return response.data
 }
 
-export async function createAdminIssueDraft(payload?: {
-  summary?: string
-  user_notes?: string
-  include_doctor?: boolean
-  include_logs?: boolean
-}) {
+export async function createAdminIssueDraft(payload?: AdminIssueDraftRequest) {
   const response = await apiClient.post<AdminIssueDraftPayload>(`${SYSTEM_BASE}/issues/draft`, payload || {})
   return response.data
 }

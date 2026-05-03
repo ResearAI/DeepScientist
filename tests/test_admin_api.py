@@ -197,6 +197,39 @@ def test_admin_logs_and_search_surfaces_are_bounded(temp_home: Path) -> None:
     assert "## Recommended Fixes / Workarounds" in issue["body_markdown"]
     assert "## Detected Problems" in issue["body_markdown"]
     assert "Host:" in issue["body_markdown"] or "Hardware summary unavailable." in issue["body_markdown"]
+    assert "## System Quirks" not in issue["body_markdown"]
+
+    empty_quirks_issue = app.handlers.admin_issue_draft(
+        {
+            "summary": "Admin API test issue with empty quirks",
+            "include_doctor": False,
+            "include_logs": False,
+            "include_system_quirks": True,
+        }
+    )
+    assert "## System Quirks" in empty_quirks_issue["body_markdown"]
+    assert "_No system quirks have been recorded yet._" in empty_quirks_issue["body_markdown"]
+    assert "Append-only durable file" not in empty_quirks_issue["body_markdown"]
+
+    (temp_home / "system_quirks.md").write_text(
+        "# System Quirks\n\n"
+        "## TUI debug render mismatch\n\n"
+        "- Expected behavior: TUI output matches the web surface.\n"
+        "- Actual behavior: A bounded render differs from the web surface.\n"
+        "- Status: confirmed\n",
+        encoding="utf-8",
+    )
+    issue_with_quirks = app.handlers.admin_issue_draft(
+        {
+            "summary": "Admin API test issue with quirks",
+            "include_doctor": False,
+            "include_logs": False,
+            "include_system_quirks": True,
+        }
+    )
+    assert "## System Quirks" in issue_with_quirks["body_markdown"]
+    assert "TUI debug render mismatch" in issue_with_quirks["body_markdown"]
+    assert issue_with_quirks["body_markdown"].index("## System Quirks") < issue_with_quirks["body_markdown"].index("## Recent Runtime Failures")
 
 
 def test_admin_controllers_and_repairs_support_basic_lifecycle(temp_home: Path) -> None:

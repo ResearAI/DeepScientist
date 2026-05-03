@@ -367,6 +367,14 @@ export type AdminIssueDraftPayload = {
   context?: Record<string, unknown>
 }
 
+export type AdminIssueDraftRequest = {
+  summary?: string
+  user_notes?: string
+  include_doctor?: boolean
+  include_logs?: boolean
+  include_system_quirks?: boolean
+}
+
 export type AdminControllersPayload = {
   ok: boolean
   items: Array<Record<string, unknown>>

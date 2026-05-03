@@ -82,6 +82,22 @@ def ensure_home_layout(home: Path) -> dict[str, Path]:
             encoding="utf-8",
         )
 
+    system_quirks = home / "system_quirks.md"
+    if not system_quirks.exists():
+        system_quirks.write_text(
+            "# System Quirks\n\n"
+            "Append-only durable file for confirmed DeepScientist runtime or system bugs "
+            "that may help future admin/debug issue reports.\n\n"
+            "Each entry should include: expected behavior, actual behavior, reproduction, "
+            "impact, workaround, suggested fix, evidence paths, and status. Keep entries "
+            "redacted: do not store secrets, tokens, private hostnames, raw logs, or private "
+            "paths unless they are necessary and already safe to disclose.\n\n"
+            "Prefer fixing code over recording permanent quirks. Use this file for confirmed "
+            "system behavior that is not yet fixed or for a short-lived workaround while the "
+            "fix lands.\n",
+            encoding="utf-8",
+        )
+
     quests = ensure_dir(home / "quests")
     plugins = ensure_dir(home / "plugins")
     logs = ensure_dir(home / "logs")

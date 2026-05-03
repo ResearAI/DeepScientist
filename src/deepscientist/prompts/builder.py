@@ -169,6 +169,7 @@ class PromptBuilder:
         connector_contract_block = self._connector_contract_block(quest_id=quest_id, snapshot=snapshot)
         hardware_block = self._local_runtime_hardware_block(runtime_config=runtime_config)
         deepxiv_block = self._deepxiv_capability_block(runtime_config=runtime_config)
+        cross_quest_recall_block = self._cross_quest_recall_policy_block(runtime_config)
         sections = [
             system_block,
             "",
@@ -260,6 +261,8 @@ class PromptBuilder:
                 ),
             ]
         )
+        if cross_quest_recall_block:
+            sections.extend(["", "## Cross-Quest Recall Policy", cross_quest_recall_block])
         if hardware_block:
             sections.extend(["", "## Local Runtime Hardware", hardware_block])
         if deepxiv_block:
@@ -1501,6 +1504,7 @@ class PromptBuilder:
                             "user_notes": {"type": "string"},
                             "include_doctor": {"type": "boolean"},
                             "include_logs": {"type": "boolean"},
+                            "include_system_quirks": {"type": "boolean"},
                             "open_settings_page": {"type": "boolean"},
                             "comment": {"type": ["string", "object", "null"]},
                         },
@@ -1511,6 +1515,30 @@ class PromptBuilder:
             ),
             "```",
         ]
+        return "\n".join(lines)
+
+    def _cross_quest_recall_policy_block(self, runtime_config: dict) -> str:
+        memory_config = runtime_config.get("memory") if isinstance(runtime_config.get("memory"), dict) else {}
+        read_visibility_mode = str(memory_config.get("read_visibility_mode") or "independent").strip().lower()
+        shared_enabled = read_visibility_mode == "shared_across_quests"
+        if not shared_enabled:
+            return ""
+        lines = [
+            f"- memory_read_visibility_mode: {read_visibility_mode or 'independent'}",
+            f"- cross_quest_recall_enabled: {str(shared_enabled).lower()}",
+        ]
+        lines.extend(
+            [
+                f"- framework_quirks_path: {(self.home / 'framework_quirks.md').resolve()}",
+                f"- system_quirks_path: {(self.home / 'system_quirks.md').resolve()}",
+                f"- sibling_quest_brief_glob: {(self.home / 'quests' / '*' / 'brief.md')}",
+                "- cross_quest_recall_rule: you may use `bash_exec(...)` to scan sibling quest briefs and deep-read materially relevant sibling quest papers, especially Conclusion and Limitations / Discussion.",
+                "- framework_quirks_rule: read or append `framework_quirks.md` only for durable framework-layer pitfalls and workarounds that future quests should know before touching the same surface.",
+                "- system_quirks_rule: read or append `system_quirks.md` only for confirmed DeepScientist runtime/system bugs, with expected behavior, actual behavior, reproduction, impact, workaround, suggested fix, evidence paths, and status.",
+                "- privacy_rule: do not write secrets, tokens, private hostnames, private paths, or raw logs to either quirks file; redact before recording.",
+                "- fix_first_rule: prefer fixing code over recording permanent quirks; use quirks for confirmed behavior that cannot be fixed immediately or for short-lived workaround memory while the fix lands.",
+            ]
+        )
         return "\n".join(lines)
 
     def _research_delivery_policy_block(self, snapshot: dict) -> str:

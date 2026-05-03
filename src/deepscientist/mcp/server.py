@@ -667,6 +667,7 @@ def _prepare_github_issue_payload_via_daemon(
     user_notes: str | None = None,
     include_doctor: bool = True,
     include_logs: bool = True,
+    include_system_quirks: bool = False,
 ) -> dict[str, Any]:
     base_url, daemon_state = _local_daemon_api_base_url(home)
     if not base_url:
@@ -682,6 +683,7 @@ def _prepare_github_issue_payload_via_daemon(
         "user_notes": str(user_notes or "").strip() or None,
         "include_doctor": bool(include_doctor),
         "include_logs": bool(include_logs),
+        "include_system_quirks": bool(include_system_quirks),
     }
     headers = {
         "Content-Type": "application/json",
@@ -1234,6 +1236,7 @@ def build_artifact_server(context: McpContext) -> FastMCP:
             user_notes: str = "",
             include_doctor: bool = True,
             include_logs: bool = True,
+            include_system_quirks: bool = False,
             open_settings_page: bool = True,
             comment: str | dict[str, Any] | None = None,
         ) -> dict[str, Any]:
@@ -1243,6 +1246,7 @@ def build_artifact_server(context: McpContext) -> FastMCP:
                 user_notes=user_notes,
                 include_doctor=include_doctor,
                 include_logs=include_logs,
+                include_system_quirks=include_system_quirks,
             )
             if open_settings_page:
                 result["ui_effects"] = [_issue_draft_route_effect(result)]

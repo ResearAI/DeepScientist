@@ -258,7 +258,33 @@ bash_exec.bash_exec(mode="await", id="<bash_id>", wait_timeout_seconds=1800)
 5. 长任务 shell 用 `bash_exec`
 6. 有真正的可复用发现才 `memory.write(...)`
 
-## 7. UI 期望
+## 7. 通过文件系统做跨 quest recall
+
+因为 memory card 默认是 quest-scoped，`memory.search` 也是 substring-only，所以跨 quest 的稳定通道是文件系统，而不是把所有历史都塞进 card index。这个通道只有在 runtime prompt 明确写出 `cross_quest_recall_enabled: true` 时可用；对应配置是 `memory.read_visibility_mode = shared_across_quests`。
+
+启用时，`idea` 以及其他确实需要 prior-quest context 的 stage 可以：
+
+1. 用 `bash_exec ls -t ~/DeepScientist/quests/*/brief.md` 枚举 sibling quests
+2. 读取 brief 找同领域旧 quest
+3. 对确实相关的旧 quest，深读 `~/DeepScientist/quests/<id>/paper/latex/main.tex`，尤其是 `Conclusion` 和 `Limitations / Discussion`
+4. 读取 `~/DeepScientist/framework_quirks.md`，确认是否有相关 framework-layer 坑
+
+未启用时，agent 不应扫描 sibling quests，也不应读写全局 quirks 文件，除非用户在当前任务里显式提供这些文件。
+
+## 8. Framework quirks 与 system quirks
+
+`~/DeepScientist/framework_quirks.md` 是 runtime-wide 的 append-only 文档，用于记录 framework-layer 坑，例如 validator path quirk、closure protocol gotcha、artifact/memory/prompt 契约中未来 quest 容易重复踩的问题。文件由 `ensure_home_layout` scaffold，但只有 runtime prompt 允许 cross-quest recall 时才应使用。
+
+`~/DeepScientist/system_quirks.md` 是 runtime-wide 的 append-only 文档，用于记录已确认的 DeepScientist runtime / system bug。它和 `framework_quirks.md` 分开：
+
+- `framework_quirks.md` 服务 idea / decision / finalize 等研究流程判断
+- `system_quirks.md` 服务 admin / debug / settings issue 报告
+
+`system_quirks.md` 每条应包含预期行为、实际行为、复现步骤、影响范围、临时绕过、建议修复、证据路径和状态。不要写入 secret、token、私有 hostname、私有路径或 raw logs。Settings 的 Issue Report 只有在 operator 显式勾选时才会把它附带到 GitHub issue 草稿。
+
+Agent 只有在 runtime prompt 启用 cross-quest recall 时才应读取或追加 `system_quirks.md`。Settings Issue Report 的勾选项是单独的提交开关，只决定是否把当前文件内容复制到 issue 草稿里供 operator 审阅。
+
+## 9. UI 期望
 
 在 `/projects/{id}` 的 Studio trace 中：
 

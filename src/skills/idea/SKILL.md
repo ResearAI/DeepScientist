@@ -50,7 +50,7 @@ Turn the current objective, board state, and bottleneck into a small differentia
 4. Run a broad, history-aware literature search before proposing serious ideas.
    Use `references/related-work-playbook.md`, `references/research-history-playbook.md`, and `references/literature-survey-template.md`.
    Cover direct in-domain frontier papers, foundational papers, strongest nearby competitors, and cross-domain papers whose mechanisms may translate into the current task.
-   Also harvest sibling quests' lessons before going outside: `bash_exec ls -t ~/DeepScientist/quests/*/brief.md`, read briefs to find same-domain prior quests, then deep-read `~/DeepScientist/quests/<id>/paper/latex/main.tex` (especially Conclusion + Limitations) for any material overlap; scan `~/DeepScientist/framework_quirks.md` if it exists for known framework-layer pitfalls. See playbook §2.1 for the full source-order protocol.
+   If the runtime prompt explicitly enables cross-quest recall, follow that injected policy before going outside; otherwise stay inside the current quest's memory/artifacts and explicit user-provided files. See playbook §2.1 for the full source-order protocol.
    If DeepXiv is available, use it for broad paper-centric discovery and citation expansion; otherwise use search engines and citation chaining directly.
    Do not promote or even seriously shortlist a new idea until the durable survey and closest-prior-work comparison are updated enough to judge novelty and feasibility honestly.
 5. Extract the limitation pattern and novelty opportunity from the survey.
