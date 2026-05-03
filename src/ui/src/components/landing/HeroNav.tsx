@@ -15,7 +15,6 @@ export default function HeroNav(props: {
 }) {
   const { locale, toggleLocale, t } = useI18n()
   const restartTutorial = useOnboardingStore((state) => state.restartTutorial)
-  const openChooser = useOnboardingStore((state) => state.openChooser)
 
   return (
     <header
@@ -71,6 +70,19 @@ export default function HeroNav(props: {
           >
             <GraduationCap className="mr-2 h-4 w-4" />
             {locale === 'zh' ? '教程' : 'Tutorial'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 w-9 rounded-full border-black/10 bg-white/60 px-0 text-[#2D2A26] hover:bg-white/90 sm:hidden"
+            onClick={() => {
+              const nextLanguage = locale === 'zh' ? 'zh' : 'en'
+              restartTutorial('/', nextLanguage)
+            }}
+            aria-label={locale === 'zh' ? '教程' : 'Tutorial'}
+            data-onboarding-id="landing-mobile-replay-tutorial"
+          >
+            <GraduationCap className="h-4 w-4" />
           </Button>
           <Button
             variant="outline"

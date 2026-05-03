@@ -48,7 +48,7 @@ export function ConnectorTargetRadioGroup({
             disabled={item.disabled}
             onClick={() => onChange(item.value)}
             className={cn(
-              'relative flex min-h-[112px] w-full items-start gap-3 rounded-[18px] border px-4 py-4 text-left transition',
+              'relative flex min-h-[112px] w-full min-w-0 items-start gap-3 overflow-hidden rounded-[18px] border px-4 py-4 text-left transition',
               'disabled:cursor-not-allowed disabled:opacity-55',
               active
                 ? 'border-[var(--ds-brand)]/45 bg-[var(--ds-brand)]/8 shadow-[0_18px_36px_-28px_rgba(111,78,55,0.65)]'
@@ -67,12 +67,12 @@ export function ConnectorTargetRadioGroup({
             </span>
 
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold text-foreground" title={item.connectorLabel}>
+              <span className="block break-words text-sm font-semibold text-foreground [overflow-wrap:anywhere]" title={item.connectorLabel}>
                 {item.connectorLabel}
               </span>
               {showTargetId ? (
                 <span
-                  className="mt-1 block truncate font-mono text-[11px] leading-5 text-muted-foreground"
+                  className="mt-1 block whitespace-normal break-all font-mono text-[11px] leading-5 text-muted-foreground [overflow-wrap:anywhere]"
                   title={item.targetId}
                 >
                   {item.targetId}
@@ -80,7 +80,7 @@ export function ConnectorTargetRadioGroup({
               ) : null}
               {item.boundQuestLabel ? (
                 <span
-                  className="mt-3 block truncate text-[11px] leading-5 text-muted-foreground"
+                  className="mt-3 block break-words text-[11px] leading-5 text-muted-foreground [overflow-wrap:anywhere]"
                   title={item.boundQuestLabel}
                 >
                   {item.boundQuestLabel}

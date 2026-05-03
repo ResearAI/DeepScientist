@@ -442,6 +442,37 @@ acp:
 - UI label: `Default start mode`
 - Meaning: preferred startup surface when launching DeepScientist.
 
+### TUI debug launch switches
+
+TUI debug is not a persistent config field. It is a per-launch diagnostic switch for inspecting the current TUI surface, input route, Web analog, and render summary.
+
+Start with:
+
+```bash
+ds --tui --debug
+ds --tui --debug --debug-log /tmp/deepscientist_tui_debug.jsonl
+```
+
+Environment variables:
+
+- `TUI_DEBUG=1`
+- `DEEPSCIENTIST_TUI_DEBUG=1`
+- `TUI_DEBUG_LOG=/tmp/deepscientist_tui_debug.jsonl`
+- `DEEPSCIENTIST_TUI_DEBUG_LOG=/tmp/deepscientist_tui_debug.jsonl`
+
+Default log path:
+
+```text
+/tmp/deepscientist_tui_debug.jsonl
+```
+
+Safety requirements:
+
+- Config editor buffers and password/secret/token fields are redacted in debug JSONL.
+- Debug JSONL can be attached to issue reports or regression notes, but search it for real tokens first.
+- Terminal recordings, tmux logs, and `script` transcripts capture the real screen; they are outside the JSONL redaction boundary.
+- Web does not yet have an equivalent `?debug=1` inspector; TUI currently provides only the `web_analog` mapping.
+
 ### Logging
 
 **`logging.level`**

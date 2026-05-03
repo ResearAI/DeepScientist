@@ -26,6 +26,8 @@ interface State {
   error: Error | null;
 }
 
+type PdfDocumentLoadingTask = ReturnType<typeof getDocument>;
+
 export class PdfLoader extends Component<Props, State> {
   state: State = {
     pdfDocument: null,
@@ -39,12 +41,16 @@ export class PdfLoader extends Component<Props, State> {
   };
 
   documentRef = React.createRef<HTMLElement>();
+  private loadingTask: PdfDocumentLoadingTask | null = null;
+  private loadGeneration = 0;
 
   componentDidMount() {
     this.load();
   }
 
   componentWillUnmount() {
+    this.loadGeneration += 1;
+    this.destroyLoadingTask();
     const { pdfDocument: discardedDocument } = this.state;
     if (discardedDocument) {
       discardedDocument.destroy();
@@ -67,10 +73,24 @@ export class PdfLoader extends Component<Props, State> {
     this.setState({ pdfDocument: null, error });
   }
 
+  destroyLoadingTask() {
+    if (!this.loadingTask) return;
+    const task = this.loadingTask;
+    this.loadingTask = null;
+    try {
+      void task.destroy();
+    } catch {
+      // Ignore cleanup errors.
+    }
+  }
+
   load() {
     const { ownerDocument = document } = this.documentRef.current || {};
     const { url, cMapUrl, cMapPacked, workerSrc } = this.props;
     const { pdfDocument: discardedDocument } = this.state;
+    const generation = this.loadGeneration + 1;
+    this.loadGeneration = generation;
+    this.destroyLoadingTask();
     this.setState({ pdfDocument: null, error: null });
 
     if (typeof workerSrc === "string") {
@@ -93,13 +113,24 @@ export class PdfLoader extends Component<Props, State> {
                 cMapPacked,
               }
             : {}),
-        };
+          };
 
-        return getDocument(document).promise.then((pdfDocument) => {
+        const loadingTask = getDocument(document);
+        this.loadingTask = loadingTask;
+        return loadingTask.promise.then((pdfDocument) => {
+          if (this.loadGeneration !== generation) {
+            pdfDocument.destroy();
+            return;
+          }
+          this.loadingTask = null;
           this.setState({ pdfDocument });
         });
       })
-      .catch((e) => this.componentDidCatch(e));
+      .catch((e) => {
+        if (this.loadGeneration !== generation) return;
+        this.loadingTask = null;
+        this.componentDidCatch(e);
+      });
   }
 
   render() {

@@ -74,15 +74,15 @@ export function AutonomousSetupIntakeSurface(props: AutonomousSetupIntakeSurface
         </Button>
       </div>
 
-      <div className="feed-scrollbar modal-scrollbar relative z-10 min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8 sm:py-8">
-        <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col justify-center gap-6 pt-8 sm:gap-7 sm:pt-0">
+      <div className="feed-scrollbar modal-scrollbar relative z-10 min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-8 sm:py-8">
+        <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col justify-start gap-5 pt-10 sm:justify-center sm:gap-7 sm:pt-0">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,42,38,0.08)] bg-white/58 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[rgba(107,103,97,0.78)] backdrop-blur-xl">
                 <Sparkles className="h-3.5 w-3.5" />
                 Start Research
               </div>
-              <h1 className="mt-4 max-w-3xl text-[44px] font-semibold leading-[0.98] tracking-[-0.065em] text-[rgba(38,36,33,0.97)] sm:text-6xl">
+              <h1 className="mt-4 max-w-3xl text-[32px] font-semibold leading-[1.04] text-[rgba(38,36,33,0.97)] sm:text-6xl sm:leading-[0.98]">
                 {t.title}
               </h1>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-[rgba(86,82,77,0.82)] sm:text-[15px]">
@@ -93,11 +93,11 @@ export function AutonomousSetupIntakeSurface(props: AutonomousSetupIntakeSurface
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
-              <Button type="button" variant="outline" className="rounded-full bg-white/64" onClick={props.onSwitchToCopilot}>
+              <Button type="button" variant="outline" className="w-full rounded-full bg-white/64 sm:w-auto" onClick={props.onSwitchToCopilot}>
                 <ArrowUpRight className="mr-1.5 h-4 w-4" />
                 {t.manualCopilot}
               </Button>
-              <Button type="button" variant="secondary" className="rounded-full" onClick={props.onSwitchToForm}>
+              <Button type="button" variant="secondary" className="w-full rounded-full sm:w-auto" onClick={props.onSwitchToForm}>
                 {t.manualAutonomous}
               </Button>
             </div>
@@ -105,7 +105,7 @@ export function AutonomousSetupIntakeSurface(props: AutonomousSetupIntakeSurface
 
           <div
             className={cn(
-              'mx-auto w-full rounded-[38px] border border-[rgba(45,42,38,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(251,248,243,0.93))] p-4 shadow-[0_44px_120px_-62px_rgba(45,42,38,0.46)] backdrop-blur-2xl sm:p-5',
+              'mx-auto w-full rounded-[26px] border border-[rgba(45,42,38,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(251,248,243,0.93))] p-3 shadow-[0_44px_120px_-62px_rgba(45,42,38,0.46)] backdrop-blur-2xl sm:rounded-[38px] sm:p-5',
               props.error && 'border-[rgba(154,27,27,0.24)]'
             )}
           >
@@ -121,8 +121,8 @@ export function AutonomousSetupIntakeSurface(props: AutonomousSetupIntakeSurface
               attachments={props.attachments}
               onQueueFiles={props.onQueueFiles}
               onRemoveAttachment={props.onRemoveAttachment}
-              shellClassName="rounded-[28px] bg-[rgba(252,250,246,0.96)] shadow-[0_20px_54px_-38px_rgba(24,28,32,0.24)]"
-              textareaClassName="min-h-[260px] px-5 pt-5 pb-16 text-[14px] leading-7 sm:min-h-[320px] sm:text-[15px] lg:min-h-[360px]"
+              shellClassName="rounded-[22px] bg-[rgba(252,250,246,0.96)] shadow-[0_20px_54px_-38px_rgba(24,28,32,0.24)] sm:rounded-[28px]"
+              textareaClassName="min-h-[170px] px-4 pt-4 pb-16 text-[14px] leading-7 sm:min-h-[320px] sm:px-5 sm:pt-5 sm:text-[15px] lg:min-h-[360px]"
             />
             {props.error ? (
               <div className="px-1 pt-3 text-sm text-[var(--function-error)]">{props.error}</div>
@@ -132,7 +132,7 @@ export function AutonomousSetupIntakeSurface(props: AutonomousSetupIntakeSurface
           <div className="mx-auto flex w-full max-w-3xl items-center justify-center text-center text-sm leading-6 text-[rgba(86,82,77,0.78)]">
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(45,42,38,0.08)] bg-white/62 px-4 py-2 text-[rgba(45,42,38,0.9)] transition hover:bg-white"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[rgba(45,42,38,0.08)] bg-white/62 px-4 py-2 text-[rgba(45,42,38,0.9)] transition hover:bg-white"
               onClick={props.onOpenBenchStore}
             >
               <BookOpen className="h-3.5 w-3.5" />

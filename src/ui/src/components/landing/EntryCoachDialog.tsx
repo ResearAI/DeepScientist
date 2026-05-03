@@ -120,7 +120,7 @@ export function EntryCoachDialog({
       className="pointer-events-none fixed inset-0 z-[10010] flex items-center justify-center bg-[rgba(12,14,18,0.48)] p-4 backdrop-blur-md"
     >
       <div
-        className="pointer-events-auto relative w-full max-w-[980px] overflow-hidden rounded-[32px] border border-white/10 bg-[rgba(252,248,242,0.98)] shadow-[0_40px_120px_-52px_rgba(15,23,42,0.62)]"
+        className="pointer-events-auto relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[980px] flex-col overflow-hidden rounded-[32px] border border-white/10 bg-[rgba(252,248,242,0.98)] shadow-[0_40px_120px_-52px_rgba(15,23,42,0.62)]"
       >
         <div className="flex items-start justify-between gap-4 border-b border-black/[0.06] px-6 py-5">
           <div className="min-w-0">
@@ -172,97 +172,99 @@ export function EntryCoachDialog({
           </div>
         </div>
 
-        <div
-          className={cn(
-            'grid gap-0',
-            showBoth ? 'lg:grid-cols-[1.05fr_0.95fr]' : 'grid-cols-1'
-          )}
-        >
-          {showConnectorStep ? (
-            <section className="relative overflow-hidden bg-[#23262D] px-6 py-6 text-white lg:px-7 lg:py-7">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(199,173,150,0.16),transparent_48%),radial-gradient(circle_at_bottom_right,rgba(95,117,138,0.18),transparent_44%)]" />
-              <div className="relative">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74">
-                  <Settings2 className="h-3.5 w-3.5" />
-                  {stepLabel(t.connector.eyebrow, locale === 'zh' ? '步骤 1' : 'STEP 1', showBoth)}
+        <div className="feed-scrollbar modal-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div
+            className={cn(
+              'grid gap-0',
+              showBoth ? 'lg:grid-cols-[1.05fr_0.95fr]' : 'grid-cols-1'
+            )}
+          >
+            {showConnectorStep ? (
+              <section className="relative overflow-hidden bg-[#23262D] px-6 py-6 text-white lg:px-7 lg:py-7">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(199,173,150,0.16),transparent_48%),radial-gradient(circle_at_bottom_right,rgba(95,117,138,0.18),transparent_44%)]" />
+                <div className="relative">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74">
+                    <Settings2 className="h-3.5 w-3.5" />
+                    {stepLabel(t.connector.eyebrow, locale === 'zh' ? '步骤 1' : 'STEP 1', showBoth)}
+                  </div>
+                  <h3 className="mt-4 text-2xl font-semibold tracking-tight">
+                    {t.connector.title}
+                  </h3>
+                  <div className="mt-3 text-sm text-white/82">
+                    <div className="leading-7">{t.connector.body[connectorMode]}</div>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={onOpenConnectorSettings}
+                    className="mt-6 h-12 rounded-full bg-[#121419] px-6 text-sm font-semibold text-white shadow-[0_20px_40px_-24px_rgba(0,0,0,0.6)] transition hover:bg-black"
+                  >
+                    {t.connector.cta[connectorMode]}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                  <div className="mt-4 text-[12px] text-white/60">
+                    <div className="leading-6">{t.connector.note}</div>
+                  </div>
                 </div>
-                <h3 className="mt-4 text-2xl font-semibold tracking-tight">
-                  {t.connector.title}
+              </section>
+            ) : null}
+
+            {showTutorialStep ? (
+              <section className="px-6 py-6 lg:px-7 lg:py-7">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(126,108,82,0.14)] bg-[rgba(244,239,233,0.72)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[rgba(126,108,82,0.78)]">
+                  <GraduationCap className="h-3.5 w-3.5" />
+                  {stepLabel(t.tutorial.eyebrow, locale === 'zh' ? '步骤 1' : 'STEP 1', showBoth)}
+                </div>
+                <h3 className="mt-4 text-2xl font-semibold tracking-tight text-[rgba(38,36,33,0.96)]">
+                  {t.tutorial.title}
                 </h3>
-                <div className="mt-3 text-sm text-white/82">
-                  <div className="leading-7">{t.connector.body[connectorMode]}</div>
+                <div className="mt-3 text-sm text-[rgba(86,82,77,0.86)]">
+                  <div className="leading-7">{t.tutorial.body}</div>
                 </div>
-                <Button
-                  type="button"
-                  onClick={onOpenConnectorSettings}
-                  className="mt-6 h-12 rounded-full bg-[#121419] px-6 text-sm font-semibold text-white shadow-[0_20px_40px_-24px_rgba(0,0,0,0.6)] transition hover:bg-black"
-                >
-                  {t.connector.cta[connectorMode]}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-                <div className="mt-4 text-[12px] text-white/60">
-                  <div className="leading-6">{t.connector.note}</div>
+
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => onStartTutorial('zh')}
+                    className="rounded-[20px] border border-[rgba(126,77,42,0.16)] bg-[rgba(244,239,233,0.76)] px-4 py-4 text-left transition hover:border-[rgba(126,77,42,0.28)] hover:bg-white"
+                  >
+                    <div className="flex items-center gap-2 text-sm font-semibold text-[rgba(38,36,33,0.95)]">
+                      <BookOpen className="h-4 w-4" />
+                      {t.tutorial.zh}
+                    </div>
+                    <div className="mt-1 text-[12px] leading-6 text-[rgba(86,82,77,0.82)]">
+                      {locale === 'zh'
+                        ? '一步步熟悉首页、开始研究和项目工作区。'
+                        : 'Walk through the landing page, Start Research, and workspace basics.'}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onStartTutorial('en')}
+                    className="rounded-[20px] border border-[rgba(126,77,42,0.16)] bg-[rgba(244,239,233,0.76)] px-4 py-4 text-left transition hover:border-[rgba(126,77,42,0.28)] hover:bg-white"
+                  >
+                    <div className="flex items-center gap-2 text-sm font-semibold text-[rgba(38,36,33,0.95)]">
+                      <GraduationCap className="h-4 w-4" />
+                      {t.tutorial.en}
+                    </div>
+                    <div className="mt-1 text-[12px] leading-6 text-[rgba(86,82,77,0.82)]">
+                      {locale === 'zh'
+                        ? '使用英文引导完成同一套首次演示。'
+                        : 'Use the same guided flow in English.'}
+                    </div>
+                  </button>
                 </div>
-              </div>
-            </section>
-          ) : null}
 
-          {showTutorialStep ? (
-            <section className="px-6 py-6 lg:px-7 lg:py-7">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(126,108,82,0.14)] bg-[rgba(244,239,233,0.72)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[rgba(126,108,82,0.78)]">
-                <GraduationCap className="h-3.5 w-3.5" />
-                {stepLabel(t.tutorial.eyebrow, locale === 'zh' ? '步骤 1' : 'STEP 1', showBoth)}
-              </div>
-              <h3 className="mt-4 text-2xl font-semibold tracking-tight text-[rgba(38,36,33,0.96)]">
-                {t.tutorial.title}
-              </h3>
-              <div className="mt-3 text-sm text-[rgba(86,82,77,0.86)]">
-                <div className="leading-7">{t.tutorial.body}</div>
-              </div>
-
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => onStartTutorial('zh')}
-                  className="rounded-[20px] border border-[rgba(126,77,42,0.16)] bg-[rgba(244,239,233,0.76)] px-4 py-4 text-left transition hover:border-[rgba(126,77,42,0.28)] hover:bg-white"
-                >
-                  <div className="flex items-center gap-2 text-sm font-semibold text-[rgba(38,36,33,0.95)]">
-                    <BookOpen className="h-4 w-4" />
-                    {t.tutorial.zh}
-                  </div>
-                  <div className="mt-1 text-[12px] leading-6 text-[rgba(86,82,77,0.82)]">
-                    {locale === 'zh'
-                      ? '一步步熟悉首页、开始研究和项目工作区。'
-                      : 'Walk through the landing page, Start Research, and workspace basics.'}
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onStartTutorial('en')}
-                  className="rounded-[20px] border border-[rgba(126,77,42,0.16)] bg-[rgba(244,239,233,0.76)] px-4 py-4 text-left transition hover:border-[rgba(126,77,42,0.28)] hover:bg-white"
-                >
-                  <div className="flex items-center gap-2 text-sm font-semibold text-[rgba(38,36,33,0.95)]">
-                    <GraduationCap className="h-4 w-4" />
-                    {t.tutorial.en}
-                  </div>
-                  <div className="mt-1 text-[12px] leading-6 text-[rgba(86,82,77,0.82)]">
-                    {locale === 'zh'
-                      ? '使用英文引导完成同一套首次演示。'
-                      : 'Use the same guided flow in English.'}
-                  </div>
-                </button>
-              </div>
-
-              <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <Button variant="ghost" onClick={onSkipTutorial}>
-                  {t.tutorial.skip}
-                </Button>
-                <Button variant="secondary" onClick={onNeverShowTutorial}>
-                  {t.tutorial.never}
-                </Button>
-              </div>
-            </section>
-          ) : null}
+                <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                  <Button variant="ghost" onClick={onSkipTutorial}>
+                    {t.tutorial.skip}
+                  </Button>
+                  <Button variant="secondary" onClick={onNeverShowTutorial}>
+                    {t.tutorial.never}
+                  </Button>
+                </div>
+              </section>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

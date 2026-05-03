@@ -492,10 +492,25 @@ export const useFileTreeStore = create<FileTreeState & FileTreeActions>(
 
     // Load files for a project
     loadFiles: async (projectId: string, options = {}) => {
+      const force = Boolean(options.force);
+      const currentState = get();
+      const sameProject = currentState.projectId === projectId;
+      if (!force && sameProject && currentState.nodes.length > 0) {
+        return;
+      }
+      if (!force && sameProject && currentState.isLoading) {
+        return;
+      }
+
       const requestId = ++latestLoadRequestId;
-      set({ isLoading: true, error: null, projectId });
+      set((state) => ({
+        isLoading: true,
+        error: null,
+        projectId,
+        nodes: state.projectId === projectId ? state.nodes : [],
+      }));
       try {
-        const response = await fileApi.getFileTree(projectId, options);
+        const response = await fileApi.getFileTree(projectId, { force });
         if (requestId !== latestLoadRequestId) {
           return;
         }
@@ -509,8 +524,11 @@ export const useFileTreeStore = create<FileTreeState & FileTreeActions>(
         }
         const message =
           error instanceof Error ? error.message : "Failed to load files";
-        // Set empty nodes on error to prevent UI issues
-        set({ error: message, isLoading: false, nodes: [] });
+        set((state) => ({
+          error: message,
+          isLoading: false,
+          nodes: state.projectId === projectId && state.nodes.length > 0 ? state.nodes : [],
+        }));
         // Don't throw - just log the error
         console.error("[FileTree] Failed to load files:", error);
       }

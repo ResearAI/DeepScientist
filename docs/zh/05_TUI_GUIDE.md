@@ -64,6 +64,21 @@ ds --stop
 - `ds --status`：查看 daemon 状态。
 - `ds --stop`：停止 daemon 本身，不只是停止某个 quest。
 
+排查 TUI 渲染或路由问题时，可以临时打开 debug 模式：
+
+```bash
+ds --tui --debug
+ds --tui --debug --debug-log /tmp/deepscientist_tui_debug.jsonl
+```
+
+也可以用环境变量启动：
+
+```bash
+DEEPSCIENTIST_TUI_DEBUG=1 DEEPSCIENTIST_TUI_DEBUG_LOG=/tmp/deepscientist_tui_debug.jsonl ds --tui
+```
+
+debug 模式只用于排障，不建议长期打开。
+
 ## 3. 进入 TUI 后，第一眼应该怎么看
 
 如果你是第一次进来，欢迎区最重要的信息有三类：
@@ -177,6 +192,7 @@ ds --tui
 - `/config qq`：直接进 QQ 配置
 - `/config weixin`：直接进微信配置
 - `/config lingzhu`：直接进 Lingzhu 配置
+- `/debug`：打开当前 TUI debug inspector
 
 ### 按键
 
@@ -187,6 +203,7 @@ ds --tui
 - `Ctrl+R`：强制刷新
 - `Ctrl+O`：打开 Web 工作区
 - `Ctrl+G`：从任意位置直接打开配置首页
+- `Ctrl+D`：从任意位置打开 debug inspector；在 config editor 里也是非破坏式 overlay
 - `Ctrl+B`：离开当前 quest；如果你在配置页，则先关闭配置页
 - `Ctrl+C`：退出 TUI
 - `Shift+↑/↓`：滚动历史区
@@ -452,7 +469,141 @@ TUI、Web、connector 共用同一套 mailbox 语义。
 所以如果你只是“先停一下”，优先用 `/pause`。
 如果你要明确切断当前一轮，优先用 `/stop`。
 
-## 15. 排错
+## 15. TUI debug 模式
+
+TUI debug 模式用来回答三个问题：
+
+1. 当前屏幕到底是什么 surface
+2. 按 Enter 后会走本地命令、后端命令、quest chat，还是被本地拦截
+3. 这个 TUI surface 在 Web 里最接近哪个页面
+
+打开方式：
+
+```bash
+ds --tui --debug
+```
+
+指定日志路径：
+
+```bash
+ds --tui --debug --debug-log /tmp/deepscientist_tui_debug.jsonl
+```
+
+如果你是直接运行 TUI bundle，也可以使用：
+
+```bash
+node src/tui/dist/index.js --base-url http://127.0.0.1:20999 --debug --debug-log /tmp/deepscientist_tui_debug.jsonl
+```
+
+### 屏幕上会看到什么
+
+debug 模式会在输入区上方显示一条小型诊断条：
+
+- `surface`：当前 TUI surface，例如 `home`、`quest:<id>`、`config:root:browse`、`config:files:edit`
+- `web`：最接近的 Web 页面，例如 `Web Settings`、`Web quest workspace`
+- `route`：当前输入会走的路由类型
+- `target`：目标 endpoint、utility panel 或本地动作
+- `parse / preview`：当前输入的解析结果
+
+在任何页面按 `Ctrl+D` 可以打开 `TUI Debug` 面板。这个面板会显示：
+
+- `Submitted Route`：触发 debug 前，当前输入按 Enter 会提交到哪里
+- `Input`：当前输入摘要
+- `Screen`：当前主屏、composer、选中项和 redaction 状态
+- `Render`：quest/config/utility 数量和选中索引
+- `Capture`：status line、session id、日志路径和快照签名
+
+### JSONL 日志
+
+debug 模式会把快照写成 JSONL。默认路径是：
+
+```text
+/tmp/deepscientist_tui_debug.jsonl
+```
+
+每一行都是一个快照。典型字段：
+
+- `surface`
+- `web_analog`
+- `route`
+- `input`
+- `screen`
+- `counts`
+- `status_line`
+
+config editor 和 connector secret 字段会被脱敏。例如：
+
+```json
+{
+  "surface": "config:files:edit",
+  "route": {
+    "kind": "config-save",
+    "arg": "[redacted: config editor buffer; 53 chars]"
+  },
+  "input": {
+    "raw": "[redacted: config editor buffer; 53 chars]",
+    "redacted": true,
+    "redaction_reason": "config editor buffer"
+  },
+  "screen": {
+    "main": "Config editor: config.yaml",
+    "input_redacted": true
+  }
+}
+```
+
+注意：debug JSONL 会脱敏 config buffer；但如果你用 `script`、tmux 日志或终端录屏捕获真实 TUI 屏幕，config editor 本身仍会显示文件内容。这是编辑器的正常行为，不要把包含真实 token 的终端 transcript 发到公共 issue。
+
+### 什么时候应该打开 debug
+
+适合打开 debug 的情况：
+
+- `/config`、`/benchstore`、`/tasks` 等命令看起来没有进入预期页面
+- 输入了 slash command，但不确定它是本地处理、后端转发，还是被 TUI 拦截
+- config editor 里按 Enter 后不知道会保存哪个 draft
+- TUI 和 Web 看起来不一致，需要比较 `web_analog`
+- 写 issue 或回归测试时，需要可复现的 route/screen 快照
+
+不建议打开 debug 的情况：
+
+- 日常聊天或运行 quest
+- 正在编辑大量真实密钥，并且你还会额外录制完整终端输出
+- 只是想调 daemon 日志级别；这种情况应该改 `logging.level`
+
+### 和 Web debug 的关系
+
+Web 端也有一个轻量 debug inspector，目前先覆盖 Settings surface。可以用 query flag 打开：
+
+```text
+/settings/connector/qq?debug=1
+```
+
+也可以在浏览器 console 里持久打开：
+
+```js
+localStorage.setItem('deepscientist.debug', '1')
+```
+
+如果要为当前页面会话保留浏览器内 JSONL buffer：
+
+```js
+localStorage.setItem('deepscientist.debug.log', '1')
+```
+
+删除这个 localStorage key，或使用 `?debug=0` 可以关闭。
+
+Web inspector 会出现在右下角。它会显示当前 Settings surface、route、选中的 section/connector、dirty/loading/saving/testing 状态、config/connector/quest 数量、action disabled reason、最近 API 请求状态，以及脱敏后的 JSON snapshot。提交 issue 或回归证据时，可以使用 `Copy JSON` 或 `Download JSONL`。当 `deepscientist.debug.log` 打开时，`Download JSONL` 会导出浏览器内累计 snapshot 日志；否则只导出当前 snapshot。
+
+如果要做严格的 Web/TUI 对照，建议：
+
+1. 在 TUI 用 `--debug-log` 记录 JSONL
+2. 在 Web 打开对应页面并加 `?debug=1`，例如 `/settings/connector/qq?debug=1`
+3. 对比 TUI 的 `surface`、`web_analog`、`route.target` 与 Web 的 `surface`、`route`、`selected`、`flags`、`actions`
+4. 确认两边 snapshot 都没有真实 token、secret、password、API key、credential、auth AK 或 app secret
+
+当前范围：第一版 Web debug 先覆盖 Settings，尤其是 connector/config 页面。quest workspace 和 BenchStore snapshot 是后续扩展项。
+
+## 16. 排错
 
 ### 问题 1：我进了 TUI，但输入普通文本没反应
 
@@ -506,7 +657,24 @@ TUI、Web、connector 共用同一套 mailbox 语义。
 - 不是 `localhost` / `127.0.0.1` / 内网地址
 - Rokid 平台里填的是顶部 guide 给出的值，而不是本地地址
 
-## 16. 最后给一个简单判断标准
+### 问题 6：TUI 看起来没有执行我输入的命令
+
+打开 debug：
+
+```bash
+ds --tui --debug --debug-log /tmp/deepscientist_tui_debug.jsonl
+```
+
+然后复现一次输入，重点看：
+
+- `route.kind` 是不是 `blocked`
+- `route.target` 是不是你预期的 endpoint 或 panel
+- `surface` 有没有跳到预期页面
+- `web_analog` 是否指向你预期的 Web 页面
+
+如果在 config editor 里排查，按 `Ctrl+D` 打开 debug inspector；不要输入 `/debug`，因为普通文本会进入 editor buffer。
+
+## 17. 最后给一个简单判断标准
 
 如果你想判断自己是否真的“会用 TUI 跑通流程”，看下面四条是否都能做到：
 

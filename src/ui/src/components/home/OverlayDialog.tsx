@@ -36,7 +36,7 @@ export function OverlayDialog({
     >
       <div
         className={cn(
-          'morandi-surface view-panel relative flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[32px]',
+          'morandi-surface view-panel relative flex max-h-[92dvh] w-full max-w-6xl flex-col overflow-hidden rounded-[32px]',
           className
         )}
         role="dialog"
@@ -61,7 +61,9 @@ export function OverlayDialog({
             </Button>
           </div>
         )}
-        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+        <div className="feed-scrollbar modal-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {children}
+        </div>
       </div>
     </div>
   )

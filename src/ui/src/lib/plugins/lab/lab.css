@@ -2141,11 +2141,19 @@
 
 .lab-flow-handle {
   opacity: 0;
-  width: 1px;
-  height: 1px;
+  width: 2px;
+  height: 2px;
   border: 0;
   background: transparent;
   pointer-events: none;
+}
+
+.lab-flow-handle.react-flow__handle-left {
+  left: -7px;
+}
+
+.lab-flow-handle.react-flow__handle-right {
+  right: -7px;
 }
 
 .lab-overview-quest-node__title-row {

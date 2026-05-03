@@ -12,7 +12,7 @@ export const Command = React.forwardRef<
   <CommandPrimitive
     ref={ref}
     className={cn(
-      'flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/40 bg-white/80 text-[#2E2A25]',
+      'flex h-full max-h-[calc(100dvh-1rem)] min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-white/40 bg-white/80 text-[#2E2A25]',
       className
     )}
     {...props}
@@ -30,9 +30,14 @@ export const CommandDialog = ({
   children: React.ReactNode
 }) => {
   return (
-    <div className={cn('fixed inset-0 z-[10000] flex items-center justify-center', open ? '' : 'hidden')}>
+    <div
+      className={cn(
+        'fixed inset-0 z-[10000] flex items-start justify-center overflow-y-auto p-3 sm:items-center sm:p-6',
+        open ? '' : 'hidden'
+      )}
+    >
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => onOpenChange(false)} />
-      <div className="relative z-[10001] w-full max-w-lg p-6">{children}</div>
+      <div className="relative z-[10001] w-full max-w-lg">{children}</div>
     </div>
   )
 }

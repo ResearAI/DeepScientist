@@ -1,11 +1,12 @@
-import { Languages, Search } from 'lucide-react'
-import { NavLink } from 'react-router-dom'
+import { GraduationCap, Languages, Search } from 'lucide-react'
+import { NavLink, useLocation } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SystemUpdateButton } from '@/components/system-update/SystemUpdateButton'
 import { assetUrl } from '@/lib/assets'
 import { useI18n } from '@/lib/i18n'
+import { useOnboardingStore } from '@/lib/stores/onboarding'
 import { useThemeStore } from '@/lib/stores/theme'
 import { cn } from '@/lib/utils'
 
@@ -21,6 +22,8 @@ export function ProjectsAppBar({
   onSearchChange?: (value: string) => void
 }) {
   const { locale, toggleLocale, t } = useI18n()
+  const location = useLocation()
+  const restartTutorial = useOnboardingStore((state) => state.restartTutorial)
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const resolvedTitle = title || t('projectsTitle')
   const resolvedSubtitle = subtitle || (title ? undefined : t('sharedApiHint'))
@@ -85,6 +88,17 @@ export function ProjectsAppBar({
           </nav>
 
           <SystemUpdateButton />
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => restartTutorial(location.pathname || '/', locale === 'zh' ? 'zh' : 'en')}
+            className="rounded-full px-2 sm:px-3"
+            aria-label={locale === 'zh' ? '教程' : 'Tutorial'}
+          >
+            <GraduationCap className="h-4 w-4" />
+            <span className="hidden sm:inline">{locale === 'zh' ? '教程' : 'Tutorial'}</span>
+          </Button>
 
           <Button variant="secondary" size="sm" onClick={toggleLocale} className="rounded-full">
             <Languages className="h-4 w-4" />

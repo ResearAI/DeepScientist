@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type TestInfo } from '@playwright/test'
 
 const baseUrl = process.env.E2E_BASE_URL || 'http://127.0.0.1:20999'
 
@@ -115,20 +115,86 @@ async function installCommonStubs(page: Page) {
     }
     await route.fulfill({ json: configDocument(name) })
   })
+
+  await page.route('**/api/docs', async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          document_id: 'en/00_QUICK_START.md',
+          title: 'Quick Start',
+          path: '/tmp/docs/en/00_QUICK_START.md',
+          kind: 'markdown',
+          updated_at: new Date().toISOString(),
+        },
+        {
+          document_id: 'en/configuration/GEMINI.md',
+          title: 'Gemini configuration',
+          path: '/tmp/docs/en/configuration/GEMINI.md',
+          kind: 'markdown',
+          updated_at: new Date().toISOString(),
+        },
+      ],
+    })
+  })
+  await page.route('**/api/docs/open', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}')
+    const documentId = String(body.document_id || 'en/00_QUICK_START.md')
+    const isGemini = documentId.includes('GEMINI')
+    await route.fulfill({
+      json: {
+        document_id: documentId,
+        title: isGemini ? 'Gemini configuration' : 'Quick Start',
+        path: `/tmp/docs/${documentId}`,
+        kind: 'markdown',
+        scope: 'system',
+        writable: false,
+        encoding: 'utf-8',
+        source_scope: 'docs',
+        updated_at: new Date().toISOString(),
+        content: isGemini
+          ? '# Gemini configuration\n\nUse API keys or an OpenAI-compatible proxy.\n\n## Long command\n\n```bash\nexport GEMINI_API_KEY=test-key && codex --model gemini-2.5-pro --provider google\n```\n'
+          : '# Quick Start\n\nStart with `npm install -g @researai/deepscientist`, then open Settings to configure runners.\n\n## Configure\n\nOpen the settings links for Runtime, Models, Connectors, and DeepXiv.\n\n| Tool | Use |\n| --- | --- |\n| Codex | Research agent |\n| Claude Code | Alternative coding agent |\n',
+        meta: {},
+      },
+    })
+  })
 }
 
 async function openSettings(page: Page, viewport: { width: number; height: number }) {
   await installCommonStubs(page)
   await page.setViewportSize(viewport)
   await page.goto(`${baseUrl}/settings`, { waitUntil: 'networkidle' })
+  if (viewport.width < 768) {
+    await expect(page.locator('[data-onboarding-id="settings-mobile-directory"]')).toBeVisible({ timeout: 30_000 })
+    return
+  }
   await expect(page.getByRole('heading', { level: 1, name: 'Runtime' })).toBeVisible({ timeout: 30_000 })
+}
+
+async function captureStableScreenshot(page: Page, testInfo: TestInfo, filename: string) {
+  await page.screenshot({ path: testInfo.outputPath(filename), fullPage: true })
 }
 
 async function settingsLayoutMetrics(page: Page) {
   return page.evaluate(() => {
-    const aside = document.querySelector('aside')?.getBoundingClientRect()
-    const section = document.querySelector('main section')?.getBoundingClientRect()
-    const heading = document.querySelector('main section h1')?.getBoundingClientRect()
+    const asideNode = Array.from(document.querySelectorAll('aside')).find((node) => {
+      const rect = node.getBoundingClientRect()
+      const style = window.getComputedStyle(node)
+      return style.display !== 'none' && rect.width > 0 && rect.height > 0 && rect.top < window.innerHeight && rect.bottom > 0
+    })
+    const aside = asideNode?.getBoundingClientRect()
+    const sectionNode = Array.from(document.querySelectorAll('[data-onboarding-id="settings-mobile-detail"], main > div > section')).find((node) => {
+      const rect = node.getBoundingClientRect()
+      const style = window.getComputedStyle(node)
+      return style.display !== 'none' && rect.width > 0 && rect.height > 0 && rect.top < window.innerHeight && rect.bottom > 0
+    })
+    const section = sectionNode?.getBoundingClientRect()
+    const headingNode = Array.from(document.querySelectorAll('main h1')).find((node) => {
+      const rect = node.getBoundingClientRect()
+      const style = window.getComputedStyle(node)
+      return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0 && rect.top < window.innerHeight && rect.bottom > 0
+    })
+    const heading = headingNode?.getBoundingClientRect()
     const rail = document.querySelector('[data-testid="settings-copilot-rail"]') as HTMLElement | null
     const railParent = rail?.parentElement
     return {
@@ -164,15 +230,80 @@ test.describe('responsive app shell', () => {
     expect(overflow).toBeLessThanOrEqual(1)
   })
 
-  test('keeps settings content usable on phone-sized screens', async ({ page }) => {
+  test('keeps settings content usable on phone-sized screens', async ({ page }, testInfo) => {
     await openSettings(page, { width: 390, height: 844 })
 
-    const metrics = await settingsLayoutMetrics(page)
+    await expect(page.getByRole('button', { name: /Sessions & Hardware/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Connectors/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /DeepXiv/ })).toBeVisible()
+    await expect(page.locator('[data-onboarding-id="settings-mobile-directory"]')).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'Sessions & Hardware' })).toHaveCount(0)
+
+    let metrics = await settingsLayoutMetrics(page)
+    expect(metrics.horizontalOverflow).toBeLessThanOrEqual(1)
+    expect(metrics.aside).not.toBeNull()
+    expect(metrics.section).toBeNull()
+    await captureStableScreenshot(page, testInfo, 'settings-phone.png')
+
+    await page.getByRole('button', { name: /Sessions & Hardware/ }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Sessions & Hardware' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator('[data-onboarding-id="settings-mobile-directory"]')).toBeHidden()
+
+    metrics = await settingsLayoutMetrics(page)
     expect(metrics.headingVisible).toBe(true)
     expect(metrics.horizontalOverflow).toBeLessThanOrEqual(1)
-    expect(metrics.aside?.height || 0).toBeLessThanOrEqual(300)
     expect(metrics.section?.height || 0).toBeGreaterThan(430)
     expect(metrics.section?.top || 0).toBeLessThan(metrics.viewportHeight - 360)
+
+    await page.locator('[data-onboarding-id="settings-mobile-back"]').click()
+    await expect(page.locator('[data-onboarding-id="settings-mobile-directory"]')).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'Sessions & Hardware' })).toHaveCount(0)
+  })
+
+  test('keeps docs readable with mobile directory and outline drawer', async ({ page }, testInfo) => {
+    await installCommonStubs(page)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(`${baseUrl}/docs`, { waitUntil: 'networkidle' })
+
+    await expect(page.locator('[data-onboarding-id="docs-mobile-directory"]')).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator('main > div > section').getByRole('heading', { level: 1, name: 'Quick Start' })).toHaveCount(0)
+    let overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    expect(overflow).toBeLessThanOrEqual(1)
+    await expect(page.locator('[data-onboarding-id="docs-mobile-outline-button"]')).toHaveCount(0)
+    await captureStableScreenshot(page, testInfo, 'docs-phone.png')
+
+    await page.getByRole('button', { name: /Gemini configuration/ }).click()
+    await expect(page.locator('main > div > section').getByRole('heading', { level: 1, name: 'Gemini configuration' }).first()).toBeVisible()
+    await expect(page.locator('[data-onboarding-id="docs-mobile-directory"]')).toBeHidden()
+    await expect(page.locator('[data-onboarding-id="docs-mobile-back"]')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Outline' }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.getByRole('button', { name: /Long command/ })).toBeVisible()
+    overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    expect(overflow).toBeLessThanOrEqual(1)
+    await captureStableScreenshot(page, testInfo, 'docs-phone-outline.png')
+
+    await page.keyboard.press('Escape')
+    await page.locator('[data-onboarding-id="docs-mobile-back"]').click()
+    await expect(page.locator('[data-onboarding-id="docs-mobile-directory"]')).toBeVisible()
+    await expect(page.locator('[data-onboarding-id="docs-mobile-outline-button"]')).toHaveCount(0)
+  })
+
+  test('renders the demo project with the real mobile quest shell', async ({ page }, testInfo) => {
+    await installCommonStubs(page)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(`${baseUrl}/projects/demo-memory`, { waitUntil: 'networkidle' })
+
+    await expect(page.getByRole('button', { name: 'Explorer' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('button', { name: 'Chat' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Canvas' })).toBeVisible()
+    await expect(page.getByLabel('More')).toBeVisible()
+    await expect(page.locator('[data-onboarding-id="workspace-navbar"]')).toHaveCount(0)
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    expect(overflow).toBeLessThanOrEqual(1)
+    await captureStableScreenshot(page, testInfo, 'project-demo-phone-shell.png')
   })
 
   test('uses desktop two-column settings layout for narrow desktop widths', async ({ page }) => {

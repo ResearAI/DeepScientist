@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isMobileViewportMatch } from '@/lib/hooks/useMobileViewport'
 import { useUILanguageStore } from '@/lib/stores/ui-language'
 
 export type OnboardingLanguage = 'en' | 'zh'
@@ -32,6 +33,12 @@ type OnboardingState = OnboardingPersistence & {
 
 const ONBOARDING_STORAGE_KEY = 'ds:onboarding:v1'
 export const PROJECT_ONBOARDING_START_STEP = 22
+export const MOBILE_ONBOARDING_START_STEPS = {
+  landing: 0,
+  project: 5,
+  docs: 11,
+  settings: 13,
+} as const
 
 const defaultPersistence: OnboardingPersistence = {
   firstRunHandled: false,
@@ -90,6 +97,16 @@ function resolveLanguage(input: OnboardingLanguage | null | undefined): Onboardi
 }
 
 function resolveStartStepIndex(pathname: string) {
+  if (
+    typeof window !== 'undefined' &&
+    isMobileViewportMatch(window.innerWidth, window.innerHeight)
+  ) {
+    if (/^\/projects\/[^/]+/.test(pathname)) return MOBILE_ONBOARDING_START_STEPS.project
+    if (/^\/docs/.test(pathname)) return MOBILE_ONBOARDING_START_STEPS.docs
+    if (/^\/settings/.test(pathname)) return MOBILE_ONBOARDING_START_STEPS.settings
+    return MOBILE_ONBOARDING_START_STEPS.landing
+  }
+
   return /^\/(projects\/[^/]+|tutorial\/demo\/[^/]+)$/.test(pathname)
     ? PROJECT_ONBOARDING_START_STEP
     : 0

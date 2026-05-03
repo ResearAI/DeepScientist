@@ -85,7 +85,7 @@ DeepScientist 灵活且易于使用，支持：
 - [32 Windows + WSL2 部署指南](./32_WINDOWS_WSL2_DEPLOYMENT_GUIDE.md)
   如果你在 Windows 上使用 DeepScientist，并且想走推荐的 WSL2 路线，先看这篇。
 - [05 TUI 端到端指南](./05_TUI_GUIDE.md)
-  如果你主要在服务器或终端里工作，这篇会带你从 `ds --tui` 一路走到 quest、connector 和跨端协作跑通。
+  如果你主要在服务器或终端里工作，这篇会带你从 `ds --tui` 一路走到 quest、connector、跨端协作和 TUI debug 快照。
 - [15 Codex Provider 配置](./15_CODEX_PROVIDER_SETUP.md)
   如果你准备通过 OpenAI、Ollama、MiniMax、GLM、火山方舟、阿里百炼 Coding Plan 或其他 Codex profile 来运行 DeepScientist，先看这一篇。Gemini 只建议作为高级实验路线，通常优先走 OpenCode。
 - [24 Claude Code 配置指南](./24_CLAUDE_CODE_PROVIDER_SETUP.md)

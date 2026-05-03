@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { BookOpen, ChevronLeft, ChevronRight, Compass, Languages, Sparkles, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -18,7 +19,7 @@ import { useOnboardingStore, type OnboardingLanguage } from '@/lib/stores/onboar
 
 type OnboardingStep = {
   id: string
-  route: 'landing' | 'project' | 'settings'
+  route: 'landing' | 'project' | 'docs' | 'settings'
   title: Record<OnboardingLanguage, string>
   body: Record<OnboardingLanguage, string>
   hint?: Record<OnboardingLanguage, string>
@@ -110,6 +111,198 @@ const ONBOARDING_ANIMATION_STYLES = `
 `
 
 const ONBOARDING_LAYER_CLASS = 'z-[10020]'
+
+const MOBILE_ONBOARDING_STEPS: OnboardingStep[] = [
+  {
+    id: 'mobile-landing-start',
+    route: 'landing',
+    title: {
+      en: 'Start from one clear research request',
+      zh: '从一句清楚的研究需求开始',
+    },
+    body: {
+      en: 'On mobile, DeepScientist is optimized for starting work, checking progress, reading outputs, and answering decisions. Use Start Research to describe the goal, materials, constraints, and desired result.',
+      zh: '移动端主要用于启动任务、查看进展、阅读产物和处理决策。先点 Start Research，说明目标、材料、限制和希望得到的结果。',
+    },
+    hint: {
+      en: 'The full desktop tour is longer; this mobile guide stays focused on the phone workflow.',
+      zh: '桌面教程更完整；移动端教程只讲手机上最常用的流程。',
+    },
+  },
+  {
+    id: 'mobile-landing-setup-agent',
+    route: 'landing',
+    targetId: 'landing-start-research',
+    title: {
+      en: 'Let SetupAgent organize the launch',
+      zh: '让 SetupAgent 先整理启动方案',
+    },
+    body: {
+      en: 'The mobile path should usually be SetupAgent first: send the request and attachments, review the plan, then choose autonomous launch or Copilot.',
+      zh: '手机上推荐先走 SetupAgent：发送需求和附件，审阅计划，再选择全自动启动或协作模式。',
+    },
+  },
+  {
+    id: 'mobile-landing-benchstore',
+    route: 'landing',
+    targetId: 'landing-benchstore',
+    title: {
+      en: 'Use BenchStore when you need a concrete task',
+      zh: '不确定任务时先看 BenchStore',
+    },
+    body: {
+      en: 'BenchStore is useful on mobile as a browsable task list. Pick a task, then hand it to SetupAgent instead of filling a long form by hand.',
+      zh: 'BenchStore 在手机上更适合作为任务列表浏览。选中任务后交给 SetupAgent，而不是手动填很长的表单。',
+    },
+  },
+  {
+    id: 'mobile-landing-docs-settings',
+    route: 'landing',
+    title: {
+      en: 'Docs and Settings are available from the top bar',
+      zh: '文档和设置在顶部入口里',
+    },
+    body: {
+      en: 'Use Docs for setup instructions and Settings for runners, connectors, DeepXiv, and diagnostics. On mobile, both pages show their directories directly, with drawers only for secondary details such as document outlines.',
+      zh: 'Docs 用来看安装和配置说明；Settings 用来配置模型、连接器、DeepXiv 和诊断。移动端会直接显示目录，只把文档标题目录这类二级信息放进抽屉。',
+    },
+  },
+  {
+    id: 'mobile-landing-finish',
+    route: 'landing',
+    title: {
+      en: 'Use the phone for intervention points',
+      zh: '手机端重点处理人工介入点',
+    },
+    body: {
+      en: 'Heavy editing, terminal work, and deep diff review are still better on desktop. Mobile is best for monitoring, asking follow-ups, reading outputs, and confirming choices.',
+      zh: '复杂编辑、终端和深度 diff 审查仍然更适合桌面。手机端最适合监控、追问、阅读产物和确认选择。',
+    },
+  },
+  {
+    id: 'mobile-project-chat',
+    route: 'project',
+    title: {
+      en: 'The project opens around Chat',
+      zh: '项目页以 Chat 为中心',
+    },
+    body: {
+      en: 'On mobile, Chat and Studio are the main control surface. Use them to ask for status, clarify requirements, stop runs, or answer pending decisions.',
+      zh: '移动端项目页主要围绕 Chat 和 Studio。你可以查状态、补充要求、停止运行或回答待决策问题。',
+    },
+  },
+  {
+    id: 'mobile-project-tabs',
+    route: 'project',
+    title: {
+      en: 'Use the bottom tabs to switch context',
+      zh: '用底部标签切换上下文',
+    },
+    body: {
+      en: 'Explorer opens files and outputs, Chat talks to the agent, and Canvas shows the research map. Details, Memory, Terminal, and Settings live in the More menu.',
+      zh: 'Explorer 打开文件和产物，Chat 与 agent 对话，Canvas 查看研究地图。Details、Memory、Terminal 和 Settings 在 More 菜单里。',
+    },
+  },
+  {
+    id: 'mobile-project-explorer',
+    route: 'project',
+    title: {
+      en: 'Explorer is for reading outputs quickly',
+      zh: 'Explorer 用来快速阅读产物',
+    },
+    body: {
+      en: 'Mobile Explorer may show documents first while the full workspace tree loads. Opening a file uses a full-screen viewer for readability.',
+      zh: '移动端 Explorer 会优先显示文档，同时后台加载完整文件树。打开文件会进入全屏阅读器。',
+    },
+  },
+  {
+    id: 'mobile-project-canvas',
+    route: 'project',
+    title: {
+      en: 'Canvas is a map, not a full editor',
+      zh: 'Canvas 是地图，不是完整编辑器',
+    },
+    body: {
+      en: 'Use Canvas to understand branches, runs, and artifact milestones. Tap nodes to open focused stage details.',
+      zh: 'Canvas 用来理解分支、运行和产物节点。点击节点可以打开更聚焦的阶段详情。',
+    },
+  },
+  {
+    id: 'mobile-project-more',
+    route: 'project',
+    title: {
+      en: 'More contains the heavier tools',
+      zh: 'More 里放更重的工具',
+    },
+    body: {
+      en: 'Details is the status overview. Memory stores durable notes. Terminal and Settings are available, but complex operations are still safer on desktop.',
+      zh: 'Details 是状态总览，Memory 是长期记忆。Terminal 和 Settings 可以打开，但复杂操作仍然建议在桌面完成。',
+    },
+  },
+  {
+    id: 'mobile-project-finish',
+    route: 'project',
+    title: {
+      en: 'You are ready to supervise from mobile',
+      zh: '现在可以用手机监督任务了',
+    },
+    body: {
+      en: 'The core loop is simple: check Chat, inspect Details, open key files, and answer only the decisions that need you.',
+      zh: '核心循环很简单：看 Chat、查 Details、打开关键文件，只处理真正需要你确认的决策。',
+    },
+  },
+  {
+    id: 'mobile-docs-directory',
+    route: 'docs',
+    routePattern: /^\/docs$/,
+    title: {
+      en: 'Docs keeps the document tree visible on mobile',
+      zh: 'Docs 在手机上直接显示完整目录',
+    },
+    body: {
+      en: 'On mobile, the document tree stays on screen so you can open files directly without a separate category switch. Use the outline drawer when you need headings.',
+      zh: '移动端直接显示完整文档目录，可以直接打开文件，不再需要单独的分类切换层；需要标题目录时再打开目录抽屉。',
+    },
+  },
+  {
+    id: 'mobile-docs-reading',
+    route: 'docs',
+    routePattern: /^\/docs(?:\/.+)?$/,
+    title: {
+      en: 'Read docs like a reference book',
+      zh: '像查参考书一样阅读文档',
+    },
+    body: {
+      en: 'Long tables, code blocks, and images should scroll inside the article instead of widening the page. Use Settings links when a document points to configuration.',
+      zh: '长表格、代码块和图片应该在正文内滚动，不要撑宽页面。文档指向配置时，可以跳转到 Settings。',
+    },
+  },
+  {
+    id: 'mobile-settings-directory',
+    route: 'settings',
+    routePattern: /^\/settings$/,
+    title: {
+      en: 'Settings keeps the section tree on screen',
+      zh: 'Settings 在手机上直接显示完整目录',
+    },
+    body: {
+      en: 'On mobile, the full section tree is shown directly on the page, so you can open Runtime, Models, Connectors, DeepXiv, and diagnostics without a separate category switch.',
+      zh: '移动端会直接在页面里显示完整目录，可以直接打开 Runtime、Models、Connectors、DeepXiv 和诊断页，不再使用独立分类切换层。',
+    },
+  },
+  {
+    id: 'mobile-settings-copilot',
+    route: 'settings',
+    title: {
+      en: 'Use Settings Copilot as a drawer',
+      zh: 'Settings Copilot 以抽屉方式使用',
+    },
+    body: {
+      en: 'When the screen is small, Copilot should overlay the page instead of pushing the settings content away.',
+      zh: '屏幕较小时，Copilot 应该覆盖在页面上，而不是把设置内容挤走。',
+    },
+  },
+]
 
 const ONBOARDING_STEPS: OnboardingStep[] = [
   {
@@ -797,12 +990,100 @@ function routeMatches(step: OnboardingStep, pathname: string) {
       ? pathname === '/'
       : step.route === 'project'
         ? /^\/(projects\/[^/]+|tutorial\/demo\/[^/]+)$/.test(pathname)
-        : /^\/settings(?:\/.*)?$/.test(pathname)
+        : step.route === 'docs'
+          ? /^\/docs(?:\/.*)?$/.test(pathname)
+          : /^\/settings(?:\/.*)?$/.test(pathname)
   if (!baseMatch) return false
   if (step.routePattern) {
     return step.routePattern.test(pathname)
   }
   return true
+}
+
+function mobileRouteForStep(step: OnboardingStep, currentPathname: string) {
+  if (step.route === 'landing') return '/'
+  if (step.route === 'docs') return '/docs'
+  if (step.route === 'settings') return '/settings'
+  if (/^\/projects\/[^/]+/.test(currentPathname)) return currentPathname
+  return '/projects/demo-memory'
+}
+
+function dispatchEscapeKey() {
+  if (typeof document === 'undefined') return
+  document.dispatchEvent(
+    new KeyboardEvent('keydown', {
+      key: 'Escape',
+      code: 'Escape',
+      keyCode: 27,
+      which: 27,
+      bubbles: true,
+      cancelable: true,
+    })
+  )
+}
+
+function scheduleMobileStepSurfaceSync(step: OnboardingStep) {
+  if (typeof window === 'undefined') return undefined
+  const timers: number[] = []
+  const schedule = (delay: number, action: () => void) => {
+    timers.push(window.setTimeout(action, delay))
+  }
+  const closeIfOpen = (targetIds: string[]) => {
+    if (!targetIds.some((id) => queryTarget(id))) return false
+    dispatchEscapeKey()
+    return true
+  }
+  const clickIfMissing = (triggerId: string, expectedId?: string) => {
+    if (expectedId && queryTarget(expectedId)) return true
+    return triggerTargetAction(triggerId)
+  }
+  const openMobileMoreMenu = () => {
+    if (queryTarget('mobile-quest-more-menu-content')) return true
+    window.dispatchEvent(new CustomEvent('ds:mobile-quest-more-menu:open'))
+    return true
+  }
+  const sync = () => {
+    switch (step.id) {
+      case 'mobile-project-chat':
+      case 'mobile-project-tabs':
+      case 'mobile-project-finish':
+        closeIfOpen(['mobile-quest-more-menu-content'])
+        clickIfMissing('mobile-quest-tab-chat')
+        break
+      case 'mobile-project-explorer':
+        closeIfOpen(['mobile-quest-more-menu-content'])
+        clickIfMissing('mobile-quest-tab-explorer')
+        break
+      case 'mobile-project-canvas':
+        closeIfOpen(['mobile-quest-more-menu-content'])
+        clickIfMissing('mobile-quest-tab-canvas')
+        break
+      case 'mobile-project-more':
+        openMobileMoreMenu()
+        break
+      case 'mobile-docs-directory':
+        closeIfOpen(['docs-mobile-outline-sheet'])
+        break
+      case 'mobile-docs-reading':
+        clickIfMissing('docs-mobile-document-button', 'docs-mobile-back')
+        clickIfMissing('docs-mobile-outline-button', 'docs-mobile-outline-sheet')
+        break
+      case 'mobile-settings-directory':
+        closeIfOpen(['settings-admin-copilot-rail'])
+        break
+      case 'mobile-settings-copilot':
+        clickIfMissing('settings-mobile-summary-button', 'settings-admin-summary-surface')
+        clickIfMissing('settings-admin-copilot-launcher', 'settings-admin-copilot-rail')
+        break
+      default:
+        break
+    }
+  }
+
+  ;[0, 180, 420, 760].forEach((delay) => schedule(delay, sync))
+  return () => {
+    timers.forEach((timer) => window.clearTimeout(timer))
+  }
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -935,56 +1216,291 @@ function OnboardingChooser({
   return (
     <div className={cn('fixed inset-0 flex items-center justify-center p-4', ONBOARDING_LAYER_CLASS)}>
       <div className="absolute inset-0 bg-[rgba(17,19,24,0.52)] backdrop-blur-[2px]" />
-      <div className="relative w-full max-w-[520px] rounded-[28px] border border-white/15 bg-[rgba(255,250,245,0.96)] p-6 shadow-[0_32px_100px_-48px_rgba(15,23,42,0.55)] backdrop-blur-xl">
-        <div className="flex items-center gap-3 text-[rgba(92,78,58,0.95)]">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[rgba(199,173,150,0.24)]">
-            <Languages className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[rgba(126,108,82,0.76)]">
-              First Run
+      <div className="relative flex w-full max-w-[520px] max-h-[calc(100dvh-1rem)] flex-col overflow-hidden rounded-[28px] border border-white/15 bg-[rgba(255,250,245,0.96)] shadow-[0_32px_100px_-48px_rgba(15,23,42,0.55)] backdrop-blur-xl">
+        <div className="shrink-0 border-b border-black/[0.06] px-6 py-5">
+          <div className="flex items-center gap-3 text-[rgba(92,78,58,0.95)]">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[rgba(199,173,150,0.24)]">
+              <Languages className="h-5 w-5" />
             </div>
-            <h2 className="mt-1 text-xl font-semibold tracking-tight">
-              选择首次教程语言 / Choose Your First Tutorial
-            </h2>
+            <div>
+              <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[rgba(126,108,82,0.76)]">
+                First Run
+              </div>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight">
+                选择首次教程语言 / Choose Your First Tutorial
+              </h2>
+            </div>
           </div>
         </div>
 
-        <p className="mt-4 text-sm leading-7 text-[rgba(70,61,49,0.84)]">
-          DeepScientist 可以像游戏教程一样，带你一步步完成第一次使用。
-          Choose Chinese or English, skip for now, or turn the reminder off.
-        </p>
+        <div className="feed-scrollbar modal-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-4">
+          <p className="text-sm leading-7 text-[rgba(70,61,49,0.84)]">
+            DeepScientist 可以像游戏教程一样，带你一步步完成第一次使用。
+            Choose Chinese or English, skip for now, or turn the reminder off.
+          </p>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => onStart('zh')}
-            className="rounded-[20px] border border-[rgba(126,77,42,0.16)] bg-[rgba(244,239,233,0.76)] px-4 py-4 text-left transition hover:border-[rgba(126,77,42,0.28)] hover:bg-white"
-          >
-            <div className="text-sm font-semibold text-[rgba(38,36,33,0.95)]">中文讲解</div>
-            <div className="mt-1 text-[12px] leading-6 text-[rgba(86,82,77,0.82)]">
-              一步步说明页面结构、创建项目和工作区的基本用法。
-            </div>
-          </button>
-          <button
-            type="button"
-            onClick={() => onStart('en')}
-            className="rounded-[20px] border border-[rgba(126,77,42,0.16)] bg-[rgba(244,239,233,0.76)] px-4 py-4 text-left transition hover:border-[rgba(126,77,42,0.28)] hover:bg-white"
-          >
-            <div className="text-sm font-semibold text-[rgba(38,36,33,0.95)]">English guide</div>
-            <div className="mt-1 text-[12px] leading-6 text-[rgba(86,82,77,0.82)]">
-              Walk through the first run, project creation flow, and workspace basics.
-            </div>
-          </button>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => onStart('zh')}
+              className="rounded-[20px] border border-[rgba(126,77,42,0.16)] bg-[rgba(244,239,233,0.76)] px-4 py-4 text-left transition hover:border-[rgba(126,77,42,0.28)] hover:bg-white"
+            >
+              <div className="text-sm font-semibold text-[rgba(38,36,33,0.95)]">中文讲解</div>
+              <div className="mt-1 text-[12px] leading-6 text-[rgba(86,82,77,0.82)]">
+                一步步说明页面结构、创建项目和工作区的基本用法。
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => onStart('en')}
+              className="rounded-[20px] border border-[rgba(126,77,42,0.16)] bg-[rgba(244,239,233,0.76)] px-4 py-4 text-left transition hover:border-[rgba(126,77,42,0.28)] hover:bg-white"
+            >
+              <div className="text-sm font-semibold text-[rgba(38,36,33,0.95)]">English guide</div>
+              <div className="mt-1 text-[12px] leading-6 text-[rgba(86,82,77,0.82)]">
+                Walk through the first run, project creation flow, and workspace basics.
+              </div>
+            </button>
+          </div>
         </div>
 
-        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <Button variant="ghost" onClick={onSkip}>
-            暂时跳过 / Skip for now
-          </Button>
-          <Button variant="secondary" onClick={onNever}>
-            不再提醒 / Do not remind again
-          </Button>
+        <div className="shrink-0 border-t border-black/[0.06] px-6 py-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button variant="ghost" onClick={onSkip}>
+              暂时跳过 / Skip for now
+            </Button>
+            <Button variant="secondary" onClick={onNever}>
+              不再提醒 / Do not remind again
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MobileOnboardingCard({
+  step,
+  stepIndex,
+  totalSteps,
+  language,
+  targetRect,
+  onBack,
+  onNext,
+  onSkip,
+}: {
+  step: OnboardingStep
+  stepIndex: number
+  totalSteps: number
+  language: OnboardingLanguage
+  targetRect: DOMRect | null
+  onBack: () => void
+  onNext: () => void
+  onSkip: () => void
+}) {
+  const copy = COPY[language]
+  const routeLabel =
+    step.route === 'project'
+      ? language === 'zh'
+        ? '项目'
+        : 'Project'
+      : step.route === 'settings'
+        ? language === 'zh'
+          ? '设置'
+          : 'Settings'
+      : step.route === 'docs'
+        ? language === 'zh'
+          ? '文档'
+          : 'Docs'
+        : language === 'zh'
+          ? '启动'
+          : 'Launch'
+  const isLast = stepIndex >= totalSteps - 1
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1280
+  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 720
+  const highlightPadding = 8
+  const overlayRect = targetRect
+    ? {
+        top: Math.max(0, targetRect.top - highlightPadding),
+        left: Math.max(0, targetRect.left - highlightPadding),
+        right: Math.min(viewportWidth, targetRect.right + highlightPadding),
+        bottom: Math.min(viewportHeight, targetRect.bottom + highlightPadding),
+      }
+    : null
+  const haloRect = overlayRect
+    ? {
+        top: Math.max(0, overlayRect.top - 14),
+        left: Math.max(0, overlayRect.left - 14),
+        width: Math.min(viewportWidth, overlayRect.right + 14) - Math.max(0, overlayRect.left - 14),
+        height: Math.min(viewportHeight, overlayRect.bottom + 14) - Math.max(0, overlayRect.top - 14),
+      }
+    : null
+  const focusPillPosition = overlayRect
+    ? {
+        top: overlayRect.top > 56 ? overlayRect.top - 44 : overlayRect.bottom + 12,
+        left: clamp(overlayRect.left, 16, Math.max(16, viewportWidth - 180)),
+      }
+    : null
+  const spotlightOrbPosition = overlayRect
+    ? {
+        top: Math.max(10, overlayRect.top - 26),
+        left: overlayRect.left + (overlayRect.right - overlayRect.left) / 2 - 11,
+      }
+    : null
+
+  return (
+    <div
+      className={cn('fixed inset-0 flex items-end p-0 backdrop-blur-[1px]', ONBOARDING_LAYER_CLASS)}
+      style={{ zIndex: 10020 }}
+    >
+      {overlayRect ? (
+        <>
+          <div
+            className="fixed left-0 top-0 bg-[rgba(9,11,15,0.7)] backdrop-blur-[2px] pointer-events-auto"
+            style={{ width: '100vw', height: overlayRect.top }}
+          />
+          <div
+            className="fixed left-0 bg-[rgba(9,11,15,0.7)] backdrop-blur-[2px] pointer-events-auto"
+            style={{
+              top: overlayRect.top,
+              width: overlayRect.left,
+              height: overlayRect.bottom - overlayRect.top,
+            }}
+          />
+          <div
+            className="fixed bg-[rgba(9,11,15,0.7)] backdrop-blur-[2px] pointer-events-auto"
+            style={{
+              top: overlayRect.top,
+              left: overlayRect.right,
+              width: Math.max(0, viewportWidth - overlayRect.right),
+              height: overlayRect.bottom - overlayRect.top,
+            }}
+          />
+          <div
+            className="fixed left-0 bg-[rgba(9,11,15,0.7)] backdrop-blur-[2px] pointer-events-auto"
+            style={{
+              top: overlayRect.bottom,
+              width: '100vw',
+              height: Math.max(0, viewportHeight - overlayRect.bottom),
+            }}
+          />
+          {haloRect ? (
+            <div
+              className="pointer-events-none fixed rounded-[30px] bg-[radial-gradient(circle_at_center,rgba(255,243,224,0.22)_0%,rgba(255,243,224,0.1)_42%,rgba(255,243,224,0.03)_62%,transparent_78%)] blur-[4px]"
+              style={{
+                top: haloRect.top,
+                left: haloRect.left,
+                width: haloRect.width,
+                height: haloRect.height,
+                animation: 'ds-onboarding-halo 1.9s ease-in-out infinite',
+              }}
+            />
+          ) : null}
+          <div
+            className="pointer-events-none fixed rounded-[26px] border border-[rgba(255,249,239,0.94)] shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_24px_rgba(255,230,197,0.24)]"
+            style={{
+              top: overlayRect.top,
+              left: overlayRect.left,
+              width: Math.max(0, overlayRect.right - overlayRect.left),
+              height: Math.max(0, overlayRect.bottom - overlayRect.top),
+            }}
+          />
+          {focusPillPosition ? (
+            <div
+              className="pointer-events-none fixed inline-flex items-center gap-2 rounded-full border border-[rgba(255,247,232,0.28)] bg-[rgba(255,248,239,0.14)] px-3 py-1.5 text-[11px] font-semibold tracking-[0.08em] text-white shadow-[0_16px_40px_-28px_rgba(0,0,0,0.58)] backdrop-blur-[10px]"
+              style={{
+                top: focusPillPosition.top,
+                left: focusPillPosition.left,
+                animation: 'ds-onboarding-float 2.3s ease-in-out infinite',
+              }}
+            >
+              <span className="h-2 w-2 rounded-full bg-[rgba(255,233,200,0.96)] shadow-[0_0_14px_rgba(255,223,182,0.9)]" />
+              {language === 'zh' ? '请看这里' : 'Look here'}
+            </div>
+          ) : null}
+          {spotlightOrbPosition ? (
+            <div
+              className="pointer-events-none fixed h-[22px] w-[22px] rounded-full bg-[radial-gradient(circle,rgba(255,244,220,0.98)_0%,rgba(255,223,182,0.85)_42%,rgba(255,223,182,0.16)_72%,transparent_100%)] shadow-[0_0_28px_rgba(255,224,182,0.88)]"
+              style={{
+                top: spotlightOrbPosition.top,
+                left: spotlightOrbPosition.left,
+                animation: 'ds-onboarding-float 1.8s ease-in-out infinite',
+              }}
+            />
+          ) : null}
+        </>
+      ) : (
+        <div className="absolute inset-0 bg-[rgba(9,11,15,0.72)] backdrop-blur-[3px] pointer-events-auto" />
+      )}
+      <div
+        className="relative flex w-full max-h-[calc(100dvh-1rem)] flex-col overflow-hidden rounded-t-[28px] border border-black/[0.08] bg-[linear-gradient(180deg,rgba(255,252,248,0.98),rgba(244,238,231,0.98))] shadow-[0_-28px_80px_-42px_rgba(15,23,42,0.54)]"
+        data-onboarding-id="mobile-onboarding-card"
+      >
+        <div className="shrink-0 px-5 pt-4">
+          <div className="mx-auto mb-4 h-1.5 w-11 rounded-full bg-black/[0.10]" />
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex rounded-full border border-black/[0.08] bg-white/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[rgba(107,96,83,0.78)]">
+                  {routeLabel}
+                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[rgba(126,108,82,0.72)]">
+                  {copy.progress(stepIndex + 1, totalSteps)}
+                </span>
+              </div>
+              <h3 className="mt-3 text-[20px] font-semibold leading-7 tracking-tight text-[rgba(38,36,33,0.96)]">
+                {step.title[language]}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={onSkip}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[0.04] text-[rgba(86,82,77,0.82)]"
+              aria-label="Close mobile tutorial"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <div className="feed-scrollbar modal-scrollbar min-h-0 flex-1 overflow-y-auto px-5 py-3 text-[14px] leading-7 text-[rgba(70,61,49,0.84)]">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+              ul: ({ children }) => <ul className="mb-3 list-disc space-y-1 pl-5 last:mb-0">{children}</ul>,
+              ol: ({ children }) => <ol className="mb-3 list-decimal space-y-1 pl-5 last:mb-0">{children}</ol>,
+              li: ({ children }) => <li>{children}</li>,
+              strong: ({ children }) => <strong className="font-semibold text-[rgba(38,36,33,0.96)]">{children}</strong>,
+              code: ({ children }) => (
+                <code className="rounded bg-black/[0.05] px-1.5 py-0.5 text-[12px] text-[rgba(58,50,40,0.92)]">
+                  {children}
+                </code>
+              ),
+            }}
+          >
+            {step.body[language]}
+          </ReactMarkdown>
+          {step.hint?.[language] ? (
+            <div className="mt-3 rounded-[18px] border border-black/[0.06] bg-white/58 px-3.5 py-3 text-[12px] leading-6 text-[rgba(86,82,77,0.82)]">
+              {step.hint[language]}
+            </div>
+          ) : null}
+        </div>
+        <div className="shrink-0 border-t border-black/[0.06] px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+          <div className="flex items-center justify-between gap-3">
+            <Button variant="ghost" onClick={onBack} disabled={stepIndex === 0} className="rounded-full">
+              <ChevronLeft className="mr-1 h-4 w-4" />
+              {copy.back}
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={onSkip} className="rounded-full">
+                {copy.skip}
+              </Button>
+              <Button onClick={onNext} className="rounded-full" data-onboarding-id="mobile-onboarding-next">
+                {isLast ? copy.finish : copy.next}
+                {!isLast ? <ChevronRight className="ml-1 h-4 w-4" /> : null}
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1034,7 +1550,8 @@ export function OnboardingOverlay() {
   })
   const startAdminOpsSession = useAdminOpsStore((state) => state.startFreshSession)
   const cardRef = React.useRef<HTMLDivElement | null>(null)
-  const step = status === 'running' ? ONBOARDING_STEPS[stepIndex] ?? null : null
+  const activeSteps = isMobileViewport ? MOBILE_ONBOARDING_STEPS : ONBOARDING_STEPS
+  const step = status === 'running' ? activeSteps[stepIndex] ?? null : null
   const activeLanguage = language === 'zh' || language === 'en' ? language : 'en'
   const copy = COPY[activeLanguage]
   const isGuidedProjectRoute = /^\/projects\/demo-/.test(location.pathname)
@@ -1043,6 +1560,12 @@ export function OnboardingOverlay() {
     (mode: 'close' | 'complete') => {
       if (mode === 'complete') {
         completeTutorial()
+        if (isMobileViewport) {
+          window.setTimeout(() => {
+            navigate('/', { replace: false })
+          }, 0)
+          return
+        }
       } else {
         close()
       }
@@ -1056,12 +1579,24 @@ export function OnboardingOverlay() {
   )
 
   const advance = React.useCallback(() => {
-    if (stepIndex >= ONBOARDING_STEPS.length - 1) {
+    if (stepIndex >= activeSteps.length - 1) {
       exitTutorial('complete')
       return
     }
+    const next = activeSteps[stepIndex + 1]
+    if (isMobileViewport && next && !routeMatches(next, location.pathname)) {
+      navigate(mobileRouteForStep(next, location.pathname))
+    }
     nextStep()
-  }, [exitTutorial, nextStep, stepIndex])
+  }, [activeSteps, exitTutorial, isMobileViewport, location.pathname, navigate, nextStep, stepIndex])
+
+  const handleMobilePrevious = React.useCallback(() => {
+    const previous = activeSteps[Math.max(0, stepIndex - 1)]
+    if (previous && !routeMatches(previous, location.pathname)) {
+      navigate(mobileRouteForStep(previous, location.pathname))
+    }
+    previousStep()
+  }, [activeSteps, location.pathname, navigate, previousStep, stepIndex])
 
   const advanceWithAction = React.useCallback(() => {
     if (status !== 'running' || !step) return
@@ -1116,12 +1651,6 @@ export function OnboardingOverlay() {
   React.useEffect(() => {
     hydrate()
   }, [hydrate])
-
-  React.useEffect(() => {
-    if (isMobileViewport && status !== 'idle') {
-      close()
-    }
-  }, [close, isMobileViewport, status])
 
   React.useEffect(() => {
     if (status !== 'running' || !step) {
@@ -1196,11 +1725,21 @@ export function OnboardingOverlay() {
 
   React.useEffect(() => {
     if (status !== 'running' || !step) return
+    if (isMobileViewport && !routeMatches(step, location.pathname)) {
+      navigate(mobileRouteForStep(step, location.pathname), { replace: true })
+      return
+    }
     if (step.advanceMode !== 'wait_for_route' || !step.waitForRoute) return
     if (!step.waitForRoute.test(location.pathname)) return
     const timer = window.setTimeout(() => advance(), 120)
     return () => window.clearTimeout(timer)
-  }, [advance, location.pathname, status, step])
+  }, [advance, isMobileViewport, location.pathname, navigate, status, step])
+
+  React.useEffect(() => {
+    if (status !== 'running' || !step || !isMobileViewport) return
+    if (!routeMatches(step, location.pathname)) return
+    return scheduleMobileStepSurfaceSync(step)
+  }, [isMobileViewport, location.pathname, status, step])
 
   React.useEffect(() => {
     if (status !== 'running' || !step) return
@@ -1288,10 +1827,6 @@ export function OnboardingOverlay() {
     return null
   }
 
-  if (isMobileViewport) {
-    return null
-  }
-
   if (status === 'choosing_language') {
     return (
       <OnboardingChooser
@@ -1309,6 +1844,22 @@ export function OnboardingOverlay() {
   const shouldRenderForRoute = routeMatches(step, location.pathname)
   if (!shouldRenderForRoute && step.advanceMode !== 'wait_for_route') {
     return null
+  }
+
+  if (isMobileViewport) {
+    const mobileCard = (
+      <MobileOnboardingCard
+        step={step}
+        stepIndex={stepIndex}
+        totalSteps={activeSteps.length}
+        language={activeLanguage}
+        targetRect={targetRect}
+        onBack={handleMobilePrevious}
+        onNext={advance}
+        onSkip={() => exitTutorial('close')}
+      />
+    )
+    return typeof document !== 'undefined' ? createPortal(mobileCard, document.body) : mobileCard
   }
 
   const isActionStep =
@@ -1362,9 +1913,13 @@ export function OnboardingOverlay() {
         ? activeLanguage === 'zh'
           ? '项目工作区'
           : 'Project Workspace'
-        : activeLanguage === 'zh'
-          ? '设置与管理'
-          : 'Settings & Admin'
+        : step.route === 'docs'
+          ? activeLanguage === 'zh'
+            ? '文档'
+            : 'Docs'
+          : activeLanguage === 'zh'
+            ? '设置与管理'
+            : 'Settings & Admin'
   const focusLabel = activeLanguage === 'zh' ? '请看这里' : 'Look here'
   const infoMessage = step.hint?.[activeLanguage]
     ?? (isActionStep ? (targetFound ? copy.waitForAction : copy.waitingTarget) : copy.readingHint)
@@ -1486,7 +2041,7 @@ export function OnboardingOverlay() {
               </button>
             </div>
             <div className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[rgba(126,108,82,0.76)]">
-              {copy.progress(stepIndex + 1, ONBOARDING_STEPS.length)}
+              {copy.progress(stepIndex + 1, activeSteps.length)}
             </div>
             <h3 className="mt-2 text-lg font-semibold tracking-tight text-[rgba(38,36,33,0.96)]">
               {step.title[activeLanguage]}
@@ -1539,8 +2094,8 @@ export function OnboardingOverlay() {
               {copy.skip}
             </Button>
             <Button onClick={isActionStep ? advanceWithAction : advance}>
-              {stepIndex >= ONBOARDING_STEPS.length - 1 ? copy.finish : copy.next}
-              {stepIndex < ONBOARDING_STEPS.length - 1 ? <ChevronRight className="ml-1 h-4 w-4" /> : null}
+              {stepIndex >= activeSteps.length - 1 ? copy.finish : copy.next}
+              {stepIndex < activeSteps.length - 1 ? <ChevronRight className="ml-1 h-4 w-4" /> : null}
             </Button>
           </div>
         </div>

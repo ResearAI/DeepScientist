@@ -1,5 +1,41 @@
 import { expect, test, type Page } from '@playwright/test'
 
+const baseUrl = process.env.E2E_BASE_URL || 'http://127.0.0.1:20999'
+
+function appUrl(path: string) {
+  const normalizedBase = baseUrl.replace(/\/$/, '')
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return `${normalizedBase}${normalizedPath}`
+}
+
+function stepProgressPattern(step: number) {
+  return new RegExp(`\\b(?:Step\\s+)?${step}\\s*\\/\\s*\\d+\\b`, 'i')
+}
+
+async function expectStepProgress(page: Page, step: number) {
+  await expect(page.getByText(stepProgressPattern(step))).toBeVisible()
+}
+
+async function readCurrentStep(page: Page) {
+  const bodyText = await page.locator('body').innerText()
+  const match = bodyText.match(/\bStep\s+(\d+)\s*\/\s*(\d+)\b/i)
+  return match ? { current: Number(match[1]), total: Number(match[2]) } : null
+}
+
+async function advanceToStep(page: Page, targetStep: number, maxClicks = 20) {
+  for (let attempt = 0; attempt <= maxClicks; attempt += 1) {
+    const step = await readCurrentStep(page)
+    if (step?.current === targetStep) return
+    if (step && step.current > targetStep) {
+      throw new Error(`Onboarding advanced past Step ${targetStep}; current step is ${step.current}/${step.total}.`)
+    }
+    if (attempt === maxClicks) break
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.waitForTimeout(500)
+  }
+  throw new Error(`Unable to reach onboarding Step ${targetStep}.`)
+}
+
 function installLandingStubs(page: Page) {
   page.on('pageerror', (error) => {
     throw error
@@ -184,7 +220,7 @@ async function openLandingTutorial(page: Page, locale: 'en' | 'zh' = 'en') {
   }, locale)
 
   await installLandingStubs(page)
-  await page.goto('/')
+  await page.goto(appUrl('/'))
   await expect(page.locator('[data-onboarding-id="landing-replay-tutorial"]')).toBeVisible({ timeout: 30_000 })
   await page.locator('[data-onboarding-id="landing-replay-tutorial"]').click()
 }
@@ -210,9 +246,27 @@ async function openProjectTutorial(page: Page, locale: 'en' | 'zh' = 'en') {
     }
   }, locale)
 
-  await page.goto('/projects/demo-memory')
+  await page.goto(appUrl('/projects/demo-memory'))
   await expect(page.getByLabel('Tutorial')).toBeVisible({ timeout: 30_000 })
   await page.getByLabel('Tutorial').click()
+}
+
+async function openMobileLandingFirstRun(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('ds:onboarding:v1')
+    window.localStorage.setItem('ds:ui-language', 'en')
+    ;(window as typeof window & { __DEEPSCIENTIST_RUNTIME__?: unknown }).__DEEPSCIENTIST_RUNTIME__ = {
+      auth: {
+        enabled: false,
+        tokenQueryParam: 'token',
+        storageKey: 'ds_local_auth_token',
+      },
+    }
+  })
+
+  await installLandingStubs(page)
+  await page.goto(appUrl('/'))
+  await expect(page.locator('[data-onboarding-id="landing-hero"]')).toBeVisible({ timeout: 30_000 })
 }
 
 test.describe('onboarding launch flow', () => {
@@ -220,36 +274,51 @@ test.describe('onboarding launch flow', () => {
     await page.setViewportSize({ width: 1600, height: 1000 })
     await openLandingTutorial(page, 'en')
 
-    await expect(page.getByText('1 / 43')).toBeVisible()
+    await expectStepProgress(page, 1)
     await expect(page.getByRole('heading', { name: 'This is the launch surface' })).toBeVisible()
 
     await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByText('2 / 43')).toBeVisible()
+    await expectStepProgress(page, 2)
     await expect(page.getByRole('heading', { name: 'These are the three main entry paths' })).toBeVisible()
 
     await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByText('3 / 43')).toBeVisible()
+    await expectStepProgress(page, 3)
     await expect(page.getByRole('heading', { name: 'Open BenchStore first' })).toBeVisible()
 
     await page.getByRole('button', { name: 'Next' }).click()
     await expect(page.locator('[data-onboarding-id="benchstore-dialog"]')).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByText('4 / 43')).toBeVisible({ timeout: 30_000 })
+    await expectStepProgress(page, 4)
     await expect(page.getByRole('heading', { name: 'BenchStore starts as a storefront view' })).toBeVisible()
 
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      const heading = page.getByRole('heading', { name: 'First choose between Copilot and Autonomous' })
-      if (await heading.isVisible().catch(() => false)) {
-        break
-      }
-      await page.getByRole('button', { name: 'Next' }).click()
-      await page.waitForTimeout(350)
-    }
+    await advanceToStep(page, 10, 12)
 
     await expect(page.locator('[data-onboarding-id="experiment-launch-dialog"]')).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByText('9 / 43')).toBeVisible({ timeout: 30_000 })
+    await expectStepProgress(page, 10)
     await expect(page.getByRole('heading', { name: 'First choose between Copilot and Autonomous' })).toBeVisible()
     await expect(page.locator('[data-onboarding-id="launch-mode-copilot-card"]')).toBeVisible()
     await expect(page.locator('[data-onboarding-id="launch-mode-autonomous-card"]')).toBeVisible()
+  })
+
+  test('uses the compact mobile onboarding card on phone-sized screens', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await openMobileLandingFirstRun(page)
+
+    await page.getByRole('button', { name: 'Close' }).click()
+    await expect(page.locator('[data-onboarding-id="landing-mobile-replay-tutorial"]')).toBeVisible()
+    await page.locator('[data-onboarding-id="landing-mobile-replay-tutorial"]').click()
+
+    await expect(page.locator('[data-onboarding-id="mobile-onboarding-card"]')).toBeVisible()
+    await expect(page.getByText(/Step\s+1\s*\/\s*15/i)).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Start from one clear research request' })).toBeVisible()
+    await expect(page.getByLabel('Close tutorial')).toHaveCount(0)
+    await expect(page.locator('[data-onboarding-id="landing-mobile-replay-tutorial"]')).toBeVisible()
+
+    await page.locator('[data-onboarding-id="mobile-onboarding-next"]').click()
+    await expect(page.getByText(/Step\s+2\s*\/\s*15/i)).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Let SetupAgent organize the launch' })).toBeVisible()
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    expect(overflow).toBeLessThanOrEqual(1)
   })
 
   test('the project tutorial still reaches the canvas stage with a connected graph', async ({ page }) => {
@@ -257,17 +326,15 @@ test.describe('onboarding launch flow', () => {
     await openProjectTutorial(page, 'en')
 
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      const bodyText = await page.locator('body').innerText()
-      const match = bodyText.match(/STEP\s+(\d+)\s*\/\s*43|Step\s+(\d+)\s*\/\s*43/)
-      const step = match ? Number(match[1] || match[2]) : null
-      if (step != null && step >= 30) {
+      const step = await readCurrentStep(page)
+      if (step && step.current >= 30) {
         break
       }
       await page.getByRole('button', { name: 'Next' }).click()
       await page.waitForTimeout(700)
     }
 
-    await expect(page.getByText('Step 30 / 43')).toBeVisible({ timeout: 30_000 })
+    await expectStepProgress(page, 30)
     await expect(page.getByRole('heading', { name: 'Canvas shows the research map' })).toBeVisible()
 
     const nodeCount = await page.locator('.react-flow__node').count()

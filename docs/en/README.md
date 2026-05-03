@@ -46,7 +46,7 @@ Built-in runners today:
 - [32 Windows + WSL2 Deployment Guide](./32_WINDOWS_WSL2_DEPLOYMENT_GUIDE.md)
   Read this if you are on Windows and want the recommended WSL2-based deployment path instead of guessing the environment setup.
 - [05 TUI Guide](./05_TUI_GUIDE.md)
-  Read this if your main surface is the terminal and you want one end-to-end path through `ds --tui`, quests, connectors, and cross-surface work.
+  Read this if your main surface is the terminal and you want one end-to-end path through `ds --tui`, quests, connectors, cross-surface work, and TUI debug snapshots.
 - [15 Codex Provider Setup](./15_CODEX_PROVIDER_SETUP.md)
   Read this when you want to run DeepScientist through OpenAI, Ollama, MiniMax, GLM, Volcengine Ark, Alibaba Bailian Coding Plan, or another Codex profile. Gemini through Codex is an advanced experiment; OpenCode is usually the better Gemini route.
 - [24 Claude Code Setup](./24_CLAUDE_CODE_PROVIDER_SETUP.md)

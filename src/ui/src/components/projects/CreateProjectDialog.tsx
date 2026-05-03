@@ -1473,7 +1473,7 @@ function SectionCard({
     <div
       data-onboarding-id={dataOnboardingId}
       className={cn(
-        'rounded-[18px] border p-3 sm:rounded-xl',
+        'overflow-x-hidden rounded-[18px] border p-3 sm:rounded-xl',
         muted
           ? 'border-[rgba(45,42,38,0.08)] bg-[rgba(244,239,233,0.56)] dark:border-[rgba(45,42,38,0.08)] dark:bg-[rgba(244,239,233,0.66)] sm:bg-[rgba(244,239,233,0.62)] sm:dark:bg-[rgba(244,239,233,0.72)]'
           : 'border-[rgba(45,42,38,0.08)] bg-white/72 dark:border-[rgba(45,42,38,0.08)] dark:bg-white/82 sm:shadow-[0_12px_30px_-24px_rgba(45,42,38,0.32)] sm:backdrop-blur-xl'
@@ -3869,16 +3869,26 @@ export function CreateProjectDialog({
           />
         ) : (
         <div
-          className="feed-scrollbar modal-scrollbar relative flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-4 lg:grid lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] lg:grid-rows-[minmax(0,1fr)] lg:items-stretch lg:overflow-hidden lg:p-5"
+          className="feed-scrollbar modal-scrollbar relative flex h-full min-h-0 max-w-full flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 sm:gap-4 sm:p-4 lg:grid lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] lg:grid-rows-[minmax(0,1fr)] lg:items-stretch lg:overflow-hidden lg:p-5"
           data-onboarding-id="start-research-dialog"
         >
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="sticky right-0 top-0 z-40 ml-auto h-9 w-9 shrink-0 rounded-full bg-white/80 shadow-sm backdrop-blur lg:hidden"
+          onClick={onClose}
+          aria-label={locale === 'zh' ? '关闭' : 'Close'}
+        >
+          <X className="h-4 w-4" />
+        </Button>
         <div
           className={cn(
-            'flex flex-none flex-col overflow-visible lg:h-full lg:min-h-0 lg:flex-auto lg:overflow-hidden lg:rounded-[28px] lg:border lg:border-black/[0.06] lg:bg-[rgba(255,250,245,0.76)] lg:shadow-[0_22px_72px_-54px_rgba(15,23,42,0.3)] lg:backdrop-blur-xl'
+            'flex min-w-0 max-w-full flex-none flex-col overflow-visible lg:h-full lg:min-h-0 lg:flex-auto lg:overflow-hidden lg:rounded-[28px] lg:border lg:border-black/[0.06] lg:bg-[rgba(255,250,245,0.76)] lg:shadow-[0_22px_72px_-54px_rgba(15,23,42,0.3)] lg:backdrop-blur-xl'
           )}
         >
-          <div className="shrink-0 px-1 py-1 lg:border-b lg:border-[rgba(45,42,38,0.08)] lg:px-4 lg:py-3 dark:lg:border-[rgba(45,42,38,0.08)]">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="hidden shrink-0 border-b border-[rgba(45,42,38,0.08)] px-4 py-3 lg:block dark:border-[rgba(45,42,38,0.08)]">
+            <div className="flex flex-wrap items-center justify-end gap-2 lg:justify-between">
               <div className="flex flex-wrap items-center gap-2" data-onboarding-id="start-research-preview-mode-tabs">
                 <Button
                   type="button"
@@ -3918,8 +3928,8 @@ export function CreateProjectDialog({
             </div>
           </div>
 
-          <div className="px-0 py-1 sm:px-0 sm:py-1 lg:feed-scrollbar lg:modal-scrollbar lg:min-h-0 lg:flex-1 lg:overflow-y-scroll lg:overscroll-contain lg:p-4">
-            <div className="flex min-h-full flex-col gap-4">
+          <div className="min-w-0 max-w-full px-0 py-1 sm:px-0 sm:py-1 lg:feed-scrollbar lg:modal-scrollbar lg:min-h-0 lg:flex-1 lg:overflow-y-scroll lg:overscroll-contain lg:p-4">
+            <div className="flex min-h-full min-w-0 max-w-full flex-col gap-4">
               {manualOverride ? (
                 <div className="rounded-lg border border-[#c4a066]/50 bg-[#c4a066]/10 px-3 py-2 text-xs text-[rgba(56,49,35,0.92)]">
                   <div className="flex items-center gap-2 font-semibold">
@@ -4436,10 +4446,10 @@ export function CreateProjectDialog({
         <div
           data-onboarding-id="start-research-preview"
           className={cn(
-            'flex flex-none flex-col overflow-visible p-0 sm:p-0 lg:h-full lg:min-h-0 lg:flex-auto lg:overflow-hidden lg:rounded-[28px] lg:bg-transparent lg:p-0'
+            'flex min-w-0 flex-none flex-col overflow-visible p-0 sm:p-0 lg:h-full lg:min-h-0 lg:flex-auto lg:overflow-hidden lg:rounded-[28px] lg:bg-transparent lg:p-0'
           )}
         >
-          <div className="min-h-0 flex-1">
+          <div className="hidden min-h-0 flex-1 lg:block">
             {rightPaneMode === 'assistant' ? (
               <div data-onboarding-id="start-research-assistant-surface" className="h-full min-h-0">
                 {setupQuestId ? (
@@ -4582,7 +4592,7 @@ export function CreateProjectDialog({
         >
           <div
             className={cn(
-              'pointer-events-auto w-full max-w-2xl rounded-[28px] border border-[rgba(45,42,38,0.08)] bg-[rgba(252,248,242,0.96)] px-5 py-5 shadow-[0_34px_100px_-54px_rgba(15,23,42,0.58)] backdrop-blur-2xl transition-all duration-[1800ms] ease-out',
+              'pointer-events-auto feed-scrollbar modal-scrollbar w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-[28px] border border-[rgba(45,42,38,0.08)] bg-[rgba(252,248,242,0.96)] px-5 py-5 shadow-[0_34px_100px_-54px_rgba(15,23,42,0.58)] backdrop-blur-2xl transition-all duration-[1800ms] ease-out',
               setupPlanningNoticeClosing ? 'translate-y-3 scale-[0.985] opacity-0' : 'translate-y-0 scale-100 opacity-100'
             )}
           >

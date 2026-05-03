@@ -60,7 +60,7 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(
         <div
           ref={ref}
           className={cn(
-            'relative max-h-[calc(100dvh-1.5rem)] overflow-hidden bg-soft-bg-surface rounded-soft-lg border border-soft-border shadow-soft-lg sm:max-h-[calc(100dvh-3rem)]',
+            'relative flex min-h-0 max-h-[calc(100dvh-1.5rem)] flex-col overflow-hidden bg-soft-bg-surface rounded-soft-lg border border-soft-border shadow-soft-lg sm:max-h-[calc(100dvh-3rem)]',
             'animate-in zoom-in-95 duration-200',
             size === 'sm' && 'w-full max-w-sm',
             size === 'md' && 'w-full max-w-md',
@@ -96,7 +96,9 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(
           </Button>
 
           {/* Content */}
-          <div className="px-6 py-4">{children}</div>
+          <div className="modal-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-4">
+            {children}
+          </div>
         </div>
       </div>,
       document.body

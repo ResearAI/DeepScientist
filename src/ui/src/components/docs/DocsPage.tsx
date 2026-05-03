@@ -1,11 +1,13 @@
-import { ChevronRight, FileText, Loader2, Search } from 'lucide-react'
+import { ArrowLeft, ChevronRight, FileText, ListTree, Loader2, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { slugifyHeading, splitFrontmatter } from '@/components/plugins/MarkdownDocument'
 import { ProjectsAppBar } from '@/components/projects/ProjectsAppBar'
 import type { ConfigDocumentName } from '@/components/settings/SettingsPage'
 import { HintDot } from '@/components/ui/hint-dot'
 import { Input } from '@/components/ui/input'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { MarkdownPreview } from './MarkdownPreview'
 import { client } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -20,9 +22,15 @@ const copy = {
     loading: 'Loading...',
     openHint: 'Pick a file.',
     outline: 'Outline',
+    openDocs: 'Docs',
+    openOutline: 'Outline',
     shortcuts: 'Links',
     shortcutsHint: 'Jump to the matching settings category.',
     pathHint: 'Current file path.',
+    back: 'Back',
+    categories: 'Categories',
+    documents: 'Documents',
+    rootGroup: 'Root',
   },
   zh: {
     title: '文档',
@@ -32,9 +40,15 @@ const copy = {
     loading: '加载中...',
     openHint: '选择一个文件。',
     outline: '目录',
+    openDocs: '文档',
+    openOutline: '目录',
     shortcuts: '链接',
     shortcutsHint: '跳转到对应的设置分类。',
     pathHint: '当前文件路径。',
+    back: '返回',
+    categories: '目录',
+    documents: '文档',
+    rootGroup: '根目录',
   },
 } satisfies Record<Locale, Record<string, string>>
 
@@ -127,6 +141,14 @@ function toDocumentSlug(documentId: string): string {
   return documentId.replace(/\.(md|markdown|txt)$/i, '')
 }
 
+function docsPathForDocument(documentId: string): string {
+  return `/docs/${toDocumentSlug(documentId)
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')}`
+}
+
 function findDocumentIdForSlug(items: QuestDocument[], slug?: string | null): string | null {
   const normalized = String(slug || '')
     .trim()
@@ -179,17 +201,26 @@ export function DocsPage({
   onOpenSettings: (name?: ConfigDocumentName, hash?: string) => void
 }) {
   const t = copy[locale]
+  const navigate = useNavigate()
   const [docs, setDocs] = useState<QuestDocument[]>([])
   const [docsPrefix, setDocsPrefix] = useState('')
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [active, setActive] = useState<OpenDocumentPayload | null>(null)
+  const [mobileDocsView, setMobileDocsView] = useState<'directory' | 'document'>(
+    requestedDocumentSlug ? 'document' : 'directory'
+  )
   const [opening, setOpening] = useState(false)
   const [headings, setHeadings] = useState<HeadingEntry[]>([])
   const [activeHeadingId, setActiveHeadingId] = useState<string>('')
+  const [outlineOpen, setOutlineOpen] = useState(false)
   const scrollRootRef = useRef<HTMLElement | null>(null)
   const articleRef = useRef<HTMLDivElement | null>(null)
   const outlineRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    setMobileDocsView(requestedDocumentSlug ? 'document' : 'directory')
+  }, [requestedDocumentSlug])
 
   useEffect(() => {
     let mounted = true
@@ -280,10 +311,12 @@ export function DocsPage({
     activeItem?.scrollIntoView({ block: 'nearest' })
   }, [activeHeadingId])
 
+  const mobileGroupedDocs = useMemo(() => groupDocs(docs, { stripPrefix: docsPrefix }), [docs, docsPrefix])
+
   const groupedDocs = useMemo(() => {
     const keyword = search.trim().toLowerCase()
     if (!keyword) {
-      return groupDocs(docs, { stripPrefix: docsPrefix })
+      return mobileGroupedDocs
     }
     return groupDocs(
       docs.filter((item) =>
@@ -291,7 +324,7 @@ export function DocsPage({
       ),
       { stripPrefix: docsPrefix }
     )
-  }, [docs, docsPrefix, search])
+  }, [docs, docsPrefix, mobileGroupedDocs, search])
 
   const handleOpenDocument = async (documentId: string) => {
     setOpening(true)
@@ -302,6 +335,19 @@ export function DocsPage({
     } finally {
       setOpening(false)
     }
+  }
+
+  const handleOpenMobileDocument = (documentId: string) => {
+    setMobileDocsView('document')
+    setOutlineOpen(false)
+    navigate(docsPathForDocument(documentId))
+    void handleOpenDocument(documentId)
+  }
+
+  const handleBackToMobileDocsDirectory = () => {
+    setMobileDocsView('directory')
+    setOutlineOpen(false)
+    navigate('/docs')
   }
 
   const jumpToHeading = (id: string) => {
@@ -318,83 +364,216 @@ export function DocsPage({
       20
     scrollRoot.scrollTop = Math.max(top, 0)
     setActiveHeadingId(id)
+    setOutlineOpen(false)
   }
+
+  const formatDocGroupLabel = (group: string) => (group === 'root' ? t.rootGroup : group)
+
+  const mobileDocsTree = (
+    <>
+      <div className="feed-scrollbar mt-5 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t.loading}
+          </div>
+        ) : mobileGroupedDocs.length === 0 ? (
+          <div className="text-sm text-muted-foreground">{t.empty}</div>
+        ) : (
+          mobileGroupedDocs.map((group) => (
+            <section
+              key={group.group}
+              className="rounded-[18px] border border-black/[0.08] bg-white/[0.42] p-3 dark:border-white/[0.10] dark:bg-white/[0.04]"
+            >
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {formatDocGroupLabel(group.group)}
+                </div>
+                <div className="shrink-0 rounded-full bg-black/[0.04] px-2.5 py-1 text-[11px] text-muted-foreground dark:bg-white/[0.06]">
+                  {group.items.length} {t.documents}
+                </div>
+              </div>
+              <div className="space-y-1">
+                {group.items.map(({ item, depth, leaf, parentLabel }) => (
+                  <button
+                    key={item.document_id}
+                    type="button"
+                    data-onboarding-id="docs-mobile-document-button"
+                    onClick={() => handleOpenMobileDocument(item.document_id)}
+                    className={cn(
+                      'flex w-full items-start gap-2 rounded-[14px] px-2.5 py-2.5 text-left transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]',
+                      active?.document_id === item.document_id && 'bg-black/[0.05] dark:bg-white/[0.06]'
+                    )}
+                    style={{ paddingLeft: `${10 + depth * 10}px` }}
+                  >
+                    <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <div className="line-clamp-2 break-words text-sm">{item.title || leaf}</div>
+                      {parentLabel ? <div className="mt-0.5 line-clamp-2 break-words text-[11px] text-muted-foreground">{parentLabel}</div> : null}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))
+        )}
+      </div>
+    </>
+  )
+
+  const docsTree = (
+    <>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.search} className="rounded-[18px] border-black/[0.08] bg-white/[0.44] pl-10 shadow-none dark:bg-white/[0.03]" />
+      </div>
+
+      <div className="mt-5">
+        <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <span>{t.shortcuts}</span>
+          <HintDot label={t.shortcutsHint} />
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-2">
+          {CONFIG_SHORTCUTS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onOpenSettings(item.configName)}
+              className="text-xs text-muted-foreground transition hover:text-foreground"
+            >
+              {item.title[locale]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="feed-scrollbar mt-6 min-h-0 flex-1 space-y-5 overflow-auto pr-1">
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t.loading}
+          </div>
+        ) : groupedDocs.length === 0 ? (
+          <div className="text-sm text-muted-foreground">{t.empty}</div>
+        ) : (
+          groupedDocs.map((group) => (
+            <div key={group.group}>
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{group.group}</div>
+              <div className="space-y-0.5">
+                {group.items.map(({ item, depth, leaf, parentLabel }) => (
+                  <button
+                    key={item.document_id}
+                    type="button"
+                    onClick={() => void handleOpenDocument(item.document_id)}
+                    className={cn(
+                      'flex w-full items-start gap-2 rounded-[14px] px-2.5 py-2 text-left transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]',
+                      active?.document_id === item.document_id && 'bg-black/[0.05] dark:bg-white/[0.06]'
+                    )}
+                    style={{ paddingLeft: `${10 + depth * 10}px` }}
+                  >
+                    <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <div className="truncate text-sm">{item.title || leaf}</div>
+                      {parentLabel ? <div className="truncate text-[11px] text-muted-foreground">{parentLabel}</div> : null}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </>
+  )
+
+  const outlineTree = (
+    <div ref={outlineRef} className="feed-scrollbar min-h-0 space-y-1 overflow-auto pr-1 xl:max-h-[calc(100vh-14rem)]">
+      {headings.length === 0 ? (
+        <div className="text-sm text-muted-foreground">{t.empty}</div>
+      ) : (
+        headings.map((heading) => (
+          <button
+            key={heading.id}
+            type="button"
+            data-heading-id={heading.id}
+            onClick={() => jumpToHeading(heading.id)}
+            className={cn(
+              'flex w-full items-center gap-2 rounded-[14px] px-2.5 py-2 text-left text-sm transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]',
+              heading.level === 2 && 'pl-4',
+              heading.level === 3 && 'pl-6 text-muted-foreground',
+              activeHeadingId === heading.id && 'bg-black/[0.05] dark:bg-white/[0.06]'
+            )}
+          >
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="line-clamp-2">{heading.text}</span>
+          </button>
+        ))
+      )}
+    </div>
+  )
 
   return (
     <div className="font-project flex h-screen flex-col overflow-hidden px-4 pb-4 pt-4 sm:px-6 sm:pb-6">
       <ProjectsAppBar title={t.title} />
 
       <main className="mx-auto mt-6 min-h-0 w-full flex-1 overflow-hidden">
-        <div className="mx-auto grid h-full min-h-0 w-full max-w-[90vw] grid-rows-[auto_minmax(0,1fr)] gap-0 xl:grid-cols-[260px_minmax(0,1fr)_220px] xl:grid-rows-1">
-          <aside className="flex min-h-0 flex-col border-b border-black/[0.08] pb-6 xl:border-b-0 xl:border-r xl:pb-0 xl:pr-6 dark:border-white/[0.08]">
+        <div
+          className={cn(
+            'mx-auto grid h-full min-h-0 w-full max-w-[94vw] gap-0 sm:max-w-[90vw] xl:grid-cols-[260px_minmax(0,1fr)_220px] xl:grid-rows-1',
+            mobileDocsView === 'document' ? 'grid-rows-[auto_minmax(0,1fr)]' : 'grid-rows-[minmax(0,1fr)]'
+          )}
+        >
+          {mobileDocsView === 'document' ? (
+            <div className="mb-3 flex shrink-0 items-center justify-between gap-2 xl:hidden">
+              <button
+                type="button"
+                onClick={handleBackToMobileDocsDirectory}
+                data-onboarding-id="docs-mobile-back"
+                className="inline-flex h-10 items-center gap-2 rounded-[16px] border border-black/[0.08] bg-white/[0.58] px-3 text-sm font-medium text-foreground shadow-[0_12px_28px_-24px_rgba(45,42,38,0.26)] backdrop-blur-xl dark:border-white/[0.10] dark:bg-white/[0.05]"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>{t.back}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setOutlineOpen(true)}
+                data-onboarding-id="docs-mobile-outline-button"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] border border-black/[0.08] bg-white/[0.58] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(45,42,38,0.26)] backdrop-blur-xl dark:border-white/[0.10] dark:bg-white/[0.05]"
+                aria-label={t.openOutline}
+              >
+                <ListTree className="h-4 w-4" />
+              </button>
+            </div>
+          ) : null}
+          <aside
+            data-onboarding-id="docs-mobile-directory"
+            className={cn(
+              'min-h-0 flex-col border-b border-black/[0.08] pb-6 xl:hidden dark:border-white/[0.08]',
+              mobileDocsView === 'directory' ? 'flex' : 'hidden'
+            )}
+          >
             <div className="flex items-center gap-2 text-sm font-medium">
               <span>{t.repoTitle}</span>
               <HintDot label={`${docs.length} files`} />
             </div>
-
-            <div className="relative mt-4">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.search} className="rounded-[18px] border-black/[0.08] bg-white/[0.44] pl-10 shadow-none dark:bg-white/[0.03]" />
-            </div>
-
-            <div className="mt-5">
-              <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                <span>{t.shortcuts}</span>
-                <HintDot label={t.shortcutsHint} />
-              </div>
-              <div className="flex flex-wrap gap-x-3 gap-y-2">
-                {CONFIG_SHORTCUTS.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => onOpenSettings(item.configName)}
-                    className="text-xs text-muted-foreground transition hover:text-foreground"
-                  >
-                    {item.title[locale]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="feed-scrollbar mt-6 min-h-0 flex-1 space-y-5 overflow-auto pr-1">
-              {loading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t.loading}
-                </div>
-              ) : groupedDocs.length === 0 ? (
-                <div className="text-sm text-muted-foreground">{t.empty}</div>
-              ) : (
-                groupedDocs.map((group) => (
-                  <div key={group.group}>
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{group.group}</div>
-                    <div className="space-y-0.5">
-                      {group.items.map(({ item, depth, leaf, parentLabel }) => (
-                        <button
-                          key={item.document_id}
-                          type="button"
-                          onClick={() => void handleOpenDocument(item.document_id)}
-                          className={cn(
-                            'flex w-full items-start gap-2 rounded-[14px] px-2.5 py-2 text-left transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]',
-                            active?.document_id === item.document_id && 'bg-black/[0.05] dark:bg-white/[0.06]'
-                          )}
-                          style={{ paddingLeft: `${10 + depth * 10}px` }}
-                        >
-                          <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                          <div className="min-w-0">
-                            <div className="truncate text-sm">{item.title || leaf}</div>
-                            {parentLabel ? <div className="truncate text-[11px] text-muted-foreground">{parentLabel}</div> : null}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            {mobileDocsTree}
           </aside>
 
-          <section ref={scrollRootRef} className="feed-scrollbar min-h-0 overflow-y-auto py-6 xl:flex xl:flex-col xl:px-10">
+          <aside className="hidden min-h-0 flex-col border-b border-black/[0.08] pb-6 xl:flex xl:border-b-0 xl:border-r xl:pb-0 xl:pr-6 dark:border-white/[0.08]">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <span>{t.repoTitle}</span>
+              <HintDot label={`${docs.length} files`} />
+            </div>
+            {docsTree}
+          </aside>
+
+          <section
+            ref={scrollRootRef}
+            className={cn(
+              'feed-scrollbar min-h-0 overflow-y-auto py-6 xl:flex xl:flex-col xl:px-10',
+              mobileDocsView === 'document' ? 'block' : 'hidden'
+            )}
+          >
             {active ? (
               <>
                 <div className="border-b border-black/[0.08] pb-5 dark:border-white/[0.08]">
@@ -427,29 +606,21 @@ export function DocsPage({
           <aside className="feed-scrollbar hidden min-h-0 overflow-auto border-l border-black/[0.08] py-6 pl-6 xl:block dark:border-white/[0.08]">
             <div className="xl:sticky xl:top-6 xl:max-h-[calc(100vh-11rem)] xl:min-h-0 xl:overflow-hidden">
               <div className="mb-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t.outline}</div>
-              <div ref={outlineRef} className="feed-scrollbar min-h-0 space-y-1 overflow-auto pr-1 xl:max-h-[calc(100vh-14rem)]">
-                {headings.map((heading) => (
-                  <button
-                    key={heading.id}
-                    type="button"
-                    data-heading-id={heading.id}
-                    onClick={() => jumpToHeading(heading.id)}
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded-[14px] px-2.5 py-2 text-left text-sm transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]',
-                      heading.level === 2 && 'pl-4',
-                      heading.level === 3 && 'pl-6 text-muted-foreground',
-                      activeHeadingId === heading.id && 'bg-black/[0.05] dark:bg-white/[0.06]'
-                    )}
-                  >
-                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="line-clamp-2">{heading.text}</span>
-                  </button>
-                ))}
-              </div>
+              {outlineTree}
             </div>
           </aside>
         </div>
       </main>
+      <Sheet open={outlineOpen} onOpenChange={setOutlineOpen} modal={false}>
+        <SheetContent side="bottom" data-onboarding-id="docs-mobile-outline-sheet" className="h-[70svh] rounded-t-[28px] border-black/[0.08] bg-[rgba(250,247,243,0.98)] p-4 shadow-[0_-24px_64px_-36px_rgba(45,42,38,0.38)] xl:hidden">
+          <SheetHeader className="shrink-0 pb-3 pr-8">
+            <SheetTitle>{t.openOutline}</SheetTitle>
+          </SheetHeader>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {outlineTree}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

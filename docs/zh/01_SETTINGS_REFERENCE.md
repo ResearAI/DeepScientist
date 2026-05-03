@@ -200,6 +200,37 @@ acp:
 - 页面标签：`Default start mode`
 - 作用：决定 `ds` 默认打开 Web、TUI，或两者同时打开。
 
+### TUI debug 启动开关
+
+TUI debug 不是持久配置项，而是一次性启动级诊断开关。它用于检查当前 TUI surface、输入路由、Web 对照页和渲染摘要。
+
+启动方式：
+
+```bash
+ds --tui --debug
+ds --tui --debug --debug-log /tmp/deepscientist_tui_debug.jsonl
+```
+
+环境变量：
+
+- `TUI_DEBUG=1`
+- `DEEPSCIENTIST_TUI_DEBUG=1`
+- `TUI_DEBUG_LOG=/tmp/deepscientist_tui_debug.jsonl`
+- `DEEPSCIENTIST_TUI_DEBUG_LOG=/tmp/deepscientist_tui_debug.jsonl`
+
+默认日志路径：
+
+```text
+/tmp/deepscientist_tui_debug.jsonl
+```
+
+安全要求：
+
+- config editor buffer、password/secret/token 字段会在 debug JSONL 中脱敏。
+- debug JSONL 可以附到 issue 或回归报告里，但仍建议先搜索确认没有真实 token。
+- 终端录屏、tmux 日志或 `script` transcript 会捕获真实屏幕内容，不属于 debug JSONL 脱敏范围。
+- Web 端目前没有同级 `?debug=1` inspector；TUI 只提供 `web_analog` 对照。
+
 ### Logging
 
 **`logging.level`**

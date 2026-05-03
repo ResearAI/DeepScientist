@@ -14,6 +14,7 @@ import { safeJsonStringify } from '@/lib/safe-json'
 import type {
   GuidanceVm,
   GitBranchNode,
+  GitBranchEdge,
   GitBranchesPayload,
   GitComparePayload,
   MainExperimentResultPayload,
@@ -39,6 +40,7 @@ const LAB_BASE = (projectId: string) => `/api/v1/projects/${projectId}/lab`
 const LOCAL_QUEST_SESSION_TTL_MS = 3000
 const LOCAL_QUEST_BRANCHES_TTL_MS = 1200
 const LOCAL_QUEST_LAYOUT_TTL_MS = 5000
+const LOCAL_QUEST_BRANCHES_BOOT_TIMEOUT_MS = 4000
 const LAB_HEAVY_REQUEST_TIMEOUT_MS = 180000
 
 type LocalQuestRequestCacheEntry<T> = {
@@ -52,6 +54,7 @@ const localQuestLayoutCache = new Map<
   string,
   LocalQuestRequestCacheEntry<{ layout_json?: Record<string, unknown> | null; updated_at?: string | null } | null>
 >()
+const localQuestBranchesBackground = new Map<string, Promise<GitBranchesPayload | null>>()
 
 type LabRequestOptions = {
   silent?: boolean
@@ -94,6 +97,19 @@ function loadWithShortCache<T>(
     promise,
   })
   return promise
+}
+
+function waitForPromise<T>(promise: Promise<T>, timeoutMs: number): Promise<T | symbol> {
+  const timedOut = Symbol('timed-out')
+  let timer: number | null = null
+  const timeout = new Promise<symbol>((resolve) => {
+    timer = window.setTimeout(() => resolve(timedOut), timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer != null) {
+      window.clearTimeout(timer)
+    }
+  })
 }
 
 async function shouldUseLocalQuestLab(projectId: string): Promise<boolean> {
@@ -1340,6 +1356,29 @@ function asStringValue(value: unknown): string | null {
   return null
 }
 
+function asNumberValue(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
+}
+
+function asBooleanValue(value: unknown): boolean {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (!normalized) return false
+    if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true
+    if (['0', 'false', 'no', 'n', 'off', 'null', 'none'].includes(normalized)) return false
+  }
+  return false
+}
+
 function safeJsonParse(value: unknown): unknown | null {
   if (!value) return null
   if (typeof value !== 'string') {
@@ -2166,6 +2205,136 @@ function buildLocalGovernanceVm(summary: QuestSummary, branches?: GitBranchesPay
   }
 }
 
+function normalizeGitBranchNode(value: unknown, index: number): GitBranchNode | null {
+  const record = asRecordValue(value)
+  if (!record) return null
+  const ref =
+    asStringValue(record.ref) ||
+    asStringValue(record.branch) ||
+    asStringValue(record.branch_name) ||
+    asStringValue(record.name) ||
+    asStringValue(record.id)
+  if (!ref) return null
+  const branchKind =
+    asStringValue(record.branch_kind) ||
+    asStringValue(record.kind) ||
+    asStringValue(record.node_kind) ||
+    (index === 0 ? 'quest' : 'idea')
+  return {
+    ...(record as Partial<GitBranchNode>),
+    ref,
+    label: asStringValue(record.label) || asStringValue(record.title) || ref,
+    branch_kind: branchKind,
+    tier: asStringValue(record.tier) || 'major',
+    mode: asStringValue(record.mode) || (branchKind === 'analysis' ? 'analysis' : 'ideas'),
+    parent_ref:
+      asStringValue(record.parent_ref) ||
+      asStringValue(record.parent_branch) ||
+      asStringValue(record.parent) ||
+      null,
+    compare_base:
+      asStringValue(record.compare_base) ||
+      asStringValue(record.base_ref) ||
+      asStringValue(record.base) ||
+      null,
+    current: asBooleanValue(record.current ?? record.is_current),
+    active_workspace: asBooleanValue(record.active_workspace ?? record.is_active_workspace),
+    research_head: asBooleanValue(record.research_head ?? record.is_research_head),
+    head: asStringValue(record.head) || asStringValue(record.latest_commit) || undefined,
+    subject: asStringValue(record.subject) || asStringValue(record.summary) || asStringValue(record.title) || undefined,
+    commit_count: asNumberValue(record.commit_count),
+    ahead: asNumberValue(record.ahead),
+    behind: asNumberValue(record.behind),
+  }
+}
+
+function normalizeGitBranchEdge(value: unknown, _index: number): GitBranchEdge | null {
+  const record = asRecordValue(value)
+  if (!record) return null
+  const from =
+    asStringValue(record.from) ||
+    asStringValue(record.source) ||
+    asStringValue(record.parent_ref) ||
+    asStringValue(record.parent)
+  const to =
+    asStringValue(record.to) ||
+    asStringValue(record.target) ||
+    asStringValue(record.child_ref) ||
+    asStringValue(record.child)
+  if (!from || !to) return null
+  return {
+    ...(record as Partial<GitBranchEdge>),
+    from,
+    to,
+    relation: asStringValue(record.relation) || asStringValue(record.edge_type) || 'branch',
+    tier: asStringValue(record.tier) || undefined,
+    mode: asStringValue(record.mode) || undefined,
+  }
+}
+
+function normalizeGitBranchesPayload(projectId: string, value: unknown): GitBranchesPayload {
+  const record = asRecordValue(value) || {}
+  const rawNodes = Array.isArray(value)
+    ? value
+    : asArrayValue(record.nodes).length
+    ? asArrayValue(record.nodes)
+    : asArrayValue(record.branches).length
+      ? asArrayValue(record.branches)
+      : asArrayValue(record.branch_nodes)
+  const rawEdges = asArrayValue(record.edges).length
+    ? asArrayValue(record.edges)
+    : asArrayValue(record.links).length
+      ? asArrayValue(record.links)
+      : asArrayValue(record.branch_edges)
+  const nodes = rawNodes
+    .map((node, index) => normalizeGitBranchNode(node, index))
+    .filter((node): node is GitBranchNode => Boolean(node))
+  const edges = rawEdges
+    .map((edge, index) => normalizeGitBranchEdge(edge, index))
+    .filter((edge): edge is GitBranchEdge => Boolean(edge))
+  const defaultRef = asStringValue(record.default_ref) || asStringValue(record.default_branch) || 'main'
+  const currentRef =
+    asStringValue(record.current_ref) ||
+    asStringValue(record.current_branch) ||
+    nodes.find((node) => node.current)?.ref ||
+    nodes.find((node) => node.active_workspace)?.ref ||
+    defaultRef
+  return {
+    ...(record as Partial<GitBranchesPayload>),
+    quest_id: asStringValue(record.quest_id) || projectId,
+    default_ref: defaultRef,
+    current_ref: currentRef,
+    active_workspace_ref:
+      asStringValue(record.active_workspace_ref) ||
+      asStringValue(record.active_workspace_branch) ||
+      nodes.find((node) => node.active_workspace)?.ref ||
+      currentRef,
+    research_head_ref:
+      asStringValue(record.research_head_ref) ||
+      asStringValue(record.research_head_branch) ||
+      nodes.find((node) => node.research_head)?.ref ||
+      currentRef,
+    workspace_mode: asStringValue(record.workspace_mode) || undefined,
+    head: asStringValue(record.head) || undefined,
+    nodes,
+    edges,
+    projection_status: (asRecordValue(record.projection_status) as ProjectionStatus | null) ?? null,
+    views: asRecordValue(record.views) as GitBranchesPayload['views'],
+  }
+}
+
+function localBranchesFallbackProjectionStatus(projectId: string): ProjectionStatus | null {
+  if (!localQuestBranchesBackground.has(projectId)) {
+    return null
+  }
+  return {
+    projection_id: `${projectId}:branches-background`,
+    state: 'stale',
+    current_step: 'Loading the full branch canvas in the background',
+    generated_at: new Date().toISOString(),
+  }
+}
+
 function buildLocalRecentActivity(summary: QuestSummary): Array<Record<string, unknown>> {
   const items: Array<Record<string, unknown>> = []
 
@@ -2606,6 +2775,48 @@ async function loadLocalQuestSummary(projectId: string): Promise<QuestSummary> {
   })
 }
 
+export function primeLocalQuestSummary(projectId: string, summary: QuestSummary | null | undefined) {
+  if (!projectId || !summary) return
+  localQuestSummaryCache.set(projectId, {
+    expiresAt: Date.now() + LOCAL_QUEST_SESSION_TTL_MS,
+    promise: Promise.resolve(summary),
+  })
+}
+
+export async function getLocalQuestGraphFromSummary(
+  projectId: string,
+  summary: QuestSummary,
+  params?: { view?: 'branch' | 'event' | 'stage'; search?: string; atEventId?: string | null }
+): Promise<LabQuestGraphResponse> {
+  primeLocalQuestSummary(projectId, summary)
+  const requestedView = params?.view ?? 'branch'
+  if (requestedView === 'branch') {
+    const [branches, layoutState] = await Promise.all([
+      loadLocalQuestBranches(projectId),
+      loadLocalQuestLayout(projectId),
+    ])
+    return buildLocalQuestGraphResponse(
+      summary,
+      branches,
+      params,
+      null,
+      (layoutState?.layout_json as Record<string, unknown> | null) ?? null
+    )
+  }
+  const [branches, layoutState, nodeTraces] = await Promise.all([
+    loadLocalQuestBranches(projectId),
+    loadLocalQuestLayout(projectId),
+    requestedView === 'branch' ? Promise.resolve(null) : loadLocalQuestNodeTraces(projectId),
+  ])
+  return buildLocalQuestGraphResponse(
+    summary,
+    branches,
+    params,
+    nodeTraces,
+    (layoutState?.layout_json as Record<string, unknown> | null) ?? null
+  )
+}
+
 async function loadLocalQuestWorkflow(projectId: string): Promise<WorkflowPayload | null> {
   try {
     return await questClient.workflow(projectId)
@@ -2633,11 +2844,28 @@ async function loadLocalQuestNodeTraces(
 
 async function loadLocalQuestBranches(projectId: string): Promise<GitBranchesPayload | null> {
   return loadWithShortCache(localQuestBranchesCache, projectId, LOCAL_QUEST_BRANCHES_TTL_MS, async () => {
-    try {
-      return await questClient.gitBranches(projectId)
-    } catch {
-      return null
+    let background = localQuestBranchesBackground.get(projectId)
+    if (!background) {
+      background = questClient
+        .gitBranches(projectId)
+        .then((payload) => normalizeGitBranchesPayload(projectId, payload))
+        .catch(() => null)
+        .then((payload) => {
+          localQuestBranchesCache.set(projectId, {
+            expiresAt: Date.now() + LOCAL_QUEST_BRANCHES_TTL_MS,
+            promise: Promise.resolve(payload),
+          })
+          return payload
+        })
+        .finally(() => {
+          if (localQuestBranchesBackground.get(projectId) === background) {
+            localQuestBranchesBackground.delete(projectId)
+          }
+        })
+      localQuestBranchesBackground.set(projectId, background)
     }
+    const result = await waitForPromise(background, LOCAL_QUEST_BRANCHES_BOOT_TIMEOUT_MS)
+    return typeof result === 'symbol' ? null : result
   })
 }
 
@@ -3059,7 +3287,7 @@ function buildLocalQuestGraphResponse(
     nodes: branchNodes,
     edges: branchEdges,
     head_branch: summary.branch || 'main',
-    projection_status: branches?.projection_status ?? null,
+    projection_status: branches?.projection_status ?? localBranchesFallbackProjectionStatus(summary.quest_id),
     layout_json: layoutJson ?? null,
     metric_catalog: buildGraphMetricCatalogFromNodes(branchNodes),
     governance_vm: buildLocalGovernanceVm(summary, branches),

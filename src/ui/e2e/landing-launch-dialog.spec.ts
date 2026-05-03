@@ -45,7 +45,7 @@ function installLandingStubs(page: Page) {
   ])
 }
 
-async function openLaunchDialog(page: Page, locale: 'zh' | 'en') {
+async function openLanding(page: Page, locale: 'zh' | 'en') {
   await page.addInitScript((requestedLocale) => {
     window.localStorage.setItem(
       'ds:onboarding:v1',
@@ -69,7 +69,10 @@ async function openLaunchDialog(page: Page, locale: 'zh' | 'en') {
   await installLandingStubs(page)
   await page.goto('/')
   await expect(page.locator('[data-onboarding-id="landing-hero"]')).toBeVisible({ timeout: 30_000 })
+}
 
+async function openLaunchDialog(page: Page, locale: 'zh' | 'en') {
+  await openLanding(page, locale)
   await page.locator('[data-onboarding-id="landing-start-research"]').click()
   await expect(page.locator('[data-onboarding-id="experiment-launch-dialog"]')).toBeVisible({ timeout: 30_000 })
   await expect(page.locator('[data-onboarding-id="launch-mode-copilot-card"]')).toBeVisible()
@@ -91,18 +94,23 @@ test.describe('landing launch dialog', () => {
     await page.screenshot({ path: testInfo.outputPath('landing-launch-dialog-desktop-page-zh.png'), fullPage: true })
   })
 
-  test('mobile launch dialog keeps all primary actions reachable', async ({ page }, testInfo) => {
+  test('mobile Start Research opens the SetupAgent intake directly', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 393, height: 852 })
-    await openLaunchDialog(page, 'zh')
+    await openLanding(page, 'en')
+
+    await page.locator('[data-onboarding-id="landing-start-research"]').click()
+    await expect(page.getByRole('heading', { name: 'What do you want to research?' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('button', { name: 'Send to SetupAgent' })).toBeVisible()
+    await expect(page.locator('[data-onboarding-id="experiment-launch-dialog"]')).toHaveCount(0)
 
     const dialog = page.locator('[role="dialog"]')
     const box = await dialog.boundingBox()
     expect(box).not.toBeNull()
     expect(box!.height).toBeLessThan(810)
 
-    await expect(page.locator('[data-onboarding-id="launch-mode-autonomous-card"]')).toBeInViewport()
+    await expect(page.getByRole('button', { name: 'Send to SetupAgent' })).toBeInViewport()
 
-    await dialog.screenshot({ path: testInfo.outputPath('landing-launch-dialog-mobile-zh.png') })
-    await page.screenshot({ path: testInfo.outputPath('landing-launch-dialog-mobile-page-zh.png'), fullPage: true })
+    await dialog.screenshot({ path: testInfo.outputPath('landing-setup-agent-intake-mobile-en.png') })
+    await page.screenshot({ path: testInfo.outputPath('landing-setup-agent-intake-mobile-page-en.png'), fullPage: true })
   })
 })

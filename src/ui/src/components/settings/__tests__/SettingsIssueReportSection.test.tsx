@@ -33,14 +33,14 @@ describe('SettingsIssueReportSection', () => {
   })
 
   it('renders the prefilled title and body from the shared issue draft store', () => {
-    const { getByDisplayValue, getByRole, getAllByRole } = render(<SettingsIssueReportSection />)
+    const { getByDisplayValue, getByRole } = render(<SettingsIssueReportSection />)
 
     expect(getByDisplayValue('Prefilled issue title')).toBeInTheDocument()
-    expect(getAllByRole('textbox').some((item) => (item as HTMLTextAreaElement).value.includes('Prefilled body'))).toBe(true)
+    expect(getByDisplayValue(/Prefilled body/)).toBeInTheDocument()
     expect(getByRole('button', { name: 'Submit GitHub Issue' })).toBeInTheDocument()
   })
 
-  it('excludes system quirks by default and can include them on refresh', async () => {
+  it('includes detected system settings by default and can exclude them on refresh', async () => {
     useAdminIssueDraftStore.getState().clearDraft()
     createAdminIssueDraftMock.mockResolvedValue({
       ok: true,
@@ -51,32 +51,32 @@ describe('SettingsIssueReportSection', () => {
       generated_at: '2026-04-14T00:00:00+00:00',
     })
 
-    const { findByRole } = render(<SettingsIssueReportSection />)
+    const { findByRole, getByRole } = render(<SettingsIssueReportSection />)
 
-    const includeSystemQuirks = await findByRole('checkbox', {
-      name: 'Include system quirks',
+    const includeSystemSettings = await findByRole('checkbox', {
+      name: 'Include detected system settings',
     })
-    expect(includeSystemQuirks).not.toBeChecked()
+    expect(includeSystemSettings).toBeChecked()
 
     await waitFor(() => {
       expect(createAdminIssueDraftMock).toHaveBeenCalledWith(
         expect.objectContaining({
           include_doctor: true,
           include_logs: true,
-          include_system_quirks: false,
+          include_system_settings: true,
         })
       )
     })
 
-    fireEvent.click(includeSystemQuirks)
-    expect(includeSystemQuirks).toBeChecked()
+    fireEvent.click(includeSystemSettings)
+    expect(includeSystemSettings).not.toBeChecked()
 
     await waitFor(() => {
       expect(createAdminIssueDraftMock).toHaveBeenLastCalledWith(
         expect.objectContaining({
           include_doctor: true,
           include_logs: true,
-          include_system_quirks: true,
+          include_system_settings: false,
         })
       )
     })

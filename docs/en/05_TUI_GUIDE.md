@@ -64,6 +64,21 @@ Meaning:
 - `ds --status`: inspect daemon status.
 - `ds --stop`: stop the daemon itself, not just one quest.
 
+When you need to debug TUI rendering or routing, temporarily enable debug mode:
+
+```bash
+ds --tui --debug
+ds --tui --debug --debug-log /tmp/deepscientist_tui_debug.jsonl
+```
+
+You can also use environment variables:
+
+```bash
+DEEPSCIENTIST_TUI_DEBUG=1 DEEPSCIENTIST_TUI_DEBUG_LOG=/tmp/deepscientist_tui_debug.jsonl ds --tui
+```
+
+Debug mode is for troubleshooting. Do not leave it on for ordinary daily use.
+
 ## 3. What To Look At First After Entering TUI
 
 When the TUI opens, the first useful signals are:
@@ -177,6 +192,7 @@ That matters because TUI and Web are looking at the same daemon, the same quest,
 - `/config qq`: open QQ config directly
 - `/config weixin`: open Weixin config directly
 - `/config lingzhu`: open Lingzhu config directly
+- `/debug`: open the current TUI debug inspector
 
 ### Keys
 
@@ -187,6 +203,7 @@ That matters because TUI and Web are looking at the same daemon, the same quest,
 - `Ctrl+R`: force refresh
 - `Ctrl+O`: open the Web workspace
 - `Ctrl+G`: open the config home directly
+- `Ctrl+D`: open the debug inspector from any screen; inside the config editor it opens as a non-destructive overlay
 - `Ctrl+B`: leave the current quest; if you are in config first, close config
 - `Ctrl+C`: quit the TUI
 - `Shift+↑/↓`: scroll the history area by one line
@@ -452,7 +469,141 @@ So:
 So if you only want to pause for a while, prefer `/pause`.
 If you want to cut off the current turn clearly, prefer `/stop`.
 
-## 15. Troubleshooting
+## 15. TUI Debug Mode
+
+TUI debug mode answers three questions:
+
+1. what surface the terminal is actually rendering
+2. whether Enter will run a local command, forward to the backend, send quest chat, or get blocked locally
+3. which Web page is the closest equivalent for this TUI surface
+
+Enable it with:
+
+```bash
+ds --tui --debug
+```
+
+Choose a log path:
+
+```bash
+ds --tui --debug --debug-log /tmp/deepscientist_tui_debug.jsonl
+```
+
+If you run the TUI bundle directly:
+
+```bash
+node src/tui/dist/index.js --base-url http://127.0.0.1:20999 --debug --debug-log /tmp/deepscientist_tui_debug.jsonl
+```
+
+### What appears on screen
+
+Debug mode shows a small diagnostic strip above the input area:
+
+- `surface`: the current TUI surface, such as `home`, `quest:<id>`, `config:root:browse`, or `config:files:edit`
+- `web`: the closest Web page, such as `Web Settings` or `Web quest workspace`
+- `route`: the route type for the current input
+- `target`: the endpoint, utility panel, or local action that would receive the input
+- `parse / preview`: the parsed command and a short input preview
+
+Press `Ctrl+D` from any screen to open the `TUI Debug` panel. The panel shows:
+
+- `Submitted Route`: where the current input would have gone before opening the debug panel
+- `Input`: a redacted input summary
+- `Screen`: the current main surface, composer, selected item, and redaction state
+- `Render`: quest/config/utility counts and selection index
+- `Capture`: status line, session id, log path, and snapshot signature
+
+### JSONL logs
+
+Debug mode writes snapshots as JSONL. The default path is:
+
+```text
+/tmp/deepscientist_tui_debug.jsonl
+```
+
+Each line is one snapshot. Common fields:
+
+- `surface`
+- `web_analog`
+- `route`
+- `input`
+- `screen`
+- `counts`
+- `status_line`
+
+Config editor buffers and connector secret fields are redacted. Example:
+
+```json
+{
+  "surface": "config:files:edit",
+  "route": {
+    "kind": "config-save",
+    "arg": "[redacted: config editor buffer; 53 chars]"
+  },
+  "input": {
+    "raw": "[redacted: config editor buffer; 53 chars]",
+    "redacted": true,
+    "redaction_reason": "config editor buffer"
+  },
+  "screen": {
+    "main": "Config editor: config.yaml",
+    "input_redacted": true
+  }
+}
+```
+
+Important: the JSONL log redacts config buffers, but terminal recording tools such as `script`, tmux logs, or screen recordings capture the real editor view. That is expected because the editor must show the file content. Do not post terminal transcripts containing real tokens in public issues.
+
+### When to use debug mode
+
+Use debug mode when:
+
+- `/config`, `/benchstore`, `/tasks`, or another command does not appear to open the expected surface
+- you need to know whether a slash command is local, backend-forwarded, or blocked
+- you are in the config editor and need to know which draft Enter would save
+- TUI and Web look inconsistent and you need the `web_analog`
+- you need reproducible route/screen evidence for an issue or regression test
+
+Avoid debug mode when:
+
+- you are just chatting with a quest normally
+- you are editing real secrets and also recording the full terminal output
+- you only need daemon log verbosity; use `logging.level` for that
+
+### Relationship to Web debug
+
+Web also has a lightweight debug inspector for the Settings surface. Enable it with a query flag:
+
+```text
+/settings/connector/qq?debug=1
+```
+
+or persist it in the browser console:
+
+```js
+localStorage.setItem('deepscientist.debug', '1')
+```
+
+To keep an in-browser JSONL buffer for the current page session:
+
+```js
+localStorage.setItem('deepscientist.debug.log', '1')
+```
+
+Remove the key or use `?debug=0` to turn it off.
+
+The Web inspector appears in the bottom-right corner. It shows the current Settings surface, route, selected section or connector, dirty/loading/saving/testing flags, config/connector/quest counts, action disabled reasons, recent API request status, and a redacted JSON snapshot. Use `Copy JSON` or `Download JSONL` when attaching evidence to an issue. When `deepscientist.debug.log` is enabled, `Download JSONL` exports the accumulated in-browser snapshot log; otherwise it exports the current snapshot.
+
+For a strict Web/TUI comparison:
+
+1. record TUI JSONL with `--debug-log`
+2. open the matching Web page with `?debug=1`, such as `/settings/connector/qq?debug=1`
+3. compare TUI `surface`, `web_analog`, and `route.target` with Web `surface`, `route`, `selected`, `flags`, and `actions`
+4. confirm neither snapshot contains real token, secret, password, API key, credential, auth AK, or app secret values
+
+Current scope: the first Web implementation covers Settings, especially connector and config pages. Quest workspace and BenchStore snapshots are planned follow-ups.
+
+## 16. Troubleshooting
 
 ### Problem 1: I entered TUI, but plain text does nothing
 
@@ -506,7 +657,24 @@ Confirm:
 - it is not `localhost`, `127.0.0.1`, or a private LAN address
 - the Rokid platform is using the values shown in the top guide, not a local address
 
-## 16. A Simple Final Check
+### Problem 6: The TUI does not seem to run my command
+
+Start with debug enabled:
+
+```bash
+ds --tui --debug --debug-log /tmp/deepscientist_tui_debug.jsonl
+```
+
+Reproduce the input once and inspect:
+
+- whether `route.kind` is `blocked`
+- whether `route.target` is the endpoint or panel you expected
+- whether `surface` changed to the expected page
+- whether `web_analog` points to the Web page you expected
+
+If you are inside the config editor, press `Ctrl+D` to open the debug inspector. Do not type `/debug`, because normal text is part of the editor buffer there.
+
+## 17. A Simple Final Check
 
 If you want to know whether you can really run the TUI flow end to end, check whether all four are true:
 

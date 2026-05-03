@@ -414,6 +414,7 @@ ds --auth true
 ### 🖥 我主要在服务器和终端里工作
 
 - [05 TUI 指南](docs/zh/05_TUI_GUIDE.md)
+  包含 `ds --tui --debug`、脱敏 debug JSONL，以及 Web/TUI 对照排查方法。
 
 ### 🔌 我想接自己的模型或外部协作面
 

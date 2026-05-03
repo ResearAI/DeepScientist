@@ -67,6 +67,33 @@ npm --prefix src/tui install
 npm --prefix src/tui run build
 ```
 
+Run the TUI with route/render diagnostics:
+
+```bash
+ds --tui --debug --debug-log /tmp/deepscientist_tui_debug.jsonl
+```
+
+Use this when validating command routing, config editor behavior, or Web/TUI parity. Debug JSONL must stay redacted for config editor buffers and secret-like fields; if a TUI change adds a new input surface, add or update an E2E assertion for that redaction boundary.
+
+Run Web Settings with the browser debug inspector:
+
+```text
+/settings/connector/qq?debug=1
+```
+
+or:
+
+```js
+localStorage.setItem('deepscientist.debug', '1')
+localStorage.setItem('deepscientist.debug.log', '1')
+```
+
+The Web inspector must stay hidden unless debug is enabled. It must not include raw config document content or secret-like structured config fields in the snapshot. Focused regression check:
+
+```bash
+cd src/ui && E2E_BASE_URL=http://127.0.0.1:21888/ui npx playwright test e2e/web-debug.spec.ts --project=chromium
+```
+
 ## Test Commands
 
 Quick Python test run:
@@ -92,6 +119,7 @@ Before publishing or cutting a release, verify:
 3. `npm pack --dry-run --ignore-scripts` succeeds.
 4. README and linked docs match the current runtime behavior.
 5. Any new config, route, or quest-state fields have matching tests.
+6. Any TUI command or surface change updates the debug snapshot mapping and keeps `--debug-log` free of raw secrets.
 
 ## Managed Runtime Tools
 

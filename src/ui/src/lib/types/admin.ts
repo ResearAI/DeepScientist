@@ -372,7 +372,7 @@ export type AdminIssueDraftRequest = {
   user_notes?: string
   include_doctor?: boolean
   include_logs?: boolean
-  include_system_quirks?: boolean
+  include_system_settings?: boolean
 }
 
 export type AdminControllersPayload = {

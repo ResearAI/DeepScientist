@@ -9,7 +9,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/useI18n";
@@ -45,6 +45,11 @@ interface PDFViewport {
 interface PDFRenderTask {
   promise: Promise<void>;
   cancel: () => void;
+}
+
+interface PDFDocumentLoadingTask {
+  promise: Promise<PDFDocumentProxy>;
+  destroy: () => Promise<void> | void;
 }
 
 interface PDFTextContent {
@@ -159,87 +164,83 @@ export function PdfLoader({
   const [error, setError] = useState<Error | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
-  // Load PDF document
-  const loadPdf = useCallback(async () => {
+  useEffect(() => {
     let cancelled = false;
+    let loadingTask: PDFDocumentLoadingTask | null = null;
     let loadedDoc: PDFDocumentProxy | null = null;
 
     setLoading(true);
     setError(null);
+    setPdfDocument(null);
     onLoadStart?.();
 
-    try {
-      // Dynamically import PDF.js to avoid SSR issues
-      const pdfjsLib = await import("pdfjs-dist");
+    void (async () => {
+      try {
+        // Dynamically import PDF.js to avoid SSR issues.
+        const pdfjsLib = await import("pdfjs-dist");
 
-      // Configure worker
-      if (typeof window !== "undefined") {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
-      }
+        // Configure worker.
+        if (typeof window !== "undefined") {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
+        }
 
-      // Create loading task
-      const loadingTask = pdfjsLib.getDocument({
-        url,
-        httpHeaders,
-        // Enable range requests for large files
-        disableRange: false,
-        disableStream: false,
-        // Enable auto-fetch for better performance
-        disableAutoFetch: false,
-        ...(PDF_CMAP_URL
-          ? {
-              cMapUrl: PDF_CMAP_URL,
-              cMapPacked: PDF_CMAP_PACKED,
-            }
-          : {}),
-      });
+        if (cancelled) {
+          return;
+        }
 
-      // Load document
-      const doc = await loadingTask.promise;
-      loadedDoc = doc as unknown as PDFDocumentProxy;
+        loadingTask = pdfjsLib.getDocument({
+          url,
+          httpHeaders,
+          // Enable range requests for large files.
+          disableRange: false,
+          disableStream: false,
+          // Enable auto-fetch for better performance.
+          disableAutoFetch: false,
+          ...(PDF_CMAP_URL
+            ? {
+                cMapUrl: PDF_CMAP_URL,
+                cMapPacked: PDF_CMAP_PACKED,
+              }
+            : {}),
+        }) as unknown as PDFDocumentLoadingTask;
 
-      if (!cancelled) {
+        const doc = await loadingTask.promise;
+        loadedDoc = doc;
+
+        if (cancelled) {
+          try {
+            loadedDoc.destroy();
+          } catch {
+            // Ignore cleanup errors
+          }
+          return;
+        }
+
         setPdfDocument(loadedDoc);
         setLoading(false);
         onLoadComplete?.(loadedDoc);
+      } catch (err) {
+        if (!cancelled) {
+          const errorObj = err instanceof Error ? err : new Error("Failed to load PDF");
+          setError(errorObj);
+          setLoading(false);
+          onError?.(errorObj);
+        }
       }
-    } catch (err) {
-      if (!cancelled) {
-        const errorObj =
-          err instanceof Error ? err : new Error("Failed to load PDF");
-        setError(errorObj);
-        setLoading(false);
-        onError?.(errorObj);
-      }
-    }
+    })();
 
-    // Cleanup function
     return () => {
       cancelled = true;
-      if (loadedDoc) {
+      if (loadingTask) {
         try {
-          loadedDoc.destroy();
+          void loadingTask.destroy();
         } catch {
           // Ignore cleanup errors
         }
       }
-    };
-  }, [url, httpHeaders, onError, onLoadStart, onLoadComplete]);
-
-  // Effect to load PDF
-  useEffect(() => {
-    let cleanup: (() => void) | undefined;
-
-    loadPdf().then((fn) => {
-      cleanup = fn;
-    });
-
-    return () => {
-      cleanup?.();
-      // Destroy previous document
-      if (pdfDocument) {
+      if (loadedDoc) {
         try {
-          pdfDocument.destroy();
+          loadedDoc.destroy();
         } catch {
           // Ignore cleanup errors
         }

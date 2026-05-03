@@ -2,10 +2,12 @@ import { useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { AuthProvider } from '@/components/auth/AuthProvider'
+import { WebDebugInspector } from '@/components/debug/WebDebugInspector'
 import { DocsPage } from '@/components/docs/DocsPage'
 import { OnboardingOverlay } from '@/components/onboarding/OnboardingOverlay'
 import { SettingsPage, type ConfigDocumentName, type SettingsSectionName } from '@/components/settings/SettingsPage'
 import type { ConnectorName } from '@/components/settings/connectorCatalog'
+import { WebDebugProvider } from '@/lib/debug/useWebDebug'
 import { I18nProvider, useI18n } from '@/lib/i18n'
 import { LandingPage } from '@/pages/LandingPage'
 import { ProjectWorkspacePage } from '@/pages/ProjectWorkspacePage'
@@ -230,6 +232,7 @@ function AppRoutes() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <OnboardingOverlay />
+      <WebDebugInspector />
     </>
   )
 }
@@ -246,7 +249,9 @@ export default function App() {
     <I18nProvider>
       <AuthProvider>
         <BrowserRouter basename={resolveRouterBasename()}>
-          <AppRoutes />
+          <WebDebugProvider>
+            <AppRoutes />
+          </WebDebugProvider>
         </BrowserRouter>
       </AuthProvider>
     </I18nProvider>

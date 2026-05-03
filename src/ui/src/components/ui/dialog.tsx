@@ -44,8 +44,9 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-1/2 top-1/2 z-[10001] grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4',
-        'rounded-2xl border border-[var(--soft-border)] bg-[var(--soft-bg-surface)] p-6 shadow-lg',
+        'fixed left-1/2 top-1/2 z-[10001] flex min-h-0 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden',
+        'max-h-[calc(100dvh-1.5rem)] rounded-2xl border border-[var(--soft-border)] bg-[var(--soft-bg-surface)] p-6 shadow-lg',
+        'sm:max-h-[calc(100dvh-3rem)]',
         'duration-200',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
@@ -56,7 +57,9 @@ const DialogContent = React.forwardRef<
       )}
       {...props}
     >
-      {children}
+      <div className="modal-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain">
+        {children}
+      </div>
       {showCloseButton && (
         <DialogPrimitive.Close
           className={cn(

@@ -38,6 +38,13 @@ const sheetSideStyles: Record<NonNullable<SheetContentProps['side']>, string> = 
   bottom: 'inset-x-0 bottom-0 w-full border-t',
 }
 
+const sheetSideAnimations: Record<NonNullable<SheetContentProps['side']>, string> = {
+  left: 'data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left',
+  right: 'data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right',
+  top: 'data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top',
+  bottom: 'data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
+}
+
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   SheetContentProps
@@ -47,16 +54,19 @@ const SheetContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed z-[10001] flex flex-col gap-4 bg-[var(--soft-bg-surface)] p-6 shadow-xl',
+        'fixed z-[10001] flex min-h-0 flex-col overflow-hidden bg-[var(--soft-bg-surface)] p-6 shadow-xl',
+        'max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)]',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-        'data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right',
         sheetSideStyles[side],
+        sheetSideAnimations[side],
         className
       )}
       {...props}
     >
-      {children}
+      <div className="modal-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain">
+        {children}
+      </div>
       <SheetClose
         className={cn(
           'absolute right-4 top-4 rounded-sm opacity-70',

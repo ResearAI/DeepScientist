@@ -602,7 +602,7 @@ export default function Hero(props: {
                           className="h-12 rounded-full bg-[#C7AD96] px-7 text-[#2D2A26] shadow-[0_12px_28px_-14px_rgba(45,42,38,0.55)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#D7C6AE]"
                           onClick={() => {
                             window.setTimeout(() => {
-                              setActiveDialog('launch')
+                              setActiveDialog(isPortraitMode ? 'autonomous' : 'launch')
                             }, 120)
                           }}
                           data-onboarding-id="landing-start-research"

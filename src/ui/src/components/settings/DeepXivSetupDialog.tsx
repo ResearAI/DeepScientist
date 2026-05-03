@@ -30,9 +30,9 @@ type DeepXivTestResult = {
 
 const DEFAULT_DRAFT: DeepXivDraft = {
   token: "",
-  default_result_size: "20",
-  preview_characters: "5000",
-  request_timeout_seconds: "90",
+  default_result_size: "10",
+  preview_characters: "1200",
+  request_timeout_seconds: "20",
 }
 
 const copy = {

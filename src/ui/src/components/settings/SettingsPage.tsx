@@ -1,4 +1,4 @@
-import { ChevronDown, Loader2, Search } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Loader2, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
@@ -31,6 +31,8 @@ import { Button } from '@/components/ui/button'
 import { HintDot } from '@/components/ui/hint-dot'
 import { Input } from '@/components/ui/input'
 import { client } from '@/lib/api'
+import { DEBUG_REDACTION_PATTERNS, emptyWebDebugInput, type WebDebugSnapshotPatch } from '@/lib/debug/debugSnapshot'
+import { usePublishWebDebugSnapshot } from '@/lib/debug/useWebDebug'
 import { useAdminOpsStore } from '@/lib/stores/admin-ops'
 import { cn } from '@/lib/utils'
 import type {
@@ -208,6 +210,7 @@ const copy = {
     connectorBindingSaved: 'Connector binding updated.',
     baselineDeleted: 'Baseline deleted.',
     literatureTools: 'Literature tools',
+    back: 'Back',
   },
   zh: {
     title: '设置',
@@ -234,6 +237,7 @@ const copy = {
     connectorBindingSaved: '已更新该 Connector 绑定。',
     baselineDeleted: '已删除该 baseline。',
     literatureTools: '文献工具',
+    back: '返回',
   },
 } satisfies Record<Locale, Record<string, string>>
 
@@ -397,6 +401,25 @@ function qqMainChatSignature(value: unknown) {
   return [directMainChatId, ...profileChatIds].filter(Boolean).join('|')
 }
 
+function settingsDebugSurface(
+  selectedName: SettingsSectionName | null,
+  selectedConnectorName: ConnectorName | null,
+  requestedQuestId?: string | null
+) {
+  if (!selectedName) return 'settings:none'
+  if (selectedName === 'connectors') {
+    return selectedConnectorName ? `settings:connectors:${selectedConnectorName}` : 'settings:connectors'
+  }
+  if (selectedName === 'quests' && requestedQuestId) {
+    return `settings:quests:${requestedQuestId}`
+  }
+  return `settings:${selectedName}`
+}
+
+function disabledReason(condition: boolean, reason: string | null) {
+  return condition ? null : reason
+}
+
 export function SettingsPage({
   requestedConfigName,
   requestedConnectorName,
@@ -440,8 +463,15 @@ export function SettingsPage({
   const [testResult, setTestResult] = useState<ConfigTestPayload | null>(null)
   const [saveMessage, setSaveMessage] = useState('')
   const [search, setSearch] = useState('')
+  const [mobileSettingsView, setMobileSettingsView] = useState<'directory' | 'detail'>(
+    location.pathname === '/settings' ? 'directory' : 'detail'
+  )
   const lastKnownQqMainChatIdRef = useRef('')
   const contentRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    setMobileSettingsView(location.pathname === '/settings' ? 'directory' : 'detail')
+  }, [location.pathname])
 
   useEffect(() => {
     let mounted = true
@@ -697,6 +727,7 @@ export function SettingsPage({
 
   const handleSelectSection = (name: SettingsSectionName) => {
     setSelectedName(name)
+    setMobileSettingsView('detail')
     setSaveMessage('')
     navigate(
       {
@@ -792,6 +823,295 @@ export function SettingsPage({
       }
     })
   }, [connectors, locale, selectedName, structuredDraft, visibleConnectorEntries])
+
+  const handleSelectConnectorFromNavigation = (connectorName: ConnectorName) => {
+    setSelectedName('connectors')
+    setMobileSettingsView('detail')
+    setSaveMessage('')
+    navigate({
+      pathname: settingsConfigPath('connectors', connectorName),
+      hash: '',
+    })
+  }
+
+  const handleBackToMobileSettingsDirectory = () => {
+    setMobileSettingsView('directory')
+    navigate('/settings')
+  }
+
+  const renderMobileSectionButton = (name: SettingsSectionName, label: string, hint: string) => (
+    <button
+      key={name}
+      type="button"
+      data-onboarding-id={name === 'summary' ? 'settings-mobile-summary-button' : undefined}
+      onClick={() => handleSelectSection(name)}
+      className={cn(
+        'flex w-full items-start justify-between gap-3 rounded-[16px] px-3 py-3 text-left transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]',
+        selectedName === name && 'bg-black/[0.05] dark:bg-white/[0.06]'
+      )}
+    >
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">{label}</span>
+        <span className="mt-0.5 line-clamp-2 text-[11px] leading-5 text-muted-foreground">{hint}</span>
+      </span>
+      <span
+        aria-hidden="true"
+        className={cn(
+          'mt-1 h-2 w-2 shrink-0 rounded-full',
+          selectedName === name ? 'bg-[var(--ds-brand)]' : 'bg-muted-foreground/30'
+        )}
+      />
+    </button>
+  )
+
+  const renderMobileConnectorButton = (connector: (typeof connectorSummary)[number]) => {
+    const entry = visibleConnectorEntries.find((item) => item.name === connector.name)
+    const Icon = entry?.icon
+    return (
+      <button
+        key={connector.name}
+        type="button"
+        onClick={() => handleSelectConnectorFromNavigation(connector.name as ConnectorName)}
+        className={cn(
+          'flex w-full items-center justify-between gap-3 rounded-[16px] px-3 py-3 text-left text-sm transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]',
+          selectedName === 'connectors' && selectedConnectorName === connector.name && 'bg-black/[0.05] dark:bg-white/[0.06]'
+        )}
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          {Icon ? <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
+          <span className="min-w-0">
+            <span className="block truncate font-medium">{connector.label}</span>
+            <span className="mt-0.5 block text-[11px] text-muted-foreground">
+              {connector.enabled ? t.enabled : t.idle}
+            </span>
+          </span>
+        </span>
+        <span
+          className={cn(
+            'h-2 w-2 shrink-0 rounded-full',
+            connector.enabled ? 'bg-emerald-500/80' : 'bg-zinc-400/80 dark:bg-zinc-500/80'
+          )}
+        />
+      </button>
+    )
+  }
+
+  const mobileSectionNavigation = (
+    <div className="feed-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
+      <section className="space-y-2">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t.admin}</div>
+        <div className="space-y-1">
+          {OPERATIONS_ORDER.map((name) => renderMobileSectionButton(name, sectionLabel(name, locale), sectionHint(name, locale)))}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t.files}</div>
+        <div className="space-y-1">
+          {files.map((file) => {
+            const name = file.name as SettingsSectionName
+            return renderMobileSectionButton(name, configLabel(name, locale), configHint(name, locale))
+          })}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t.connectors}</div>
+        <div className="space-y-1">
+          {connectorSummary.length === 0 ? (
+            <div className="px-1 py-2 text-sm text-muted-foreground">{t.noHealth}</div>
+          ) : (
+            connectorSummary.map((connector) => renderMobileConnectorButton(connector))
+          )}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t.copilot}</div>
+        <Button
+          type="button"
+          variant={dockOpen ? 'secondary' : 'outline'}
+          size="sm"
+          className="w-full justify-between rounded-[16px]"
+          onClick={() => {
+            if (dockOpen) {
+              closeDock()
+              return
+            }
+            startFreshSession(location.pathname || '/settings')
+          }}
+        >
+          <span>{dockOpen ? t.closeCopilot : t.openCopilot}</span>
+          {activeRepair ? <Badge variant="warning">{activeRepair.repair_id}</Badge> : null}
+        </Button>
+      </section>
+    </div>
+  )
+
+  const sectionNavigation = (
+    <>
+      <div className="text-sm font-medium">{t.title}</div>
+
+      <div className="relative mt-4">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.search} className="rounded-[18px] border-black/[0.08] bg-white/[0.44] pl-10 shadow-none dark:bg-white/[0.03]" />
+      </div>
+
+      <div className="mt-5">
+        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t.files}</div>
+        {filteredFiles.map((file, index) => {
+          const name = file.name as SettingsSectionName
+          return (
+            <button
+              key={file.name}
+              type="button"
+              onClick={() => handleSelectSection(name)}
+              className={cn(
+                'flex w-full items-center justify-between rounded-[14px] px-3 py-2.5 text-left transition',
+                selectedName === file.name
+                  ? 'bg-black/[0.045] text-foreground dark:bg-white/[0.06]'
+                  : 'text-muted-foreground hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.03]'
+              )}
+              style={{ marginTop: index === 0 ? 0 : undefined }}
+            >
+              <span className="flex items-center gap-2">
+                <span className="text-sm font-medium">{configLabel(name, locale)}</span>
+                <HintDot label={configHint(name, locale)} />
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="mt-8 border-t border-black/[0.08] pt-4 text-xs text-muted-foreground dark:border-white/[0.08]">
+        <div className="mb-1 uppercase tracking-[0.18em]">{t.daemon}</div>
+        <div className="break-all">{runtimeAddress}</div>
+      </div>
+
+      <div className="mt-6 border-t border-black/[0.08] pt-4 dark:border-white/[0.08]">
+        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t.connectors}</div>
+        {connectorSummary.length === 0 ? (
+          <div className="text-xs text-muted-foreground">{t.noHealth}</div>
+        ) : (
+          <div className="space-y-2">
+            {connectorSummary.map((connector) => {
+              const entry = visibleConnectorEntries.find((item) => item.name === connector.name)
+              const Icon = entry?.icon
+              return (
+                <button
+                  key={connector.name}
+                  type="button"
+                  onClick={() => {
+                    setSelectedName('connectors')
+                    setSaveMessage('')
+                    navigate({
+                      pathname: settingsConfigPath('connectors', connector.name),
+                      hash: '',
+                    })
+                  }}
+                  className={cn(
+                    'flex w-full items-center justify-between gap-3 rounded-[14px] px-3 py-2.5 text-left text-sm transition',
+                    selectedName === 'connectors' && selectedConnectorName === connector.name
+                      ? 'bg-black/[0.045] text-foreground dark:bg-white/[0.06]'
+                      : 'text-muted-foreground hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.03]'
+                  )}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    {Icon ? <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
+                    <span className="truncate">{connector.label}</span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                    <span
+                      className={cn(
+                        'h-2 w-2 rounded-full',
+                        connector.enabled ? 'bg-emerald-500/80' : 'bg-zinc-400/80 dark:bg-zinc-500/80'
+                      )}
+                    />
+                    {connector.enabled ? t.enabled : t.idle}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6 border-t border-black/[0.08] pt-4 dark:border-white/[0.08]">
+        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t.literatureTools}</div>
+        <button
+          type="button"
+          onClick={() => handleSelectSection('deepxiv')}
+          className={cn(
+            'flex w-full items-center justify-between rounded-[14px] px-3 py-2.5 text-left transition',
+            selectedName === 'deepxiv'
+              ? 'bg-black/[0.045] text-foreground dark:bg-white/[0.06]'
+              : 'text-muted-foreground hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.03]'
+          )}
+        >
+          <span className="flex items-center gap-2">
+            <span className="text-sm font-medium">{sectionLabel('deepxiv', locale)}</span>
+            <HintDot label={sectionHint('deepxiv', locale)} />
+          </span>
+        </button>
+      </div>
+
+      <div className="mt-6 border-t border-black/[0.08] pt-4 dark:border-white/[0.08]">
+        <button
+          type="button"
+          onClick={() => setAdminExpanded((value) => !value)}
+          className="flex w-full items-start justify-between gap-3 text-left transition"
+        >
+          <span className="min-w-0">
+            <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t.admin}</span>
+            <span className="mt-1 block text-xs leading-5 text-muted-foreground">{t.adminHint}</span>
+          </span>
+          <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', adminExpanded ? 'rotate-180' : 'rotate-0')} />
+        </button>
+        {adminExpanded ? (
+          <div className="mt-3 space-y-1">
+            {filteredOperations.map((item) => (
+              <button
+                key={item.name}
+                type="button"
+                onClick={() => handleSelectSection(item.name)}
+                className={cn(
+                  'flex w-full items-center justify-between rounded-[16px] px-3 py-2.5 text-left transition',
+                  selectedName === item.name
+                    ? 'bg-black/[0.045] text-foreground dark:bg-white/[0.06]'
+                    : 'text-muted-foreground hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.03]'
+                )}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{item.label}</span>
+                  <HintDot label={item.hint} />
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-6 border-t border-black/[0.08] pt-4 dark:border-white/[0.08]">
+        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t.copilot}</div>
+        <Button
+          type="button"
+          variant={dockOpen ? 'secondary' : 'outline'}
+          size="sm"
+          className="w-full justify-between rounded-[16px]"
+          onClick={() => {
+            if (dockOpen) {
+              closeDock()
+              return
+            }
+            startFreshSession(location.pathname || '/settings')
+          }}
+        >
+          <span>{dockOpen ? t.closeCopilot : t.openCopilot}</span>
+          {activeRepair ? <Badge variant="warning">{activeRepair.repair_id}</Badge> : null}
+        </Button>
+      </div>
+    </>
+  )
 
   const refreshSelected = async () => {
     if (!selectedName) {
@@ -968,6 +1288,171 @@ export function SettingsPage({
     }
   }
 
+  const webDebugSnapshot = useMemo<WebDebugSnapshotPatch>(() => {
+    const selectedConnectorEntry = selectedConnectorName
+      ? visibleConnectorEntries.find((entry) => entry.name === selectedConnectorName)
+      : null
+    const selectedConnectorLabel = selectedConnectorEntry
+      ? translateSettingsCatalogText(locale, selectedConnectorEntry.label)
+      : selectedConnectorName
+    const selectedLabel = selectedConnectorLabel || selectedMeta?.label[locale] || selectedName || null
+    const validationErrors = validation?.errors?.length ?? 0
+    const validationWarnings = validation?.warnings?.length ?? 0
+    const testErrors = testResult?.errors?.length ?? 0
+    const testWarnings = testResult?.warnings?.length ?? 0
+    const statusLine =
+      loading
+        ? 'Loading settings.'
+        : documentLoading
+          ? `Loading ${selectedName || 'settings'} document.`
+          : saving
+            ? `Saving ${selectedName || 'settings'}.`
+            : validating
+              ? `Validating ${selectedName || 'settings'}.`
+              : testingAll
+                ? `Testing ${selectedName || 'settings'}.`
+                : saveMessage || validation?.errors?.[0] || validation?.warnings?.[0] || testResult?.summary || 'Ready.'
+    const connectionState =
+      loading || documentLoading
+        ? 'loading'
+        : saving
+          ? 'saving'
+          : validating
+            ? 'validating'
+            : testingAll
+              ? 'testing'
+              : isDirty
+                ? 'dirty'
+                : 'ready'
+    const canSaveConfig = Boolean(document && isDirty && !saving)
+    const canValidateConfig = Boolean(document && !validating && !isConnectorDocument && !isBaselineDocument && selectedName !== 'runners')
+    const canTestConfig = Boolean(document && document.meta?.system_testable && !testingAll)
+
+    return {
+      surface: settingsDebugSurface(selectedName, selectedConnectorName, requestedQuestId),
+      web_analog: `Web Settings > ${selectedLabel || 'none'}`,
+      input: emptyWebDebugInput('settings'),
+      screen: {
+        main: 'SettingsPage',
+        composer: dockOpen ? 'admin copilot dock' : 'none',
+        selected: selectedLabel,
+        input_visible: Boolean(search || dockOpen),
+        input_redacted: false,
+        debug_strip_visible: true,
+      },
+      status_line: statusLine,
+      connection_state: connectionState,
+      selected: {
+        locale,
+        section: selectedName,
+        section_label: selectedMeta?.label[locale] || null,
+        connector: selectedConnectorName,
+        connector_label: selectedConnectorLabel,
+        requested_connector: requestedConnectorName,
+        quest_id: requestedQuestId || null,
+        document_id: document?.document_id || null,
+        document_path: document?.path || null,
+        active_repair_id: activeRepair?.repair_id || null,
+      },
+      counts: {
+        files: files.length,
+        connectors: connectors.length,
+        visible_connectors: visibleConnectorEntries.length,
+        baselines: baselineEntries.length,
+        quests: quests.length,
+        connector_summary: connectorSummary.length,
+        validation_errors: validationErrors,
+        validation_warnings: validationWarnings,
+        test_errors: testErrors,
+        test_warnings: testWarnings,
+      },
+      flags: {
+        loading,
+        document_loading: documentLoading,
+        page_loading: isPageLoading,
+        saving,
+        validating,
+        testing_all: testingAll,
+        dirty: isDirty,
+        dock_open: dockOpen,
+        section_picker_open: false,
+        connector_document: isConnectorDocument,
+        baseline_document: isBaselineDocument,
+        operation_section: isOperationSection,
+      },
+      messages: {
+        save: saveMessage || null,
+        validation: validation ? (validation.ok ? 'validation ok' : validation.errors[0] || 'validation failed') : null,
+        test: testResult?.summary || null,
+        error: validation?.errors?.[0] || testResult?.errors?.[0] || null,
+      },
+      actions: {
+        save_config: {
+          enabled: canSaveConfig,
+          reason:
+            disabledReason(Boolean(document), 'No config document is open.') ??
+            disabledReason(isDirty, 'No unsaved changes.') ??
+            disabledReason(!saving, 'Save is already running.'),
+        },
+        validate_config: {
+          enabled: canValidateConfig,
+          reason:
+            disabledReason(Boolean(document), 'No config document is open.') ??
+            disabledReason(!isConnectorDocument && !isBaselineDocument && selectedName !== 'runners', 'This settings surface uses a specialized editor.') ??
+            disabledReason(!validating, 'Validation is already running.'),
+        },
+        test_config: {
+          enabled: canTestConfig,
+          reason:
+            disabledReason(Boolean(document), 'No config document is open.') ??
+            disabledReason(Boolean(document?.meta?.system_testable), 'This config document has no system test endpoint.') ??
+            disabledReason(!testingAll, 'A system test is already running.'),
+        },
+        admin_copilot: {
+          enabled: true,
+          reason: dockOpen ? 'Admin Copilot dock is open.' : null,
+        },
+      },
+      redaction: {
+        applied: true,
+        fields: ['document.content', 'document.meta.structured_config', 'structuredDraft secret-like keys'],
+        policy: [...DEBUG_REDACTION_PATTERNS],
+      },
+    }
+  }, [
+    activeRepair?.repair_id,
+    baselineEntries.length,
+    connectorSummary.length,
+    connectors.length,
+    dockOpen,
+    document,
+    documentLoading,
+    files.length,
+    isBaselineDocument,
+    isConnectorDocument,
+    isDirty,
+    isOperationSection,
+    isPageLoading,
+    loading,
+    locale,
+    quests.length,
+    requestedConnectorName,
+    requestedQuestId,
+    saveMessage,
+    search,
+    selectedConnectorName,
+    selectedMeta,
+    selectedName,
+    testingAll,
+    testResult,
+    validating,
+    validation,
+    visibleConnectorEntries,
+    saving,
+  ])
+
+  usePublishWebDebugSnapshot(webDebugSnapshot)
+
   return (
     <div className="font-project flex h-screen flex-col overflow-hidden px-4 pb-4 pt-4 sm:px-6 sm:pb-6">
       <ProjectsAppBar title={t.title} />
@@ -975,175 +1460,48 @@ export function SettingsPage({
       <main className="mx-auto mt-5 min-h-0 w-full flex-1 overflow-hidden">
         <div
           className={cn(
-            'mx-auto grid h-full min-h-0 w-full max-w-[90vw] grid-rows-[minmax(180px,34svh)_minmax(0,1fr)] gap-4 md:grid-cols-[260px_minmax(0,1fr)] md:grid-rows-1 md:gap-0',
+            'mx-auto grid h-full min-h-0 w-full max-w-[94vw] grid-rows-[minmax(0,1fr)] gap-3 sm:max-w-[90vw] md:grid-cols-[260px_minmax(0,1fr)] md:grid-rows-1 md:gap-0',
             dockOpen && 'xl:grid-cols-[260px_minmax(0,1fr)_420px]'
           )}
         >
-          <aside className="feed-scrollbar flex h-full min-h-0 flex-col overflow-auto border-b border-black/[0.08] pb-4 md:border-b-0 md:border-r md:pb-0 md:pr-6 dark:border-white/[0.08]">
-            <div className="text-sm font-medium">{t.title}</div>
-
-            <div className="relative mt-4">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.search} className="rounded-[18px] border-black/[0.08] bg-white/[0.44] pl-10 shadow-none dark:bg-white/[0.03]" />
+          <aside
+            data-onboarding-id="settings-mobile-directory"
+            className={cn(
+              'min-h-0 flex-col border-b border-black/[0.08] pb-6 md:hidden dark:border-white/[0.08]',
+              mobileSettingsView === 'directory' ? 'flex' : 'hidden'
+            )}
+          >
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <span>{t.files}</span>
             </div>
-
-            <div className="mt-5">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t.files}</div>
-              {filteredFiles.map((file, index) => {
-                const name = file.name as SettingsSectionName
-                return (
-                  <button
-                    key={file.name}
-                    type="button"
-                    onClick={() => handleSelectSection(name)}
-                    className={cn(
-                      'flex w-full items-center justify-between rounded-[14px] px-3 py-2.5 text-left transition',
-                      selectedName === file.name
-                        ? 'bg-black/[0.045] text-foreground dark:bg-white/[0.06]'
-                        : 'text-muted-foreground hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.03]'
-                    )}
-                    style={{ marginTop: index === 0 ? 0 : undefined }}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{configLabel(name, locale)}</span>
-                      <HintDot label={configHint(name, locale)} />
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-
-            <div className="mt-8 border-t border-black/[0.08] pt-4 text-xs text-muted-foreground dark:border-white/[0.08]">
-              <div className="mb-1 uppercase tracking-[0.18em]">{t.daemon}</div>
-              <div className="break-all">{runtimeAddress}</div>
-            </div>
-
-            <div className="mt-6 border-t border-black/[0.08] pt-4 dark:border-white/[0.08]">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t.connectors}</div>
-              {connectorSummary.length === 0 ? (
-                <div className="text-xs text-muted-foreground">{t.noHealth}</div>
-              ) : (
-                <div className="space-y-2">
-                  {connectorSummary.map((connector) => {
-                    const entry = visibleConnectorEntries.find((item) => item.name === connector.name)
-                    const Icon = entry?.icon
-                    return (
-                      <button
-                        key={connector.name}
-                        type="button"
-                        onClick={() => {
-                          setSelectedName('connectors')
-                          setSaveMessage('')
-                          navigate({
-                            pathname: settingsConfigPath('connectors', connector.name),
-                            hash: '',
-                          })
-                        }}
-                        className={cn(
-                          'flex w-full items-center justify-between gap-3 rounded-[14px] px-3 py-2.5 text-left text-sm transition',
-                          selectedName === 'connectors' && selectedConnectorName === connector.name
-                            ? 'bg-black/[0.045] text-foreground dark:bg-white/[0.06]'
-                            : 'text-muted-foreground hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.03]'
-                        )}
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          {Icon ? <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
-                          <span className="truncate">{connector.label}</span>
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                          <span
-                            className={cn(
-                              'h-2 w-2 rounded-full',
-                              connector.enabled ? 'bg-emerald-500/80' : 'bg-zinc-400/80 dark:bg-zinc-500/80'
-                            )}
-                          />
-                          {connector.enabled ? t.enabled : t.idle}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6 border-t border-black/[0.08] pt-4 dark:border-white/[0.08]">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t.literatureTools}</div>
-              <button
-                type="button"
-                onClick={() => handleSelectSection('deepxiv')}
-                className={cn(
-                  'flex w-full items-center justify-between rounded-[14px] px-3 py-2.5 text-left transition',
-                  selectedName === 'deepxiv'
-                    ? 'bg-black/[0.045] text-foreground dark:bg-white/[0.06]'
-                    : 'text-muted-foreground hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.03]'
-                )}
-              >
-                <span className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{sectionLabel('deepxiv', locale)}</span>
-                  <HintDot label={sectionHint('deepxiv', locale)} />
-                </span>
-              </button>
-            </div>
-
-            <div className="mt-6 border-t border-black/[0.08] pt-4 dark:border-white/[0.08]">
-              <button
-                type="button"
-                onClick={() => setAdminExpanded((value) => !value)}
-                className="flex w-full items-start justify-between gap-3 text-left transition"
-              >
-                <span className="min-w-0">
-                  <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t.admin}</span>
-                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">{t.adminHint}</span>
-                </span>
-                <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', adminExpanded ? 'rotate-180' : 'rotate-0')} />
-              </button>
-              {adminExpanded ? (
-                <div className="mt-3 space-y-1">
-                  {filteredOperations.map((item) => (
-                    <button
-                      key={item.name}
-                      type="button"
-                      onClick={() => handleSelectSection(item.name)}
-                      className={cn(
-                        'flex w-full items-center justify-between rounded-[16px] px-3 py-2.5 text-left transition',
-                        selectedName === item.name
-                          ? 'bg-black/[0.045] text-foreground dark:bg-white/[0.06]'
-                          : 'text-muted-foreground hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.03]'
-                      )}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{item.label}</span>
-                        <HintDot label={item.hint} />
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="mt-6 border-t border-black/[0.08] pt-4 dark:border-white/[0.08]">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t.copilot}</div>
-              <Button
-                type="button"
-                variant={dockOpen ? 'secondary' : 'outline'}
-                size="sm"
-                className="w-full justify-between rounded-[16px]"
-                onClick={() => {
-                  if (dockOpen) {
-                    closeDock()
-                    return
-                  }
-                  startFreshSession(location.pathname || '/settings')
-                }}
-              >
-                <span>{dockOpen ? t.closeCopilot : t.openCopilot}</span>
-                {activeRepair ? <Badge variant="warning">{activeRepair.repair_id}</Badge> : null}
-              </Button>
-            </div>
+            {mobileSectionNavigation}
           </aside>
 
-          <section ref={contentRef} className="feed-scrollbar min-h-0 overflow-y-auto py-4 md:px-6 md:py-6 xl:px-8">
+          <aside className="feed-scrollbar hidden h-full min-h-0 flex-col overflow-auto border-r border-black/[0.08] pr-6 md:flex dark:border-white/[0.08]">
+            {sectionNavigation}
+          </aside>
+
+          <section
+            ref={contentRef}
+            data-onboarding-id="settings-mobile-detail"
+            className={cn(
+              'feed-scrollbar min-h-0 overflow-y-auto py-4 md:block md:px-6 md:py-6 xl:px-8',
+              mobileSettingsView === 'detail' ? 'block' : 'hidden'
+            )}
+          >
             <div className={cn('mx-auto w-full', dockOpen ? 'max-w-[1010px]' : 'max-w-[1180px]')}>
+              <div className="mb-4 md:hidden">
+                <button
+                  type="button"
+                  onClick={handleBackToMobileSettingsDirectory}
+                  data-onboarding-id="settings-mobile-back"
+                  className="inline-flex h-10 items-center gap-2 rounded-[16px] border border-black/[0.08] bg-white/[0.58] px-3 text-sm font-medium text-foreground shadow-[0_12px_28px_-24px_rgba(45,42,38,0.26)] backdrop-blur-xl dark:border-white/[0.10] dark:bg-white/[0.05]"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span>{t.back}</span>
+                </button>
+              </div>
+
               {isPageLoading ? (
                 <div className="flex items-center gap-3 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />

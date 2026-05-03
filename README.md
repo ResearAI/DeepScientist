@@ -414,6 +414,7 @@ If this is your first run, prefer an isolated environment, a non-root user, and 
 ### 🖥 I mainly work on servers and terminals
 
 - [05 TUI Guide](docs/en/05_TUI_GUIDE.md)
+  Includes `ds --tui --debug`, redacted debug JSONL, and Web/TUI comparison guidance.
 
 ### 🔌 I want to connect my own models or external collaboration channels
 

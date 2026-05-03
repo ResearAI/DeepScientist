@@ -1061,9 +1061,9 @@ const resolveEdgePalette = (resolvedTheme: 'light' | 'dark'): LabEdgePalette => 
     }
   }
   return {
-    defaultStroke: 'rgba(71, 63, 52, 0.38)',
+    defaultStroke: 'rgba(71, 63, 52, 0.48)',
     stageStroke: '#b48d4f',
-    agentStroke: 'rgba(71, 63, 52, 0.48)',
+    agentStroke: 'rgba(71, 63, 52, 0.58)',
   }
 }
 
@@ -4373,8 +4373,8 @@ function LabQuestGraphCanvasInner({
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          width: 14,
-          height: 14,
+          width: 16,
+          height: 16,
           color,
         },
       }

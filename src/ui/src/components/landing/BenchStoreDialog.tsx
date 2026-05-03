@@ -3521,7 +3521,7 @@ export function BenchStoreDialog({
         </div>
         <div
           data-onboarding-id="benchstore-assistant-surface"
-          className="feed-scrollbar modal-scrollbar min-h-0 overflow-y-scroll overscroll-contain px-3 pb-3 pr-4 pt-3 sm:px-4 sm:pb-4 sm:pr-5 sm:pt-5"
+          className="feed-scrollbar modal-scrollbar hidden min-h-0 overflow-y-scroll overscroll-contain px-3 pb-3 pr-4 pt-3 sm:px-4 sm:pb-4 sm:pr-5 sm:pt-5 lg:block"
           onWheel={(event) => event.stopPropagation()}
         >
           {setupQuestId ? (

@@ -189,6 +189,7 @@ export function FileTree({
 
   // Calculate container dimensions
   const [dimensions, setDimensions] = React.useState({ width: 240, height: 400 });
+  const hasNodesOverride = nodesOverride !== undefined && nodesOverride !== null;
 
   React.useEffect(() => {
     const node = containerRef.current;
@@ -233,10 +234,13 @@ export function FileTree({
 
   // Load files on mount and when projectId changes
   React.useEffect(() => {
+    if (hasNodesOverride) {
+      return;
+    }
     if (loadedProjectId !== projectId) {
       loadFiles(projectId);
     }
-  }, [projectId, loadedProjectId, loadFiles]);
+  }, [hasNodesOverride, projectId, loadedProjectId, loadFiles]);
 
   React.useEffect(() => {
     if (readOnly && dragArmedId) {
@@ -643,9 +647,11 @@ export function FileTree({
     syncedExpandedIdsRef.current = synced;
   }, [expandedIds, nodesOverride, visibleNodes]);
 
-  const effectiveLoading = loadingOverride ?? isLoading;
+  const effectiveLoading = loadingOverride ?? (hasNodesOverride ? false : isLoading);
+  const effectiveError = hasNodesOverride ? null : error;
   const showLoadingState = effectiveLoading && visibleNodes.length === 0;
-  const showEmptyState = !effectiveLoading && !error && visibleNodes.length === 0;
+  const showErrorState = Boolean(effectiveError) && visibleNodes.length === 0;
+  const showEmptyState = !effectiveLoading && !effectiveError && visibleNodes.length === 0;
 
   return (
     <div
@@ -665,10 +671,10 @@ export function FileTree({
         <div className="flex h-full items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-[var(--file-tree-icon-muted)]" />
         </div>
-      ) : error ? (
+      ) : showErrorState ? (
         <div className="flex h-full flex-col items-center justify-center p-4 text-center">
           <p className="mb-2 text-sm text-red-500">Failed to load files</p>
-          <p className="text-xs text-soft-text-muted">{error}</p>
+          <p className="text-xs text-soft-text-muted">{effectiveError}</p>
           <button
             onClick={() => loadFiles(projectId)}
             className="mt-4 rounded-soft-sm bg-soft-primary px-3 py-1.5 text-sm text-white transition-colors hover:bg-soft-primary/90"
