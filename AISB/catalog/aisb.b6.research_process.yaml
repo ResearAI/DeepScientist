@@ -1,0 +1,244 @@
+schema_version: 1
+id: aisb.b6.research_process
+name: AISB B6 Research Process
+version: 0.1.0
+catalog_version: 0.1.0
+one_line: ScienceAgentBench public-input preview package; full upstream references are not redistributable.
+task_description: AISB B6 Research Process is an AISB BenchStore catalog pilot entry. The package is intended
+  for public-dev workspace initialization, public evaluator checks, and paper/benchmark-track submission
+  scaffolding. Official leaderboard scores require organizer-side hidden replay.
+homepage: https://aisb.deepscientist.cc
+localized:
+  zh:
+    name: AISB B6 科研过程
+    one_line: ScienceAgentBench 公开输入预览包；完整上游参考数据不可公开再分发。
+    task_description: AISB B6 科研过程 是 AISB BenchStore catalog pilot 条目。公开包只用于 public-dev 工作区初始化、公开 evaluator
+      检查和论文/benchmark track 提交脚手架；正式 leaderboard 分数必须由组织方 hidden replay 产生。
+capability_tags:
+- research_process
+- scientific_workflow
+- evidence
+aisb_direction: B6
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: benchmark
+benchmark_mode: research_task_execution
+requires_execution: true
+requires_paper: true
+integrity_level: hidden_reference
+snapshot_status: partial
+support_level: preview
+discovery:
+  collection: AISB
+  collection_priority: 100
+  recommendation_weight: 200
+  featured: false
+  featured_reason: null
+display:
+  placement: grid
+  card_size: m
+  badge: AISB
+  accent_priority: normal
+official_links:
+  homepage: https://github.com/ResearAI/NLPCC-2026-Task9-AISB
+  github: https://github.com/ResearAI/NLPCC-2026-Task9-AISB
+  benchmark_overview: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B6_ResearchProcess
+release_gate:
+  release_ready: false
+  status: blocked
+  full_real_replay: failed
+  reason: Full upstream gold/rubric references are not locally redistributable; organizer-private replay
+    is incomplete.
+  next_required_step: Rerun with a private full ScienceAgentBench root and freeze hidden references before
+    registry promotion.
+primary_outputs:
+- results.json
+- paper/paper.pdf
+- paper/claims.json
+- logs/experiment_log.jsonl
+- logs/iterations.jsonl
+cost_band: medium
+time_band: 2-8h
+difficulty: expert
+data_access: public
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+  recommended:
+    cpu_cores: 8
+    ram_gb: 32
+    disk_gb: 50
+    gpu_count: 0
+source:
+  benchmark_dir: benchmarks/aisb/B6_ResearchProcess
+  bench_yaml: benchmarks/aisb/B6_ResearchProcess/bench.yaml
+  source_repo: ResearAI/NLPCC-2026-Task9-AISB
+  source_commit: b6b7527a226ca7328697156608571f2cb7dcda3a
+download:
+  provider: local_download
+  repo: ResearAI/NLPCC-2026-Task9-AISB
+  tag: benchstore-assets-2026-04-30-pilot
+  asset_name: aisb.b6.research_process-v0.1.0.zip
+  url: http://localhost:8080/aisb.b6.research_process-v0.1.0.zip
+  source_url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B6_ResearchProcess
+  archive_type: zip
+  local_dir_name: aisb.b6.research_process
+  sha256: 77cbea6d17b9f209dbe3433d56fa673e2b25478240151e1a61734789d1e0920c
+  size_bytes: 138627
+  published_at: '2026-04-30T00:00:00Z'
+  asset_status: built_local_not_published
+dataset_download:
+  primary_method: packaged_public_dev
+  sources:
+  - kind: public_dev
+    access: public
+    url: null
+    note: Public-dev files are included in the future BenchStore package.
+  - kind: hidden_reference
+    access: private
+    url: null
+    note: Organizer-only hidden references are excluded from catalog packages.
+credential_requirements:
+  mode: none
+  notes:
+  - No credential is required for packaged public-dev evaluation.
+  - External model APIs are optional participant choices and not bundled.
+environment:
+  python: '>=3.11'
+  docker: true
+  key_packages:
+  - pytest
+  - PyYAML
+  notes:
+  - Use docker/Dockerfile when available for official replay parity.
+  - Do not copy organizer-private hidden references into participant workspaces.
+launch_profiles:
+- id: b6_public_dev_smoke
+  label: B6 public-dev smoke test
+  description: Initialize an AISB public-dev workspace, validate submission artifacts, and run the public
+    evaluator.
+  startup_contract:
+  - Use only files inside the installed benchmark workspace and the generated submission directory.
+  - Treat hidden references as organizer-only and unavailable to the agent.
+  - Produce benchmark outputs, paper artifacts, claims, and logs before packaging.
+  commands:
+  - python scripts/agent_tools.py workspace init B6 --dest .work/benchstore/B6
+  - python scripts/agent_tools.py evaluate B6 --bench-dir .work/benchstore/B6 --submission .work/benchstore/B6/submission
+  - python scripts/agent_tools.py submission validate .work/benchstore/B6/submission
+  - python scripts/agent_tools.py submission package .work/benchstore/B6/submission --output .work/benchstore/B6/submission.zip
+  - python scripts/agent_tools.py submission replay .work/benchstore/B6/submission --track B6
+  one_click_prompt: Start AISB B6 from the installed BenchStore package. Initialize the public-dev workspace,
+    inspect AGENT.md and README.md, run the baseline or your method, evaluate locally, validate/package
+    the submission, and record any release-gate risks in logs/experiment_log.jsonl.
+paper:
+  venue: AISB
+  year: 2026
+  track_fit:
+  - paper_track
+  - benchmark_track
+  requires_claims_json: true
+  url: null
+benchmark_track:
+  metric: task_success_rate
+  benchmark_source: ScienceAgentBench validation public-input rows
+  packaged_data_status: real ScienceAgentBench validation public-input split without full upstream gold/rubric
+    references
+  official_score_requires_hidden_replay: true
+benchmarks:
+  primary:
+    name: ScienceAgentBench
+    source: osunlp/ScienceAgentBench (HF)
+    tasks: 102
+    metric: task_success_rate
+    sota: 42.2% (o1-preview, ICLR 2025)
+    public_score: 0.0
+  alternatives:
+  - name: MLR-Bench
+    source: arXiv:2505.19955
+    note: NeurIPS 2025; 201 ML tasks; 73% fabrication finding
+  - name: D3-Gym
+    source: arXiv:2604.27977
+    note: 565 tasks from 239 science repos; April 2026
+  - name: PRL-Bench
+    source: arXiv:2604.15411
+    note: 100 physics PRL papers; best model <50%
+  blocker: Full executable bundle (datasets/eval_programs/gold_programs/scoring_rubrics) NOT redistributable
+    upstream. Set AISB_B6_SCIENCEAGENTBENCH_FULL_ROOT for private scoring.
+papers:
+  highlights:
+  - title: 'ScienceAgentBench: Rigorous Assessment of Language Agents for Scientific Discovery'
+    arxiv: '2410.05080'
+    url: https://arxiv.org/abs/2410.05080
+    venue: ICLR 2025
+    why: Primary B6 benchmark; 102 verified input rows
+  - title: 'MLR-Bench: Evaluating AI Research Agents on End-to-End ML Research'
+    arxiv: '2505.19955'
+    url: https://arxiv.org/abs/2505.19955
+    venue: NeurIPS 2025
+    why: 73% of coding agents fabricate results — AISB integrity motivation
+  - title: 'D3-Gym: Building Real-World Verifiable Environments for Data-Driven Discovery'
+    arxiv: '2604.27977'
+    url: https://arxiv.org/abs/2604.27977
+    venue: April 2026
+    why: 565 tasks from 239 science repos; Qwen3-32B +7.8pp
+  - title: 'AI-Supervisor: Autonomous AI Research Oversight'
+    arxiv: '2603.24402'
+    url: https://arxiv.org/abs/2603.24402
+    venue: Mar 2026
+    why: Persistent research world model; structured gap discovery
+  full_references_url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B6_*/references/papers.json
+nlpcc_tracks:
+- track: T3
+  name: Scientific Discovery
+  url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/nlpcc/T3
+private_hidden_reference_strategy:
+  policy: organizer_only
+  public_package_includes_hidden_reference: false
+  public_catalog_discloses_private_paths: false
+  score_release: aggregate_only
+  notes:
+  - Hidden answers, labels, canaries, and private evaluator internals are never packaged.
+  - Official scores must record hidden_reference_version without disclosing hidden content.
+score_card:
+  required_fields:
+  - team_id
+  - system_name
+  - direction
+  - track
+  - benchmark_package_version
+  - evaluator_version
+  - hidden_reference_version
+  - docker_image_digest
+  - data_split_version
+  - benchmark_score
+  - paper_score
+  - cas_score
+  - final_score
+  - security_verdict
+  - license_verdict
+  - used_reference_scope
+  - official_score
+  - created_at
+  track_scoring:
+    paper_track: Final_A = 0.0 * S_benchmark + 1.0 * S_paper
+    benchmark_track: Final_B = 0.7 * S_benchmark + 0.3 * S_paper
+    cas: integrity gate, not bonus
+risk_flags:
+- hidden_reference_not_public
+- release_asset_pending
+- not_release_ready
+- full_reference_missing
+- upstream_redistribution_blocked
+risk_notes:
+- This catalog entry is not release_ready.
+- Download checksum and size are placeholders until the GitHub release asset is published.
+- Official scores require organizer-side replay against private hidden references.
+recommended_when: Use this entry for AISB public-dev integration, local agent workflow checks, and catalog
+  UI validation.
+not_recommended_when: Do not treat this entry as an official release or public leaderboard claim until
+  release gates pass.
+image_path: AISB/image/aisb.b6.research_process.svg

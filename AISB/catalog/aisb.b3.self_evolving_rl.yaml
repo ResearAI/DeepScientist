@@ -1,0 +1,238 @@
+schema_version: 1
+id: aisb.b3.self_evolving_rl
+name: AISB B3 Self-Evolving Agents
+version: 0.1.0
+catalog_version: 0.1.0
+one_line: SWE-bench Pro public-dev metadata package for self-improvement trajectory validation.
+task_description: AISB B3 Self-Evolving Agents is an AISB BenchStore catalog pilot entry. The package
+  is intended for public-dev workspace initialization, public evaluator checks, and paper/benchmark-track
+  submission scaffolding. Official leaderboard scores require organizer-side hidden replay.
+homepage: https://aisb.deepscientist.cc
+localized:
+  zh:
+    name: AISB B3 自演化智能体
+    one_line: 用于自改进轨迹验证的 SWE-bench Pro public-dev 元数据包。
+    task_description: AISB B3 自演化智能体 是 AISB BenchStore catalog pilot 条目。公开包只用于 public-dev 工作区初始化、公开 evaluator
+      检查和论文/benchmark track 提交脚手架；正式 leaderboard 分数必须由组织方 hidden replay 产生。
+capability_tags:
+- self_evolving_agents
+- swe_bench
+- trajectory
+aisb_direction: B3
+track_fit:
+- paper_track
+- benchmark_track
+task_mode: benchmark
+benchmark_mode: iterative_software_repair
+requires_execution: true
+requires_paper: true
+integrity_level: hidden_reference
+snapshot_status: partial
+support_level: preview
+discovery:
+  collection: AISB
+  collection_priority: 100
+  recommendation_weight: 500
+  featured: false
+  featured_reason: null
+display:
+  placement: grid
+  card_size: m
+  badge: AISB
+  accent_priority: normal
+official_links:
+  homepage: https://github.com/ResearAI/NLPCC-2026-Task9-AISB
+  github: https://github.com/ResearAI/NLPCC-2026-Task9-AISB
+  benchmark_overview: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B3_SelfEvolvingRL
+release_gate:
+  release_ready: false
+  status: registry_pending
+  full_real_replay: passed
+  reason: Public-dev and scorer-private replay paths exist locally, but final registry promotion, release
+    assets, and license review remain pending.
+  next_required_step: Publish BenchStore release asset, fill sha256/size_bytes, and complete clean-host
+    validation.
+primary_outputs:
+- results.json
+- paper/paper.pdf
+- paper/claims.json
+- logs/experiment_log.jsonl
+- logs/iterations.jsonl
+cost_band: medium
+time_band: 1-8h
+difficulty: hard
+data_access: public
+resources:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 16
+    disk_gb: 20
+    gpu_count: 0
+  recommended:
+    cpu_cores: 16
+    ram_gb: 64
+    disk_gb: 200
+    gpu_count: 0
+source:
+  benchmark_dir: benchmarks/aisb/B3_SelfEvolvingRL
+  bench_yaml: benchmarks/aisb/B3_SelfEvolvingRL/bench.yaml
+  source_repo: ResearAI/NLPCC-2026-Task9-AISB
+  source_commit: b6b7527a226ca7328697156608571f2cb7dcda3a
+download:
+  provider: local_download
+  repo: ResearAI/NLPCC-2026-Task9-AISB
+  tag: benchstore-assets-2026-04-30-pilot
+  asset_name: aisb.b3.self_evolving_rl-v0.1.0.zip
+  url: http://localhost:8080/aisb.b3.self_evolving_rl-v0.1.0.zip
+  source_url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B3_SelfEvolvingRL
+  archive_type: zip
+  local_dir_name: aisb.b3.self_evolving_rl
+  sha256: 71ebccb9d860d35ba77a58168397104b20feb3b8c0baa51859d8969d5ea7a0e1
+  size_bytes: 44462
+  published_at: '2026-04-30T00:00:00Z'
+  asset_status: built_local_not_published
+dataset_download:
+  primary_method: packaged_public_dev
+  sources:
+  - kind: public_dev
+    access: public
+    url: null
+    note: Public-dev files are included in the future BenchStore package.
+  - kind: hidden_reference
+    access: private
+    url: null
+    note: Organizer-only hidden references are excluded from catalog packages.
+credential_requirements:
+  mode: none
+  notes:
+  - No credential is required for packaged public-dev evaluation.
+  - External model APIs are optional participant choices and not bundled.
+environment:
+  python: '>=3.11'
+  docker: true
+  key_packages:
+  - pytest
+  - PyYAML
+  notes:
+  - Use docker/Dockerfile when available for official replay parity.
+  - Do not copy organizer-private hidden references into participant workspaces.
+launch_profiles:
+- id: b3_public_dev_smoke
+  label: B3 public-dev smoke test
+  description: Initialize an AISB public-dev workspace, validate submission artifacts, and run the public
+    evaluator.
+  startup_contract:
+  - Use only files inside the installed benchmark workspace and the generated submission directory.
+  - Treat hidden references as organizer-only and unavailable to the agent.
+  - Produce benchmark outputs, paper artifacts, claims, and logs before packaging.
+  commands:
+  - python scripts/agent_tools.py workspace init B3 --dest .work/benchstore/B3
+  - python scripts/agent_tools.py evaluate B3 --bench-dir .work/benchstore/B3 --submission .work/benchstore/B3/submission
+  - python scripts/agent_tools.py submission validate .work/benchstore/B3/submission
+  - python scripts/agent_tools.py submission package .work/benchstore/B3/submission --output .work/benchstore/B3/submission.zip
+  - python scripts/agent_tools.py submission replay .work/benchstore/B3/submission --track B3
+  one_click_prompt: Start AISB B3 from the installed BenchStore package. Initialize the public-dev workspace,
+    inspect AGENT.md and README.md, run the baseline or your method, evaluate locally, validate/package
+    the submission, and record any release-gate risks in logs/experiment_log.jsonl.
+paper:
+  venue: AISB
+  year: 2026
+  track_fit:
+  - paper_track
+  - benchmark_track
+  requires_claims_json: true
+  url: null
+benchmark_track:
+  metric: verified_improvement_rate
+  benchmark_source: SWE-bench Pro public subset (ScaleAI/SWE-bench_Pro)
+  packaged_data_status: real SWE-bench Pro metadata rows with organizer-private upstream patch/test references
+  official_score_requires_hidden_replay: true
+benchmarks:
+  primary:
+    name: SWE-bench Pro
+    source: ScaleAI/SWE-bench_Pro (HF)
+    tasks: 20
+    metric: verified_improvement_rate
+    sota: 59.10% (GPT-5.4 xHigh)
+    public_score: 0.0
+  alternatives:
+  - name: SWE-bench Lite
+    source: princeton-nlp/SWE-bench_Lite (HF)
+    tasks: 23
+    note: legacy; kept as sanity fixture
+  - name: EvoCodeBench
+    source: github.com/evo-code-bench
+    note: self-evolution benchmark; future candidate
+papers:
+  highlights:
+  - title: 'SWE-bench: Can Language Models Resolve Real-World GitHub Issues?'
+    arxiv: '2310.06770'
+    url: https://arxiv.org/abs/2310.06770
+    venue: ICLR 2024
+    why: Foundational benchmark; all self-evolving agents evaluate on SWE-bench
+  - title: 'Agent0: Unlocking Self-Evolving Agents from Zero Data'
+    arxiv: '2511.16043'
+    url: https://arxiv.org/abs/2511.16043
+    venue: Nov 2025
+    why: Zero-data self-evolution; +18% math, +24% general reasoning
+  - title: 'MemRL: Self-Evolving Agents via RL on Episodic Memory'
+    arxiv: '2601.03192'
+    url: https://arxiv.org/abs/2601.03192
+    venue: Jan 2026
+    why: Non-parametric self-evolution; SOTA on HLE/BigCodeBench/ALFWorld
+  - title: 'TDFlow: Test-Driven Development at Repository Scale'
+    arxiv: '2510.23761'
+    url: https://arxiv.org/abs/2510.23761
+    venue: EACL 2026
+    why: SWE-bench Verified 94.3%; SWE-bench Lite 88.8%
+  full_references_url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B3_*/references/papers.json
+nlpcc_tracks:
+- track: T1
+  name: AI/CS Reasoning & Engineering
+  url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/nlpcc/T1
+private_hidden_reference_strategy:
+  policy: organizer_only
+  public_package_includes_hidden_reference: false
+  public_catalog_discloses_private_paths: false
+  score_release: aggregate_only
+  notes:
+  - Hidden answers, labels, canaries, and private evaluator internals are never packaged.
+  - Official scores must record hidden_reference_version without disclosing hidden content.
+score_card:
+  required_fields:
+  - team_id
+  - system_name
+  - direction
+  - track
+  - benchmark_package_version
+  - evaluator_version
+  - hidden_reference_version
+  - docker_image_digest
+  - data_split_version
+  - benchmark_score
+  - paper_score
+  - cas_score
+  - final_score
+  - security_verdict
+  - license_verdict
+  - used_reference_scope
+  - official_score
+  - created_at
+  track_scoring:
+    paper_track: Final_A = 0.0 * S_benchmark + 1.0 * S_paper
+    benchmark_track: Final_B = 0.7 * S_benchmark + 0.3 * S_paper
+    cas: integrity gate, not bonus
+risk_flags:
+- hidden_reference_not_public
+- release_asset_pending
+- not_release_ready
+- registry_promotion_pending
+risk_notes:
+- This catalog entry is not release_ready.
+- Download checksum and size are placeholders until the GitHub release asset is published.
+- Official scores require organizer-side replay against private hidden references.
+recommended_when: Use this entry for AISB public-dev integration, local agent workflow checks, and catalog
+  UI validation.
+not_recommended_when: Do not treat this entry as an official release or public leaderboard claim until
+  release gates pass.
+image_path: AISB/image/aisb.b3.self_evolving_rl.svg
