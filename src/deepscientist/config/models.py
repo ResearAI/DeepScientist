@@ -63,9 +63,9 @@ def default_config(home: Path) -> dict:
                 "base_url": "https://data.rag.ac.cn",
                 "token": None,
                 "token_env": "DEEPXIV_TOKEN",
-                "default_result_size": 20,
-                "preview_characters": 5000,
-                "request_timeout_seconds": 90,
+                "default_result_size": 10,
+                "preview_characters": 1200,
+                "request_timeout_seconds": 20,
             },
         },
         "git": {

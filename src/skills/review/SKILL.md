@@ -88,6 +88,45 @@ Apply the publishability stop-loss rule during review: when novelty, evidence su
 - If LaTeX source is unavailable while `latex_required` is requested, do not pretend the manuscript was edited; produce LaTeX-ready replacement text and an explicit blocker note instead.
 - Accept manuscript and review inputs from URLs, local file paths, local directories, or current-turn attachments; do not assume the draft is already perfectly normalized.
 
+## Evidence Authenticity & Manuscript Coverage Gate
+
+Before judging a manuscript as strong, final, or submission-ready, perform an evidence audit.
+
+Build an experiment inventory from logs, matrices, result files, summaries, recent memory, and manuscript claims.
+For each main experiment and analysis experiment, record:
+
+- expected experiment id / purpose
+- status from durable artifacts, not only checklist labels
+- executable or log/result artifact paths
+- metrics actually present in result files or official summaries
+- whether the result is current, stale, duplicate, failed, negative, or superseded
+- whether the result appears in the manuscript, table, figure, caption, or appendix
+- which exact claim it supports
+
+Do not trust ready counts when duplicate rows, stale outline refs, pending rows, or missing metrics are present.
+Recompute the real paper-facing count manually.
+
+Classify every important result as one of:
+
+- completed and written
+- completed but not written
+- written but not evidenced
+- appendix-only
+- failed or negative
+- stale / legacy / duplicate
+- contradicted by another artifact
+
+Explicitly assess unsupported-claim or fabrication risk using these labels:
+
+- no issue found
+- provenance gap
+- manuscript overclaim
+- written result unsupported by durable evidence
+- contradiction between manuscript and artifacts
+- likely false or fabricated claim
+
+A paper cannot be called submission-ready unless compile/PDF, evidence provenance, manuscript coverage, citation sufficiency, language hygiene, and experiment-matrix consistency all pass.
+
 ## Primary inputs
 
 Use, in roughly this order:
@@ -136,6 +175,7 @@ Audit at least these dimensions:
 - writing defensibility and logical flow
 - manuscript language hygiene and provenance leakage
 - figure / table usefulness
+- citation sufficiency: count verified references and compare coverage against nearby strong papers
 - full-paper style, pacing, and section-level argument quality relative to strong accepted papers
 - experiment package completeness relative to nearby high-level papers
 - submission readiness

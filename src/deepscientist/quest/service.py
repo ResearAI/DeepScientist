@@ -4840,6 +4840,7 @@ class QuestService:
         mode: str | None = None,
         profile: str | None = None,
     ) -> dict:
+        profile = str(profile or "").strip().lower() or None
         if revision:
             return self._revision_explorer(quest_id, revision=revision, mode=mode or "ref")
 
@@ -7680,6 +7681,7 @@ class QuestService:
 
     @staticmethod
     def _skip_explorer_profile_relative(relative: str, profile: str | None) -> bool:
+        profile = str(profile or "").strip().lower()
         if profile not in {"mobile", "workspace"}:
             return False
         normalized = relative.strip("/")
@@ -7697,6 +7699,7 @@ class QuestService:
 
     @staticmethod
     def _truncate_explorer_directory(relative: str, *, profile: str | None, depth: int) -> bool:
+        profile = str(profile or "").strip().lower()
         if profile not in {"mobile", "workspace"}:
             return False
         normalized = relative.strip("/")

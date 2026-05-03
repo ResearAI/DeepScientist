@@ -36,7 +36,7 @@ const pythonCommands = new Set([
 const UPDATE_PACKAGE_NAME = String(packageJson.name || '@researai/deepscientist').trim() || '@researai/deepscientist';
 const UPDATE_CHECK_TTL_MS = 12 * 60 * 60 * 1000;
 
-const optionsWithValues = new Set(['--home', '--host', '--port', '--quest-id', '--mode', '--proxy', '--codex-profile', '--codex', '--auth', '--runner']);
+const optionsWithValues = new Set(['--home', '--host', '--port', '--quest-id', '--mode', '--proxy', '--codex-profile', '--codex', '--auth', '--runner', '--debug-log']);
 
 function normalizeRunnerName(value, fallback = '') {
   const normalized = String(value || '')
@@ -189,6 +189,8 @@ Launcher flags:
   --auth [true|false]   Require a 16-character local browser password. Default is false
   --tui                 Start the terminal workspace only
   --both                Start web + terminal workspace together
+  --debug               Show the TUI debug strip and write redacted JSONL snapshots when TUI is open
+  --debug-log <path>    Write TUI debug snapshots to this JSONL file. Default: /tmp/deepscientist_tui_debug.jsonl
   --no-browser          Do not auto-open the browser
   --daemon-only         Start the managed daemon and exit
   --status              Print managed daemon health as JSON
@@ -1496,6 +1498,8 @@ function parseLauncherArgs(argv) {
   let codexProfile = null;
   let codexBinary = null;
   let runner = null;
+  let tuiDebug = false;
+  let tuiDebugLogPath = null;
 
   if (args[0] === 'ui') {
     args.shift();
@@ -1514,6 +1518,7 @@ function parseLauncherArgs(argv) {
     else if (arg === '--open-browser') openBrowser = true;
     else if (arg === '--daemon-only') daemonOnly = true;
     else if (arg === '--skip-update-check') skipUpdateCheck = true;
+    else if (arg === '--debug') tuiDebug = true;
     else if (arg === '--here') continue;
     else {
       const parsedYolo = parseYoloArg(args, index, yolo);
@@ -1573,6 +1578,12 @@ function parseLauncherArgs(argv) {
         if (!next.ok) return { help: false, error: next.error };
         questId = next.value;
         index += 1;
+      } else if (arg === '--debug-log') {
+        const next = readRequiredOptionValue(args, index, '--debug-log');
+        if (!next.ok) return { help: false, error: next.error };
+        tuiDebugLogPath = next.value;
+        tuiDebug = true;
+        index += 1;
       } else if (arg === '--mode') {
         const next = readRequiredOptionValue(args, index, '--mode');
         if (!next.ok) return { help: false, error: next.error };
@@ -1603,11 +1614,13 @@ function parseLauncherArgs(argv) {
     skipUpdateCheck,
     yolo,
     auth,
-    codexProfile,
-    codexBinary,
-    runner,
-    error: null,
-  };
+	    codexProfile,
+	    codexBinary,
+	    runner,
+	    tuiDebug,
+	    tuiDebugLogPath,
+	    error: null,
+	  };
 }
 
 function printUpdateHelp() {
@@ -5150,7 +5163,7 @@ function handleRunnerPreflightFailure(error) {
   return true;
 }
 
-function launchTui(url, questId, home, runtimePython, authToken = null) {
+function launchTui(url, questId, home, runtimePython, authToken = null, debugOptions = {}) {
   const entry = ensureNodeBundle('src/tui', 'dist/index.js');
   const args = [entry, '--base-url', url];
   if (questId) {
@@ -5158,6 +5171,12 @@ function launchTui(url, questId, home, runtimePython, authToken = null) {
   }
   if (typeof authToken === 'string' && authToken.trim()) {
     args.push('--auth-token', authToken.trim());
+  }
+  if (debugOptions && debugOptions.enabled) {
+    args.push('--debug');
+  }
+  if (debugOptions && typeof debugOptions.logPath === 'string' && debugOptions.logPath.trim()) {
+    args.push('--debug-log', debugOptions.logPath.trim());
   }
   const child = spawn(process.execPath, args, {
     cwd: repoRoot,
@@ -5556,7 +5575,10 @@ async function launcherMain(rawArgs) {
   if (mode === 'web') {
     process.exit(0);
   }
-  launchTui(browserUiUrl(host, port), options.questId, home, runtimePython, started.authToken);
+  launchTui(browserUiUrl(host, port), options.questId, home, runtimePython, started.authToken, {
+    enabled: options.tuiDebug,
+    logPath: options.tuiDebugLogPath,
+  });
   return true;
 }
 

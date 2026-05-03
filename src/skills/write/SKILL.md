@@ -14,6 +14,32 @@ skill_role: stage
 ## One-Sentence Summary
 - Refresh the paper contract first, then draft section-by-section from durable evidence; if evidence, figures, or citations are not ready, repair or route back instead of writing around the gap.
 
+## Pre-write Revision Strategy Gate
+
+Before editing a manuscript, first produce a concrete revision strategy from the current evidence state.
+Do not begin polishing prose until the strategy separates:
+
+- evidence gaps: require new analysis, rerun, or claim downgrade
+- manuscript-mapping gaps: completed results missing from main text, table, figure, or appendix
+- unsupported writing: claims present in the draft without durable result artifacts
+- narrative / positioning gaps: weak framing, novelty boundary, contribution logic
+- citation gaps: too few or weak references for the claimed scope
+- metadata drift: matrix, ledger, outline, figures, tables, and manuscript disagree
+
+For each issue, choose exactly one action:
+
+- run or request analysis
+- downgrade or remove the claim
+- add result to main text
+- move result to appendix with a clear bridge
+- add or repair a table/figure
+- add verified citations
+- repair the paper contract before writing
+- route to review / decision instead of writing
+
+Never make an unsupported claim sound more convincing.
+If evidence is missing, either obtain evidence, narrow the claim, or mark the blocker.
+
 ## Workflow
 1. Refresh control state first.
    Run `memory.list_recent(scope='quest', limit=5)` plus one writing-relevant `memory.search(...)`. If restart context is unclear, use `artifact.get_quest_state(detail='summary')`, `artifact.read_quest_documents(...)`, or `artifact.get_conversation_context(...)`.

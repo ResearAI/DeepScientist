@@ -407,6 +407,19 @@ def test_tui_client_and_git_canvas_follow_same_protocol_contract() -> None:
         "/api/quests/${questId}/chat",
         "/api/quests/${questId}/commands",
         "/api/quests/${questId}/control",
+        "/api/quests/${questId}/runs",
+        "/api/baselines",
+        "/api/quests/${questId}/baseline-binding",
+        "/api/benchstore/entries",
+        "/api/benchstore/entries/${encodeURIComponent(entryId)}",
+        "/api/benchstore/entries/${encodeURIComponent(entryId)}/setup-packet",
+        "/api/benchstore/entries/${encodeURIComponent(entryId)}/install",
+        "/api/benchstore/entries/${encodeURIComponent(entryId)}/launch",
+        "/api/system/tasks",
+        "/api/system/tasks/doctor",
+        "/api/config/validate",
+        "/api/config/test",
+        "/api/config/deepxiv/test",
         "/api/quests/${questId}/bash/sessions/${bashId}",
         "/api/quests/${questId}/bash/sessions/${bashId}/logs",
         "/api/quests/${questId}/bash/sessions/${bashId}/stream",
@@ -658,6 +671,9 @@ def test_settings_control_center_exposes_summary_runtime_and_optional_ops_rail()
     assert "SettingsRuntimeSection" in settings_source
     assert "SettingsOpsRail" in settings_source
     assert "SettingsOpsLauncher" in settings_source
-    assert "dockOpen ? 'xl:grid-cols-[260px_minmax(0,1fr)_420px]'" in settings_source
+    assert (
+        "dockOpen ? 'xl:grid-cols-[260px_minmax(0,1fr)_420px]'" in settings_source
+        or "dockOpen && 'xl:grid-cols-[260px_minmax(0,1fr)_420px]'" in settings_source
+    )
     assert 'data-testid="settings-copilot-launcher"' in ops_rail_source
     assert 'data-testid="settings-copilot-rail"' in ops_rail_source

@@ -24,6 +24,14 @@ Manuscript boundary rule:
 - In main text, describe the benchmark, comparison budget, evidence source, or evaluation protocol in ordinary academic language; if an exact batch or endpoint setting is necessary, place it in a reproducibility table or appendix rather than shorthand such as `64 + 64`.
 - Detailed paper quality reminders live in `paper-outline`, `write`, and `review`; use those skills to surface paper idea quality, analysis-count sufficiency, review readiness, and final/submission risks.
 
+Paper integrity kernel:
+
+For paper-like deliverables, never infer submission readiness only from green validators,
+finalize-ready labels, file counts, compile success, or polished prose. Before endorsing
+readiness, verify evidence provenance, result-to-manuscript coverage, claim scope,
+citation sufficiency, and whether any written result is unsupported, stale,
+contradictory, or only present in logs but absent from the manuscript.
+
 Copilot SOP for ordinary user turns:
 
 1. classify the request first:

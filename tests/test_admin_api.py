@@ -188,6 +188,7 @@ def test_admin_logs_and_search_surfaces_are_bounded(temp_home: Path) -> None:
             "user_notes": "Reproduced through admin API test.",
             "include_doctor": False,
             "include_logs": True,
+            "include_system_settings": False,
         }
     )
     assert issue["ok"] is True
@@ -196,10 +197,10 @@ def test_admin_logs_and_search_surfaces_are_bounded(temp_home: Path) -> None:
     assert "github.com/ResearAI/DeepScientist/issues/new" in issue["issue_url_base"]
     assert "## Recommended Fixes / Workarounds" in issue["body_markdown"]
     assert "## Detected Problems" in issue["body_markdown"]
-    assert "Host:" in issue["body_markdown"] or "Hardware summary unavailable." in issue["body_markdown"]
-    assert "## System Quirks" not in issue["body_markdown"]
+    assert "## Environment" not in issue["body_markdown"]
+    assert "Host:" not in issue["body_markdown"]
 
-    empty_quirks_issue = app.handlers.admin_issue_draft(
+    legacy_issue = app.handlers.admin_issue_draft(
         {
             "summary": "Admin API test issue with empty quirks",
             "include_doctor": False,
@@ -207,9 +208,9 @@ def test_admin_logs_and_search_surfaces_are_bounded(temp_home: Path) -> None:
             "include_system_quirks": True,
         }
     )
-    assert "## System Quirks" in empty_quirks_issue["body_markdown"]
-    assert "_No system quirks have been recorded yet._" in empty_quirks_issue["body_markdown"]
-    assert "Append-only durable file" not in empty_quirks_issue["body_markdown"]
+    assert "## System Quirks" in legacy_issue["body_markdown"]
+    assert "_No system quirks have been recorded yet._" in legacy_issue["body_markdown"]
+    assert "Append-only durable file" not in legacy_issue["body_markdown"]
 
     (temp_home / "system_quirks.md").write_text(
         "# System Quirks\n\n"

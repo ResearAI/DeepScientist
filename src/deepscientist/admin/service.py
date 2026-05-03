@@ -996,6 +996,7 @@ class AdminService:
         user_notes: str | None = None,
         include_doctor: bool = True,
         include_logs: bool = True,
+        include_system_settings: bool = True,
         include_system_quirks: bool = False,
     ) -> dict[str, Any]:
         error_console = self.error_console(limit=10)
@@ -1008,7 +1009,7 @@ class AdminService:
         runtime_failures = error_console.get("runtime_failures") or []
         daemon_errors = error_console.get("daemon_errors") or []
         failed_tasks = error_console.get("failed_tasks") or []
-        hardware = self.system_hardware(refresh=False)
+        hardware = self.system_hardware(refresh=False) if include_system_settings else None
         title = str(summary or "").strip()
         if not title:
             if runtime_failures:
@@ -1072,25 +1073,28 @@ class AdminService:
         )
         for item in recommended_actions:
             lines.append(f"- {item}")
+        if include_system_settings:
+            lines.extend(
+                [
+                    "",
+                    "## Environment",
+                    "",
+                ]
+            )
+            lines.extend(self._hardware_issue_snapshot(hardware))
+            lines.extend(
+                [
+                    "",
+                    f"- DeepScientist version: `{DEEPSCIENTIST_VERSION}`",
+                    f"- Platform: `{platform.platform()}`",
+                    f"- Python: `{sys.version.split()[0]}`",
+                    f"- Node: `{self._node_version() or 'unavailable'}`",
+                    f"- Repo: `{repo_url}`",
+                    f"- Home: `{self.home}`",
+                ]
+            )
         lines.extend(
             [
-                "",
-                "## Environment",
-                "",
-            ]
-        )
-        lines.extend(
-            self._hardware_issue_snapshot(hardware)
-        )
-        lines.extend(
-            [
-                "",
-                f"- DeepScientist version: `{DEEPSCIENTIST_VERSION}`",
-                f"- Platform: `{platform.platform()}`",
-                f"- Python: `{sys.version.split()[0]}`",
-                f"- Node: `{self._node_version() or 'unavailable'}`",
-                f"- Repo: `{repo_url}`",
-                f"- Home: `{self.home}`",
                 "",
                 "## Runtime Health",
                 "",

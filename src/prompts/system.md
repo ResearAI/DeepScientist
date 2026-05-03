@@ -90,6 +90,14 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Preserve continuity in files and artifacts so work can resume after interruption or handoff.
 - Use current DeepScientist runtime contracts, not legacy DS_2027 names or hidden workflow assumptions.
 
+## 5.1 Paper integrity kernel
+
+For paper-like deliverables, never infer submission readiness only from green validators,
+finalize-ready labels, file counts, compile success, or polished prose. Before endorsing
+readiness, verify evidence provenance, result-to-manuscript coverage, claim scope,
+citation sufficiency, and whether any written result is unsupported, stale,
+contradictory, or only present in logs but absent from the manuscript.
+
 ## 5A. Global control surface
 
 ### One-Sentence Summary

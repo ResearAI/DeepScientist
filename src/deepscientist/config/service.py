@@ -271,7 +271,11 @@ class ConfigManager:
         runner_readiness = bootstrap.get("runner_readiness") if isinstance(bootstrap.get("runner_readiness"), dict) else {}
         checked_at = utc_now()
         for runner_name in changed_runners:
-            summary = f"{runner_name} runner configuration changed. A new startup probe is required."
+            try:
+                runner_label = get_runner_metadata(runner_name).label
+            except KeyError:
+                runner_label = runner_name
+            summary = f"{runner_label} runner configuration changed. A new startup probe is required."
             runner_readiness[runner_name] = {
                 "ready": False,
                 "last_checked_at": checked_at,
@@ -670,9 +674,9 @@ Use **Test** when the file exposes runtime dependencies.
         env_token = str(os.environ.get(token_env_name) or "").strip() if token_env_name else ""
         resolved_token = direct_token or env_token
         query = "transformers"
-        result_size = max(1, int(deepxiv.get("default_result_size") or 20))
-        preview_characters = max(200, int(deepxiv.get("preview_characters") or 5000))
-        request_timeout_seconds = max(3, int(deepxiv.get("request_timeout_seconds") or 90))
+        result_size = max(1, int(deepxiv.get("default_result_size") or 10))
+        preview_characters = max(200, int(deepxiv.get("preview_characters") or 1200))
+        request_timeout_seconds = max(3, int(deepxiv.get("request_timeout_seconds") or 20))
         details = {
             "base_url": base_url,
             "query": query,
@@ -2795,17 +2799,29 @@ Use **Test** when the file exposes runtime dependencies.
             raw_deepxiv.get("token_env", deepxiv.get("token_env", deepxiv_defaults.get("token_env", "DEEPXIV_TOKEN"))) or ""
         ).strip() or None
         try:
-            deepxiv["default_result_size"] = max(1, int(raw_deepxiv.get("default_result_size", deepxiv.get("default_result_size", deepxiv_defaults.get("default_result_size", 20))) or 90))
+            raw_result_size = raw_deepxiv.get(
+                "default_result_size",
+                deepxiv.get("default_result_size", deepxiv_defaults.get("default_result_size", 10)),
+            )
+            deepxiv["default_result_size"] = max(1, int(raw_result_size))
         except (TypeError, ValueError):
-            deepxiv["default_result_size"] = int(deepxiv_defaults.get("default_result_size", 20) or 10)
+            deepxiv["default_result_size"] = int(deepxiv_defaults.get("default_result_size", 10) or 10)
         try:
-            deepxiv["preview_characters"] = max(200, int(raw_deepxiv.get("preview_characters", deepxiv.get("preview_characters", deepxiv_defaults.get("preview_characters", 5000))) or 5000))
+            raw_preview_characters = raw_deepxiv.get(
+                "preview_characters",
+                deepxiv.get("preview_characters", deepxiv_defaults.get("preview_characters", 1200)),
+            )
+            deepxiv["preview_characters"] = max(200, int(raw_preview_characters))
         except (TypeError, ValueError):
-            deepxiv["preview_characters"] = int(deepxiv_defaults.get("preview_characters", 5000) or 1200)
+            deepxiv["preview_characters"] = int(deepxiv_defaults.get("preview_characters", 1200) or 1200)
         try:
-            deepxiv["request_timeout_seconds"] = max(3, int(raw_deepxiv.get("request_timeout_seconds", deepxiv.get("request_timeout_seconds", deepxiv_defaults.get("request_timeout_seconds", 90))) or 20))
+            raw_timeout = raw_deepxiv.get(
+                "request_timeout_seconds",
+                deepxiv.get("request_timeout_seconds", deepxiv_defaults.get("request_timeout_seconds", 20)),
+            )
+            deepxiv["request_timeout_seconds"] = max(3, int(raw_timeout))
         except (TypeError, ValueError):
-            deepxiv["request_timeout_seconds"] = int(deepxiv_defaults.get("request_timeout_seconds", 90) or 20)
+            deepxiv["request_timeout_seconds"] = int(deepxiv_defaults.get("request_timeout_seconds", 20) or 20)
         literature["deepxiv"] = deepxiv
         normalized["literature"] = literature
         return normalized
