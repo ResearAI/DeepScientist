@@ -176,7 +176,7 @@ Route:
 
 Use this page when you want:
 
-- a prefilled GitHub issue draft
+- a GitHub issue draft that can be created locally with the authenticated `gh` CLI
 - local operator notes collected before filing
 - a cleaner escalation path than copying logs manually
 
@@ -185,7 +185,8 @@ What to do here:
 1. come here after `Errors` or `Diagnostics`
 2. add a short human summary of what is actually broken
 3. keep the issue specific: one problem, one report
-4. use this page when you are done gathering evidence, not before
+4. create the issue directly when the local `gh` CLI is authenticated, or open the browser draft as a fallback
+5. use this page when you are done gathering evidence, not before
 
 ![Settings issue report page](../images/admin/admin-issues-en.png)
 

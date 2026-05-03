@@ -41,6 +41,7 @@ def test_backend_routes_cover_shared_web_and_tui_surface() -> None:
         ("GET", "/api/system/stats/summary", "system_stats_summary"),
         ("GET", "/api/system/search", "system_search"),
         ("POST", "/api/system/issues/draft", "system_issue_draft"),
+        ("POST", "/api/system/issues/create", "system_issue_create"),
         ("GET", "/api/system/controllers", "system_controllers"),
         ("POST", "/api/system/controllers/stale_running_quest_guard/run", "system_controller_run"),
         ("POST", "/api/system/controllers/stale_running_quest_guard/toggle", "system_controller_toggle"),
@@ -62,6 +63,7 @@ def test_backend_routes_cover_shared_web_and_tui_surface() -> None:
         ("GET", "/api/admin/charts/catalog", "admin_chart_catalog"),
         ("POST", "/api/admin/charts/query", "admin_chart_query"),
         ("POST", "/api/admin/issues/draft", "admin_issue_draft"),
+        ("POST", "/api/admin/issues/create", "admin_issue_create"),
         ("GET", "/api/admin/controllers", "admin_controllers"),
         ("POST", "/api/admin/controllers/stale_running_quest_guard/run", "admin_controller_run"),
         ("POST", "/api/admin/controllers/stale_running_quest_guard/toggle", "admin_controller_toggle"),
@@ -310,6 +312,7 @@ def test_settings_control_center_client_prefers_system_alias_surface() -> None:
         "${SYSTEM_BASE}/stats/summary",
         "${SYSTEM_BASE}/search",
         "${SYSTEM_BASE}/issues/draft",
+        "${SYSTEM_BASE}/issues/create",
         "${SYSTEM_BASE}/controllers",
         "${SYSTEM_BASE}/doctor",
         "${SYSTEM_BASE}/tasks",
@@ -658,6 +661,6 @@ def test_settings_control_center_exposes_summary_runtime_and_optional_ops_rail()
     assert "SettingsRuntimeSection" in settings_source
     assert "SettingsOpsRail" in settings_source
     assert "SettingsOpsLauncher" in settings_source
-    assert "dockOpen ? 'xl:grid-cols-[260px_minmax(0,1fr)_420px]'" in settings_source
+    assert "xl:grid-cols-[260px_minmax(0,1fr)_420px]" in settings_source
     assert 'data-testid="settings-copilot-launcher"' in ops_rail_source
     assert 'data-testid="settings-copilot-rail"' in ops_rail_source

@@ -5,6 +5,7 @@ import type {
   AdminDoctorPayload,
   AdminErrorsPayload,
   AdminFailurePayload,
+  AdminIssueCreatePayload,
   AdminIssueDraftPayload,
   AdminLogSourcesPayload,
   AdminLogTailPayload,
@@ -133,6 +134,17 @@ export async function createAdminIssueDraft(payload?: {
   include_logs?: boolean
 }) {
   const response = await apiClient.post<AdminIssueDraftPayload>(`${SYSTEM_BASE}/issues/draft`, payload || {})
+  return response.data
+}
+
+export async function createAdminIssue(payload: {
+  title: string
+  body_markdown: string
+  include_system_settings?: boolean
+  source_markdown_path?: string
+  source_markdown?: string
+}) {
+  const response = await apiClient.post<AdminIssueCreatePayload>(`${SYSTEM_BASE}/issues/create`, payload)
   return response.data
 }
 

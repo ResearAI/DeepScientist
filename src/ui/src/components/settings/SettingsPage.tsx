@@ -141,7 +141,10 @@ const OPERATIONS_META = {
   },
   issues: {
     label: { en: 'Issue Report', zh: '问题报告' },
-    hint: { en: 'Use the local evidence already collected here to draft a clearer issue report before you submit it.', zh: '把本地已经收集到的运行时证据整理成更清晰的问题报告，再决定是否提交。' },
+    hint: {
+      en: 'Use the local evidence already collected here to draft a clearer issue report, then create it locally or open the browser fallback.',
+      zh: '把本地已经收集到的运行时证据整理成更清晰的问题报告，然后本地创建，或使用浏览器兜底。',
+    },
   },
   logs: {
     label: { en: 'Logs', zh: '日志' },

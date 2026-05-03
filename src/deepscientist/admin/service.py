@@ -7,12 +7,13 @@ import platform
 import subprocess
 import sys
 from typing import Any
+from urllib.parse import urlencode
 
 from .. import __version__ as DEEPSCIENTIST_VERSION
 from ..diagnostics import diagnose_runner_failure
 from ..doctor import _read_runtime_failure_record
 from ..runtime_tools import RuntimeToolService
-from ..shared import read_json, read_jsonl_tail, read_text, utc_now, utf8_text_subprocess_kwargs, which, write_json
+from ..shared import ensure_dir, read_json, read_jsonl_tail, read_text, sha256_text, utc_now, utf8_text_subprocess_kwargs, which, write_json
 from .charts import AdminChartService, AdminMetricsCollector
 from .logs import AdminLogService
 from .system_info import AdminSystemMonitor, collect_system_hardware
@@ -20,6 +21,9 @@ from .tool_metrics import AdminToolMetricsService
 
 
 _FAILURE_LOOKBACK = timedelta(days=7)
+_ISSUE_REPOSITORY = "ResearAI/DeepScientist"
+_MAX_ISSUE_SOURCE_MARKDOWN_BYTES = 512 * 1024
+_MAX_FALLBACK_URL_LENGTH = 7500
 
 
 class AdminService:
@@ -1130,6 +1134,182 @@ class AdminService:
                 "doctor_cached": doctor_cache,
             },
         }
+
+    @staticmethod
+    def _github_issue_url_base(repository: str = _ISSUE_REPOSITORY) -> str:
+        return f"https://github.com/{repository}/issues/new"
+
+    @classmethod
+    def _github_issue_fallback_url(cls, *, title: str, body_markdown: str, repository: str = _ISSUE_REPOSITORY) -> tuple[str, bool]:
+        base = cls._github_issue_url_base(repository)
+        body = body_markdown
+        url = f"{base}?{urlencode({'title': title, 'body': body})}"
+        if len(url) <= _MAX_FALLBACK_URL_LENGTH:
+            return url, False
+        truncated_body = (
+            body[:4800].rstrip()
+            + "\n\n<!-- Fallback URL body truncated. Use the local body_path returned by the API for the full Markdown body. -->\n"
+        )
+        return f"{base}?{urlencode({'title': title, 'body': truncated_body})}", True
+
+    def _read_issue_source_markdown(self, source_markdown_path: str | None) -> tuple[str | None, str | None]:
+        normalized = str(source_markdown_path or "").strip()
+        if not normalized:
+            return None, None
+        candidate = Path(normalized).expanduser()
+        if not candidate.is_absolute():
+            candidate = self.home / candidate
+        candidate = candidate.resolve()
+        home_resolved = self.home.resolve()
+        if candidate != home_resolved and home_resolved not in candidate.parents:
+            raise ValueError("`source_markdown_path` must stay under the DeepScientist home directory.")
+        if candidate.suffix.lower() not in {".md", ".markdown"}:
+            raise ValueError("`source_markdown_path` must point to a Markdown file.")
+        if not candidate.exists() or not candidate.is_file():
+            raise ValueError(f"Markdown source does not exist: {candidate}")
+        if candidate.stat().st_size > _MAX_ISSUE_SOURCE_MARKDOWN_BYTES:
+            raise ValueError("Markdown source is too large for direct issue submission.")
+        return candidate.read_text(encoding="utf-8"), str(candidate)
+
+    def _detected_system_settings_markdown(self) -> str:
+        hardware = self.system_hardware(refresh=False)
+        system_payload = hardware.get("system") if isinstance(hardware.get("system"), dict) else {}
+        preferences = hardware.get("preferences") if isinstance(hardware.get("preferences"), dict) else {}
+        memory_preferences = hardware.get("memory_preferences") if isinstance(hardware.get("memory_preferences"), dict) else {}
+        host = system_payload.get("host") if isinstance(system_payload.get("host"), dict) else {}
+        cpu = system_payload.get("cpu") if isinstance(system_payload.get("cpu"), dict) else {}
+        memory = system_payload.get("memory") if isinstance(system_payload.get("memory"), dict) else {}
+        lines = [
+            "## Detected System Settings",
+            "",
+            f"- DeepScientist version: `{DEEPSCIENTIST_VERSION}`",
+            f"- Repository: `{_ISSUE_REPOSITORY}`",
+            f"- Repo root: `{self.app.repo_root}`",
+            f"- Home: `{self.home}`",
+            f"- Platform: `{platform.platform()}`",
+            f"- Python: `{sys.version.split()[0]}`",
+            f"- Node: `{self._node_version() or 'unavailable'}`",
+            f"- Hostname: `{host.get('hostname') or 'unknown'}`",
+            f"- CPU: `{cpu.get('model') or 'unknown'}` logical_cores=`{cpu.get('logical_cores', 'unknown')}`",
+            f"- Memory: total_gb=`{memory.get('total_gb', 'unknown')}` available_gb=`{memory.get('available_gb', 'unknown')}`",
+            f"- GPU selection mode: `{preferences.get('gpu_selection_mode') or 'all'}`",
+            f"- Effective GPU ids: `{','.join(str(item) for item in preferences.get('effective_gpu_ids') or []) or 'none'}`",
+            f"- CUDA_VISIBLE_DEVICES policy: `{preferences.get('cuda_visible_devices') or 'unset'}`",
+            f"- Include hardware in prompt: `{preferences.get('include_system_hardware_in_prompt')}`",
+            f"- Memory read visibility: `{memory_preferences.get('read_visibility_mode') or 'independent'}`",
+            "",
+        ]
+        return "\n".join(lines)
+
+    def _issue_body_with_detected_settings(self, body_markdown: str, *, include_system_settings: bool) -> str:
+        body = str(body_markdown or "").strip()
+        if include_system_settings and "## Detected System Settings" not in body:
+            body = f"{body}\n\n{self._detected_system_settings_markdown().strip()}".strip()
+        return body + "\n"
+
+    def issue_create(
+        self,
+        *,
+        title: str | None = None,
+        body_markdown: str | None = None,
+        source_markdown_path: str | None = None,
+        source_markdown: str | None = None,
+        include_system_settings: bool = True,
+    ) -> dict[str, Any]:
+        normalized_title = str(title or "").strip() or "Admin report: runtime issue investigation"
+        if "\n" in normalized_title:
+            normalized_title = normalized_title.splitlines()[0].strip()
+        normalized_title = normalized_title[:180] or "Admin report: runtime issue investigation"
+
+        path_markdown, resolved_source_path = self._read_issue_source_markdown(source_markdown_path)
+        body_source = str(source_markdown or "").strip() or str(body_markdown or "").strip() or str(path_markdown or "").strip()
+        if not body_source:
+            draft = self.issue_draft(summary=normalized_title, include_doctor=True, include_logs=True)
+            body_source = str(draft.get("body_markdown") or "").strip()
+        final_body = self._issue_body_with_detected_settings(body_source, include_system_settings=include_system_settings)
+
+        issue_dir = ensure_dir(self.home / "runtime" / "admin" / "issues")
+        body_hash = sha256_text(f"{normalized_title}\n{final_body}")[:12]
+        body_path = issue_dir / f"issue-{body_hash}.md"
+        body_path.write_text(final_body, encoding="utf-8")
+
+        fallback_url, fallback_url_truncated = self._github_issue_fallback_url(
+            title=normalized_title,
+            body_markdown=final_body,
+            repository=_ISSUE_REPOSITORY,
+        )
+        gh = which("gh")
+        if not gh:
+            payload = {
+                "ok": False,
+                "created": False,
+                "message": "`gh` CLI is not available. Open the fallback URL or install/authenticate GitHub CLI.",
+                "title": normalized_title,
+                "body_markdown": final_body,
+                "body_path": str(body_path),
+                "source_markdown_path": resolved_source_path,
+                "repository": _ISSUE_REPOSITORY,
+                "issue_url": None,
+                "issue_url_base": self._github_issue_url_base(_ISSUE_REPOSITORY),
+                "fallback_url": fallback_url,
+                "fallback_url_truncated": fallback_url_truncated,
+                "generated_at": utc_now(),
+            }
+            self.write_audit(action="issue.create", created=False, repository=_ISSUE_REPOSITORY, reason="gh_missing", body_path=str(body_path))
+            return payload
+
+        try:
+            result = subprocess.run(
+                [gh, "issue", "create", "--repo", _ISSUE_REPOSITORY, "--title", normalized_title, "--body-file", str(body_path)],
+                cwd=str(self.app.repo_root),
+                capture_output=True,
+                timeout=60,
+                check=False,
+                **utf8_text_subprocess_kwargs(),
+            )
+        except Exception as exc:
+            result = None
+            error_message = str(exc)
+        else:
+            error_message = (result.stderr or result.stdout or "").strip()
+
+        if result is not None and result.returncode == 0:
+            issue_url = (result.stdout or result.stderr or "").strip().splitlines()[-1].strip()
+            payload = {
+                "ok": True,
+                "created": True,
+                "message": "GitHub issue created.",
+                "title": normalized_title,
+                "body_markdown": final_body,
+                "body_path": str(body_path),
+                "source_markdown_path": resolved_source_path,
+                "repository": _ISSUE_REPOSITORY,
+                "issue_url": issue_url,
+                "issue_url_base": self._github_issue_url_base(_ISSUE_REPOSITORY),
+                "fallback_url": fallback_url,
+                "fallback_url_truncated": fallback_url_truncated,
+                "generated_at": utc_now(),
+            }
+            self.write_audit(action="issue.create", created=True, repository=_ISSUE_REPOSITORY, issue_url=issue_url, body_path=str(body_path))
+            return payload
+
+        payload = {
+            "ok": False,
+            "created": False,
+            "message": error_message or "`gh issue create` failed.",
+            "title": normalized_title,
+            "body_markdown": final_body,
+            "body_path": str(body_path),
+            "source_markdown_path": resolved_source_path,
+            "repository": _ISSUE_REPOSITORY,
+            "issue_url": None,
+            "issue_url_base": self._github_issue_url_base(_ISSUE_REPOSITORY),
+            "fallback_url": fallback_url,
+            "fallback_url_truncated": fallback_url_truncated,
+            "generated_at": utc_now(),
+        }
+        self.write_audit(action="issue.create", created=False, repository=_ISSUE_REPOSITORY, reason="gh_failed", message=payload["message"], body_path=str(body_path))
+        return payload
 
     def built_in_controllers(self) -> list[dict[str, Any]]:
         state = self._controller_state()

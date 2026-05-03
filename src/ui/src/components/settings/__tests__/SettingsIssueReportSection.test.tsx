@@ -22,7 +22,10 @@ describe('SettingsIssueReportSection', () => {
     render(<SettingsIssueReportSection />)
 
     expect(screen.getByDisplayValue('Prefilled issue title')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('# Summary\n\nPrefilled body\n')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Submit GitHub Issue' })).toBeInTheDocument()
+    const textareas = screen.getAllByRole('textbox').filter((element) => element.tagName === 'TEXTAREA') as HTMLTextAreaElement[]
+    expect(textareas).toHaveLength(2)
+    expect(textareas[1].value).toContain('Prefilled body')
+    expect(screen.getByRole('button', { name: 'Create GitHub Issue' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open GitHub Draft' })).toBeInTheDocument()
   })
 })

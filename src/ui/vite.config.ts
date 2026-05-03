@@ -49,6 +49,10 @@ export default defineConfig(({ mode }) => {
     base: '/ui/',
     publicDir: 'public',
     plugins: [react()],
+    test: {
+      environment: 'jsdom',
+      setupFiles: [resolve(__dirname, 'src/test/setup.ts')],
+    },
     define: {
       'process.env': browserEnv,
     },

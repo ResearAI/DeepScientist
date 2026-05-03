@@ -44,13 +44,18 @@ Use several query families and refine them iteratively:
 
 ## 2.1 Source order and de-dup protocol
 
-Before opening a fresh broad search, check durable memory and sibling quests first:
+Before opening a fresh broad search, check durable memory first:
 
 1. recent quest `papers`, `ideas`, and `knowledge`
 2. recent global `papers`, `knowledge`, and `templates`
 3. `memory.search(...)` with the baseline name, task, dataset, mechanism, and current idea labels — note this is substring match, so issue several single-keyword queries (`bc8`, `RAG`, `verifier`) instead of one long phrase
-4. sibling-quest scan: `bash_exec ls -t ~/DeepScientist/quests/*/brief.md` to enumerate prior quests, then `cat` the briefs for any same-domain matches; for material overlaps deep-read `~/DeepScientist/quests/<id>/paper/latex/main.tex`, especially the `Conclusion` and `Limitations` sections, where prescriptive guidance for follow-up quests is recorded
-5. `~/DeepScientist/framework_quirks.md` if it exists — known framework-layer pitfalls a future route would otherwise rediscover
+
+Then apply the cross-quest gate:
+
+- if `memory.read_visibility_mode = independent`, do not enumerate or read raw sibling quest files by default; rely on current-quest memory and explicitly global memory, then move to external search
+- if `memory.read_visibility_mode = shared_across_quests`, or the operator explicitly asks for raw cross-quest artifact recall, run a sibling-quest scan from the configured DeepScientist home: enumerate `quests/*/brief.md`, read briefs for same-domain matches, and for material overlaps deep-read `quests/<id>/paper/latex/main.tex`, especially the `Conclusion` and `Limitations` sections, where prescriptive guidance for follow-up quests is recorded
+- if the configured home is unknown in the shell context, infer it from the current quest root's parent layout before falling back to `~/DeepScientist`
+- read `framework_quirks.md` if it exists and is relevant to the surface being touched; if it is missing, empty, or unrelated, skip it explicitly rather than blocking the idea pass
 
 Then search externally for the missing neighborhood:
 

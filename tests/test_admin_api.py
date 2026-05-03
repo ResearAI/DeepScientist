@@ -199,6 +199,71 @@ def test_admin_logs_and_search_surfaces_are_bounded(temp_home: Path) -> None:
     assert "Host:" in issue["body_markdown"] or "Hardware summary unavailable." in issue["body_markdown"]
 
 
+def test_admin_issue_create_uses_gh_cli_and_appends_detected_settings(temp_home: Path, monkeypatch) -> None:
+    app = _build_app(temp_home)
+    calls: list[list[str]] = []
+
+    class Completed:
+        def __init__(self, *, returncode: int, stdout: str, stderr: str = "") -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(args, **kwargs):
+        calls.append(list(args))
+        if len(args) >= 2 and args[1] == "--version":
+            return Completed(returncode=0, stdout="v20.0.0\n")
+        assert "--repo" in args
+        assert "ResearAI/DeepScientist" in args
+        body_path = Path(args[args.index("--body-file") + 1])
+        body = body_path.read_text(encoding="utf-8")
+        assert "# Repro" in body
+        assert "## Detected System Settings" in body
+        assert "Memory read visibility:" in body
+        return Completed(returncode=0, stdout="https://github.com/ResearAI/DeepScientist/issues/123\n")
+
+    monkeypatch.setattr("deepscientist.admin.service.which", lambda binary: "/usr/bin/gh" if binary == "gh" else None)
+    monkeypatch.setattr("deepscientist.admin.service.subprocess.run", fake_run)
+    monkeypatch.setattr("deepscientist.admin.service.AdminService._node_version", staticmethod(lambda: "v20.0.0"))
+
+    created = app.handlers.admin_issue_create(
+        {
+            "title": "One click issue",
+            "body_markdown": "# Repro\n\nObserved from Settings.",
+            "include_system_settings": True,
+        }
+    )
+
+    assert not isinstance(created, tuple)
+    assert created["ok"] is True
+    assert created["created"] is True
+    assert created["issue_url"] == "https://github.com/ResearAI/DeepScientist/issues/123"
+    assert Path(created["body_path"]).exists()
+    assert calls
+
+
+def test_admin_issue_create_returns_fallback_when_gh_is_unavailable(temp_home: Path, monkeypatch) -> None:
+    app = _build_app(temp_home)
+    monkeypatch.setattr("deepscientist.admin.service.which", lambda binary: None)
+    monkeypatch.setattr("deepscientist.admin.service.AdminService._node_version", staticmethod(lambda: "v20.0.0"))
+
+    created = app.handlers.system_issue_create(
+        {
+            "title": "Fallback issue",
+            "body_markdown": "# Repro\n\nNo gh CLI.",
+            "include_system_settings": True,
+        }
+    )
+
+    assert not isinstance(created, tuple)
+    assert created["ok"] is False
+    assert created["created"] is False
+    assert "gh" in created["message"]
+    assert "github.com/ResearAI/DeepScientist/issues/new" in created["fallback_url"]
+    assert "## Detected System Settings" in created["body_markdown"]
+    assert Path(created["body_path"]).exists()
+
+
 def test_admin_controllers_and_repairs_support_basic_lifecycle(temp_home: Path) -> None:
     app = _build_app(temp_home)
 

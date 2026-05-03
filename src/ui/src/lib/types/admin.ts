@@ -367,6 +367,22 @@ export type AdminIssueDraftPayload = {
   context?: Record<string, unknown>
 }
 
+export type AdminIssueCreatePayload = {
+  ok: boolean
+  created: boolean
+  message?: string
+  title: string
+  body_markdown: string
+  body_path?: string
+  source_markdown_path?: string | null
+  repository: string
+  issue_url?: string | null
+  issue_url_base: string
+  fallback_url: string
+  fallback_url_truncated?: boolean
+  generated_at?: string
+}
+
 export type AdminControllersPayload = {
   ok: boolean
   items: Array<Record<string, unknown>>

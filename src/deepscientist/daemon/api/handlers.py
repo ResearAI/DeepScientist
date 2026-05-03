@@ -480,6 +480,19 @@ npm --prefix src/ui run build</pre>
             include_logs=payload.get("include_logs") is not False,
         )
 
+    def admin_issue_create(self, body: dict | None = None) -> dict | tuple[int, dict]:
+        payload = body if isinstance(body, dict) else {}
+        try:
+            return self.app.admin_service.issue_create(
+                title=str(payload.get("title") or "").strip() or None,
+                body_markdown=str(payload.get("body_markdown") or "").strip() or None,
+                source_markdown_path=str(payload.get("source_markdown_path") or "").strip() or None,
+                source_markdown=str(payload.get("source_markdown") or "").strip() or None,
+                include_system_settings=payload.get("include_system_settings") is not False,
+            )
+        except ValueError as exc:
+            return 400, {"ok": False, "created": False, "message": str(exc)}
+
     def admin_controllers(self) -> dict:
         return self.app.admin_service.controllers()
 
@@ -667,6 +680,9 @@ npm --prefix src/ui run build</pre>
 
     def system_issue_draft(self, body: dict | None = None) -> dict:
         return self.admin_issue_draft(body)
+
+    def system_issue_create(self, body: dict | None = None) -> dict | tuple[int, dict]:
+        return self.admin_issue_create(body)
 
     def system_controllers(self) -> dict:
         return self.admin_controllers()

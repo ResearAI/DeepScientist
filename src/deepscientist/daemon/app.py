@@ -8798,6 +8798,7 @@ class DaemonApp:
                         "task_system_update_check_start",
                         "task_system_update_action_start",
                         "issue_draft",
+                        "issue_create",
                         "controller_run",
                         "controller_toggle",
                         "repair_create",

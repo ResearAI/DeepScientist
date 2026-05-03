@@ -76,7 +76,9 @@ def ensure_home_layout(home: Path) -> dict[str, Path]:
             "and that future quests should know about before exercising the same surfaces).\n\n"
             "Each entry should name the surface, the symptom, and the workaround in 2-5 lines. "
             "Stage skills (idea, decision, finalize) instruct agents to read this file before "
-            "committing to a route that would touch the relevant surface.\n\n"
+            "committing to a route that would touch the relevant surface. If the file is empty, "
+            "missing in an older home, or unrelated to the active route, the agent should skip it "
+            "and continue rather than treating it as a required artifact.\n\n"
             "If a quirk should instead be fixed at the framework level, file an issue and fix the code; "
             "do not add it here as a permanent shim.\n",
             encoding="utf-8",

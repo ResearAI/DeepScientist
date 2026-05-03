@@ -28,6 +28,7 @@ For ideation specifically:
 - review prior experiment outcomes and failure patterns before broad new literature expansion
 - use old idea and experiment memory as references and constraints
 - do not silently treat a past line as the current active idea unless it is explicitly selected again
+- treat the shared-memory setting as the gate for cross-quest recall; do not scan raw sibling quest files unless `memory.read_visibility_mode` is `shared_across_quests` or the operator explicitly asks for that scan
 
 Use `artifact` when the output changes or reports quest state:
 
@@ -103,6 +104,25 @@ memory.search(query="imagenet official split baseline", scope="both", kind="pape
 memory.search(query="metric wiring mismatch adapter", scope="quest", kind="episodes", limit=5)
 memory.search(query="adapter baseline novelty", scope="both", kind="ideas", limit=6)
 ```
+
+### Cross-quest visibility
+
+DeepScientist has two cross-quest knowledge paths:
+
+- durable memory cards, including cards promoted to global memory
+- optional raw filesystem inspection of sibling quest artifacts
+
+Use memory first. `memory.search(scope="both", ...)` and global memory are the normal way to reuse old lessons without depending on a particular quest directory layout.
+
+Raw sibling quest scans are a stronger operation and must be gated by the runtime memory visibility setting:
+
+- when `memory.read_visibility_mode = independent`, do not enumerate or read `quests/*` from another quest by default; stay with current-quest memory and explicitly global memory
+- when `memory.read_visibility_mode = shared_across_quests`, a stage skill may inspect sibling quest briefs, papers, and other durable artifacts when that evidence is relevant to the current route
+- if the operator directly asks for a raw cross-quest artifact scan, follow that instruction and state that the scan is operator-requested
+
+The Settings runtime page exposes this as the memory visibility control. Turning on shared cross-quest memory is also the permission signal for history-aware idea work to look at related sibling quests on disk.
+
+`framework_quirks.md`, when present under the DeepScientist home, is an optional framework-layer issue register. Read it before touching a surface that may be affected by known framework quirks. If it is missing, empty, or unrelated to the current route, record that it was skipped and continue.
 
 ### `memory.read(...)`
 
