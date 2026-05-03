@@ -13,5 +13,4 @@
   <foreignObject x="80" y="305" width="900" height="180">
     <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Verdana, sans-serif; color: #f8fafc; font-size: 32px; line-height: 1.35;">ADMET-only public-dev BenchStore pilot using five real TDC molecular-property endpoints.</div>
   </foreignObject>
-  <text x="80" y="550" fill="#a7f3d0" font-family="Verdana, sans-serif" font-size="28">release_ready=false · hidden references organizer-only</text>
 </svg>
