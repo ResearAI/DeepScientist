@@ -74,6 +74,12 @@ class MemoryService:
         quest_root: Path | None = None,
     ) -> Path:
         if path:
+            shared = self.parse_shared_document_id(path)
+            if shared is not None:
+                source_quest_id, relative = shared
+                shared_candidate = self.home / "quests" / source_quest_id / "memory" / relative
+                if shared_candidate.exists():
+                    return shared_candidate
             candidate = Path(path)
             if candidate.exists():
                 return candidate

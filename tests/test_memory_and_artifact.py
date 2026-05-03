@@ -816,6 +816,39 @@ def test_shared_memory_visibility_reads_other_quests_but_opens_them_read_only(te
     assert Path(remote_card["path"]).exists()
 
 
+def test_memory_read_resolves_sharedmemory_document_id_from_other_quest(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest_local = quest_service.create("shared memory read local")
+    quest_remote = quest_service.create("shared memory read remote")
+    local_root = Path(quest_local["quest_root"])
+    remote_root = Path(quest_remote["quest_root"])
+    memory = MemoryService(temp_home)
+
+    remote_card = memory.write_card(
+        scope="quest",
+        kind="knowledge",
+        title="Cross quest checkpoint",
+        body="checkpoint body for cross-quest read",
+        quest_root=remote_root,
+        quest_id=quest_remote["quest_id"],
+    )
+    relative = Path(remote_card["path"]).relative_to(remote_root / "memory").as_posix()
+    document_id = f"sharedmemory::{quest_remote['quest_id']}::{relative}"
+
+    opened = memory.read_card(path=document_id, scope="quest", quest_root=local_root)
+    assert opened["path"] == str(Path(remote_card["path"]))
+    assert opened["body"].strip() == "checkpoint body for cross-quest read"
+
+    with pytest.raises(FileNotFoundError):
+        memory.read_card(
+            path=f"sharedmemory::{quest_remote['quest_id']}::knowledge/missing-card.md",
+            scope="quest",
+            quest_root=local_root,
+        )
+
+
 def test_memory_document_open_uses_quest_root_when_active_workspace_is_worktree(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
@@ -848,6 +881,50 @@ def test_memory_document_open_uses_quest_root_when_active_workspace_is_worktree(
     assert opened["writable"] is True
     assert opened["path"] == str(Path(card["path"]))
     assert "Memory content should still resolve from quest root." in opened["content"]
+
+
+def test_refresh_summary_mirrors_to_quest_root_when_active_workspace_is_worktree(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("refresh summary worktree mirror")
+    quest_root = Path(quest["quest_root"])
+    artifact = ArtifactService(temp_home)
+
+    worktree_root = quest_root / ".ds" / "worktrees" / "idea-branch-mirror"
+    worktree_root.mkdir(parents=True, exist_ok=True)
+    quest_service.update_research_state(
+        quest_root,
+        current_workspace_root=str(worktree_root),
+        research_head_worktree_root=str(worktree_root),
+    )
+
+    result = artifact.refresh_summary(quest_root, reason="mirror to quest root")
+    assert result["ok"] is True
+
+    workspace_summary = Path(result["summary_path"])
+    quest_root_summary = Path(result["quest_root_summary_path"])
+    assert workspace_summary == worktree_root / "SUMMARY.md"
+    assert quest_root_summary == quest_root / "SUMMARY.md"
+    assert workspace_summary.exists()
+    assert quest_root_summary.exists()
+    assert workspace_summary.read_text(encoding="utf-8") == quest_root_summary.read_text(encoding="utf-8")
+    assert "mirror to quest root" in quest_root_summary.read_text(encoding="utf-8")
+
+
+def test_refresh_summary_writes_once_when_workspace_equals_quest_root(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("refresh summary no worktree")
+    quest_root = Path(quest["quest_root"])
+    artifact = ArtifactService(temp_home)
+
+    result = artifact.refresh_summary(quest_root, reason="no worktree")
+    assert result["ok"] is True
+    assert Path(result["summary_path"]) == quest_root / "SUMMARY.md"
+    assert Path(result["quest_root_summary_path"]) == quest_root / "SUMMARY.md"
+    assert (quest_root / "SUMMARY.md").exists()
 
 
 def test_artifact_interact_and_prepare_branch(temp_home: Path) -> None:
