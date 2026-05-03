@@ -287,6 +287,9 @@ Useful fields:
 - `recommended_when`
 - `not_recommended_when`
 - `image_path`
+- `homepage`
+- `official_links`
+- `discovery`
 - `display`
 - `commercial`
 
@@ -297,6 +300,7 @@ BenchStore currently reads these top-level keys:
 - `schema_version`
 - `id`
 - `name`
+- `homepage`
 - `version`
 - `one_line`
 - `task_description`
@@ -326,6 +330,8 @@ BenchStore currently reads these top-level keys:
 - `resources`
 - `environment`
 - `commercial`
+- `official_links`
+- `discovery`
 - `display`
 - `image_path`
 
@@ -373,12 +379,25 @@ Nested objects currently recognized:
 - `display.palette_seed`
 - `display.art_style`
 - `display.accent_priority`
+- `display.placement`
+- `display.card_size`
+- `display.badge`
+- `official_links.homepage`
+- `official_links.github`
+- `official_links.docs`
+- `discovery.collection`
+- `discovery.collection_priority`
+- `discovery.recommendation_weight`
+- `discovery.featured`
+- `discovery.featured_reason`
 - `launch_profiles[].id`
 - `launch_profiles[].label`
 - `launch_profiles[].description`
 
-If you add extra keys beyond this set, do not assume the current UI, installer, or
-recommendation logic will use them.
+If you add extra keys beyond this set, they are preserved in `raw_payload` for downstream
+consumers but do not affect the current UI, installer, or recommendation logic directly.
+To propose a new first-class field, open an RFC issue and update this reference doc alongside
+the `service.py` and `prompt_builder.py` changes.
 
 ## 5. Fields you should not write manually
 

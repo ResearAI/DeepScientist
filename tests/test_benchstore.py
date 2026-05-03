@@ -301,6 +301,91 @@ def test_benchstore_entry_detail_includes_setup_prompt_preview(tmp_path: Path) -
     assert "Runtime Environment" in payload["entry"]["setup_prompt_preview"]
 
 
+def test_benchstore_extended_catalog_fields_surface_cleanly(tmp_path: Path) -> None:
+    repo_root = _make_repo_root(tmp_path)
+    catalog_root = repo_root / "AISB" / "catalog"
+    write_yaml(
+        catalog_root / "extended.yaml",
+        {
+            "name": "Extended Benchmark",
+            "id": "aisb.extended",
+            "one_line": "Extended metadata smoke.",
+            "homepage": "https://example.org/bench",
+            "official_links": {
+                "homepage": "https://example.org/bench",
+                "github": "https://github.com/example/bench",
+                "docs": "https://example.org/docs",
+            },
+            "discovery": {
+                "collection": "AISB Featured",
+                "collection_priority": 3,
+                "recommendation_weight": 7,
+                "featured": True,
+                "featured_reason": "Important benchmark",
+            },
+            "display": {
+                "placement": "hero",
+                "card_size": "xl",
+                "badge": "Featured",
+            },
+        },
+    )
+    write_yaml(
+        catalog_root / "legacy.yaml",
+        {
+            "name": "Legacy Benchmark",
+            "id": "aisb.legacy",
+            "one_line": "Legacy metadata smoke.",
+        },
+    )
+
+    service = BenchStoreService(tmp_path / "home", repo_root=repo_root)
+    payload = service.get_entry("aisb.extended", hardware_payload=_hardware_payload())
+    entry = payload["entry"]
+
+    assert entry["homepage"] == "https://example.org/bench"
+    assert entry["official_links"] == {
+        "homepage": "https://example.org/bench",
+        "github": "https://github.com/example/bench",
+        "docs": "https://example.org/docs",
+    }
+    assert entry["discovery"] == {
+        "collection": "AISB Featured",
+        "collection_priority": 3,
+        "recommendation_weight": 7,
+        "featured": True,
+        "featured_reason": "Important benchmark",
+    }
+    assert entry["display"]["placement"] == "hero"
+    assert entry["display"]["card_size"] == "xl"
+    assert entry["display"]["badge"] == "Featured"
+    assert entry["raw_payload"]["official_links"]["github"] == "https://github.com/example/bench"
+
+    setup_prompt = entry["setup_prompt_preview"]
+    assert "- homepage: https://example.org/bench" in setup_prompt
+    assert "## Official Links" in setup_prompt
+    assert "- github: https://github.com/example/bench" in setup_prompt
+    assert "## Discovery" in setup_prompt
+    assert "- collection: AISB Featured" in setup_prompt
+    assert "- collection_priority: 3" in setup_prompt
+    assert "- recommendation_weight: 7" in setup_prompt
+    assert "- featured_reason: Important benchmark" in setup_prompt
+
+    packet = service.build_setup_packet(entry_id="aisb.extended", hardware_payload=_hardware_payload())
+    context = packet["launch_payload"]["startup_contract"]["benchstore_context"]
+    assert context["homepage"] == "https://example.org/bench"
+    assert context["official_links"]["docs"] == "https://example.org/docs"
+    assert context["discovery"]["featured"] is True
+    assert context["display"]["placement"] == "hero"
+
+    legacy_entry = service.get_entry("aisb.legacy")["entry"]
+    legacy_prompt = legacy_entry["setup_prompt_preview"]
+    assert legacy_entry["official_links"] == {}
+    assert legacy_entry["discovery"] == {}
+    assert "## Official Links" not in legacy_prompt
+    assert "## Discovery" not in legacy_prompt
+
+
 def test_benchstore_api_handlers_surface_catalog_and_detail(tmp_path: Path) -> None:
     repo_root = _make_repo_root(tmp_path)
     write_yaml(

@@ -76,10 +76,27 @@ export type BenchCommercial = {
   annual_fee?: string | number | null;
 };
 
+export type BenchOfficialLinks = {
+  homepage?: string | null;
+  github?: string | null;
+  docs?: string | null;
+};
+
+export type BenchDiscovery = {
+  collection?: string | null;
+  collection_priority?: number | null;
+  recommendation_weight?: number | null;
+  featured?: boolean | null;
+  featured_reason?: string | null;
+};
+
 export type BenchDisplay = {
   palette_seed?: string | null;
   art_style?: string | null;
   accent_priority?: string | null;
+  placement?: "hero" | "grid" | string | null;
+  card_size?: "xl" | "l" | "m" | "s" | string | null;
+  badge?: string | null;
 };
 
 export type BenchEnvironment = {
@@ -121,6 +138,8 @@ export type BenchEntry = {
   version?: string | null;
   one_line?: string | null;
   task_description?: string | null;
+  homepage?: string | null;
+  official_links?: BenchOfficialLinks | null;
   capability_tags?: string[];
   aisb_direction?: string | null;
   track_fit?: string[];
@@ -131,6 +150,7 @@ export type BenchEntry = {
   snapshot_status?: string | null;
   support_level?: string | null;
   primary_outputs?: string[];
+  discovery?: BenchDiscovery | null;
   launch_profiles?: BenchLaunchProfile[];
   cost_band?: string | null;
   time_band?: string | null;
