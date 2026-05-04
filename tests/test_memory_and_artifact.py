@@ -927,6 +927,70 @@ def test_refresh_summary_writes_once_when_workspace_equals_quest_root(temp_home:
     assert (quest_root / "SUMMARY.md").exists()
 
 
+def test_record_auto_refreshes_quest_root_summary_without_extra_artifact(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("auto refresh on record")
+    quest_root = Path(quest["quest_root"])
+    artifact = ArtifactService(temp_home)
+
+    summary_path = quest_root / "SUMMARY.md"
+    assert summary_path.read_text(encoding="utf-8").strip() != "" or not summary_path.exists()
+    pre_summary = summary_path.read_text(encoding="utf-8") if summary_path.exists() else ""
+
+    result = artifact.record(
+        quest_root,
+        {
+            "kind": "report",
+            "status": "completed",
+            "report_id": "report-auto-1",
+            "summary": "first user-driven artifact",
+            "reason": "exercise auto-refresh hook",
+            "source": {"kind": "agent"},
+        },
+    )
+    assert result["ok"] is True
+
+    post_summary = summary_path.read_text(encoding="utf-8")
+    assert post_summary != pre_summary
+    assert "auto after report" in post_summary
+    assert result["artifact_id"] in post_summary
+
+    summary_refresh_artifacts = [
+        item for item in artifact.recent(quest_root, limit=20)
+        if item.get("kind") == "reports"
+    ]
+    summary_refresh_payloads = []
+    for item in summary_refresh_artifacts:
+        payload = read_json(Path(item["path"]), {})
+        if payload.get("report_type") == "summary_refresh":
+            summary_refresh_payloads.append(payload)
+    assert summary_refresh_payloads == []
+
+
+def test_record_skips_auto_refresh_when_record_is_summary_refresh(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("no recursion")
+    quest_root = Path(quest["quest_root"])
+    artifact = ArtifactService(temp_home)
+
+    explicit = artifact.refresh_summary(quest_root, reason="explicit user-driven refresh")
+    assert explicit["ok"] is True
+    assert explicit["artifact"] is not None
+
+    summary_refresh_payloads = []
+    for item in artifact.recent(quest_root, limit=20):
+        if item.get("kind") != "reports":
+            continue
+        payload = read_json(Path(item["path"]), {})
+        if payload.get("report_type") == "summary_refresh":
+            summary_refresh_payloads.append(payload)
+    assert len(summary_refresh_payloads) == 1
+
+
 def test_artifact_interact_and_prepare_branch(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
