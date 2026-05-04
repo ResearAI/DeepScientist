@@ -9283,6 +9283,16 @@ class ArtifactService:
                     closing_artifact_id=artifact_id,
                 )
 
+        if not (record["kind"] == "report" and record.get("report_type") == "summary_refresh"):
+            try:
+                self.refresh_summary(
+                    quest_root,
+                    reason=f"auto after {record['kind']} {artifact_id}",
+                    record_artifact=False,
+                )
+            except Exception:
+                pass
+
         return {
             "ok": True,
             "artifact_id": artifact_id,
@@ -14202,7 +14212,13 @@ class ArtifactService:
             "legacy_guidance": "Baseline gate waived. Continue carefully and keep the waiver rationale explicit downstream.",
         }
 
-    def refresh_summary(self, quest_root: Path, *, reason: str | None = None) -> dict:
+    def refresh_summary(
+        self,
+        quest_root: Path,
+        *,
+        reason: str | None = None,
+        record_artifact: bool = True,
+    ) -> dict:
         workspace_root = self._workspace_root_for(quest_root)
         recent = self.recent(quest_root, limit=20)
         latest_runs = [item for item in recent if item.get("kind") == "runs"][-5:]
@@ -14229,27 +14245,30 @@ class ArtifactService:
                 lines.append(f"- `{payload.get('run_id') or payload.get('artifact_id')}`: {summary}")
         summary_body = "\n".join(lines).rstrip() + "\n"
         summary_path = workspace_root / "SUMMARY.md"
-        write_text(summary_path, summary_body)
         quest_root_summary_path = quest_root / "SUMMARY.md"
-        if quest_root_summary_path.resolve() != summary_path.resolve():
+        if record_artifact:
+            write_text(summary_path, summary_body)
+        if quest_root_summary_path.resolve() != summary_path.resolve() or not record_artifact:
             write_text(quest_root_summary_path, summary_body)
-        artifact = self.record(
-            quest_root,
-            {
-                "kind": "report",
-                "status": "completed",
-                "report_type": "summary_refresh",
-                "report_id": generate_id("report"),
-                "summary": "Quest summary refreshed from recent artifacts.",
-                "reason": reason or "Summary refreshed after artifact updates.",
-                "paths": {
-                    "summary_md": str(summary_path),
-                    "quest_root_summary_md": str(quest_root_summary_path),
+        artifact: dict | None = None
+        if record_artifact:
+            artifact = self.record(
+                quest_root,
+                {
+                    "kind": "report",
+                    "status": "completed",
+                    "report_type": "summary_refresh",
+                    "report_id": generate_id("report"),
+                    "summary": "Quest summary refreshed from recent artifacts.",
+                    "reason": reason or "Summary refreshed after artifact updates.",
+                    "paths": {
+                        "summary_md": str(summary_path),
+                        "quest_root_summary_md": str(quest_root_summary_path),
+                    },
+                    "source": {"kind": "system", "role": "artifact"},
                 },
-                "source": {"kind": "system", "role": "artifact"},
-            },
-            workspace_root=workspace_root,
-        )
+                workspace_root=workspace_root,
+            )
         return {
             "ok": True,
             "summary_path": str(summary_path),
