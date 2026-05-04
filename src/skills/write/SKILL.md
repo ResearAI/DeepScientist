@@ -55,9 +55,11 @@ If evidence is missing, either obtain evidence, narrow the claim, or mark the bl
    If DeepXiv is declared available by the system prompt, prefer it for paper-centric discovery and shortlist triage before broad web search when it can answer the question directly. If DeepXiv is declared unavailable, do not try to force it; stay on the legacy route. Use `artifact.arxiv(paper_id=..., full_text=False)` for actual arXiv paper reads before escalating to full text.
 6. Plan displays before prose.
    If a section needs a paper-facing measured figure, use `paper-plot` first. Use `figure-polish` only after a durable first-pass render exists. Sync resulting figure paths and takeaways back into `paper/evidence_ledger.json`, `paper/paper_experiment_matrix.md`, and the draft.
-7. Draft by section jobs, not one long stream.
+7. Route Nature companion work by paper surface.
+   Open a `nature-*` skill only after the current section job, evidence rows, and unresolved fields are known. Use the companion skill to produce a bounded section/figure/deck deliverable, then return to `write` to integrate it into the draft, evidence ledger, figure/table catalog, references, and bundle status.
+8. Draft by section jobs, not one long stream.
    Write introduction / related work / method / experiments / analysis / conclusion as separate jobs. Write the abstract late, after evidence order and section roles stabilize. For oral-grade upgrades, follow the `Draft To Top Conference Oral` section below.
-8. Validate before output and route if needed.
+9. Validate before output and route if needed.
    Refresh claim-evidence, packaging, appendix bridges, `artifact.validate_manuscript_language(detail='full')`, and `artifact.validate_manuscript_coverage(detail='full')`. A short memo is only `artifact.submit_paper_bundle(package_type='draft_checkpoint', ...)`; use `submission_package` only when `submission_ready=true`.
 
 ## Paper Quality Reminder
@@ -114,6 +116,9 @@ For ordinary active work, prefer a concise progress update once work has crossed
 - Do not draft around missing evidence, unstable baselines, or unresolved non-optional experiment rows.
 - Do not hand-write BibTeX, citations, metrics, or method details from memory.
 - Do not improvise a new plotting stack inside `write` when `paper-plot` should own the first-pass figure.
+- Do not use `nature-polishing` to make unsupported, stale, or overbroad claims sound stronger.
+- Do not use `nature-data` to invent repositories, accession numbers, DOIs, licences, embargoes, access committees, or ethics approvals.
+- Do not use `nature-paper2ppt` unless the user asked for an actual presentation deck.
 - Do not merge experiments and analysis into one undifferentiated result dump when they need distinct reviewer-facing jobs.
 - Do not treat `evidence_ready` or `analysis_ready` as equivalent to `manuscript_ready` or `submission_ready`.
 - Do not submit a paper-shot memo as a final paper package; checkpoint it and continue writing/review.
@@ -184,6 +189,32 @@ Examples:
 - Manuscript form: omit it; keep that fact in route/control records only.
 - Bad caption: "Publication-grade figure refinement is recommended with TOOL."
 - Caption form: describe what the figure shows and why it supports the claim.
+
+## Nature Companion Skills
+
+The `nature-*` skills are focused companion skills adapted from `Yuan1z0825/nature-skills`.
+They can improve specific manuscript surfaces, but they do not replace DeepScientist's paper contract.
+
+Use them as a short handoff inside the `write` flow:
+
+1. Identify the exact surface: prose, data availability, figure package, or presentation deck.
+2. Check `artifact.get_paper_contract(detail='full')` or the relevant quest documents for the evidence rows and missing fields that the surface may mention.
+3. Read only the matching `nature-*` skill and any referenced files it says are needed.
+4. Produce a bounded output: revised section text, data-availability block, figure/export plan, or PPTX deck.
+5. Return to `write` and update the durable paper surfaces before claiming progress: draft files, `paper/evidence_ledger.*`, `paper/paper_experiment_matrix.*`, `paper/references.bib`, figure/table catalogs, or bundle manifests as applicable.
+6. Re-run the normal write validation gates. A Nature companion output is not manuscript-ready until DeepScientist coverage, language, citation, and artifact checks still pass.
+
+- `nature-polishing`: use for Nature-leaning English, section restructuring, and Chinese-to-English academic polish. Apply it after the evidence boundary is clear, and keep unsupported claims downgraded or marked as blockers.
+- `nature-data`: use for Data Availability, source-data, repository, dataset-citation, restricted-data, and FAIR metadata sections. Draft from verified inventory and leave unresolved fields explicit.
+- `nature-figure`: use for Nature/high-impact-journal figure packages when figure claim, panel logic, backend choice, journal export, and QA are the main job. For simple structured result charts, prefer `paper-plot` first.
+- `nature-paper2ppt`: use only for PPT/PPTX deliverables such as journal-club, lab-meeting, or paper-sharing decks. The expected output is a real deck plus lightweight verification.
+
+Routing examples:
+
+- Result paragraph reads flat but evidence is solid -> read `nature-polishing`, revise only the section job, then validate claim-evidence support.
+- Data Availability is missing or vague -> read `nature-data`, inventory datasets and repositories, draft unresolved fields explicitly, then sync the section and references.
+- A main figure must satisfy Nature-style multi-panel export expectations -> read `nature-figure`; if the job is only a simple result chart, stay with `paper-plot` plus `figure-polish`.
+- User asks for a journal-club deck from a paper -> read `nature-paper2ppt`; keep it outside the manuscript bundle unless the user asks to attach it as a deliverable.
 
 ## Potentially Reference-Worthy, Code-Grounded Facts
 - Implementation surfaces can be worth citing in prose when they are verified from the current repo state: entrypoints, module boundaries, dataflow stages, control loops, evaluator wiring, and ablation switches that materially affect the claim.

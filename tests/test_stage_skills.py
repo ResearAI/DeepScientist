@@ -27,6 +27,10 @@ EXPECTED_COMPANION_SKILLS = {
     "intake-audit",
     "review",
     "rebuttal",
+    "nature-polishing",
+    "nature-data",
+    "nature-figure",
+    "nature-paper2ppt",
 }
 
 INTERACTION_CONTRACT_SKILLS = EXPECTED_STAGE_SKILLS | {
@@ -34,6 +38,10 @@ INTERACTION_CONTRACT_SKILLS = EXPECTED_STAGE_SKILLS | {
     "intake-audit",
     "review",
     "rebuttal",
+    "nature-polishing",
+    "nature-data",
+    "nature-figure",
+    "nature-paper2ppt",
 }
 
 
@@ -94,6 +102,12 @@ def test_new_companion_skill_reference_files_exist() -> None:
     assert (root / "rebuttal" / "references" / "evidence-update-template.md").exists()
     assert (root / "rebuttal" / "references" / "review-matrix-template.md").exists()
     assert (root / "rebuttal" / "references" / "response-letter-template.md").exists()
+    assert (root / "nature-data" / "references" / "fair-metadata-checklist.md").exists()
+    assert (root / "nature-data" / "references" / "statement-patterns.md").exists()
+    assert (root / "nature-figure" / "references" / "figure-contract.md").exists()
+    assert (root / "nature-figure" / "references" / "backend-selection.md").exists()
+    assert (root / "nature-polishing" / "references" / "writing-strategy.md").exists()
+    assert (root / "nature-polishing" / "references" / "style-guardrails.md").exists()
 
 
 def test_stage_plan_and_checklist_templates_exist() -> None:
@@ -487,6 +501,36 @@ def test_paper_plot_skill_requires_template_copy_and_figure_polish_handoff() -> 
     assert "hand the result to `figure-polish`" in text
     assert "bar, line, scatter, and radar" in text
     assert "display_name: \"Paper Plot\"" in openai_yaml
+
+
+def test_nature_skills_are_integrated_as_companion_skills() -> None:
+    root = repo_root() / "src" / "skills"
+    for skill_id in ("nature-data", "nature-figure", "nature-paper2ppt", "nature-polishing"):
+        skill_text = (root / skill_id / "SKILL.md").read_text(encoding="utf-8")
+        license_text = (root / skill_id / "UPSTREAM_LICENSE.txt").read_text(encoding="utf-8")
+        openai_yaml = (root / skill_id / "agents" / "openai.yaml").read_text(encoding="utf-8")
+
+        assert "skill_role: companion" in skill_text
+        assert "Yuan1z0825/nature-skills" in skill_text
+        assert "Follow the shared interaction contract injected by the system prompt." in skill_text
+        assert "MIT License" in license_text
+        assert f"${skill_id}" in openai_yaml
+
+    write_text = (root / "write" / "SKILL.md").read_text(encoding="utf-8")
+    assert "## Nature Companion Skills" in write_text
+    assert "Use them as a short handoff inside the `write` flow" in write_text
+    assert "Return to `write` and update the durable paper surfaces" in write_text
+    assert "Re-run the normal write validation gates" in write_text
+    assert "`nature-polishing`" in write_text
+    assert "`nature-data`" in write_text
+    assert "`nature-figure`" in write_text
+    assert "`nature-paper2ppt`" in write_text
+
+    system_text = (repo_root() / "src" / "prompts" / "system.md").read_text(encoding="utf-8")
+    assert "Use `nature-polishing`" in system_text
+    assert "Use `nature-data`" in system_text
+    assert "Use `nature-figure`" in system_text
+    assert "Use `nature-paper2ppt`" in system_text
 
 
 def test_idea_skill_requires_review_of_prior_ideas_and_experiment_outcomes() -> None:

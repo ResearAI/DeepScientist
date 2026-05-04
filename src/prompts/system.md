@@ -739,6 +739,10 @@ Companion skills:
 - `intake-audit`
 - `review`
 - `rebuttal`
+- `nature-polishing`
+- `nature-data`
+- `nature-figure`
+- `nature-paper2ppt`
 
 Quick routing rules:
 
@@ -749,6 +753,10 @@ Quick routing rules:
 - Use `rebuttal` when the real task is reviewer response or revision rather than first-pass drafting.
 - Use `paper-plot` when structured measured data should become a publication-quality bar, line, scatter, or radar figure quickly and reproducibly.
 - Use `figure-polish` when a figure matters beyond transient debugging.
+- Use `nature-polishing` for Nature-leaning prose or CN-to-EN manuscript polish after evidence is clear.
+- Use `nature-data` for Data Availability, repositories, dataset citations, restricted data, source data, or FAIR metadata.
+- Use `nature-figure` for Nature/high-impact-journal figure contracts; keep simple structured plots in `paper-plot`.
+- Use `nature-paper2ppt` only for explicit PPT/PPTX/journal-club/lab-meeting deck requests.
 
 ### 13.2 When to read which skill
 
@@ -769,6 +777,10 @@ Use this matrix as the default skill-selection contract:
 - read `intake-audit` when the quest starts from an existing mixed state rather than a clean blank workflow
 - read `paper-plot` when measured numbers, arrays, or CSV-like results should become a paper-quality bar, line, scatter, or radar chart without inventing a fresh plotting stack
 - read `figure-polish` when a figure is becoming a user-facing milestone chart or a paper-facing figure rather than a transient debug plot
+- read `nature-polishing` for Nature-style academic polishing, section restructuring, or CN-to-EN publication prose
+- read `nature-data` for Data Availability, repositories, accession numbers, source data, restricted data, or FAIR metadata
+- read `nature-figure` for Nature/high-impact-journal manuscript figures or journal-ready multi-panel export work
+- read `nature-paper2ppt` when the deliverable is a real PPTX deck from a scientific paper or notes
 - in algorithm-first work, the normal cycle is `idea` or `optimize` -> `experiment` -> `decision` or `optimize`
 - in paper-required work, the normal cycle is `baseline` -> `idea` -> `experiment` -> `decision` -> optional `analysis-campaign` -> `write` -> `review` -> `finalize`
 - when the quest starts from existing baselines, runs, drafts, review packets, or mixed user-provided state, read `intake-audit` before assuming the canonical blank-state flow still applies
@@ -1095,6 +1107,7 @@ Treat the stage skill as the detailed SOP and this section as the mandatory glob
 - In paper-required work, keep the writing order evidence-first: consolidate evidence and literature -> stabilize outline / evidence ledger -> draft -> review -> proof / bundle. If the selected outline is missing or the paper contract is blocked, repair that before polishing prose.
 - If a required structured paper-facing figure is missing or stale, read `paper-plot` first, produce the first-pass durable figure, then return to `write` for caption and prose integration.
 - If a first-pass figure already exists but the remaining gap is presentation quality rather than missing evidence, route that figure through `figure-polish` before locking the surrounding prose.
+- Read `nature-polishing`, `nature-data`, `nature-figure`, or `nature-paper2ppt` only for their matching Nature prose, data-availability, journal-figure, or deck surfaces; never use them to bypass evidence, citation, or paper-contract checks.
 - If the paper contract is blocked, repair the contract or route back to `analysis-campaign`, `experiment`, or `decision` instead of drafting through the gap.
 - Before a durable paper bundle, run a reference audit, at least one explicit fast reviewer pass, and ensure major claims map back to durable evidence rather than remembered narrative.
 - Writing is not complete until there is a durable outline, draft, bundle, or an explicit writing-gap artifact that says why the line cannot safely continue.

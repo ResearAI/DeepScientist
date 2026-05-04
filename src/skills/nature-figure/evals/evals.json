@@ -1,0 +1,37 @@
+{
+  "skill_name": "nature-figure",
+  "evals": [
+    {
+      "id": "backend-exclusivity-r-missing-runtime",
+      "prompt": "Use R to remake the provided ecological heatmap plus taxonomy-flow figure in Nature style with simulated data. Assume R/Rscript is not installed locally.",
+      "expected_output": "The assistant must not use Python or any non-R plotting backend to draw a preview or export. It should report that R/Rscript is unavailable, provide or offer an R-only script and install/run instructions, and stop before rendering.",
+      "assertions": [
+        {
+          "name": "no_cross_backend_rendering",
+          "description": "When R is selected and unavailable, no Python/matplotlib/seaborn/plotly preview, SVG, PDF, TIFF, or PNG is generated as a substitute."
+        },
+        {
+          "name": "selected_backend_blocker_reported",
+          "description": "The response clearly reports the missing R runtime or package blocker and does not present a non-R figure as completed output."
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "backend-exclusivity-python-missing-package",
+      "prompt": "Use Python to make a Nature-style multi-panel heatmap and flow figure with simulated data. Assume matplotlib or another required Python plotting package is not installed locally.",
+      "expected_output": "The assistant must not use R or any non-Python plotting backend to draw a preview or export. It should report the missing Python plotting dependency, provide or offer a Python-only script and install/run instructions, and stop before rendering.",
+      "assertions": [
+        {
+          "name": "no_cross_backend_rendering",
+          "description": "When Python is selected and unavailable, no R/ggplot2/ComplexHeatmap/patchwork preview, SVG, PDF, TIFF, or PNG is generated as a substitute."
+        },
+        {
+          "name": "selected_backend_blocker_reported",
+          "description": "The response clearly reports the missing Python runtime or package blocker and does not present a non-Python figure as completed output."
+        }
+      ],
+      "files": []
+    }
+  ]
+}

@@ -68,6 +68,10 @@ def test_prompt_builder_includes_layered_runtime_context(temp_home: Path) -> Non
     assert "intake-audit" in prompt
     assert "review" in prompt
     assert "rebuttal" in prompt
+    assert "nature-polishing" in prompt
+    assert "nature-data" in prompt
+    assert "nature-figure" in prompt
+    assert "nature-paper2ppt" in prompt
     assert "## Current User Message" in prompt
     assert "requested_skill_rule:" in prompt
     assert "stage-specific execution detail lives in the requested skill" in prompt

@@ -345,6 +345,10 @@ These are auxiliary entry or quality-control skills:
 | `intake-audit` | the quest already has meaningful prior state | trust-rank old assets and choose the correct next anchor |
 | `review` | a substantial draft already exists | run a skeptical paper-like audit before claiming done |
 | `rebuttal` | reviewer comments or revision requests exist | map reviewer pressure into experiments, text deltas, and response artifacts |
+| `nature-polishing` | Nature-style manuscript wording or CN-to-EN academic polish is requested | polish prose after evidence and claim boundaries are explicit |
+| `nature-data` | Data Availability, source data, dataset citation, repository, restricted-data, or FAIR metadata work is needed | draft Nature-ready data availability and metadata material from verified records |
+| `nature-figure` | a Nature/high-impact-journal figure package is the deliverable | define the figure contract, backend, export plan, and QA path |
+| `nature-paper2ppt` | the requested deliverable is a PPT/PPTX from a scientific paper | build a Chinese paper-sharing or journal-club deck |
 
 ### 6.3 The important design point
 
@@ -376,6 +380,10 @@ These are the durable outputs you should expect:
 | `review` | review report, revision log, experiment TODO list |
 | `rebuttal` | review matrix, response letter, text deltas, evidence-update plan |
 | `figure-polish` | final polished figure assets and render-checked outputs |
+| `nature-polishing` | polished manuscript section plus unresolved evidence or claim-boundary notes |
+| `nature-data` | Data Availability statement, repository plan, dataset citation checklist, unresolved metadata fields |
+| `nature-figure` | figure contract, selected backend, exported figure assets, QA notes |
+| `nature-paper2ppt` | PPTX deck, extracted source figures/notes when needed, lightweight QA report |
 
 ## 8. Built-in MCP structure
 

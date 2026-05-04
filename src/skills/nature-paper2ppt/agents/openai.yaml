@@ -1,0 +1,4 @@
+interface:
+  display_name: "Nature Paper2PPT"
+  short_description: "Build a Chinese PPTX deck from a scientific paper"
+  default_prompt: "Use $nature-paper2ppt to build a Chinese journal-club PPTX deck from this scientific paper."

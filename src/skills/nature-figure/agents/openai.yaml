@@ -1,0 +1,4 @@
+interface:
+  display_name: "Nature Figure"
+  short_description: "Create submission-grade Nature-style scientific figures"
+  default_prompt: "Use $nature-figure to create or audit a Nature-style scientific figure with a clear evidence contract and export plan."
