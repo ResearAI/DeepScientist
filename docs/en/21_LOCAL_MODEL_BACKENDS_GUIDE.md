@@ -357,7 +357,7 @@ ollama pull gpt-oss:20b
 
 export ANTHROPIC_AUTH_TOKEN=ollama
 export ANTHROPIC_BASE_URL=http://localhost:11434
-claude -p --output-format json --model gpt-oss:20b --tools "" "Reply with exactly HELLO."
+claude -p "Reply with exactly HELLO." --output-format json --model gpt-oss:20b --tools ""
 
 ds doctor --runner claude
 ```

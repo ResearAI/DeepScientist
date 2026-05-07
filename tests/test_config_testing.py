@@ -667,6 +667,43 @@ def test_codex_probe_omits_reasoning_effort_flag_when_runner_sets_none(monkeypat
     assert not any("model_reasoning_effort=" in part for part in command)
 
 
+def test_claude_probe_keeps_prompt_outside_variadic_tools_args(monkeypatch, temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("deepscientist.config.service.resolve_runner_binary", lambda binary, runner_name=None: "/tmp/fake-claude")
+
+    def fake_run(command, **kwargs):  # noqa: ANN001
+        captured["command"] = list(command)
+        captured["input"] = kwargs.get("input")
+
+        class Result:
+            returncode = 0
+            stdout = '{"result":"HELLO"}'
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr("deepscientist.config.service.subprocess.run", fake_run)
+
+    result = manager._probe_claude_runner(
+        {
+            "binary": "claude",
+            "model": "claude-opus-4-6",
+            "permission_mode": "bypassPermissions",
+        }
+    )
+
+    command = [str(part) for part in captured["command"]]
+    assert result["ok"] is True
+    assert captured["input"] == "Reply with exactly HELLO."
+    assert "Reply with exactly HELLO." not in command
+    assert command.index("--model") < command.index("--tools")
+    assert command[-2:] == ["--tools", ""]
+
+
 def test_codex_probe_downgrades_xhigh_for_legacy_codex_cli(monkeypatch, temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     manager = ConfigManager(temp_home)

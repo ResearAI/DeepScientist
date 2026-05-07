@@ -204,7 +204,7 @@ MiniMax 额外说明：
 
 ```bash
 claude --version
-claude -p --output-format json --tools "" "Reply with exactly HELLO."
+claude -p "Reply with exactly HELLO." --output-format json --tools ""
 ds doctor --runner claude
 ```
 
