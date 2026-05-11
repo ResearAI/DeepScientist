@@ -48,6 +48,7 @@ def test_prompt_builder_includes_layered_runtime_context(temp_home: Path) -> Non
     assert "research_head_branch:" in prompt
     assert "current_workspace_root:" in prompt
     assert "built_in_mcp_namespaces: memory, artifact, bash_exec" in prompt
+    assert "built_in_mcp_namespaces: memory, artifact, bash_exec, science" not in prompt
     assert "## Cross-Quest Recall Policy" not in prompt
     assert "cross_quest_recall_enabled" not in prompt
     assert "framework_quirks.md" not in prompt
@@ -57,6 +58,8 @@ def test_prompt_builder_includes_layered_runtime_context(temp_home: Path) -> Non
     assert "artifact.confirm_baseline(...)" in prompt
     assert "artifact.overwrite_baseline(...)" in prompt
     assert "artifact.complete_quest(...)" in prompt
+    assert "artifact.science(...)" in prompt
+    assert "Natural science and engineering evidence discipline" in prompt
     assert "## 5A. Global control surface" in prompt
     assert "chat is only a user-facing projection of state" in prompt
     assert "if autonomous continuation is enabled and the next step is clear, execution continues" in prompt
@@ -72,6 +75,11 @@ def test_prompt_builder_includes_layered_runtime_context(temp_home: Path) -> Non
     assert "nature-data" in prompt
     assert "nature-figure" in prompt
     assert "nature-paper2ppt" in prompt
+    assert "science" in prompt
+    assert "science-artifacts" not in prompt
+    assert "science-run" not in prompt
+    assert "science-validation" not in prompt
+    assert "science/references/packages/" in prompt
     assert "## Current User Message" in prompt
     assert "requested_skill_rule:" in prompt
     assert "stage-specific execution detail lives in the requested skill" in prompt
@@ -1403,6 +1411,77 @@ def test_prompt_builder_start_setup_block_includes_local_daemon_api_context(temp
     assert "preview_plan_rule" in prompt
     assert 'form_patch.decision_policy="autonomous"' in prompt
     assert "recommended_workspace_mode=autonomous" in prompt
+    assert "copilot_handoff_rule" in prompt
+    assert "science_startup_rule" in prompt
+    assert "science_solver_rule" in prompt
+
+
+def test_prompt_builder_start_setup_preserves_science_task_brief_without_goal_md_file(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    snapshot = service.create(
+        "science setup session",
+        startup_contract={
+            "workspace_mode": "copilot",
+            "launch_mode": "custom",
+            "custom_profile": "freeform",
+            "start_setup_session": {
+                "source": "manual",
+                "locale": "zh",
+                "suggested_form": {
+                    "title": "PySCF water energy check",
+                    "goal": "Check PySCF and compute one water energy if available.",
+                },
+                "recommended_workspace_mode": "copilot",
+                "launch_readiness": "ready",
+                "copilot_handoff": {
+                    "title": "PySCF bounded science help",
+                    "startup_message": "先检查 PySCF import/version/smoke test，再决定是否运行一次水分子能量计算。",
+                    "workspace_mode": "copilot",
+                    "create_and_send": True,
+                },
+                "science_task": {
+                    "is_science_task": True,
+                    "domain": "quantum_chemistry",
+                    "task_family": "computational_run",
+                    "required_packages": ["pyscf"],
+                    "expected_node_types": [
+                        "science.package_check",
+                        "science.computational_run",
+                        "science.validation_result",
+                    ],
+                    "package_check_required": True,
+                    "solver_installation_unknown": True,
+                },
+                "science_task_brief": {
+                    "brief_type": "science_task_brief",
+                    "markdown": "## Objective\nCheck PySCF and run a small water HF/STO-3G calculation only if the smoke test passes.",
+                    "uses_fermilink_goal_structure": True,
+                    "materialize_as_file": False,
+                },
+                "science_package_cards": ["science/references/packages/pyscf.md"],
+            },
+        },
+    )
+
+    prompt = PromptBuilder(repo_root(), temp_home).build(
+        quest_id=snapshot["quest_id"],
+        skill_id="decision",
+        user_message="整理并切到协作模式。",
+        model="gpt-5.4",
+    )
+
+    assert "science_task" in prompt
+    assert "science_task_brief" in prompt
+    assert "science_package_cards" in prompt
+    assert "science/references/packages/pyscf.md" in prompt
+    assert "PySCF bounded science help" in prompt
+    assert "materialize_as_file" in prompt
+    assert "not as a required `goal.md` file" in prompt
+    assert "solver_installation_unknown" in prompt
+    assert "artifact.science(...)" in prompt
+    assert "unified `science` skill catalog" in prompt
 
 
 def test_prompt_builder_claude_start_setup_notes_namespaced_mcp_tool_names(temp_home: Path) -> None:

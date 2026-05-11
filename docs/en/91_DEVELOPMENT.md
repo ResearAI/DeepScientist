@@ -120,6 +120,7 @@ Before publishing or cutting a release, verify:
 4. README and linked docs match the current runtime behavior.
 5. Any new config, route, or quest-state fields have matching tests.
 6. Any TUI command or surface change updates the debug snapshot mapping and keeps `--debug-log` free of raw secrets.
+7. Confirm any new bundled third-party material has an explicit provenance note and license-compatible release path.
 
 ## Managed Runtime Tools
 

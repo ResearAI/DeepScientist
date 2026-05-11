@@ -451,6 +451,7 @@ def test_apply_start_setup_form_patch_persists_and_merges_suggested_form(temp_ho
                 "verdict": "copilot_recommended",
                 "summary": "The task still needs repeated human guidance before autonomous launch is safe.",
             },
+            "science_package_cards": ["science/references/packages/pyscf.md"],
             "preview_plan": {
                 "summary": "If launched, the system would first normalize the baseline, then evaluate whether a durable optimization loop is actually possible.",
             },
@@ -480,6 +481,7 @@ def test_apply_start_setup_form_patch_persists_and_merges_suggested_form(temp_ho
     assert start_setup_session["launch_readiness"] == "needs_confirmation"
     assert start_setup_session["missing_confirmations"] == ["Confirm whether external API keys may be used."]
     assert start_setup_session["fit_assessment"]["verdict"] == "copilot_recommended"
+    assert start_setup_session["science_package_cards"] == ["science/references/packages/pyscf.md"]
     assert "normalize the baseline" in str(start_setup_session["preview_plan"]["summary"])
 
 

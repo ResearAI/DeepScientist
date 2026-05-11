@@ -70,7 +70,14 @@ from .metrics import (
     validate_baseline_metric_contract_submission,
     validate_main_experiment_against_baseline_contract,
 )
-from .schemas import ARTIFACT_DIRS, guidance_for_kind, validate_artifact_payload
+from .schemas import (
+    SCIENCE_ACTIONS,
+    SCIENCE_NODE_TYPES,
+    artifact_dir_for_kind,
+    guidance_for_kind,
+    is_science_kind,
+    validate_artifact_payload,
+)
 
 _PAPER_VIEW_STORY_KEYS = ("problem", "gap", "method", "main_result", "scope_limit")
 _PAPER_VIEW_ANALYSIS_MIN = 4
@@ -3510,9 +3517,28 @@ class ArtifactService:
                     "tier": str(raw.get("tier") or "").strip() or None,
                     "paper_placement": str(raw.get("paper_placement") or "").strip() or None,
                     "paper_role": str(raw.get("paper_role") or raw.get("paper_placement") or "").strip() or None,
-                    "analysis_role": str(raw.get("analysis_role") or "").strip() or None,
+                    "analysis_role": (
+                        str(
+                            raw.get("analysis_role")
+                            or raw.get("experimental_design")
+                            or raw.get("title")
+                            or raw.get("slice_id")
+                            or ""
+                        ).strip()
+                        or None
+                    ),
                     "reviewer_question": str(raw.get("reviewer_question") or raw.get("research_question") or "").strip() or None,
-                    "target_display": str(raw.get("target_display") or "").strip() or None,
+                    "target_display": (
+                        str(
+                            raw.get("target_display")
+                            or raw.get("title")
+                            or raw.get("item_id")
+                            or raw.get("exp_id")
+                            or raw.get("slice_id")
+                            or ""
+                        ).strip()
+                        or None
+                    ),
                     "main_or_appendix": str(raw.get("main_or_appendix") or raw.get("paper_placement") or raw.get("paper_role") or "").strip() or None,
                     "failure_interpretation": str(raw.get("failure_interpretation") or "").strip() or None,
                     "section_id": str(raw.get("section_id") or "").strip() or None,
@@ -9302,6 +9328,462 @@ class ArtifactService:
             "baseline_registry_entry": baseline_registry_entry,
         }
 
+    def science(
+        self,
+        quest_root: Path,
+        *,
+        action: str,
+        node_type: str | None = None,
+        node_id: str | None = None,
+        title: str | None = None,
+        summary: str | None = None,
+        status: str | None = None,
+        domain: str | None = None,
+        package_id: str | None = None,
+        task_type: str | None = None,
+        key_results: list[dict[str, Any]] | None = None,
+        evidence_paths: list[str] | None = None,
+        input_paths: list[str] | None = None,
+        output_paths: list[str] | None = None,
+        log_paths: list[str] | None = None,
+        validation_paths: list[str] | None = None,
+        parent_node_ids: list[str] | None = None,
+        related_node_ids: list[str] | None = None,
+        claim_type: str | None = None,
+        trust: str | None = None,
+        canvas: dict[str, Any] | None = None,
+        notify: bool = False,
+        relation_type: str | None = None,
+        relation_summary: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        source: dict[str, Any] | None = None,
+        run_id: str | None = None,
+        workspace_root: Path | None = None,
+    ) -> dict[str, Any]:
+        normalized_action = str(action or "").strip()
+        if normalized_action not in SCIENCE_ACTIONS:
+            return {
+                "ok": False,
+                "errors": [f"Unknown science action: {normalized_action or action}"],
+                "warnings": [],
+            }
+        if normalized_action == "status":
+            return self._science_status(quest_root, node_type=node_type, domain=domain, package_id=package_id)
+        if normalized_action == "focus":
+            return self._science_focus(node_id=node_id, canvas=canvas, notify=notify)
+
+        normalized_node_type = str(node_type or "").strip()
+        if normalized_node_type and normalized_node_type not in SCIENCE_NODE_TYPES:
+            return {
+                "ok": False,
+                "errors": [f"Unknown science node_type: {normalized_node_type}"],
+                "warnings": [],
+            }
+        if normalized_action in {"record_node", "update_node"} and not normalized_node_type:
+            return {
+                "ok": False,
+                "errors": ["`node_type` is required for record_node and update_node."],
+                "warnings": [],
+            }
+
+        if normalized_action == "link_nodes":
+            normalized_node_type = normalized_node_type or "science.validation_result"
+            generated_id_prefix = "science-link"
+        elif normalized_action == "update_node":
+            generated_id_prefix = "science-update"
+        else:
+            generated_id_prefix = "science"
+        normalized_node_id = str(node_id or "").strip() or generate_id(generated_id_prefix)
+        write_root = self._workspace_root_for(quest_root, workspace_root)
+
+        payload: dict[str, Any] = {
+            "kind": normalized_node_type,
+            "artifact_id": self._science_artifact_id(normalized_action, normalized_node_type, normalized_node_id),
+            "action": normalized_action,
+            "node_type": normalized_node_type,
+            "node_id": normalized_node_id,
+            "status": str(status or "").strip() or self._default_science_status(normalized_node_type),
+            "title": str(title or "").strip() or self._default_science_title(normalized_node_type, normalized_node_id, normalized_action),
+            "summary": str(summary or relation_summary or "").strip(),
+        }
+        if run_id:
+            payload["run_id"] = str(run_id).strip()
+        if source:
+            payload["source"] = dict(source)
+        for key, value in (
+            ("domain", domain),
+            ("package_id", package_id),
+            ("task_type", task_type),
+            ("claim_type", claim_type),
+            ("trust", trust),
+            ("relation_type", relation_type),
+        ):
+            text = str(value or "").strip()
+            if text:
+                payload[key] = text
+        for key, value in (
+            ("evidence_paths", evidence_paths),
+            ("input_paths", input_paths),
+            ("output_paths", output_paths),
+            ("log_paths", log_paths),
+            ("validation_paths", validation_paths),
+            ("parent_node_ids", parent_node_ids),
+            ("related_node_ids", related_node_ids),
+        ):
+            items = self._science_string_list(value)
+            if items:
+                payload[key] = items
+        normalized_key_results = self._science_key_results(key_results)
+        if normalized_key_results:
+            payload["key_results"] = normalized_key_results
+        if isinstance(canvas, dict) and canvas:
+            payload["canvas"] = json.loads(json.dumps(canvas, ensure_ascii=False))
+        if isinstance(metadata, dict) and metadata:
+            payload["metadata"] = json.loads(json.dumps(metadata, ensure_ascii=False))
+        paths = self._science_paths_map(payload)
+        if paths:
+            payload["paths"] = paths
+            payload["changed_files"] = list(paths.values())
+            payload["files_changed"] = list(paths.values())
+
+        validation_errors = validate_artifact_payload(payload)
+        if validation_errors:
+            return {
+                "ok": False,
+                "errors": validation_errors,
+                "warnings": [],
+            }
+        if normalized_action == "record_node":
+            existing_node = self._find_existing_science_record_node(
+                quest_root,
+                node_id=normalized_node_id,
+                workspace_root=write_root,
+            )
+            if existing_node is not None:
+                existing_artifact_id = str(existing_node.get("artifact_id") or "").strip() or None
+                existing_path = str(existing_node.get("path") or "").strip() or None
+                return {
+                    "ok": False,
+                    "errors": [
+                        (
+                            f"Science node_id `{normalized_node_id}` already exists"
+                            f" as artifact `{existing_artifact_id or 'unknown'}`. "
+                            "Use action='update_node' to append evidence or choose a unique node_id."
+                        )
+                    ],
+                    "warnings": [],
+                    "science": {
+                        "action": normalized_action,
+                        "node_id": normalized_node_id,
+                        "node_type": normalized_node_type,
+                        "existing_artifact_id": existing_artifact_id,
+                        "existing_artifact_path": existing_path,
+                    },
+                }
+            existing_artifact = self._find_existing_science_artifact_id(
+                quest_root,
+                artifact_id=str(payload.get("artifact_id") or ""),
+                workspace_root=write_root,
+            )
+            if existing_artifact is not None:
+                existing_artifact_id = str(existing_artifact.get("artifact_id") or "").strip() or None
+                existing_node_id = str(existing_artifact.get("node_id") or "").strip() or None
+                existing_path = str(existing_artifact.get("path") or "").strip() or None
+                return {
+                    "ok": False,
+                    "errors": [
+                        (
+                            f"Science artifact_id `{existing_artifact_id or payload.get('artifact_id')}` already exists"
+                            f" for node_id `{existing_node_id or 'unknown'}`. "
+                            "Choose a node_id that slugifies to a unique artifact id, or use action='update_node' "
+                            "to append evidence to an existing science node."
+                        )
+                    ],
+                    "warnings": [],
+                    "science": {
+                        "action": normalized_action,
+                        "node_id": normalized_node_id,
+                        "node_type": normalized_node_type,
+                        "existing_artifact_id": existing_artifact_id,
+                        "existing_node_id": existing_node_id,
+                        "existing_artifact_path": existing_path,
+                    },
+                }
+
+        result = self.record(
+            quest_root,
+            payload,
+            checkpoint=False,
+            workspace_root=write_root,
+        )
+        if result.get("ok"):
+            record = dict(result.get("record") or {})
+            result["science"] = {
+                "action": normalized_action,
+                "node_id": record.get("node_id"),
+                "node_type": record.get("node_type") or record.get("kind"),
+                "status": record.get("status"),
+                "artifact_id": record.get("artifact_id"),
+                "artifact_path": result.get("artifact_path") or result.get("path"),
+            }
+            ui_effects = self._science_ui_effects(record.get("node_id"), canvas=canvas, notify=notify)
+            if ui_effects:
+                result["ui_effects"] = ui_effects
+        return result
+
+    @staticmethod
+    def _science_string_list(value: list[str] | None) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        items: list[str] = []
+        seen: set[str] = set()
+        for raw in value:
+            text = str(raw or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            items.append(text)
+        return items
+
+    @staticmethod
+    def _science_key_results(value: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+        items: list[dict[str, Any]] = []
+        for raw in value:
+            if not isinstance(raw, dict):
+                continue
+            label = str(raw.get("label") or raw.get("name") or "").strip()
+            if not label:
+                continue
+            item = json.loads(json.dumps(raw, ensure_ascii=False))
+            item["label"] = label
+            items.append(item)
+        return items
+
+    @staticmethod
+    def _science_artifact_id(action: str, node_type: str, node_id: str) -> str:
+        normalized_node_id = slugify(node_id, default="science-node")
+        prefix = str(node_type or "science").removeprefix("science.")
+        normalized_prefix = slugify(prefix, default="science")
+        if action == "record_node":
+            return normalized_node_id
+        return f"{normalized_node_id}-{slugify(action, default='event')}-{generate_id(normalized_prefix).split('-', 1)[1]}"
+
+    @staticmethod
+    def _science_artifact_roots(quest_root: Path, workspace_root: Path | None = None) -> list[Path]:
+        roots = [quest_root / "artifacts"]
+        worktrees_root = quest_root / ".ds" / "worktrees"
+        if worktrees_root.exists():
+            roots.extend(path / "artifacts" for path in sorted(worktrees_root.iterdir()) if path.is_dir())
+        if workspace_root is not None:
+            roots.append(workspace_root / "artifacts")
+
+        deduped: list[Path] = []
+        seen: set[str] = set()
+        for root in roots:
+            try:
+                key = str(root.resolve())
+            except FileNotFoundError:
+                key = str(root)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(root)
+        return deduped
+
+    def _find_existing_science_record_node(
+        self,
+        quest_root: Path,
+        *,
+        node_id: str,
+        workspace_root: Path | None = None,
+    ) -> dict[str, Any] | None:
+        normalized_node_id = str(node_id or "").strip()
+        if not normalized_node_id:
+            return None
+        for artifacts_root in self._science_artifact_roots(quest_root, workspace_root):
+            science_root = artifacts_root / "science"
+            if not science_root.exists():
+                continue
+            for path in sorted(science_root.glob("*.json")):
+                record = read_json(path, {})
+                if not isinstance(record, dict) or not is_science_kind(str(record.get("kind") or "")):
+                    continue
+                if str(record.get("node_id") or "").strip() != normalized_node_id:
+                    continue
+                action = str(record.get("action") or "record_node").strip() or "record_node"
+                if action != "record_node":
+                    continue
+                return {
+                    "artifact_id": record.get("artifact_id"),
+                    "node_type": record.get("kind") or record.get("node_type"),
+                    "path": str(path),
+                    "record": record,
+                }
+        return None
+
+    def _find_existing_science_artifact_id(
+        self,
+        quest_root: Path,
+        *,
+        artifact_id: str,
+        workspace_root: Path | None = None,
+    ) -> dict[str, Any] | None:
+        normalized_artifact_id = str(artifact_id or "").strip()
+        if not normalized_artifact_id:
+            return None
+        for artifacts_root in self._science_artifact_roots(quest_root, workspace_root):
+            path = artifacts_root / "science" / f"{normalized_artifact_id}.json"
+            if not path.exists():
+                continue
+            record = read_json(path, {})
+            if not isinstance(record, dict) or not is_science_kind(str(record.get("kind") or "")):
+                continue
+            return {
+                "artifact_id": record.get("artifact_id") or normalized_artifact_id,
+                "node_id": record.get("node_id"),
+                "node_type": record.get("kind") or record.get("node_type"),
+                "path": str(path),
+                "record": record,
+            }
+        return None
+
+    @staticmethod
+    def _default_science_status(node_type: str) -> str:
+        if node_type == "science.claim":
+            return "active"
+        if node_type == "science.validation_result":
+            return "passed"
+        if node_type == "science.package_check":
+            return "passed"
+        return "success"
+
+    @staticmethod
+    def _default_science_title(node_type: str, node_id: str, action: str) -> str:
+        label = str(node_type or "science.node").removeprefix("science.").replace("_", " ").strip().title()
+        if action == "update_node":
+            label = f"{label} Update"
+        elif action == "link_nodes":
+            label = "Science Node Link"
+        return f"{label}: {node_id}"
+
+    @staticmethod
+    def _science_paths_map(payload: dict[str, Any]) -> dict[str, str]:
+        paths: dict[str, str] = {}
+        for key in ("evidence_paths", "input_paths", "output_paths", "log_paths", "validation_paths"):
+            values = payload.get(key)
+            if not isinstance(values, list):
+                continue
+            prefix = key.removesuffix("_paths")
+            for index, raw_path in enumerate(values, start=1):
+                text = str(raw_path or "").strip()
+                if not text:
+                    continue
+                paths[f"{prefix}_{index}"] = text
+        return paths
+
+    @staticmethod
+    def _science_ui_effects(
+        node_id: Any,
+        *,
+        canvas: dict[str, Any] | None = None,
+        notify: bool = False,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(canvas, dict):
+            canvas = {}
+        should_focus = bool(canvas.get("focus") or canvas.get("open_detail") or notify)
+        if not should_focus and not canvas:
+            return []
+        return [
+            {
+                "name": "science:focus",
+                "data": {
+                    "node_id": str(node_id or "").strip() or None,
+                    "focus": bool(canvas.get("focus") or should_focus),
+                    "open_detail": bool(canvas.get("open_detail")),
+                    "notify": bool(notify),
+                },
+            }
+        ]
+
+    def _science_focus(
+        self,
+        *,
+        node_id: str | None,
+        canvas: dict[str, Any] | None = None,
+        notify: bool = False,
+    ) -> dict[str, Any]:
+        normalized_node_id = str(node_id or "").strip()
+        if not normalized_node_id:
+            return {"ok": False, "errors": ["`node_id` is required for focus."], "warnings": []}
+        return {
+            "ok": True,
+            "action": "focus",
+            "node_id": normalized_node_id,
+            "ui_effects": self._science_ui_effects(normalized_node_id, canvas=canvas or {"focus": True, "open_detail": True}, notify=notify),
+        }
+
+    def _science_status(
+        self,
+        quest_root: Path,
+        *,
+        node_type: str | None = None,
+        domain: str | None = None,
+        package_id: str | None = None,
+    ) -> dict[str, Any]:
+        type_filter = str(node_type or "").strip()
+        domain_filter = str(domain or "").strip()
+        package_filter = str(package_id or "").strip()
+        records: list[dict[str, Any]] = []
+        seen_paths: set[str] = set()
+        for artifacts_root in self._science_artifact_roots(quest_root):
+            science_root = artifacts_root / "science"
+            if not science_root.exists():
+                continue
+            for path in sorted(science_root.glob("*.json")):
+                resolved = str(path.resolve())
+                if resolved in seen_paths:
+                    continue
+                seen_paths.add(resolved)
+                record = read_json(path, {})
+                if not isinstance(record, dict) or not is_science_kind(str(record.get("kind") or "")):
+                    continue
+                if type_filter and str(record.get("kind") or record.get("node_type") or "") != type_filter:
+                    continue
+                if domain_filter and str(record.get("domain") or "") != domain_filter:
+                    continue
+                if package_filter and str(record.get("package_id") or "") != package_filter:
+                    continue
+                records.append(record)
+        by_type: dict[str, int] = {}
+        by_status: dict[str, int] = {}
+        for record in records:
+            kind = str(record.get("kind") or "science.unknown")
+            record_status = str(record.get("status") or "unknown")
+            by_type[kind] = by_type.get(kind, 0) + 1
+            by_status[record_status] = by_status.get(record_status, 0) + 1
+        latest = sorted(records, key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""))[-10:]
+        return {
+            "ok": True,
+            "action": "status",
+            "count": len(records),
+            "by_type": by_type,
+            "by_status": by_status,
+            "latest": [
+                {
+                    "node_id": record.get("node_id"),
+                    "node_type": record.get("kind") or record.get("node_type"),
+                    "title": record.get("title"),
+                    "status": record.get("status"),
+                    "summary": record.get("summary"),
+                    "artifact_id": record.get("artifact_id"),
+                    "updated_at": record.get("updated_at"),
+                }
+                for record in reversed(latest)
+            ],
+        }
+
     def checkpoint(self, quest_root: Path, message: str, *, allow_empty: bool = False) -> dict:
         result = checkpoint_repo(quest_root, message, allow_empty=allow_empty)
         self._touch_quest_updated_at(quest_root)
@@ -14900,7 +15382,7 @@ class ArtifactService:
         }
 
     def _artifact_path(self, quest_root: Path, kind: str, artifact_id: str) -> Path:
-        directory = ensure_dir(quest_root / "artifacts" / ARTIFACT_DIRS[kind])
+        directory = ensure_dir(quest_root / "artifacts" / artifact_dir_for_kind(kind))
         return directory / f"{artifact_id}.json"
 
     @staticmethod

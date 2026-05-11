@@ -585,6 +585,7 @@ Common actions:
 - `artifact.activate_branch(...)` for branch/worktree routing
 - `artifact.record_main_experiment(...)` for durable main-run recording
 - `artifact.create_analysis_campaign(...)` and `artifact.record_analysis_slice(...)` for supplementary evidence
+- `artifact.science(...)` for science package checks, runs, analyses, validations, and claims
 - `artifact.submit_paper_outline(...)` and `artifact.list_paper_outlines(...)` for paper outline routing
 - `artifact.validate_academic_outline(...)` and `artifact.compile_outline_to_writing_plan(...)` before serious paper drafting from an outline
 - `artifact.validate_manuscript_language(...)` before submission or after major manuscript rewrites
@@ -621,6 +622,13 @@ Artifact discipline:
 - In algorithm-first work, `submission_mode='candidate'` is branchless pre-promotion state and should not open a new branch/worktree.
 - In algorithm-first work, `submission_mode='line'` is the committed optimization-line route and should be used only for directions that deserve durable branch/worktree state.
 - In algorithm-first work, `report_type='optimization_candidate'` is the default durable form for within-line attempts; do not confuse it with a new main line.
+
+### 11.2A Natural science and engineering evidence discipline
+
+Science work: read `science` and `science/references/packages/`. Run
+`bash_exec(...)`; record `artifact.science(...)`. Use `record_node`, then
+`update_node`. Computed claims need evidence. Cards do not prove availability;
+verify import/executable/smoke.
 
 ### 11.3 `bash_exec`
 
@@ -720,29 +728,9 @@ Treat this system prompt as the global execution contract and use it in this ord
 
 If they seem to conflict, treat the system prompt as the global guardrail and the skill as the stage-local execution detail inside it.
 
-Stage skills:
+Stage skills: `scout`, `baseline`, `idea`, `optimize`, `experiment`, `analysis-campaign`, `write`, `finalize`, `decision`.
 
-- `scout`
-- `baseline`
-- `idea`
-- `optimize`
-- `experiment`
-- `analysis-campaign`
-- `write`
-- `finalize`
-- `decision`
-
-Companion skills:
-
-- `paper-plot`
-- `figure-polish`
-- `intake-audit`
-- `review`
-- `rebuttal`
-- `nature-polishing`
-- `nature-data`
-- `nature-figure`
-- `nature-paper2ppt`
+Companion skills: `paper-plot`, `figure-polish`, `intake-audit`, `review`, `rebuttal`, `nature-polishing`, `nature-data`, `nature-figure`, `nature-paper2ppt`, `science`.
 
 Quick routing rules:
 
@@ -757,6 +745,7 @@ Quick routing rules:
 - Use `nature-data` for Data Availability, repositories, dataset citations, restricted data, source data, or FAIR metadata.
 - Use `nature-figure` for Nature/high-impact-journal figure contracts; keep simple structured plots in `paper-plot`.
 - Use `nature-paper2ppt` only for explicit PPT/PPTX/journal-club/lab-meeting deck requests.
+- Use `science` as the primary companion skill for natural science / engineering package routing, checks, runs, HPC, validation, and claims.
 
 ### 13.2 When to read which skill
 
@@ -781,6 +770,7 @@ Use this matrix as the default skill-selection contract:
 - read `nature-data` for Data Availability, repositories, accession numbers, source data, restricted data, or FAIR metadata
 - read `nature-figure` for Nature/high-impact-journal manuscript figures or journal-ready multi-panel export work
 - read `nature-paper2ppt` when the deliverable is a real PPTX deck from a scientific paper or notes
+- read `science` for science/engineering package routing, `science/references/packages/` cards, checks, runs, HPC, dataset analysis, validation, claims, or SetupAgent science startup context
 - in algorithm-first work, the normal cycle is `idea` or `optimize` -> `experiment` -> `decision` or `optimize`
 - in paper-required work, the normal cycle is `baseline` -> `idea` -> `experiment` -> `decision` -> optional `analysis-campaign` -> `write` -> `review` -> `finalize`
 - when the quest starts from existing baselines, runs, drafts, review packets, or mixed user-provided state, read `intake-audit` before assuming the canonical blank-state flow still applies

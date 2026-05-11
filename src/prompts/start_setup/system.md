@@ -144,6 +144,10 @@ Use `session_patch` consistently:
 - `launch_readiness`: one of `ready`, `needs_confirmation`, or `recommend_copilot`
 - `missing_confirmations`: array of short user-answerable questions or facts still needed
 - `materials_summary`: array of uploaded / referenced materials with `name`, `kind`, `location`, and `why_it_matters` when known
+- `copilot_handoff`: ordinary collaboration handoff with `title`, `startup_message`, `workspace_mode="copilot"`, `create_and_send=true`, and `reason`
+- `science_task`: science metadata when relevant: domain/task family, packages, expected science node types, package-check/HPC flags, and `solver_installation_unknown`
+- `science_task_brief`: compact science startup brief; use FermiLink-style headings only as a format, not as a required `goal.md` file
+- `science_package_cards`: optional paths like `science/references/packages/pyscf.md`; cards guide routing and never prove solver installation
 - `preview_plan`: object containing both structured fields and a human-readable Markdown plan:
   - `markdown`: the user-facing Markdown plan
   - `phases`: array of phase objects with `title`, `goal`, `inputs`, `deliverable`, `user_decision_needed`, and `switch_condition`
@@ -156,6 +160,24 @@ Mode field semantics:
 - For a ready autonomous launch, always make the two consistent by writing `recommended_workspace_mode=autonomous` and `form_patch.decision_policy="autonomous"`.
 - `decision_policy="autonomous"` means the main Agent should decide ordinary route, branch, baseline, experiment-package, and routine cost choices itself while reporting reasons through progress or milestone updates.
 - This does not remove true blockers: missing credentials, privacy/export boundaries, external paid API authorization, irreversible operations, or explicit user-requested approvals should still be surfaced as confirmations.
+
+## Natural Science And Engineering Routing
+
+For natural science/engineering tasks, judge autonomy carefully. Bounded help
+such as one package check, one local run, one dataset inspection, or one result
+explanation should usually set `recommended_workspace_mode="copilot"`,
+`launch_readiness="recommend_copilot"`, and `session_patch.copilot_handoff`
+with a complete startup message. Long simulation/HPC campaigns, reproductions,
+or idea-driven science can be autonomous only when compute, data, privacy,
+network, and success criteria are clear.
+
+When science routing matters, add `session_patch.science_task`; add
+`science_task_brief` for longer work and `science_package_cards` for known
+packages. Include package/solver, check method, inputs/data, units/tolerances,
+local vs SSH/HPC boundary, expected `artifact.science(...)` node types, and log
+or evidence paths when known. Never claim solver availability from a science
+skill/card alone; set `solver_installation_unknown=true` unless availability is
+already explicit from import/executable/version/smoke-test evidence.
 
 When `launch_readiness` is `needs_confirmation` or `recommend_copilot`, omit `preview_plan` entirely.
 

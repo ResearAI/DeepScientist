@@ -106,6 +106,8 @@ def _infer_stage_from_artifact(record: dict[str, Any]) -> str | None:
     if explicit:
         return explicit
     kind = str(record.get("kind") or "").strip().lower()
+    if kind.startswith("science."):
+        return "science"
     if kind == "baseline":
         return "baseline"
     if kind in {"decision", "approval"}:
@@ -295,9 +297,17 @@ def _build_action(entry: dict[str, Any], context: dict[str, Any]) -> dict[str, A
     )
     run_record = dict(run_artifact.get("record") or {}) if isinstance(run_artifact.get("record"), dict) else {}
     paths_map = _normalize_paths_map(artifact_context.get("paths")) or _normalize_paths_map(run_record.get("paths"))
+    science_paths: dict[str, str] = {}
+    if str(artifact_context.get("kind") or "").startswith("science."):
+        for key in ("evidence_paths", "input_paths", "output_paths", "log_paths", "validation_paths"):
+            for index, path in enumerate(_normalize_string_list(artifact_context.get(key)), start=1):
+                science_paths[f"{key.removesuffix('_paths')}_{index}"] = path
+        paths_map = {**science_paths, **paths_map}
     changed_files = _normalize_string_list(artifact_context.get("files_changed")) or _normalize_string_list(
         artifact_context.get("changed_files")
     ) or _normalize_string_list(run_record.get("files_changed")) or _normalize_string_list(run_artifact.get("changed_files"))
+    if science_paths:
+        changed_files = _normalize_string_list([*changed_files, *science_paths.values()])
     details_json = dict(artifact_context.get("details") or {}) if isinstance(artifact_context.get("details"), dict) else {}
     checkpoint_json = dict(run_artifact.get("checkpoint") or {}) if isinstance(run_artifact.get("checkpoint"), dict) else {}
     metadata = dict(entry.get("metadata") or {}) if isinstance(entry.get("metadata"), dict) else {}

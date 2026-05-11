@@ -492,6 +492,7 @@ Useful links:
 - Paper: `https://openreview.net/forum?id=cZFgsLq8Gs`
 - Repository citation metadata: [CITATION.cff](CITATION.cff)
 - Citation and attribution guidance: [docs/en/26_CITATION_AND_ATTRIBUTION.md](docs/en/26_CITATION_AND_ATTRIBUTION.md)
+- Acknowledgements, including optional FermiLink science-workflow attribution: [docs/en/99_ACKNOWLEDGEMENTS.md](docs/en/99_ACKNOWLEDGEMENTS.md)
 - Name and logo usage: [TRADEMARK.md](TRADEMARK.md)
 
 Suggested acknowledgment text:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from deepscientist.artifact import ArtifactService
 from deepscientist.home import ensure_home_layout
 from deepscientist.quest import QuestService
 from deepscientist.shared import append_jsonl, ensure_dir, utc_now, write_json
@@ -289,3 +290,38 @@ def test_node_traces_expose_artifact_payload_commit_and_changed_files(temp_home:
     artifact_action = next(action for action in reversed(detail["trace"]["actions"]) if action.get("artifact_id") == "main-trace")
     assert artifact_action["artifact_id"] == "main-trace"
     assert artifact_action["checkpoint_json"]["head"] == "head789"
+
+
+def test_node_traces_expose_science_stage_and_evidence_paths(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    service = QuestService(temp_home)
+    quest = service.create("trace science artifact quest", quest_id="trace-science")
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+
+    ArtifactService(temp_home).science(
+        quest_root,
+        action="record_node",
+        node_type="science.computational_run",
+        node_id="run_water_hf_sto3g",
+        title="Water HF/STO-3G energy",
+        summary="Computed water molecule total energy.",
+        status="success",
+        input_paths=["simulations/inputs/water.py"],
+        log_paths=["simulations/logs/water.out"],
+        output_paths=["simulations/outputs/water/energy.json"],
+    )
+
+    payload = service.node_traces(quest_id)
+    stage_trace = next(
+        item
+        for item in payload["items"]
+        if item["selection_type"] == "stage_node" and item["selection_ref"] == "stage:main:science"
+    )
+
+    assert stage_trace["stage_key"] == "science"
+    assert stage_trace["artifact_kind"] == "science.computational_run"
+    assert stage_trace["payload_json"]["node_id"] == "run_water_hf_sto3g"
+    assert stage_trace["paths_map"]["input_1"] == "simulations/inputs/water.py"
+    assert stage_trace["paths_map"]["log_1"] == "simulations/logs/water.out"
+    assert "simulations/outputs/water/energy.json" in stage_trace["changed_files"]

@@ -59,4 +59,4 @@ PY
 
 E2E_BASE_URL="$BASE_URL" \
 E2E_FIXTURE_JSON="$FIXTURE_JSON" \
-npm --prefix "$ROOT_DIR/src/ui" run test:e2e:lab-canvas -- --reporter=list
+npm --prefix "$ROOT_DIR/src/ui" run test:e2e:lab-canvas -- --reporter=list --workers=1

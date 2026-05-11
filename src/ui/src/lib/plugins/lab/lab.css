@@ -1893,7 +1893,7 @@
   position: absolute;
   top: 14px;
   right: 14px;
-  z-index: 12;
+  z-index: 24;
   display: flex;
   justify-content: flex-end;
   pointer-events: none;
@@ -2357,6 +2357,19 @@
 
 .lab-quest-graph-node.is-event {
   background: linear-gradient(140deg, rgba(244, 246, 247, 0.92), rgba(232, 236, 240, 0.86));
+}
+
+.lab-quest-graph-node.is-science {
+  min-width: 214px;
+  max-width: 246px;
+  padding: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: 0 14px 34px rgba(16, 78, 92, 0.1);
+}
+
+.lab-quest-graph-node.is-science .science-node-card {
+  border-color: rgba(20, 121, 137, 0.28);
 }
 
 :is(.dark, [data-theme="dark"]) .lab-quest-graph-node.is-event {

@@ -1,21 +1,32 @@
+// @vitest-environment jsdom
+
 import * as React from 'react'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import '@testing-library/jest-dom/vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import LabQuestGraphCanvas from '@/lib/plugins/lab/components/LabQuestGraphCanvas'
 
-jest.mock('@/lib/api/lab', () => {
-  const actual = jest.requireActual('@/lib/api/lab')
+const reactFlowMocks = vi.hoisted(() => ({
+  setCenter: vi.fn(),
+  fitView: vi.fn(),
+  getNodes: vi.fn(() => []),
+  getInternalNode: vi.fn(() => undefined),
+}))
+
+vi.mock('@/lib/api/lab', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/api/lab')>('@/lib/api/lab')
   return {
     ...actual,
-    listLabAgents: jest.fn().mockResolvedValue({ items: [] }),
-    listLabMemory: jest.fn().mockResolvedValue({ items: [] }),
-    listLabPapers: jest.fn().mockResolvedValue({ items: [] }),
-    updateLabQuestLayout: jest.fn().mockResolvedValue({ layout_json: {}, updated_at: '2026-03-21T00:00:00Z' }),
+    listLabAgents: vi.fn().mockResolvedValue({ items: [] }),
+    listLabMemory: vi.fn().mockResolvedValue({ items: [] }),
+    listLabPapers: vi.fn().mockResolvedValue({ items: [] }),
+    updateLabQuestLayout: vi.fn().mockResolvedValue({ layout_json: {}, updated_at: '2026-03-21T00:00:00Z' }),
   }
 })
 
-jest.mock('@xyflow/react', () => {
-  const ReactRuntime = require('react') as typeof React
+vi.mock('@xyflow/react', async () => {
+  const ReactRuntime = await vi.importActual<typeof React>('react')
   return {
     MarkerType: { ArrowClosed: 'arrowclosed' },
     Position: { Left: 'left', Right: 'right' },
@@ -45,26 +56,39 @@ jest.mock('@xyflow/react', () => {
     MiniMap: () => null,
     useNodesInitialized: () => true,
     useReactFlow: () => ({
-      setCenter: jest.fn(),
-      fitView: jest.fn(),
-      getNodes: jest.fn().mockReturnValue([]),
-      getInternalNode: jest.fn().mockReturnValue(undefined),
+      setCenter: reactFlowMocks.setCenter,
+      fitView: reactFlowMocks.fitView,
+      getNodes: reactFlowMocks.getNodes,
+      getInternalNode: reactFlowMocks.getInternalNode,
     }),
     useNodesState: (initial: unknown) => {
       const [nodes, setNodes] = ReactRuntime.useState(initial)
-      return [nodes, setNodes, jest.fn()]
+      return [nodes, setNodes, vi.fn()]
     },
     useEdgesState: (initial: unknown) => {
       const [edges, setEdges] = ReactRuntime.useState(initial)
-      return [edges, setEdges, jest.fn()]
+      return [edges, setEdges, vi.fn()]
     },
   }
 })
 
-jest.mock('@xyflow/react/dist/style.css', () => ({}))
-jest.mock('@/lib/plugins/lab/lab.css', () => ({}))
+vi.mock('@xyflow/react/dist/style.css', () => ({}))
+vi.mock('@/lib/plugins/lab/lab.css', () => ({}))
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return {
+    ...actual,
+    useNavigate: () => vi.fn(),
+  }
+})
 
 describe('LabQuestGraphCanvas', () => {
+  afterEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+    vi.useRealTimers()
+  })
+
   it('does not loop state updates when queries are disabled (empty projectId/questId)', () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -84,7 +108,7 @@ describe('LabQuestGraphCanvas', () => {
   })
 
   it('does not loop state updates when graph queries resolve with data', async () => {
-    const fetchGraph = jest.fn().mockResolvedValue({
+    const fetchGraph = vi.fn().mockResolvedValue({
       view: 'branch',
       nodes: [
         {
@@ -97,7 +121,7 @@ describe('LabQuestGraphCanvas', () => {
       head_branch: 'main',
       layout_json: {},
     })
-    const fetchEvents = jest.fn().mockResolvedValue({ items: [], next_cursor: null })
+    const fetchEvents = vi.fn().mockResolvedValue({ items: [], next_cursor: null })
 
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -123,13 +147,13 @@ describe('LabQuestGraphCanvas', () => {
     expect(screen.getByText(/Current view/i)).toBeInTheDocument()
   })
 
-  it('skips hidden panel queries when the canvas is branch-only', async () => {
+  it('skips hidden panel queries when floating panels are disabled', async () => {
     const labApi = await import('@/lib/api/lab')
-    ;(labApi.listLabAgents as jest.Mock).mockClear()
-    ;(labApi.listLabMemory as jest.Mock).mockClear()
-    ;(labApi.listLabPapers as jest.Mock).mockClear()
+    vi.mocked(labApi.listLabAgents).mockClear()
+    vi.mocked(labApi.listLabMemory).mockClear()
+    vi.mocked(labApi.listLabPapers).mockClear()
 
-    const fetchGraph = jest.fn().mockResolvedValue({
+    const fetchGraph = vi.fn().mockResolvedValue({
       view: 'branch',
       nodes: [
         {
@@ -142,7 +166,7 @@ describe('LabQuestGraphCanvas', () => {
       head_branch: 'main',
       layout_json: {},
     })
-    const fetchEvents = jest.fn().mockResolvedValue({ items: [], next_cursor: null })
+    const fetchEvents = vi.fn().mockResolvedValue({ items: [], next_cursor: null })
 
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -165,27 +189,15 @@ describe('LabQuestGraphCanvas', () => {
       expect(fetchGraph).toHaveBeenCalledTimes(1)
     })
 
-    await waitFor(() => {
-      expect(fetchEvents).toHaveBeenCalledTimes(1)
-    })
-
-    expect(fetchEvents).toHaveBeenCalledWith(
-      'project-1',
-      'quest-1',
-      expect.objectContaining({
-        eventTypes: expect.arrayContaining(['artifact.recorded', 'runner.tool_result']),
-        limit: 800,
-        includePayload: true,
-      })
-    )
-    expect(labApi.listLabAgents).toHaveBeenCalledTimes(1)
-    expect(labApi.listLabMemory).toHaveBeenCalledTimes(1)
+    expect(fetchEvents).not.toHaveBeenCalled()
+    expect(labApi.listLabAgents).not.toHaveBeenCalled()
+    expect(labApi.listLabMemory).not.toHaveBeenCalled()
     expect(labApi.listLabPapers).not.toHaveBeenCalled()
   })
 
   it('renders replay-aware memory hints on branch nodes', async () => {
     const labApi = await import('@/lib/api/lab')
-    ;(labApi.listLabMemory as jest.Mock).mockResolvedValue({
+    vi.mocked(labApi.listLabMemory).mockResolvedValue({
       items: [
         {
           entry_id: 'MEM-1',
@@ -198,7 +210,7 @@ describe('LabQuestGraphCanvas', () => {
       ],
     })
 
-    const fetchGraph = jest.fn().mockResolvedValue({
+    const fetchGraph = vi.fn().mockResolvedValue({
       view: 'branch',
       nodes: [
         {
@@ -217,7 +229,7 @@ describe('LabQuestGraphCanvas', () => {
       head_branch: 'main',
       layout_json: {},
     })
-    const fetchEvents = jest.fn().mockResolvedValue({ items: [], next_cursor: null })
+    const fetchEvents = vi.fn().mockResolvedValue({ items: [], next_cursor: null })
 
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -247,7 +259,7 @@ describe('LabQuestGraphCanvas', () => {
   })
 
   it('switches branch nodes into metric mode and keeps baseline metrics visible', async () => {
-    const fetchGraph = jest.fn().mockResolvedValue({
+    const fetchGraph = vi.fn().mockResolvedValue({
       view: 'branch',
       nodes: [
         {
@@ -281,7 +293,7 @@ describe('LabQuestGraphCanvas', () => {
       layout_json: {},
       metric_catalog: [{ key: 'acc', label: 'Accuracy', direction: 'higher', importance: 1 }],
     })
-    const fetchEvents = jest.fn().mockResolvedValue({ items: [], next_cursor: null })
+    const fetchEvents = vi.fn().mockResolvedValue({ items: [], next_cursor: null })
 
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -307,11 +319,151 @@ describe('LabQuestGraphCanvas', () => {
     expect(screen.getByText('0.8000')).toBeInTheDocument()
     expect(screen.getByText('0.8600')).toBeInTheDocument()
     expect(screen.getByText('Baseline reference')).toBeInTheDocument()
-    expect(screen.getByText('Δ +0.0600 vs baseline')).toBeInTheDocument()
+    expect(screen.getAllByText('Δ +0.0600 vs baseline').length).toBeGreaterThan(0)
+  })
+
+  it('renders science evidence graph cards in stage view', async () => {
+    const fetchGraph = vi.fn().mockResolvedValue({
+      view: 'stage',
+      nodes: [
+        {
+          node_id: 'stage:main:science',
+          branch_name: 'main',
+          status: 'success',
+          stage_key: 'science',
+          stage_title: 'Science',
+          artifact_kind: 'science.computational_run',
+          node_kind: 'branch',
+          idea_json: {
+            kind: 'science.computational_run',
+            node_id: 'run_water_hf_sto3g',
+            title: 'Water HF/STO-3G energy',
+            status: 'success',
+            package_id: 'pyscf',
+            task_type: 'scf_energy',
+            key_results: [{ label: 'Total energy', value: -74.96, unit: 'Hartree' }],
+            input_paths: ['simulations/inputs/water.py'],
+            log_paths: ['simulations/logs/water.out'],
+            output_paths: ['simulations/outputs/water/energy.json'],
+          },
+          event_count: 1,
+          created_at: '2025-01-02T00:00:00Z',
+        },
+      ],
+      edges: [],
+      head_branch: 'main',
+      layout_json: {},
+    })
+    const fetchEvents = vi.fn().mockResolvedValue({ items: [], next_cursor: null })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <LabQuestGraphCanvas
+          projectId="project-1"
+          questId="quest-1"
+          preferredViewMode="stage"
+          fetchGraph={fetchGraph}
+          fetchEvents={fetchEvents}
+        />
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => {
+      expect(fetchGraph).toHaveBeenCalled()
+    })
+
+    expect(await screen.findByText('Computational Run')).toBeInTheDocument()
+    expect(screen.getByText('Water HF/STO-3G energy')).toBeInTheDocument()
+    expect(screen.getByText(/Total energy/)).toBeInTheDocument()
+    expect(screen.getByText(/Evidence:/)).toBeInTheDocument()
+  })
+
+  it('focuses and opens science nodes from science focus effects', async () => {
+    const fetchGraph = vi.fn().mockResolvedValue({
+      view: 'stage',
+      nodes: [
+        {
+          node_id: 'stage:main:science',
+          branch_name: 'main',
+          status: 'success',
+          stage_key: 'science',
+          stage_title: 'Science',
+          artifact_kind: 'science.computational_run',
+          node_kind: 'branch',
+          idea_json: {
+            kind: 'science.computational_run',
+            artifact_id: 'run-water-record',
+            node_id: 'run_water_hf_sto3g',
+            title: 'Water HF/STO-3G energy',
+            summary: 'Computed water molecule total energy.',
+            status: 'success',
+            package_id: 'pyscf',
+            output_paths: ['simulations/outputs/water/energy.json'],
+          },
+          event_count: 1,
+          created_at: '2025-01-02T00:00:00Z',
+        },
+      ],
+      edges: [],
+      head_branch: 'main',
+      layout_json: {},
+    })
+    const fetchEvents = vi.fn().mockResolvedValue({ items: [], next_cursor: null })
+    const onSelectionChange = vi.fn()
+    const onStageOpen = vi.fn()
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <LabQuestGraphCanvas
+          projectId="project-1"
+          questId="quest-1"
+          preferredViewMode="stage"
+          fetchGraph={fetchGraph}
+          fetchEvents={fetchEvents}
+          onSelectionChange={onSelectionChange}
+          onStageOpen={onStageOpen}
+        />
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText('Water HF/STO-3G energy')).toBeInTheDocument()
+
+    window.dispatchEvent(
+      new CustomEvent('ds:science:focus', {
+        detail: {
+          node_id: 'run_water_hf_sto3g',
+          focus: true,
+          open_detail: true,
+        },
+      })
+    )
+
+    await waitFor(() => {
+      expect(onSelectionChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          selection_type: 'stage_node',
+          selection_ref: 'stage:main:science',
+          stage_key: 'science',
+          label: 'Water HF/STO-3G energy',
+        })
+      )
+      expect(onStageOpen).toHaveBeenCalledWith(
+        expect.objectContaining({
+          selection_ref: 'stage:main:science',
+        })
+      )
+      expect(reactFlowMocks.setCenter).toHaveBeenCalled()
+    })
   })
 
   it('keeps branch list clicks as selection-only without opening the stage page', async () => {
-    const fetchGraph = jest.fn().mockResolvedValue({
+    const fetchGraph = vi.fn().mockResolvedValue({
       view: 'branch',
       nodes: [
         {
@@ -327,9 +479,9 @@ describe('LabQuestGraphCanvas', () => {
       head_branch: 'main',
       layout_json: {},
     })
-    const fetchEvents = jest.fn().mockResolvedValue({ items: [], next_cursor: null })
-    const onBranchSelect = jest.fn()
-    const onStageOpen = jest.fn()
+    const fetchEvents = vi.fn().mockResolvedValue({ items: [], next_cursor: null })
+    const onBranchSelect = vi.fn()
+    const onStageOpen = vi.fn()
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
@@ -351,19 +503,24 @@ describe('LabQuestGraphCanvas', () => {
       expect(fetchGraph).toHaveBeenCalled()
     })
 
-    const branchButton = container.querySelector('.lab-quest-branch-item') as HTMLButtonElement | null
+    fireEvent.click(screen.getByLabelText('Show Branches'))
+
+    const branchButton = await waitFor(() => {
+      const button = container.querySelector('.lab-quest-branch-item') as HTMLButtonElement | null
+      expect(button).not.toBeNull()
+      return button as HTMLButtonElement
+    })
     expect(branchButton).not.toBeNull()
-    fireEvent.click(branchButton as HTMLButtonElement)
+    fireEvent.click(branchButton)
 
     expect(onBranchSelect).toHaveBeenCalledWith('main')
     expect(onStageOpen).not.toHaveBeenCalled()
   })
 
   it('restores current-path filtering from persisted layout and saves filter changes', async () => {
-    jest.useFakeTimers()
     const labApi = await import('@/lib/api/lab')
-    ;(labApi.updateLabQuestLayout as jest.Mock).mockClear()
-    const fetchGraph = jest.fn().mockResolvedValue({
+    vi.mocked(labApi.updateLabQuestLayout).mockClear()
+    const fetchGraph = vi.fn().mockResolvedValue({
       view: 'branch',
       nodes: [
         {
@@ -416,12 +573,12 @@ describe('LabQuestGraphCanvas', () => {
         },
       },
     })
-    const fetchEvents = jest.fn().mockResolvedValue({ items: [], next_cursor: null })
+    const fetchEvents = vi.fn().mockResolvedValue({ items: [], next_cursor: null })
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
 
-    render(
+    const { container } = render(
       <QueryClientProvider client={queryClient}>
         <LabQuestGraphCanvas
           projectId="project-1"
@@ -437,16 +594,16 @@ describe('LabQuestGraphCanvas', () => {
     })
 
     fireEvent.click(screen.getByLabelText('Show Branches'))
-    expect(screen.getByText('Current Route')).toBeInTheDocument()
-    expect(screen.queryByText('Sibling Route')).toBeNull()
+    const branchTitles = () =>
+      Array.from(container.querySelectorAll('.lab-quest-branch-item__title')).map((element) => element.textContent)
+    expect(branchTitles()).toContain('Current Route')
+    expect(branchTitles()).not.toContain('Sibling Route')
 
     fireEvent.click(screen.getByRole('button', { name: 'All' }))
 
     await waitFor(() => {
-      expect(screen.getByText('Sibling Route')).toBeInTheDocument()
+      expect(branchTitles()).toContain('Sibling Route')
     })
-
-    jest.advanceTimersByTime(900)
 
     await waitFor(() => {
       expect(labApi.updateLabQuestLayout).toHaveBeenCalledWith(
@@ -458,7 +615,6 @@ describe('LabQuestGraphCanvas', () => {
           }),
         })
       )
-    })
-    jest.useRealTimers()
+    }, { timeout: 3000 })
   })
 })

@@ -54,6 +54,8 @@ import { useFileTreeStore } from '@/lib/stores/file-tree'
 import { useI18n } from '@/lib/i18n/useI18n'
 import { useLabGraphSelectionStore } from '@/lib/stores/lab-graph-selection'
 import { useThemeStore } from '@/lib/stores/theme'
+import ScienceNodeCard from '@/components/science/ScienceNodeCard'
+import { isScienceKind, normalizeScienceNode } from '@/lib/science/normalize'
 import {
   LAB_CANVAS_SEMANTIC_TONE_META,
   resolveLabCanvasViewSemantic,
@@ -159,6 +161,7 @@ type QuestNodeData = {
   metricEmptyReason?: string | null
   isCurrentWorkspace?: boolean
   isCurrentPath?: boolean
+  sciencePayload?: Record<string, unknown> | null
 }
 
 type AgentNodeData = {
@@ -331,8 +334,16 @@ const isKeyEventType = (raw?: string | null) => {
     value === 'baseline' ||
     value === 'idea' ||
     value === 'run' ||
+    value.startsWith('science.') ||
     value === 'report'
   )
+}
+
+type ScienceFocusEventDetail = {
+  node_id?: string | null
+  focus?: boolean
+  open_detail?: boolean
+  notify?: boolean
 }
 
 const pickPrimaryMetric = (metrics?: Record<string, unknown> | null) => {
@@ -1138,6 +1149,62 @@ const buildSelectionContext = (
   summary: payload.summary ?? null,
 })
 
+const sciencePayloadNodeId = (payload?: Record<string, unknown> | null) => {
+  if (!payload) return null
+  return asString(payload.node_id) || asString(payload.nodeId) || asString(payload.artifact_id) || asString(payload.id)
+}
+
+const nodeMatchesScienceFocus = (node: QuestFlowNode, targetNodeId: string) => {
+  const normalizedTarget = targetNodeId.trim()
+  if (!normalizedTarget) return false
+  if (node.id === normalizedTarget) return true
+  const data = node.data as QuestNodeData | AgentNodeData
+  if ((data as AgentNodeData).isAgent) return false
+  const questData = data as QuestNodeData
+  const payload = asRecord(questData.sciencePayload)
+  if (!payload) return false
+  const scienceNodeId = sciencePayloadNodeId(payload)
+  const artifactId = asString(payload.artifact_id) || asString(payload.id)
+  return scienceNodeId === normalizedTarget || artifactId === normalizedTarget
+}
+
+const buildScienceSelectionContext = (
+  questId: string,
+  node: QuestFlowNode
+): (LabQuestSelectionContext & { label?: string | null; summary?: string | null }) | null => {
+  const data = node.data as QuestNodeData | AgentNodeData
+  if ((data as AgentNodeData).isAgent) return null
+  const questData = data as QuestNodeData
+  const payload = asRecord(questData.sciencePayload)
+  if (!payload) return null
+  const nodeId = sciencePayloadNodeId(payload)
+  const selectionType = node.id.startsWith('stage:') ? 'stage_node' : 'event_node'
+  return buildSelectionContext(questId, {
+    selectionType,
+    selectionRef: node.id,
+    branchName: questData.branchName ?? null,
+    branchNo: questData.branchNo ?? null,
+    parentBranch: questData.parentBranch ?? null,
+    foundationRef: questData.foundationRef ?? null,
+    foundationReason: questData.foundationReason ?? null,
+    foundationLabel: questData.foundationLabel ?? null,
+    ideaTitle: questData.ideaTitle ?? null,
+    stageKey: questData.stageKey ?? 'science',
+    worktreeRelPath: questData.worktreeRelPath ?? null,
+    traceNodeId: node.id,
+    label: asString(payload.title) || questData.label || nodeId || node.id,
+    summary: asString(payload.summary) || questData.summary || null,
+    compareBase: questData.compareBase ?? null,
+    compareHead: questData.compareHead ?? null,
+    scopePaths: questData.scopePaths ?? null,
+    nodeKind: questData.nodeKind ?? null,
+    baselineGate: questData.baselineGate ?? null,
+  })
+}
+
+const findScienceFocusNode = (nodes: QuestFlowNode[], targetNodeId: string) =>
+  nodes.find((node) => nodeMatchesScienceFocus(node, targetNodeId)) ?? null
+
 const shouldOpenCanonicalStage = (stageKey?: string | null) => {
   const normalized = String(stageKey || '').trim().toLowerCase()
   return normalized === 'idea' || normalized === 'experiment' || normalized === 'analysis-campaign' || normalized === 'analysis' || normalized === 'write' || normalized === 'paper'
@@ -1673,6 +1740,30 @@ const MetricCurveChart = ({
 const QuestGraphNode = ({ data }: NodeProps) => {
   const { t } = useI18n('lab')
   const nodeData = data as QuestNodeData
+  if (nodeData.sciencePayload) {
+    const scienceNode = normalizeScienceNode({
+      kind: String(nodeData.sciencePayload.kind || nodeData.nodeKind || ''),
+      payload: {
+        ...nodeData.sciencePayload,
+        title: nodeData.sciencePayload.title || nodeData.label,
+        summary: nodeData.sciencePayload.summary || nodeData.summary,
+        status: nodeData.sciencePayload.status || nodeData.status,
+      },
+    })
+    return (
+      <div
+        className={cn(
+          'lab-quest-graph-node is-science',
+          nodeData.isSelected && 'is-selected'
+        )}
+        title={scienceNode.summary || scienceNode.title}
+      >
+        <Handle type="target" position={FlowPosition.Left} className="lab-flow-handle" />
+        <Handle type="source" position={FlowPosition.Right} className="lab-flow-handle" />
+        <ScienceNodeCard node={scienceNode} compact />
+      </div>
+    )
+  }
   const isMetricMode = nodeData.displayMode === 'metric' && !nodeData.isEvent
   const positive =
     nodeData.metricTone === 'good' ||
@@ -2985,6 +3076,8 @@ function LabQuestGraphCanvasInner({
   const [eventFilter, setEventFilter] = React.useState<EventFilterMode>('activity')
   const [hoverCard, setHoverCard] = React.useState<GraphHoverCardState | null>(null)
   const hoverClearTimerRef = React.useRef<number | null>(null)
+  const appliedPreferredViewModeRef = React.useRef<typeof preferredViewMode>(null)
+  const pendingScienceFocusRef = React.useRef<ScienceFocusEventDetail | null>(null)
   const { openFileInTab } = useOpenFile()
   const findNode = useFileTreeStore((state) => state.findNode)
   const findNodeByPath = useFileTreeStore((state) => state.findNodeByPath)
@@ -3113,6 +3206,8 @@ function LabQuestGraphCanvasInner({
 
   React.useEffect(() => {
     if (!preferredViewMode) return
+    if (appliedPreferredViewModeRef.current === preferredViewMode) return
+    appliedPreferredViewModeRef.current = preferredViewMode
     if (preferredViewMode === viewMode) return
     setViewMode(preferredViewMode)
   }, [preferredViewMode, viewMode])
@@ -3130,6 +3225,7 @@ function LabQuestGraphCanvasInner({
     lastAutoLayoutSignatureRef.current = null
     collisionLayoutSignatureRef.current = null
     resizeFitSignatureRef.current = null
+    pendingScienceFocusRef.current = null
   }, [projectId, questId])
 
   React.useEffect(() => {
@@ -4053,6 +4149,13 @@ function LabQuestGraphCanvasInner({
           viewMode === 'branch' && node.branch_name ? memoryByBranch.get(node.branch_name) : null
         const isPlaceholder = Boolean(node.placeholder || node.node_kind === 'placeholder')
         const isBaselineRoot = node.node_kind === 'baseline_root'
+        const sciencePayload =
+          viewMode !== 'branch' &&
+          node.stage_key === 'science' &&
+          node.idea_json &&
+          isScienceKind(node.idea_json.kind)
+            ? node.idea_json
+            : null
         const label = isStage
           ? node.stage_title || node.stage_key || node.branch_name || 'stage'
           : viewMode === 'event'
@@ -4189,6 +4292,7 @@ function LabQuestGraphCanvasInner({
             retireState: node.retire_state ?? null,
             claimEvidenceState: node.claim_evidence_state ?? null,
             baselineGate: node.baseline_state ?? null,
+            sciencePayload,
           },
           draggable: !interactionLocked,
         }
@@ -4735,6 +4839,65 @@ function LabQuestGraphCanvasInner({
     },
     [onSelectionChange, setSelectionStore]
   )
+
+  const focusScienceNode = React.useCallback(
+    (detail: ScienceFocusEventDetail) => {
+      const targetNodeId = String(detail.node_id || '').trim()
+      if (!targetNodeId) return false
+      const target = findScienceFocusNode(nodes, targetNodeId)
+      if (!target) return false
+
+      const selection = buildScienceSelectionContext(questId, target)
+      if (selection) {
+        applySelection(selection)
+        if (detail.open_detail && selection.selection_type === 'stage_node' && onStageOpen) {
+          onStageOpen(selection)
+        }
+      }
+
+      if (detail.focus !== false) {
+        const internal = flow.getInternalNode(target.id)
+        const targetWidth = internal?.measured?.width ?? target.measured?.width ?? target.width ?? DAGRE_NODE_WIDTH
+        const targetHeight = internal?.measured?.height ?? target.measured?.height ?? target.height ?? DAGRE_NODE_HEIGHT
+        const centerX = target.position.x + targetWidth / 2
+        const centerY = target.position.y + targetHeight / 2
+        try {
+          markProgrammaticViewportMove(500)
+          flow.setCenter(centerX, centerY, { duration: 500 })
+        } catch {
+          // ignore focus errors if flow not ready
+        }
+      }
+      return true
+    },
+    [applySelection, flow, markProgrammaticViewportMove, nodes, onStageOpen, questId]
+  )
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handleScienceFocus = (event: Event) => {
+      const detail = ((event as CustomEvent<ScienceFocusEventDetail>).detail || {}) as ScienceFocusEventDetail
+      if (!String(detail.node_id || '').trim()) return
+      pendingScienceFocusRef.current = detail
+      if (focusScienceNode(detail)) {
+        pendingScienceFocusRef.current = null
+        return
+      }
+      if (viewMode !== 'event') {
+        setViewMode('event')
+      }
+    }
+    window.addEventListener('ds:science:focus', handleScienceFocus as EventListener)
+    return () => window.removeEventListener('ds:science:focus', handleScienceFocus as EventListener)
+  }, [focusScienceNode, viewMode])
+
+  React.useEffect(() => {
+    const pending = pendingScienceFocusRef.current
+    if (!pending) return
+    if (focusScienceNode(pending)) {
+      pendingScienceFocusRef.current = null
+    }
+  }, [focusScienceNode, viewMode])
 
   const combinedNodeLookup = React.useMemo(() => {
     const lookup = new Map<string, QuestFlowNode>()
@@ -5509,28 +5672,60 @@ function LabQuestGraphCanvasInner({
     curveMode === 'sota'
       ? t('quest_curve_mode_sota', undefined, 'SoTA only')
       : t('quest_curve_mode_full', undefined, 'Full trace')
+  const viewModeToolbar = !showFloatingPanels ? (
+    <div className="lab-quest-graph-toolbar__segmented" aria-label="Canvas view mode">
+      <Button
+        type="button"
+        size="sm"
+        variant={viewMode === 'branch' ? 'secondary' : 'ghost'}
+        onClick={() => setViewMode('branch')}
+      >
+        Branch map
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant={viewMode === 'event' ? 'secondary' : 'ghost'}
+        onClick={() => setViewMode('event')}
+      >
+        Event trace
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant={viewMode === 'stage' ? 'secondary' : 'ghost'}
+        onClick={() => setViewMode('stage')}
+      >
+        Stage flow
+      </Button>
+    </div>
+  ) : null
+
   const graphToolbar =
-    viewMode === 'branch' ? (
+    !showFloatingPanels || viewMode === 'branch' ? (
       <div className="lab-quest-graph-toolbar__group nowheel nopan">
-        <div className="lab-quest-graph-toolbar__segmented" aria-label="Canvas node display mode">
-          <Button
-            type="button"
-            size="sm"
-            variant={nodeDisplayMode === 'summary' ? 'secondary' : 'ghost'}
-            onClick={() => setNodeDisplayMode('summary')}
-          >
-            {t('quest_node_display_summary', undefined, 'Summary')}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={nodeDisplayMode === 'metric' ? 'secondary' : 'ghost'}
-            onClick={() => setNodeDisplayMode('metric')}
-          >
-            {t('quest_node_display_metric', undefined, 'Metric')}
-          </Button>
-        </div>
-        {nodeDisplayMode === 'metric' ? (
+        {viewModeToolbar}
+        {viewMode === 'branch' ? (
+          <div className="lab-quest-graph-toolbar__segmented" aria-label="Canvas node display mode">
+            <Button
+              type="button"
+              size="sm"
+              variant={nodeDisplayMode === 'summary' ? 'secondary' : 'ghost'}
+              onClick={() => setNodeDisplayMode('summary')}
+            >
+              {t('quest_node_display_summary', undefined, 'Summary')}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={nodeDisplayMode === 'metric' ? 'secondary' : 'ghost'}
+              onClick={() => setNodeDisplayMode('metric')}
+            >
+              {t('quest_node_display_metric', undefined, 'Metric')}
+            </Button>
+          </div>
+        ) : null}
+        {viewMode === 'branch' && nodeDisplayMode === 'metric' ? (
           <div className="lab-quest-graph-toolbar__controls">
             <span className="lab-quest-graph-toolbar__caption">
               {t('quest_curve_metric_label', undefined, 'Focus metric')}
@@ -5552,6 +5747,26 @@ function LabQuestGraphCanvasInner({
               ))}
             </select>
             <span className="lab-quest-graph-toolbar__caption">{curveModeLabel}</span>
+          </div>
+        ) : null}
+        {!showFloatingPanels && viewMode === 'event' ? (
+          <div className="lab-quest-graph-toolbar__segmented" aria-label="Event trace mode">
+            <Button
+              type="button"
+              size="sm"
+              variant={eventTraceMode === 'compact' ? 'secondary' : 'ghost'}
+              onClick={() => setEventTraceMode('compact')}
+            >
+              Compact
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={eventTraceMode === 'detailed' ? 'secondary' : 'ghost'}
+              onClick={() => setEventTraceMode('detailed')}
+            >
+              Detailed
+            </Button>
           </div>
         ) : null}
         <Button

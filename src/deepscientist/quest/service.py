@@ -1639,16 +1639,18 @@ class QuestService:
         for artifact in recent_artifacts:
             payload = artifact.get("payload") if isinstance(artifact.get("payload"), dict) else {}
             artifact_path = artifact.get("path")
+            artifact_kind = str(payload.get("kind") or artifact.get("kind") or "").strip()
             entries.append(
                 {
                     "id": f"artifact:{payload.get('artifact_id') or artifact_path}",
                     "kind": "artifact",
-                    "title": str(payload.get("artifact_id") or artifact.get("kind") or "artifact"),
+                    "title": str(payload.get("title") or payload.get("artifact_id") or artifact.get("kind") or "artifact"),
                     "summary": payload.get("summary") or payload.get("message") or payload.get("reason") or "Artifact updated.",
                     "status": payload.get("status"),
                     "reason": payload.get("reason"),
                     "created_at": payload.get("updated_at") or payload.get("created_at"),
                     "paths": list((payload.get("paths") or {}).values()) + ([str(artifact_path)] if artifact_path else []),
+                    "stage_key": "science" if artifact_kind.startswith("science.") else payload.get("stage_key"),
                 }
             )
             add_file(str(artifact_path) if artifact_path else None, source="artifact")
@@ -4598,8 +4600,15 @@ class QuestService:
 
     def node_traces(self, quest_id: str, *, selection_type: str | None = None) -> dict:
         quest_root = self._quest_root(quest_id)
-        workflow = self.workflow(quest_id)
         snapshot = self.snapshot(quest_id)
+        try:
+            workflow = self._build_details_projection_payload(
+                quest_root,
+                source_signature=self._projection_source_signature(quest_root, "details"),
+                update_progress=lambda *_args, **_kwargs: None,
+            )
+        except Exception:
+            workflow = self.workflow(quest_id)
         payload = QuestNodeTraceManager(quest_root).materialize(
             quest_id=quest_id,
             workflow=workflow,

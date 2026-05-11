@@ -55,6 +55,7 @@ _BUILTIN_MCP_TOOL_APPROVALS: dict[str, tuple[str, ...]] = {
     ),
     "artifact": (
         "record",
+        "science",
         "checkpoint",
         "prepare_branch",
         "activate_branch",

@@ -65,4 +65,25 @@ describe('handleUIEffect route:navigate', () => {
 
     window.removeEventListener('ds:start-setup:patch', listener as EventListener)
   })
+
+  it('dispatches science focus events', () => {
+    const listener = vi.fn()
+    window.addEventListener('ds:science:focus', listener as EventListener)
+
+    handleUIEffect({
+      name: 'science:focus',
+      data: {
+        node_id: 'run_water_hf_sto3g',
+        focus: true,
+        open_detail: true,
+      },
+    })
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    const event = listener.mock.calls[0][0] as CustomEvent<{ node_id: string; open_detail: boolean }>
+    expect(event.detail.node_id).toBe('run_water_hf_sto3g')
+    expect(event.detail.open_detail).toBe(true)
+
+    window.removeEventListener('ds:science:focus', listener as EventListener)
+  })
 })

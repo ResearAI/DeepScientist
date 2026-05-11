@@ -380,6 +380,7 @@ def test_artifact_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
         tools = await server.list_tools()
         assert [tool.name for tool in tools] == [
             "record",
+            "science",
             "checkpoint",
             "git",
             "prepare_branch",
@@ -390,6 +391,9 @@ def test_artifact_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
             "get_paper_contract",
             "get_paper_contract_health",
             "validate_manuscript_coverage",
+            "validate_academic_outline",
+            "validate_manuscript_language",
+            "compile_outline_to_writing_plan",
             "get_quest_state",
             "get_global_status",
             "get_research_map_status",
@@ -422,6 +426,27 @@ def test_artifact_mcp_server_tools_cover_core_flows(temp_home: Path) -> None:
         assert tool_map["read_quest_documents"].annotations.readOnlyHint is True
         assert tool_map["get_conversation_context"].annotations.readOnlyHint is True
         assert tool_map["get_research_map_status"].annotations.readOnlyHint is True
+
+        science_result = _unwrap_tool_result(
+            await server.call_tool(
+                "science",
+                {
+                    "action": "record_node",
+                    "node_type": "science.package_check",
+                    "node_id": "pkg_numpy_check",
+                    "title": "NumPy environment check",
+                    "status": "passed",
+                    "domain": "scientific_python",
+                    "package_id": "numpy",
+                    "key_results": [{"label": "import", "value": "passed"}],
+                    "evidence_paths": [str(quest_root / "validation" / "environment" / "numpy_doctor.json")],
+                },
+            )
+        )
+        assert science_result["ok"] is True
+        assert science_result["recorded"] == "science.package_check"
+        assert science_result["record"]["evidence_paths"] == ["validation/environment/numpy_doctor.json"]
+        assert Path(science_result["artifact_path"]).exists()
 
         research_map_result = _unwrap_tool_result(
             await server.call_tool(
@@ -1267,6 +1292,7 @@ def test_start_setup_prepare_profile_artifact_server_exposes_only_prepare_form_t
                         "recommended_workspace_mode": "copilot",
                         "launch_readiness": "needs_confirmation",
                         "missing_confirmations": ["Clarify whether paid APIs are allowed."],
+                        "science_package_cards": ["science/references/packages/pyscf.md"],
                         "fit_assessment": {
                             "verdict": "copilot_recommended",
                             "summary": "Human collaboration is still needed before an autonomous launch is safe.",
@@ -1282,6 +1308,7 @@ def test_start_setup_prepare_profile_artifact_server_exposes_only_prepare_form_t
         assert result["ui_effects"][0]["name"] == "start_setup:patch"
         assert result["ui_effects"][0]["data"]["patch"]["goal"] == "Run the benchmark faithfully."
         assert result["session_patch"]["recommended_workspace_mode"] == "copilot"
+        assert result["session_patch"]["science_package_cards"] == ["science/references/packages/pyscf.md"]
         persisted = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).read_quest_yaml(quest_root)
         startup_contract = persisted.get("startup_contract") if isinstance(persisted.get("startup_contract"), dict) else {}
         start_setup_session = (
@@ -1295,6 +1322,7 @@ def test_start_setup_prepare_profile_artifact_server_exposes_only_prepare_form_t
         assert suggested_form["need_research_paper"] is True
         assert start_setup_session["recommended_workspace_mode"] == "copilot"
         assert start_setup_session["fit_assessment"]["verdict"] == "copilot_recommended"
+        assert start_setup_session["science_package_cards"] == ["science/references/packages/pyscf.md"]
 
     asyncio.run(scenario())
 

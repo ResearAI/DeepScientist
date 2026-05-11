@@ -910,6 +910,32 @@ type StartSetupPreviewPlan = {
   risks?: string[]
 }
 
+type StartSetupCopilotHandoff = {
+  title?: string | null
+  startup_message?: string | null
+  workspace_mode?: string | null
+  create_and_send?: boolean | null
+  reason?: string | null
+}
+
+type StartSetupScienceTask = {
+  is_science_task?: boolean | null
+  domain?: string | null
+  task_family?: string | null
+  required_packages?: string[]
+  expected_node_types?: string[]
+  package_check_required?: boolean | null
+  hpc_expected?: boolean | null
+  solver_installation_unknown?: boolean | null
+}
+
+type StartSetupScienceTaskBrief = {
+  brief_type?: string | null
+  markdown?: string | null
+  uses_fermilink_goal_structure?: boolean | null
+  materialize_as_file?: boolean | null
+}
+
 type StartSetupSessionState = {
   suggestedForm: Partial<StartResearchTemplate> | null
   fitAssessment: StartSetupFitAssessment | null
@@ -917,6 +943,10 @@ type StartSetupSessionState = {
   launchReadiness?: string | null
   missingConfirmations: string[]
   previewPlan: StartSetupPreviewPlan | null
+  copilotHandoff: StartSetupCopilotHandoff | null
+  scienceTask: StartSetupScienceTask | null
+  scienceTaskBrief: StartSetupScienceTaskBrief | null
+  sciencePackageCards: string[]
 }
 
 type StartSetupSessionPatch = {
@@ -926,6 +956,10 @@ type StartSetupSessionPatch = {
   launch_readiness?: string | null
   missing_confirmations?: string[] | null
   preview_plan?: StartSetupPreviewPlan | null
+  copilot_handoff?: StartSetupCopilotHandoff | null
+  science_task?: StartSetupScienceTask | null
+  science_task_brief?: StartSetupScienceTaskBrief | null
+  science_package_cards?: string[] | null
 }
 
 const START_SETUP_FORM_META_KEYS = new Set(['form_patch', 'session_patch'])
@@ -956,6 +990,65 @@ function nestedStartSetupSessionPatch(value: unknown): Record<string, unknown> |
     }
   }
   return null
+}
+
+function cleanStartSetupObject<T extends Record<string, unknown>>(value: unknown): T | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as T
+}
+
+function normalizeStartSetupStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+}
+
+function cleanStartSetupCopilotHandoff(value: unknown): StartSetupCopilotHandoff | null {
+  const raw = cleanStartSetupObject<Record<string, unknown>>(value)
+  if (!raw) return null
+  const handoff: StartSetupCopilotHandoff = {}
+  if ('title' in raw) handoff.title = String(raw.title || '').trim() || null
+  if ('startup_message' in raw) handoff.startup_message = String(raw.startup_message || '').trim() || null
+  if ('workspace_mode' in raw) handoff.workspace_mode = String(raw.workspace_mode || '').trim() || null
+  if ('create_and_send' in raw) handoff.create_and_send = Boolean(raw.create_and_send)
+  if ('reason' in raw) handoff.reason = String(raw.reason || '').trim() || null
+  return Object.values(handoff).some((item) => item !== null && item !== undefined && item !== '')
+    ? handoff
+    : null
+}
+
+function cleanStartSetupScienceTask(value: unknown): StartSetupScienceTask | null {
+  const raw = cleanStartSetupObject<Record<string, unknown>>(value)
+  if (!raw) return null
+  const task: StartSetupScienceTask = {}
+  if ('is_science_task' in raw) task.is_science_task = Boolean(raw.is_science_task)
+  if ('domain' in raw) task.domain = String(raw.domain || '').trim() || null
+  if ('task_family' in raw) task.task_family = String(raw.task_family || '').trim() || null
+  if ('required_packages' in raw) task.required_packages = normalizeStartSetupStringList(raw.required_packages)
+  if ('expected_node_types' in raw) task.expected_node_types = normalizeStartSetupStringList(raw.expected_node_types)
+  if ('package_check_required' in raw) task.package_check_required = Boolean(raw.package_check_required)
+  if ('hpc_expected' in raw) task.hpc_expected = Boolean(raw.hpc_expected)
+  if ('solver_installation_unknown' in raw) task.solver_installation_unknown = Boolean(raw.solver_installation_unknown)
+  const hasContent = Object.entries(task).some(([key, item]) => {
+    if (key === 'is_science_task') return item === true
+    if (Array.isArray(item)) return item.length > 0
+    return item !== null && item !== undefined && item !== ''
+  })
+  return hasContent ? task : null
+}
+
+function cleanStartSetupScienceTaskBrief(value: unknown): StartSetupScienceTaskBrief | null {
+  const raw = cleanStartSetupObject<Record<string, unknown>>(value)
+  if (!raw) return null
+  const brief: StartSetupScienceTaskBrief = {}
+  if ('brief_type' in raw) brief.brief_type = String(raw.brief_type || '').trim() || null
+  if ('markdown' in raw) brief.markdown = String(raw.markdown || '').replace(/\\n/g, '\n').trim() || null
+  if ('uses_fermilink_goal_structure' in raw) brief.uses_fermilink_goal_structure = Boolean(raw.uses_fermilink_goal_structure)
+  if ('materialize_as_file' in raw) brief.materialize_as_file = Boolean(raw.materialize_as_file)
+  return Object.values(brief).some((item) => item !== null && item !== undefined && item !== '')
+    ? brief
+    : null
 }
 
 type SetupPlanDecision = 'autonomous' | 'copilot' | 'provisional'
@@ -1485,6 +1578,50 @@ function SectionCard({
   )
 }
 
+function StartSetupScienceBriefCard({
+  locale,
+  session,
+}: {
+  locale: 'en' | 'zh'
+  session: StartSetupSessionState
+}) {
+  const task = session.scienceTask
+  if (!task?.is_science_task) return null
+  const packages = task.required_packages || []
+  const packageCards = session.sciencePackageCards || []
+  const nodeTypes = task.expected_node_types || []
+  const domainLine = [task.domain, task.task_family].filter(Boolean).join(' · ')
+  const flags = [
+    task.package_check_required ? (locale === 'zh' ? '需要 package check' : 'package check required') : null,
+    task.hpc_expected ? 'HPC' : null,
+    task.solver_installation_unknown ? (locale === 'zh' ? 'solver 未验证' : 'solver unverified') : null,
+  ].filter(Boolean)
+  return (
+    <div className="rounded-[18px] border border-[rgba(88,122,94,0.16)] bg-[rgba(238,246,239,0.68)] px-3.5 py-3 text-[12px] leading-6 text-[rgba(56,74,61,0.92)]">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[rgba(57,96,65,0.82)]">
+        {locale === 'zh' ? 'Science Evidence Graph' : 'Science Evidence Graph'}
+      </div>
+      {domainLine ? <div className="mt-1 font-medium">{domainLine}</div> : null}
+      {packages.length > 0 ? (
+        <div className="mt-1">
+          {locale === 'zh' ? 'Packages' : 'Packages'}: {packages.slice(0, 4).join(', ')}
+        </div>
+      ) : null}
+      {packageCards.length > 0 ? (
+        <div className="mt-1">
+          {locale === 'zh' ? 'Package cards' : 'Package cards'}: {packageCards.slice(0, 3).join(' · ')}
+        </div>
+      ) : null}
+      {nodeTypes.length > 0 ? (
+        <div className="mt-1">
+          {locale === 'zh' ? 'Expected nodes' : 'Expected nodes'}: {nodeTypes.map((item) => item.replace(/^science\./, '')).slice(0, 4).join(' · ')}
+        </div>
+      ) : null}
+      {flags.length > 0 ? <div className="mt-1">{flags.join(' · ')}</div> : null}
+    </div>
+  )
+}
+
 function StartSetupPlanningReviewDialog({
   open,
   locale,
@@ -1587,8 +1724,10 @@ function StartSetupPlanningReviewDialog({
         </div>
 
         <div className="feed-scrollbar min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
+          <StartSetupScienceBriefCard locale={locale} session={session} />
+
           {fitSummary || planSummary || session.missingConfirmations.length > 0 ? (
-            <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]">
+            <div className="mb-4 mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]">
               {(fitSummary || planSummary) ? (
                 <div className="rounded-[20px] border border-[rgba(45,42,38,0.08)] bg-white/72 px-4 py-3 text-sm leading-6 text-[rgba(56,52,47,0.88)]">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[rgba(107,103,97,0.72)]">
@@ -1700,6 +1839,9 @@ export function StartSetupAssessmentCard({
     Boolean(planSummary) ||
     Boolean(planMarkdown) ||
     Boolean(launchReadiness) ||
+    Boolean(session.scienceTask?.is_science_task) ||
+    Boolean(String(session.scienceTaskBrief?.markdown || '').trim()) ||
+    Boolean(String(session.copilotHandoff?.startup_message || '').trim()) ||
     session.missingConfirmations.length > 0 ||
     stages.length > 0
   if (!hasContent) return null
@@ -1801,30 +1943,31 @@ export function StartSetupAssessmentCard({
         </div>
       </div>
 
-      <div className="feed-scrollbar mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          {(fitSummary || launchReadiness) ? (
-            <div className="mt-3 text-sm leading-6 text-[rgba(56,52,47,0.92)]">
-              {fitSummary || launchReadiness}
+        <div className="feed-scrollbar mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
+          <StartSetupScienceBriefCard locale={locale} session={session} />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              {(fitSummary || launchReadiness) ? (
+                <div className="mt-3 text-sm leading-6 text-[rgba(56,52,47,0.92)]">
+                  {fitSummary || launchReadiness}
+                </div>
+              ) : null}
+              {session.missingConfirmations.length > 0 ? (
+                <div className="mt-3 text-[12px] leading-6 text-[rgba(86,82,77,0.82)]">
+                  <span className="font-semibold">
+                    {locale === 'zh' ? '仍待确认' : 'Still missing'}:
+                  </span>{' '}
+                  {session.missingConfirmations.slice(0, 3).join(locale === 'zh' ? '；' : '; ')}
+                </div>
+              ) : null}
             </div>
-          ) : null}
-          {session.missingConfirmations.length > 0 ? (
-            <div className="mt-3 text-[12px] leading-6 text-[rgba(86,82,77,0.82)]">
-              <span className="font-semibold">
-                {locale === 'zh' ? '仍待确认' : 'Still missing'}:
-              </span>{' '}
-              {session.missingConfirmations.slice(0, 3).join(locale === 'zh' ? '；' : '; ')}
-            </div>
-          ) : null}
-        </div>
-        {tone === 'warning' && onSwitchToCopilot && decision !== 'copilot' ? (
-          <Button type="button" variant="outline" className="rounded-full" onClick={onSwitchToCopilot}>
-            <ArrowUpRight className="mr-1.5 h-4 w-4" />
-            {locale === 'zh' ? '改走协作模式' : 'Switch to Copilot'}
-          </Button>
-        ) : null}
-      </div>
+            {tone === 'warning' && onSwitchToCopilot && decision !== 'copilot' ? (
+              <Button type="button" variant="outline" className="rounded-full" onClick={onSwitchToCopilot}>
+                <ArrowUpRight className="mr-1.5 h-4 w-4" />
+                {locale === 'zh' ? '改走协作模式' : 'Switch to Copilot'}
+              </Button>
+            ) : null}
+          </div>
 
       {planSummary ? (
         <div className="mt-4 rounded-[18px] border border-[rgba(45,42,38,0.08)] bg-white/70 px-3.5 py-3 text-[12px] leading-6 text-[rgba(75,73,69,0.84)]">
@@ -2175,6 +2318,10 @@ function resolveStartSetupSessionFromSnapshot(snapshot: unknown): StartSetupSess
       launchReadiness: null,
       missingConfirmations: [],
       previewPlan: null,
+      copilotHandoff: null,
+      scienceTask: null,
+      scienceTaskBrief: null,
+      sciencePackageCards: [],
     }
   }
   const startupContract =
@@ -2214,6 +2361,11 @@ function resolveStartSetupSessionFromSnapshot(snapshot: unknown): StartSetupSess
         .map((item) => String(item || '').trim())
         .filter(Boolean)
     : []
+  const sciencePackageCards = Array.isArray(sessionSource?.science_package_cards)
+    ? sessionSource.science_package_cards
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+    : []
   return {
     suggestedForm,
     fitAssessment,
@@ -2221,6 +2373,10 @@ function resolveStartSetupSessionFromSnapshot(snapshot: unknown): StartSetupSess
     launchReadiness,
     missingConfirmations,
     previewPlan: launchReadiness === 'ready' && missingConfirmations.length === 0 ? rawPreviewPlan : null,
+    copilotHandoff: cleanStartSetupCopilotHandoff(sessionSource?.copilot_handoff),
+    scienceTask: cleanStartSetupScienceTask(sessionSource?.science_task),
+    scienceTaskBrief: cleanStartSetupScienceTaskBrief(sessionSource?.science_task_brief),
+    sciencePackageCards,
   }
 }
 
@@ -2254,6 +2410,23 @@ function normalizeStartSetupSessionPatch(value: unknown): StartSetupSessionPatch
       .map((item) => String(item || '').trim())
       .filter(Boolean)
   }
+  const copilotHandoff = cleanStartSetupCopilotHandoff(sessionRaw.copilot_handoff)
+  if (copilotHandoff) {
+    patch.copilot_handoff = copilotHandoff
+  }
+  const scienceTask = cleanStartSetupScienceTask(sessionRaw.science_task)
+  if (scienceTask) {
+    patch.science_task = scienceTask
+  }
+  const scienceTaskBrief = cleanStartSetupScienceTaskBrief(sessionRaw.science_task_brief)
+  if (scienceTaskBrief) {
+    patch.science_task_brief = scienceTaskBrief
+  }
+  if (Array.isArray(sessionRaw.science_package_cards)) {
+    patch.science_package_cards = sessionRaw.science_package_cards
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+  }
   return Object.keys(patch).length > 0 ? patch : null
 }
 
@@ -2277,6 +2450,16 @@ function mergeStartSetupSessionState(
       : String(patch.launch_readiness || '').trim().toLowerCase() && String(patch.launch_readiness || '').trim().toLowerCase() !== 'ready'
         ? null
         : base.previewPlan,
+    copilotHandoff: patch.copilot_handoff
+      ? { ...(base.copilotHandoff || {}), ...patch.copilot_handoff }
+      : base.copilotHandoff,
+    scienceTask: patch.science_task
+      ? { ...(base.scienceTask || {}), ...patch.science_task }
+      : base.scienceTask,
+    scienceTaskBrief: patch.science_task_brief
+      ? { ...(base.scienceTaskBrief || {}), ...patch.science_task_brief }
+      : base.scienceTaskBrief,
+    sciencePackageCards: patch.science_package_cards ?? base.sciencePackageCards,
   }
 }
 
@@ -2375,6 +2558,11 @@ function fitAssessmentTone(value: string | null | undefined) {
 }
 
 function resolveSetupPlanDecision(session: StartSetupSessionState): SetupPlanDecision {
+  const handoffMode = String(session.copilotHandoff?.workspace_mode || '').trim().toLowerCase()
+  if (handoffMode.includes('copilot') || handoffMode.includes('collab')) return 'copilot'
+  if (session.copilotHandoff?.create_and_send && String(session.copilotHandoff?.startup_message || '').trim()) {
+    return 'copilot'
+  }
   if (session.fitAssessment?.is_autonomous_fit === false) return 'copilot'
   if (session.fitAssessment?.is_autonomous_fit === true) return 'autonomous'
   const combined = [
@@ -2851,9 +3039,22 @@ export function CreateProjectDialog({
       durableSetupSession.recommendedWorkspaceMode || '',
       durableSetupSession.launchReadiness || '',
       String(durableSetupSession.previewPlan?.markdown || '').slice(0, 96),
+      String(durableSetupSession.copilotHandoff?.startup_message || '').slice(0, 96),
+      JSON.stringify(durableSetupSession.scienceTask || {}),
+      String(durableSetupSession.scienceTaskBrief?.markdown || '').slice(0, 160),
+      durableSetupSession.sciencePackageCards.join(','),
       JSON.stringify(durableSetupSuggestedForm || {}),
     ].join('|'),
-    [durableSetupSession.launchReadiness, durableSetupSession.previewPlan?.markdown, durableSetupSession.recommendedWorkspaceMode, durableSetupSuggestedForm]
+    [
+      durableSetupSession.copilotHandoff?.startup_message,
+      durableSetupSession.launchReadiness,
+      durableSetupSession.previewPlan?.markdown,
+      durableSetupSession.recommendedWorkspaceMode,
+      durableSetupSession.scienceTask,
+      durableSetupSession.scienceTaskBrief?.markdown,
+      durableSetupSession.sciencePackageCards,
+      durableSetupSuggestedForm,
+    ]
   )
 
   const transformSetupAgentSubmitMessage = useCallback(
@@ -3664,15 +3865,21 @@ export function CreateProjectDialog({
   }, [navigate, onClose])
 
   const handleSwitchToCopilot = useCallback(async () => {
+    const handoffTitle = String(durableSetupSession.copilotHandoff?.title || '').trim()
+    const handoffMessage = String(durableSetupSession.copilotHandoff?.startup_message || '').trim()
     const suggestedTitle = String(durableSetupSuggestedForm?.title || '').trim()
     const suggestedGoal = String(durableSetupSuggestedForm?.goal || '').trim()
     const planMarkdown = String(durableSetupSession.previewPlan?.markdown || '').trim()
+    const scienceBriefMarkdown = String(durableSetupSession.scienceTaskBrief?.markdown || '').trim()
+    const sciencePackageCards = durableSetupSession.sciencePackageCards || []
     const message = [
-      intakeMessage.trim() || suggestedGoal || form.goal.trim() || compiledPromptPreview.trim(),
+      handoffMessage || intakeMessage.trim() || suggestedGoal || form.goal.trim() || compiledPromptPreview.trim(),
       planMarkdown ? `\n\nSetupAgent launch plan:\n${planMarkdown}` : '',
+      scienceBriefMarkdown ? `\n\nScience task brief:\n${scienceBriefMarkdown}` : '',
+      sciencePackageCards.length > 0 ? `\n\nScience package cards:\n${sciencePackageCards.map((card) => `- ${card}`).join('\n')}` : '',
     ].filter(Boolean).join('')
     await onSwitchToCopilot?.({
-      title: suggestedTitle || form.title.trim() || intakeMessage.trim() || form.goal.trim() || '',
+      title: handoffTitle || suggestedTitle || form.title.trim() || intakeMessage.trim() || form.goal.trim() || '',
       message,
       setupQuestId,
       setupAttachments: setupLaunchAttachments,
@@ -3680,7 +3887,11 @@ export function CreateProjectDialog({
     })
   }, [
     compiledPromptPreview,
-    durableSetupSession.previewPlan,
+    durableSetupSession.copilotHandoff?.startup_message,
+    durableSetupSession.copilotHandoff?.title,
+    durableSetupSession.previewPlan?.markdown,
+    durableSetupSession.sciencePackageCards,
+    durableSetupSession.scienceTaskBrief?.markdown,
     durableSetupSuggestedForm,
     form.goal,
     form.title,

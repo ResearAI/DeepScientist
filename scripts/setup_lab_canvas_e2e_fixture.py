@@ -211,6 +211,101 @@ def build_fixture(home: Path) -> dict[str, object]:
         },
     )
 
+    (quest_root / "validation" / "environment").mkdir(parents=True, exist_ok=True)
+    (quest_root / "simulations" / "inputs").mkdir(parents=True, exist_ok=True)
+    (quest_root / "simulations" / "logs").mkdir(parents=True, exist_ok=True)
+    (quest_root / "simulations" / "outputs" / "water").mkdir(parents=True, exist_ok=True)
+    (quest_root / "validation" / "runs").mkdir(parents=True, exist_ok=True)
+    (quest_root / "validation" / "environment" / "pyscf_doctor.json").write_text(
+        json.dumps({"import": "passed", "version": "2.x", "smoke_test": "passed"}, indent=2),
+        encoding="utf-8",
+    )
+    (quest_root / "simulations" / "inputs" / "water.py").write_text(
+        "print('water hf sto-3g fixture')\n",
+        encoding="utf-8",
+    )
+    (quest_root / "simulations" / "logs" / "water.out").write_text(
+        "SCF converged\nE = -74.96 Hartree\n",
+        encoding="utf-8",
+    )
+    (quest_root / "simulations" / "outputs" / "water" / "energy.json").write_text(
+        json.dumps({"total_energy": -74.96, "unit": "Hartree"}, indent=2),
+        encoding="utf-8",
+    )
+    (quest_root / "validation" / "runs" / "water.json").write_text(
+        json.dumps({"scf_converged": True, "charge": 0, "spin": 0, "unit": "Hartree"}, indent=2),
+        encoding="utf-8",
+    )
+
+    artifact.science(
+        quest_root,
+        action="record_node",
+        node_type="science.package_check",
+        node_id="pkg_pyscf_check",
+        title="PySCF environment check",
+        status="passed",
+        domain="quantum_chemistry",
+        package_id="pyscf",
+        key_results=[{"label": "import", "value": "passed"}, {"label": "version", "value": "2.x"}],
+        evidence_paths=["validation/environment/pyscf_doctor.json"],
+    )
+    artifact.science(
+        quest_root,
+        action="record_node",
+        node_type="science.computational_run",
+        node_id="run_water_hf_sto3g",
+        title="Water HF/STO-3G energy",
+        summary="Computed water molecule total energy using a fixture PySCF-style smoke run.",
+        status="success",
+        domain="quantum_chemistry",
+        package_id="pyscf",
+        task_type="scf_energy",
+        key_results=[{"label": "Total energy", "value": -74.96, "unit": "Hartree"}],
+        input_paths=["simulations/inputs/water.py"],
+        log_paths=["simulations/logs/water.out"],
+        output_paths=["simulations/outputs/water/energy.json"],
+        evidence_paths=[
+            "simulations/inputs/water.py",
+            "simulations/logs/water.out",
+            "simulations/outputs/water/energy.json",
+        ],
+        parent_node_ids=["pkg_pyscf_check"],
+    )
+    artifact.science(
+        quest_root,
+        action="record_node",
+        node_type="science.validation_result",
+        node_id="val_water_hf_sto3g",
+        title="SCF validation",
+        status="passed",
+        domain="quantum_chemistry",
+        package_id="pyscf",
+        related_node_ids=["run_water_hf_sto3g"],
+        validation_paths=["validation/runs/water.json"],
+        key_results=[
+            {"label": "SCF converged", "value": True},
+            {"label": "charge", "value": 0},
+            {"label": "spin", "value": 0},
+        ],
+    )
+    artifact.science(
+        quest_root,
+        action="record_node",
+        node_type="science.claim",
+        node_id="claim_water_energy_computed",
+        title="Water energy was computed",
+        status="active",
+        domain="quantum_chemistry",
+        claim_type="computed",
+        trust="medium",
+        summary="The fixture run records a computed water HF/STO-3G total energy with linked validation evidence.",
+        related_node_ids=["run_water_hf_sto3g", "val_water_hf_sto3g"],
+        evidence_paths=[
+            "simulations/outputs/water/energy.json",
+            "validation/runs/water.json",
+        ],
+    )
+
     quest_service.update_lab_canvas_state(
         quest_root,
         layout_json={
@@ -231,6 +326,8 @@ def build_fixture(home: Path) -> dict[str, object]:
         "sibling_title": "Sibling Route",
         "paper_branch": str(completed["research_state"]["current_workspace_branch"] or ""),
         "metric_keys": FIXTURE_METRICS,
+        "science_run_title": "Water HF/STO-3G energy",
+        "science_claim_title": "Water energy was computed",
     }
 
 

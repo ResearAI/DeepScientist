@@ -19,8 +19,9 @@ We especially thank the following projects for their ideas, research direction, 
 - [Novel / steven-tey/novel](https://github.com/steven-tey/novel)
 - [paper-plot-skills / Trae1ounG/paper-plot-skills](https://github.com/Trae1ounG/paper-plot-skills)
 - [nature-skills / Yuan1z0825/nature-skills](https://github.com/Yuan1z0825/nature-skills)
+- [FermiLink / TaoELi/FermiLink](https://github.com/TaoELi/FermiLink)
 
-These projects have been important references for thinking about automated research, open-ended exploration, evolutionary search, experiment organization, long-horizon research agents, collaborative LaTeX editing workflows, browser-based code editing experiences, rich notebook-style writing interactions, paper-figure generation and polish workflows, and Nature-style scientific writing, data, figure, and presentation skills.
+These projects have been important references for thinking about automated research, open-ended exploration, evolutionary search, experiment organization, long-horizon research agents, collaborative LaTeX editing workflows, browser-based code editing experiences, rich notebook-style writing interactions, paper-figure generation and polish workflows, Nature-style scientific writing, data, figure, and presentation skills, and autonomous scientific simulation / package-knowledge workflows.
 
 ## Personal acknowledgements
 

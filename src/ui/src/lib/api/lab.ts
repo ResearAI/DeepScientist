@@ -1292,6 +1292,7 @@ const CANONICAL_STAGE_ORDER = [
   'baseline',
   'idea',
   'experiment',
+  'science',
   'analysis-campaign',
   'write',
   'finalize',
@@ -1413,6 +1414,7 @@ function stageKeyFromArtifactKind(kind?: string | null) {
   if (normalized === 'idea') return 'idea'
   if (normalized === 'decision' || normalized === 'approval') return 'decision'
   if (normalized === 'run') return 'experiment'
+  if (normalized.startsWith('science.')) return 'science'
   if (normalized === 'report') return 'write'
   if (normalized === 'milestone') return 'finalize'
   return null
@@ -1506,6 +1508,10 @@ function collectArtifactChangedFiles(payload?: Record<string, unknown> | null) {
     ...asArrayValue(payload.changed_files),
     ...asArrayValue(payload.files_changed),
     ...asArrayValue(payload.evidence_paths),
+    ...asArrayValue(payload.input_paths),
+    ...asArrayValue(payload.output_paths),
+    ...asArrayValue(payload.log_paths),
+    ...asArrayValue(payload.validation_paths),
     ...asArrayValue(payload.related_paths),
   ]
   const fromLists = rawLists
@@ -2684,6 +2690,8 @@ function mapTraceToGraphNode(
   const payload = asRecordValue(trace.payload_json)
   const metrics = extractTraceMetrics(trace)
   const ideaId = asStringValue(payload?.idea_id)
+  const traceKind = String(trace.artifact_kind || payload?.kind || '').trim()
+  const isSciencePayload = traceKind.startsWith('science.') || String(payload?.kind || '').startsWith('science.')
   return {
     node_id: trace.selection_ref,
     branch_name: branchName,
@@ -2693,7 +2701,7 @@ function mapTraceToGraphNode(
     latest_commit: trace.head_commit || null,
     status,
     idea_id: ideaId,
-    idea_json: ideaId ? payload : null,
+    idea_json: isSciencePayload || ideaId ? payload : null,
     metrics_json: metrics,
     verdict: trace.summary || null,
     claim_verdict: null,

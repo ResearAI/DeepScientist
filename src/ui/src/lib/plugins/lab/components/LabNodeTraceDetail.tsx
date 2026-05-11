@@ -4,8 +4,13 @@ import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useOpenFile } from '@/hooks/useOpenFile'
 import { client } from '@/lib/api'
 import type { LabQuestNodeTrace } from '@/lib/api/lab'
+import { openWorkspaceFileReference } from '@/components/workspace/open-workspace-file-reference'
+import ScienceNodeDetailPanel from '@/components/science/ScienceNodeDetailPanel'
+import { normalizeScienceTrace } from '@/lib/science/normalize'
+import { useFileTreeStore } from '@/lib/stores/file-tree'
 
 const formatStateLabel = (value?: string | null) => {
   const normalized = String(value || '')
@@ -72,6 +77,11 @@ export default function LabNodeTraceDetail({
   const headCommit = trace?.head_commit || primaryAction?.head_commit || null
   const artifactKind = trace?.artifact_kind || primaryAction?.artifact_kind || null
   const artifactId = trace?.artifact_id || primaryAction?.artifact_id || null
+  const scienceNode = trace ? normalizeScienceTrace(trace) : null
+  const { openFileInTab } = useOpenFile()
+  const findNode = useFileTreeStore((state) => state.findNode)
+  const findNodeByPath = useFileTreeStore((state) => state.findNodeByPath)
+  const refreshTree = useFileTreeStore((state) => state.refresh)
 
   const commitQuery = useQuery({
     queryKey: ['lab-trace-commit', questId, headCommit],
@@ -107,6 +117,23 @@ export default function LabNodeTraceDetail({
     enabled: Boolean(questId && headCommit && selectedPath),
     staleTime: 15000,
   })
+
+  const openScienceEvidencePath = React.useCallback(
+    async (path: string) => {
+      const resolvedProjectId = projectId || questId || null
+      if (!resolvedProjectId) return
+      await openWorkspaceFileReference({
+        href: path,
+        projectId: resolvedProjectId,
+        currentOrigin: typeof window !== 'undefined' ? window.location.origin : null,
+        findNode,
+        findNodeByPath,
+        refreshTree,
+        openFileInTab,
+      })
+    },
+    [findNode, findNodeByPath, openFileInTab, projectId, questId, refreshTree]
+  )
 
   if (isLoading && !trace) {
     return (
@@ -150,7 +177,16 @@ export default function LabNodeTraceDetail({
         <MetaCard label="Updated" value={trace.updated_at || 'N/A'} />
       </div>
 
-      {primaryPayload ? (
+      {scienceNode ? (
+        <ScienceNodeDetailPanel
+          node={scienceNode}
+          onOpenPath={(path) => {
+            void openScienceEvidencePath(path)
+          }}
+        />
+      ) : null}
+
+      {primaryPayload && !scienceNode ? (
         <div className="rounded-[18px] border border-[var(--lab-border)] bg-[var(--lab-surface)] px-4 py-4">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--lab-text-secondary)]">

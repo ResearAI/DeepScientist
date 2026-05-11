@@ -70,6 +70,24 @@ We used DeepScientist to assist parts of the research workflow, including select
 
 You can shorten or adapt this wording to match venue norms.
 
+## Optional FermiLink attribution
+
+DeepScientist's science-evidence workflow was informed by FermiLink's
+scientific simulation and package-knowledge design. If your project materially
+uses FermiLink itself, cite it directly in addition to DeepScientist.
+
+Repository:
+
+- `https://github.com/TaoELi/FermiLink`
+
+Paper:
+
+- Gang Meng, Andres Felipe Bocanegra Vargas, Xinwei Ji, Federico Garcia-Gaitan,
+  Felipe Reyes-Osorio, Jalil Varela-Manjarres, Yafei Ren, Mohammadhasan
+  Dinpajooh, Branislav K. Nikolic, Tao E. Li. *FermiLink: A Unified Agent
+  Framework for Multidomain Autonomous Scientific Simulations*. arXiv:2604.03460
+  (2026).
+
 ## AI assistance disclosure
 
 We strongly encourage clear disclosure when DeepScientist contributed to:

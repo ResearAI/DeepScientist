@@ -258,6 +258,10 @@ START_SETUP_SESSION_FIELDS: tuple[str, ...] = (
     "missing_confirmations",
     "preview_plan",
     "materials_summary",
+    "copilot_handoff",
+    "science_task",
+    "science_task_brief",
+    "science_package_cards",
 )
 
 
@@ -632,7 +636,12 @@ def _sanitize_start_setup_session_patch(session_patch: dict[str, Any] | None) ->
                 raise ValueError("`session_patch.missing_confirmations` must be an array of strings.")
             patch[key] = [str(item).strip() for item in value if str(item).strip()]
             continue
-        if key in {"fit_assessment", "preview_plan"}:
+        if key == "science_package_cards":
+            if not isinstance(value, list):
+                raise ValueError("`session_patch.science_package_cards` must be an array of strings.")
+            patch[key] = [str(item).strip() for item in value if str(item).strip()]
+            continue
+        if key in {"fit_assessment", "preview_plan", "copilot_handoff", "science_task", "science_task_brief"}:
             if not isinstance(value, dict):
                 raise ValueError(f"`session_patch.{key}` must be an object.")
             patch[key] = json.loads(json.dumps(value, ensure_ascii=False))
@@ -1310,6 +1319,94 @@ def build_artifact_server(context: McpContext) -> FastMCP:
             enriched,
             workspace_root=context.worktree_root,
         )
+
+    @server.tool(
+        name="science",
+        description=(
+            "Record and update Science Evidence Graph nodes under the artifact namespace. "
+            "Use this for natural-science and engineering package checks, computational runs, dataset analyses, "
+            "parameter sweeps, validation results, and scientific claims. Do not use it for execution; "
+            "all commands, solver runs, SSH, and HPC work must go through bash_exec."
+        ),
+    )
+    def science(
+        action: str,
+        node_type: str | None = None,
+        node_id: str | None = None,
+        title: str | None = None,
+        summary: str | None = None,
+        status: str | None = None,
+        domain: str | None = None,
+        package_id: str | None = None,
+        task_type: str | None = None,
+        key_results: list[dict[str, Any]] | None = None,
+        evidence_paths: list[str] | None = None,
+        input_paths: list[str] | None = None,
+        output_paths: list[str] | None = None,
+        log_paths: list[str] | None = None,
+        validation_paths: list[str] | None = None,
+        parent_node_ids: list[str] | None = None,
+        related_node_ids: list[str] | None = None,
+        claim_type: str | None = None,
+        trust: str | None = None,
+        canvas: dict[str, Any] | None = None,
+        notify: bool = False,
+        relation_type: str | None = None,
+        relation_summary: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        comment: str | dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        def _normalize_paths(values: list[str] | None) -> list[str]:
+            if not isinstance(values, list):
+                return []
+            normalized: list[str] = []
+            seen: set[str] = set()
+            for value in values:
+                path = _quest_relative_path(value)
+                if not path or path in seen:
+                    continue
+                seen.add(path)
+                normalized.append(path)
+            return normalized
+
+        source: dict[str, Any] = {"kind": "agent"}
+        if context.agent_role:
+            source["role"] = context.agent_role
+        if context.run_id:
+            source["run_id"] = context.run_id
+        if context.worker_id:
+            source["worker_id"] = context.worker_id
+        result = service.science(
+            context.require_quest_root(),
+            action=action,
+            node_type=node_type,
+            node_id=node_id,
+            title=title,
+            summary=summary,
+            status=status,
+            domain=domain,
+            package_id=package_id,
+            task_type=task_type,
+            key_results=key_results,
+            evidence_paths=_normalize_paths(evidence_paths),
+            input_paths=_normalize_paths(input_paths),
+            output_paths=_normalize_paths(output_paths),
+            log_paths=_normalize_paths(log_paths),
+            validation_paths=_normalize_paths(validation_paths),
+            parent_node_ids=parent_node_ids,
+            related_node_ids=related_node_ids,
+            claim_type=claim_type,
+            trust=trust,
+            canvas=canvas,
+            notify=notify,
+            relation_type=relation_type,
+            relation_summary=relation_summary,
+            metadata=metadata,
+            source=source,
+            run_id=context.run_id,
+            workspace_root=context.worktree_root,
+        )
+        return finalize_artifact_tool(result, tool_name="science")
 
     @server.tool(name="checkpoint", description="Create a Git checkpoint in the current quest repository.")
     def checkpoint(
