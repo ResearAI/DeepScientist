@@ -2049,11 +2049,10 @@ Use **Test** when the file exposes runtime dependencies.
                 "--no-session-persistence",
                 "--permission-mode",
                 permission_mode,
-                "--tools",
-                "",
             ]
             if requested_model.lower() not in {"", "inherit", "default", "claude-default"}:
                 command.extend(["--model", requested_model])
+            command.extend(["--tools", ""])
             result = subprocess.run(
                 command,
                 input="Reply with exactly HELLO.",
@@ -2098,7 +2097,7 @@ Use **Test** when the file exposes runtime dependencies.
             "errors": [] if ok else ["Claude Code did not complete the startup hello probe successfully."],
             "details": details,
             "guidance": [] if ok else [
-                "Run `claude -p --output-format json --tools ""` manually and confirm it returns `HELLO`.",
+                "Run `claude -p \"Reply with exactly HELLO.\" --output-format json --tools \"\"` manually and confirm it returns `HELLO`.",
                 "If Claude Code uses a custom account or credential path, point `runners.claude.config_dir` at the correct home.",
             ],
         }

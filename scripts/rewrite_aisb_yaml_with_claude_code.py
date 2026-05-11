@@ -286,8 +286,8 @@ def _call_claude_cli(prompt: str, *, model: str) -> str:
         '--model', model,
         '--permission-mode', 'bypassPermissions',
         '--no-session-persistence',
-        '--tools', '',
         '--system-prompt', SYSTEM_PROMPT,
+        '--tools', '',
     ]
     proc = subprocess.run(
         cmd,

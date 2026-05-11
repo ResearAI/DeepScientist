@@ -117,23 +117,23 @@ Before touching DeepScientist settings, confirm headless Claude Code works on it
 ### Minimal smoke check
 
 ```bash
-claude -p --output-format json --tools "" "Reply with exactly HELLO."
+claude -p "Reply with exactly HELLO." --output-format json --tools ""
 ```
 
 ### Model-specific smoke check
 
 ```bash
-claude -p --output-format json --model claude-opus-4-6 --tools "" "Reply with exactly HELLO."
+claude -p "Reply with exactly HELLO." --output-format json --model claude-opus-4-6 --tools ""
 ```
 
 ### Permission-mode smoke check
 
 ```bash
 claude -p \
+  "Reply with exactly HELLO." \
   --output-format json \
   --permission-mode bypassPermissions \
-  --tools "" \
-  "Reply with exactly HELLO."
+  --tools ""
 ```
 
 If these fail, stop there and fix Claude Code first.
@@ -217,10 +217,10 @@ export ANTHROPIC_AUTH_TOKEN=ollama
 export ANTHROPIC_BASE_URL=http://localhost:11434
 
 claude -p \
+  "Reply with exactly HELLO." \
   --output-format json \
   --model gpt-oss:20b \
-  --tools "" \
-  "Reply with exactly HELLO."
+  --tools ""
 ```
 
 If this fails, fix Ollama, the model name, or Claude Code's provider env before changing DeepScientist.

@@ -50,8 +50,8 @@ release_gate:
   full_real_replay: passed
   reason: Public-dev and scorer-private replay paths exist locally, but final registry promotion, release
     assets, and license review remain pending.
-  next_required_step: Publish BenchStore release asset, fill sha256/size_bytes, and complete clean-host
-    validation.
+  next_required_step: Validate the published BenchStore release asset on a clean host, then complete
+    registry and license review.
 primary_outputs:
 - results.json
 - paper/paper.pdf
@@ -79,25 +79,25 @@ source:
   source_repo: ResearAI/NLPCC-2026-Task9-AISB
   source_commit: b6b7527a226ca7328697156608571f2cb7dcda3a
 download:
-  provider: local_download
+  provider: github_release
   repo: ResearAI/NLPCC-2026-Task9-AISB
-  tag: benchstore-assets-2026-04-30-pilot
+  tag: aisb-v0.0.1
   asset_name: aisb.b2.agent_systems-v0.3.0.zip
-  url: http://localhost:8080/aisb.b2.agent_systems-v0.3.0.zip
+  url: https://github.com/giao-123-sun/DeepScientist/releases/download/aisb-v0.0.1/aisb.b2.agent_systems-v0.3.0.zip
   source_url: https://github.com/ResearAI/NLPCC-2026-Task9-AISB/tree/main/benchmarks/aisb/B2_AgentSystems
   archive_type: zip
   local_dir_name: aisb.b2.agent_systems
   sha256: 640fe257640743a51c7e65bede73c9ea19be97b4d85b232689c23d477d051216
   size_bytes: 25925
   published_at: '2026-04-30T00:00:00Z'
-  asset_status: built_local_not_published
+  asset_status: published
 dataset_download:
   primary_method: packaged_public_dev
   sources:
   - kind: public_dev
     access: public
     url: null
-    note: Public-dev files are included in the future BenchStore package.
+    note: Public-dev files are included in the published BenchStore package.
   - kind: hidden_reference
     access: private
     url: null
@@ -216,12 +216,11 @@ score_card:
     cas: integrity gate, not bonus
 risk_flags:
 - hidden_reference_not_public
-- release_asset_pending
 - not_release_ready
 - registry_promotion_pending
 risk_notes:
 - This catalog entry is not release_ready.
-- Download checksum and size are placeholders until the GitHub release asset is published.
+- Download URL, checksum, and size point to the published GitHub release asset.
 - Official scores require organizer-side replay against private hidden references.
 recommended_when: Use this entry for AISB public-dev integration, local agent workflow checks, and catalog
   UI validation.
