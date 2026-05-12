@@ -65,6 +65,25 @@ Always follow this order:
 4. validate DeepScientist with `ds doctor`
 5. launch DeepScientist with the same Codex profile
 
+`codex login` is not the same as the DeepScientist startup probe. Login only
+checks authentication setup. `ds doctor` sends a real non-interactive Codex
+request and expects a `HELLO` response. If login succeeds but `ds doctor` fails,
+run this direct smoke test from the same shell:
+
+```bash
+printf 'Reply with exactly HELLO.' | codex --search exec --json --cd /tmp --skip-git-repo-check -
+```
+
+For a profile-backed setup, add the profile:
+
+```bash
+printf 'Reply with exactly HELLO.' | codex --search --profile provider_alias exec --json --cd /tmp --skip-git-repo-check -
+```
+
+If the direct command fails, fix Codex, the provider key, the model, or the proxy
+first. If the direct command succeeds but `ds doctor` fails, compare `which
+codex`, `CODEX_HOME`, proxy variables, and `~/DeepScientist/config/runners.yaml`.
+
 ## Step 1: confirm the Codex binary
 
 Check which Codex is actually being used:
@@ -264,7 +283,12 @@ Non-interactive smoke check:
 codex exec --profile provider_alias "Reply with exactly OK."
 ```
 
-If this fails, stop there and fix Codex first.
+If this fails, stop there and fix Codex first. For the closest match to
+DeepScientist's probe, prefer:
+
+```bash
+printf 'Reply with exactly HELLO.' | codex --search --profile provider_alias exec --json --cd /tmp --skip-git-repo-check -
+```
 
 ## Step 5: map that setup into DeepScientist
 
@@ -382,6 +406,7 @@ Important:
 - for provider-backed Codex profiles, prefer `model: inherit`
 - only hard-code `model:` in DeepScientist if you are sure the provider accepts that exact explicit model id
 - DeepScientist launches Codex from an isolated runtime home under `.ds/codex-home`, but copies your configured `~/.codex` auth, config, skills, agents, and prompts into that runtime copy first
+- if `ds doctor` reports a failed startup probe, read its `probe command`, `exit code`, `stderr excerpt`, and `stdout excerpt`; those fields describe the real Codex request failure, not just login state
 
 ## One-off overrides without editing `config.toml`
 

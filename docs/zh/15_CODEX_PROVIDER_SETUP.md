@@ -69,6 +69,20 @@ codex exec --help
 4. 用 `ds doctor` 验证 DeepScientist
 5. 最后再让 DeepScientist 复用这套 Codex 配置
 
+`codex login` 不等于 DeepScientist 的启动探测。login 只说明认证流程完成；`ds doctor` 会真的发送一次非交互式 Codex 请求，并要求返回 `HELLO`。如果 login 成功但 `ds doctor` 失败，请在同一个 shell 里先跑：
+
+```bash
+printf 'Reply with exactly HELLO.' | codex --search exec --json --cd /tmp --skip-git-repo-check -
+```
+
+如果使用 profile，再加上 profile：
+
+```bash
+printf 'Reply with exactly HELLO.' | codex --search --profile provider_alias exec --json --cd /tmp --skip-git-repo-check -
+```
+
+如果这个直接命令失败，先修 Codex、provider key、模型或代理。如果它成功但 `ds doctor` 失败，再对比 `which codex`、`CODEX_HOME`、代理环境变量和 `~/DeepScientist/config/runners.yaml`。
+
 ## 第一步：先确认 Codex binary
 
 先检查当前实际在用哪个 Codex：
@@ -266,7 +280,11 @@ codex --profile provider_alias
 codex exec --profile provider_alias "Reply with exactly OK."
 ```
 
-如果这里都还不通，不要先怪 DeepScientist，先把 Codex 自己修通。
+如果这里都还不通，不要先怪 DeepScientist，先把 Codex 自己修通。为了尽量贴近 DeepScientist 的实际探测，优先再跑：
+
+```bash
+printf 'Reply with exactly HELLO.' | codex --search --profile provider_alias exec --json --cd /tmp --skip-git-repo-check -
+```
 
 ## 第五步：把同一套配置映射给 DeepScientist
 
@@ -311,6 +329,7 @@ codex:
 - 对 provider-backed 的 Codex profile，优先使用 `model: inherit`
 - 只有当你非常确定 provider 接受那个显式模型名时，才在 DeepScientist 里硬写 `model:`
 - DeepScientist 实际运行 Codex 时会在 `.ds/codex-home` 下构造一个隔离运行时 home，但会先复制你 `~/.codex` 里的 auth、config、skills、agents 和 prompts
+- 如果 `ds doctor` 报 startup probe 失败，先看报告里的 `probe command`、`exit code`、`stderr excerpt` 和 `stdout excerpt`；这些字段反映的是真实 Codex 请求失败，而不只是 login 状态
 
 ## 不改 `config.toml` 的临时覆盖方式
 

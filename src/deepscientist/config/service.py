@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -1521,6 +1522,14 @@ Use **Test** when the file exposes runtime dependencies.
         return hints
 
     @staticmethod
+    def _codex_direct_hello_probe_command(*, profile: str = "") -> str:
+        profile_args = f" --profile {shlex.quote(profile)}" if profile else ""
+        return (
+            "printf 'Reply with exactly HELLO.' | "
+            f"codex --search{profile_args} exec --json --cd /tmp --skip-git-repo-check -"
+        )
+
+    @staticmethod
     def _missing_provider_env_guidance(
         *,
         profile: str,
@@ -1539,7 +1548,8 @@ Use **Test** when the file exposes runtime dependencies.
                     "Also add `requires_openai_auth = false` to that local provider profile so DeepScientist can remove conflicting `OPENAI_*` auth variables."
                 )
         guidance.append(
-            f"Before retrying DeepScientist, run a real request such as `codex exec --profile {profile} --json --cd /tmp --skip-git-repo-check -` and verify it returns `HELLO`."
+            "Before retrying DeepScientist, run a real request such as "
+            f"`{ConfigManager._codex_direct_hello_probe_command(profile=profile)}` and verify it returns `HELLO`."
         )
         return guidance
 
@@ -1579,7 +1589,52 @@ Use **Test** when the file exposes runtime dependencies.
             },
         )
 
-    def _codex_probe_failure_guidance(self, config: dict) -> tuple[list[str], list[str]]:
+    @staticmethod
+    def _codex_probe_text_looks_auth_related(stdout_text: str, stderr_text: str) -> bool:
+        haystack = f"{stdout_text}\n{stderr_text}".lower()
+        markers = (
+            "please login",
+            "not logged in",
+            "login required",
+            "authentication required",
+            "auth required",
+            "oauth",
+            "unauthenticated",
+            "missing credentials",
+            "no credentials",
+        )
+        return any(marker in haystack for marker in markers)
+
+    @staticmethod
+    def _codex_probe_text_looks_network_related(stdout_text: str, stderr_text: str) -> bool:
+        haystack = f"{stdout_text}\n{stderr_text}".lower()
+        markers = (
+            "connection refused",
+            "connection reset",
+            "connection timed out",
+            "network is unreachable",
+            "name or service not known",
+            "temporary failure in name resolution",
+            "dns",
+            "proxy",
+            "tls",
+            "certificate",
+            "ssl",
+            "timeout",
+            "timed out",
+            "econnreset",
+            "econnrefused",
+            "enotfound",
+        )
+        return any(marker in haystack for marker in markers)
+
+    def _codex_probe_failure_guidance(
+        self,
+        config: dict,
+        *,
+        stdout_text: str = "",
+        stderr_text: str = "",
+    ) -> tuple[list[str], list[str]]:
         profile = self._codex_profile_name(config)
         config_dir = str(config.get("config_dir") or "~/.codex").strip()
         metadata = active_provider_metadata_from_home(config_dir, profile=profile or None) if config_dir else {}
@@ -1591,7 +1646,7 @@ Use **Test** when the file exposes runtime dependencies.
                     f"Codex profile `{profile}` did not complete the startup hello probe successfully.",
                 ],
                 [
-                    f"Run `codex exec --profile {profile} --json --cd /tmp --skip-git-repo-check -` in a terminal and confirm that a real `HELLO` request succeeds.",
+                    f"Run `{self._codex_direct_hello_probe_command(profile=profile)}` in a terminal and confirm that a real `HELLO` request succeeds.",
                     "If the profile uses a custom provider, make sure its API key, Base URL, and model configuration are available to Codex.",
                     "If the provider expects the model from the Codex profile itself, set `model: inherit` in `~/DeepScientist/config/runners.yaml`.",
                     *provider_hints,
@@ -1599,14 +1654,49 @@ Use **Test** when the file exposes runtime dependencies.
                     "Then run `ds doctor` and start DeepScientist again.",
                 ],
             )
+        if self._codex_probe_text_looks_auth_related(stdout_text, stderr_text):
+            return (
+                [
+                    "Codex reported an authentication or first-run setup problem during the startup hello probe.",
+                    "Run `codex login` (or just `codex`) once and complete login before starting DeepScientist.",
+                ],
+                [
+                    "Run `codex login` (or just `codex`) in a terminal and complete login or first-run setup.",
+                    "Then run `printf 'Reply with exactly HELLO.' | codex --search exec --json --cd /tmp --skip-git-repo-check -` and confirm the real request succeeds.",
+                    "If login succeeds but the direct probe still fails, check the configured model, provider profile, proxy, and Codex account access.",
+                    "Then run `ds doctor` and start DeepScientist again.",
+                ],
+            )
+        if self._codex_model_unavailable(stdout_text, stderr_text):
+            return (
+                [
+                    "Codex authentication may be working, but the configured startup probe model was not accepted.",
+                ],
+                [
+                    "Run `printf 'Reply with exactly HELLO.' | codex --search exec --json --cd /tmp --skip-git-repo-check -` in the same shell and confirm the current Codex default model works.",
+                    "Set `runners.codex.model: inherit` in `~/DeepScientist/config/runners.yaml`, or set it to a model that your Codex account can actually use.",
+                    "Then run `ds doctor` and start DeepScientist again.",
+                ],
+            )
+        if self._codex_probe_text_looks_network_related(stdout_text, stderr_text):
+            return (
+                [
+                    "Codex CLI was found, but the real startup hello request appears to have failed at the network, proxy, TLS, or provider layer.",
+                ],
+                [
+                    "Run `printf 'Reply with exactly HELLO.' | codex --search exec --json --cd /tmp --skip-git-repo-check -` from the same shell and verify the request succeeds.",
+                    "If this host needs a proxy, export `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` before launching `ds`; for managed or supervised runs, also put required environment variables under `runners.codex.env`.",
+                    "Then run `ds doctor` and start DeepScientist again.",
+                ],
+            )
         return (
             [
-                "Run `codex login` (or just `codex`) once and complete login before starting DeepScientist.",
+                "Codex CLI was found, but its real startup hello request did not complete successfully.",
             ],
             [
-                "Run `codex login` (or just `codex`) in a terminal and complete login or first-run setup.",
-                "If `codex` is missing, install it explicitly with `npm install -g @openai/codex`.",
-                "If the configured model is not available to your Codex account, update `~/DeepScientist/config/runners.yaml` and try again.",
+                "Run `printf 'Reply with exactly HELLO.' | codex --search exec --json --cd /tmp --skip-git-repo-check -` in the same shell and inspect the Codex stderr/stdout.",
+                "If that direct command succeeds but `ds doctor` fails, compare `which codex`, `CODEX_HOME`, proxy variables, and `~/DeepScientist/config/runners.yaml`.",
+                "If the configured model is not available to your Codex account, set `runners.codex.model: inherit` or another accessible model.",
                 "Then run `ds doctor` and start DeepScientist again.",
             ],
         )
@@ -1800,13 +1890,20 @@ Use **Test** when the file exposes runtime dependencies.
 
         command, result, timeout_error = run_probe_once(effective_model)
         if timeout_error is not None:
+            stdout_text = str(timeout_error.stdout or "")
+            stderr_text = str(timeout_error.stderr or "")
             details.update(
                 {
                     "exit_code": None,
-                    "stdout_excerpt": self._compact_probe_text(timeout_error.stdout or ""),
-                    "stderr_excerpt": self._compact_probe_text(timeout_error.stderr or ""),
+                    "stdout_excerpt": self._compact_probe_text(stdout_text),
+                    "stderr_excerpt": self._compact_probe_text(stderr_text),
                     "probe_command": command,
                 }
+            )
+            failure_errors, failure_guidance = self._codex_probe_failure_guidance(
+                config,
+                stdout_text=stdout_text,
+                stderr_text=stderr_text,
             )
             return {
                 "ok": False,
@@ -1814,11 +1911,11 @@ Use **Test** when the file exposes runtime dependencies.
                 "warnings": base_warnings,
                 "errors": [
                     "Codex did not answer the startup hello probe within 90 seconds.",
-                    *self._codex_probe_failure_guidance(config)[0],
+                    *failure_errors,
                 ],
                 "details": details,
                 "guidance": [
-                    *self._codex_probe_failure_guidance(config)[1],
+                    *failure_guidance,
                     "If `codex` is missing on PATH, install it explicitly with `npm install -g @openai/codex`.",
                     "Confirm the configured model is available to your Codex setup. DeepScientist currently probes Codex with the configured runner model first.",
                 ],
@@ -1898,9 +1995,19 @@ Use **Test** when the file exposes runtime dependencies.
                 warnings.append("Codex returned stderr during the startup probe.")
             if details.get("model_fallback_attempted") and not details.get("model_fallback_used"):
                 warnings.append("DeepScientist also tried the current Codex default model, but that fallback probe did not succeed.")
-            errors.extend(self._codex_probe_failure_guidance(config)[0])
+            errors.extend(
+                self._codex_probe_failure_guidance(
+                    config,
+                    stdout_text=stdout_text,
+                    stderr_text=stderr_text,
+                )[0]
+            )
         missing_env_key = missing_provider_env_key_from_text(stdout_text, stderr_text) or configured_provider_env_key
-        failure_guidance = self._codex_probe_failure_guidance(config)[1]
+        failure_guidance = self._codex_probe_failure_guidance(
+            config,
+            stdout_text=stdout_text,
+            stderr_text=stderr_text,
+        )[1]
         if not ok and missing_env_key and profile:
             errors.append(
                 f"Codex profile `{profile}` requires environment variable `{missing_env_key}`, but DeepScientist did not receive it."

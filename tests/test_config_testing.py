@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 from deepscientist.bridges import register_builtin_connector_bridges
@@ -1140,6 +1141,88 @@ def test_codex_probe_failure_guidance_mentions_login_doctor_and_model(monkeypatc
     assert "codex login" in error_text
 
 
+def test_codex_probe_network_failure_guidance_does_not_default_to_login(monkeypatch, temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+
+    monkeypatch.setattr("deepscientist.config.service.resolve_runner_binary", lambda binary, runner_name=None: "/tmp/fake-codex")
+
+    def fake_run(command, **kwargs):  # noqa: ANN001
+        class Result:
+            returncode = 1
+            stdout = ""
+            stderr = "connection timed out while connecting through proxy"
+
+        return Result()
+
+    monkeypatch.setattr("deepscientist.config.service.subprocess.run", fake_run)
+
+    result = manager._probe_codex_runner({"binary": "codex", "model": "inherit"})
+
+    assert result["ok"] is False
+    guidance_text = "\n".join(result["guidance"])
+    error_text = "\n".join(result["errors"])
+    assert "proxy" in guidance_text
+    assert "codex login" not in guidance_text
+    assert "codex login" not in error_text
+
+
+def test_codex_probe_timeout_guidance_uses_captured_network_stderr(monkeypatch, temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+
+    monkeypatch.setattr("deepscientist.config.service.resolve_runner_binary", lambda binary, runner_name=None: "/tmp/fake-codex")
+
+    def fake_run(command, **kwargs):  # noqa: ANN001
+        raise subprocess.TimeoutExpired(
+            cmd=command,
+            timeout=90,
+            output="",
+            stderr="TLS proxy handshake timed out",
+        )
+
+    monkeypatch.setattr("deepscientist.config.service.subprocess.run", fake_run)
+
+    result = manager._probe_codex_runner({"binary": "codex", "model": "inherit"})
+
+    assert result["ok"] is False
+    guidance_text = "\n".join(result["guidance"])
+    error_text = "\n".join(result["errors"])
+    assert "proxy" in guidance_text
+    assert "network, proxy, TLS, or provider" in error_text
+    assert "codex login" not in guidance_text
+
+
+def test_codex_probe_generic_failure_guidance_points_to_real_exec_probe(monkeypatch, temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+
+    monkeypatch.setattr("deepscientist.config.service.resolve_runner_binary", lambda binary, runner_name=None: "/tmp/fake-codex")
+
+    def fake_run(command, **kwargs):  # noqa: ANN001
+        class Result:
+            returncode = 1
+            stdout = ""
+            stderr = "provider returned an unexpected empty response"
+
+        return Result()
+
+    monkeypatch.setattr("deepscientist.config.service.subprocess.run", fake_run)
+
+    result = manager._probe_codex_runner({"binary": "codex", "model": "inherit"})
+
+    assert result["ok"] is False
+    guidance_text = "\n".join(result["guidance"])
+    error_text = "\n".join(result["errors"])
+    assert "codex --search exec --json" in guidance_text
+    assert "which codex" in guidance_text
+    assert "codex login" not in guidance_text
+    assert "codex login" not in error_text
+
+
 def test_codex_probe_failure_guidance_mentions_responses_for_local_provider(monkeypatch, temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     manager = ConfigManager(temp_home)
@@ -1255,7 +1338,7 @@ model_provider = "sglang"
     assert "runners.codex.env.sglang" in guidance_text
     assert 'wire_api = "responses"' in guidance_text
     assert "requires_openai_auth = false" in guidance_text
-    assert "codex exec --profile sglang" in guidance_text
+    assert "codex --search --profile sglang exec --json" in guidance_text
 
 
 def test_codex_probe_blocks_chat_mode_profile_on_non_0570_codex(monkeypatch, temp_home: Path) -> None:

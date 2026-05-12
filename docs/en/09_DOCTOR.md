@@ -70,12 +70,24 @@ The `Diagnostics` page is the operator-facing surface that pairs best with `ds d
 - whether the web and TUI bundles exist
 - whether the configured web port is free or already running the correct daemon
 
+Important Codex distinction: `codex login` only proves that the Codex CLI completed its
+authentication flow. The `ds doctor` runner check is stricter: it sends a real
+non-interactive `codex exec` request and expects a `HELLO` response. A machine can
+therefore show "Successfully logged in" from `codex login` while `ds doctor`
+still fails because the model is unavailable, the provider key is missing from
+the DeepScientist process environment, the proxy is not inherited, or the Codex
+profile/config directory differs from the one you tested manually.
+
 `ds doctor` now tries to render failed checks in a more operational form:
 
 - `Problem`: what failed
 - `Why`: why DeepScientist believes it failed
 - `Fix`: the concrete next steps to try
 - `Evidence`: the quest/run/request clues that matched the diagnosis
+
+For failed runner probes, the report also includes the useful low-level evidence
+when available: exit code, probe command, selected profile/model, stdout excerpt,
+and stderr excerpt. Use those fields before retrying blindly.
 
 ## Common fixes
 
@@ -104,6 +116,22 @@ codex login
 If you prefer the interactive first-run flow, run `codex` and finish the setup there.
 
 Finish login once, then rerun `ds doctor`.
+
+If `codex login` says success but `ds doctor` still fails, run the same kind of
+non-interactive smoke test that DeepScientist uses:
+
+```bash
+printf 'Reply with exactly HELLO.' | codex --search exec --json --cd /tmp --skip-git-repo-check -
+```
+
+If that command fails, fix Codex, the selected model, the profile, the provider
+key, or the proxy first. If that command succeeds but `ds doctor` fails, compare:
+
+- `which codex`
+- `CODEX_HOME`
+- `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
+- `~/DeepScientist/config/runners.yaml`
+- any `runners.codex.env` values needed by provider-backed profiles
 
 ### Codex profile works in the terminal, but DeepScientist still fails
 
@@ -197,6 +225,18 @@ ds --stop
 ```
 
 Then run `ds` again.
+
+If `ds doctor` says the port is already serving another DeepScientist home, use
+the home path printed in the error. For example:
+
+```bash
+ds --home /path/printed/by/doctor doctor
+ds --home /path/printed/by/doctor --stop
+```
+
+This usually means you started DeepScientist once from one directory/home and are
+now running `ds doctor` against another home. Either use the already running home
+or change this home to a different port.
 
 If another service already uses the port, change `ui.port` in:
 

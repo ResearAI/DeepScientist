@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import os
+import shlex
 import socket
 import subprocess
 import sys
@@ -70,6 +71,40 @@ def _make_check(
         "fix": [str(line) for line in (fix or []) if str(line).strip()],
         "evidence": [str(line) for line in (evidence or []) if str(line).strip()],
     }
+
+
+def _probe_detail_subset(details: dict[str, Any], *, resolved_binary: str) -> dict[str, Any]:
+    keys = (
+        "profile",
+        "model",
+        "requested_model",
+        "effective_model",
+        "approval_policy",
+        "sandbox_mode",
+        "reasoning_effort",
+        "requested_reasoning_effort",
+        "codex_cli_version",
+        "provider_env_key",
+        "provider_env_missing",
+        "provider_wire_api",
+        "model_fallback_attempted",
+        "model_fallback_used",
+        "exit_code",
+        "stdout_excerpt",
+        "stderr_excerpt",
+        "probe_command",
+        "initial_exit_code",
+        "initial_stdout_excerpt",
+        "initial_stderr_excerpt",
+        "fallback_exit_code",
+        "fallback_stdout_excerpt",
+        "fallback_stderr_excerpt",
+    )
+    rendered: dict[str, Any] = {"resolved_binary": resolved_binary}
+    for key in keys:
+        if key in details:
+            rendered[key] = details.get(key)
+    return rendered
 
 
 def _check_python_runtime() -> dict[str, Any]:
@@ -327,7 +362,7 @@ def _check_runner(config_manager: ConfigManager, runner_name: str) -> dict[str, 
         warnings=probe_warnings,
         errors=probe_errors or [f"{label} startup probe did not succeed."],
         guidance=probe_guidance,
-        details={"resolved_binary": resolved_binary},
+        details=_probe_detail_subset(probe_details, resolved_binary=resolved_binary),
         problem=diagnosis.problem if diagnosis is not None else None,
         why=diagnosis.why if diagnosis is not None else None,
         fix=list(diagnosis.guidance) if diagnosis is not None else None,
@@ -649,9 +684,11 @@ def _check_ui_port(home: Path, config_manager: ConfigManager) -> dict[str, Any]:
             summary="The configured port is already used by another DeepScientist home.",
             errors=[f"{browser_url} is already serving a daemon for `{daemon_home}`."],
             guidance=[
-                "Stop the other daemon first or change `ui.port` in `~/DeepScientist/config/config.yaml`.",
+                f"If you intended to use that running instance, run `ds --home {daemon_home} doctor` and open {browser_url}.",
+                f"If it is stale, stop it with `ds --home {daemon_home} --stop`.",
+                "Otherwise change `ui.port` in this home config or start this home with a different port, for example `ds --port 21000`.",
             ],
-            details={"browser_url": browser_url, "host": host, "port": port},
+            details={"browser_url": browser_url, "host": host, "port": port, "daemon_home": daemon_home},
         )
 
     bindable, bind_error = _port_is_bindable(host, port)
@@ -811,6 +848,34 @@ def render_doctor_report(report: dict[str, Any]) -> str:
             resolved_binary = str(details.get("resolved_binary") or "").strip()
             if resolved_binary:
                 lines.append(f"  resolved binary: {resolved_binary}")
+            exit_code = details.get("exit_code")
+            if exit_code is not None:
+                lines.append(f"  exit code: {exit_code}")
+            codex_cli_version = str(details.get("codex_cli_version") or "").strip()
+            if codex_cli_version:
+                lines.append(f"  codex cli version: {codex_cli_version}")
+            profile = str(details.get("profile") or "").strip()
+            if profile:
+                lines.append(f"  profile: {profile}")
+            effective_model = str(details.get("effective_model") or details.get("model") or "").strip()
+            if effective_model:
+                lines.append(f"  effective model: {effective_model}")
+            provider_wire_api = str(details.get("provider_wire_api") or "").strip()
+            if provider_wire_api:
+                lines.append(f"  provider wire api: {provider_wire_api}")
+            if details.get("provider_env_missing"):
+                provider_env_key = str(details.get("provider_env_key") or "").strip()
+                if provider_env_key:
+                    lines.append(f"  missing provider env: {provider_env_key}")
+            probe_command = details.get("probe_command")
+            if isinstance(probe_command, list) and probe_command:
+                lines.append(f"  probe command: {shlex.join(str(part) for part in probe_command)}")
+            stdout_excerpt = str(details.get("stdout_excerpt") or "").strip()
+            if stdout_excerpt:
+                lines.append(f"  stdout excerpt: {stdout_excerpt}")
+            stderr_excerpt = str(details.get("stderr_excerpt") or "").strip()
+            if stderr_excerpt:
+                lines.append(f"  stderr excerpt: {stderr_excerpt}")
             latex_pdflatex_path = str(details.get("latex_pdflatex_path") or "").strip()
             if latex_pdflatex_path:
                 lines.append(f"  pdflatex: {latex_pdflatex_path}")
@@ -820,6 +885,9 @@ def render_doctor_report(report: dict[str, Any]) -> str:
             browser_url = str(details.get("browser_url") or "").strip()
             if browser_url:
                 lines.append(f"  url: {browser_url}")
+            daemon_home = str(details.get("daemon_home") or "").strip()
+            if daemon_home:
+                lines.append(f"  daemon home: {daemon_home}")
         lines.append("")
 
     guidance: list[str] = []

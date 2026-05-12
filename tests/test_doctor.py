@@ -7,7 +7,7 @@ import pytest
 
 from deepscientist.cli import build_parser
 from deepscientist.config import ConfigManager
-from deepscientist.doctor import render_doctor_report, run_doctor
+from deepscientist.doctor import _check_ui_port, render_doctor_report, run_doctor
 from deepscientist.home import ensure_home_layout, repo_root
 from deepscientist.quest import QuestService
 from deepscientist.shared import append_jsonl, ensure_dir, utc_now, write_json
@@ -418,6 +418,9 @@ def test_doctor_surfaces_probe_diagnosis_for_known_tool_argument_error(monkeypat
             "guidance": ["Retry later."],
             "details": {
                 "resolved_binary": "/usr/bin/codex",
+                "exit_code": 1,
+                "probe_command": ["/usr/bin/codex", "--search", "exec", "--json", "-"],
+                "effective_model": "inherit",
                 "stderr_excerpt": "failed to parse tool call arguments: trailing characters at line 1 column 3",
                 "stdout_excerpt": "",
             },
@@ -432,3 +435,27 @@ def test_doctor_surfaces_probe_diagnosis_for_known_tool_argument_error(monkeypat
     assert codex_check["problem"] == "The runner emitted malformed tool-call arguments."
     assert any("Serialize tool calls one at a time" in line for line in codex_check["fix"])
     assert "problem: The runner emitted malformed tool-call arguments." in rendered
+    assert "exit code: 1" in rendered
+    assert "probe command: /usr/bin/codex --search exec --json -" in rendered
+    assert "stderr excerpt: failed to parse tool call arguments" in rendered
+
+
+def test_doctor_web_port_guidance_mentions_conflicting_home(monkeypatch, temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+
+    other_home = "/data384/zyj/e2h_codex/DeepScientist"
+    monkeypatch.setattr(
+        "deepscientist.doctor._query_local_health",
+        lambda url: {"status": "ok", "home": other_home},
+    )
+
+    check = _check_ui_port(temp_home, manager)
+
+    assert check["ok"] is False
+    assert "another DeepScientist home" in check["summary"]
+    guidance = "\n".join(check["guidance"])
+    assert f"ds --home {other_home} doctor" in guidance
+    assert f"ds --home {other_home} --stop" in guidance
+    assert "ds --port 21000" in guidance

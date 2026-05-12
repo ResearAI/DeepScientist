@@ -62,12 +62,16 @@
 - Web / TUI bundle 是否存在
 - 当前 Web 端口是否空闲，或者是否已运行正确的 daemon
 
+注意 Codex 这里有一个关键区别：`codex login` 只说明 Codex CLI 完成了登录流程；`ds doctor` 的 runner 检查更严格，它会发起一次真实的非交互式 `codex exec` 请求，并要求模型返回 `HELLO`。所以即使 `codex login` 输出 `Successfully logged in`，`ds doctor` 仍然可能因为模型不可用、provider key 没被 DeepScientist 进程继承、代理环境没传入、或者 `CODEX_HOME` / `~/.codex` 不一致而失败。
+
 现在 `ds doctor` 会尽量把失败项渲染成更可执行的结构：
 
 - `Problem`：出了什么问题
 - `Why`：为什么系统认为它是这个问题
 - `Fix`：现在应该先做什么修复动作
 - `Evidence`：命中的 quest/run/request 线索
+
+对于失败的 runner probe，报告还会尽量显示 exit code、实际 probe command、profile / model、stdout excerpt 和 stderr excerpt。先看这些证据，再决定是否继续重试。
 
 ## 常见修复方式
 
@@ -96,6 +100,20 @@ codex login
 如果你更喜欢交互式首次配置，就运行 `codex` 并在交互式界面里完成认证。
 
 先完成一次登录，再重新执行 `ds doctor`。
+
+如果 `codex login` 已经显示成功，但 `ds doctor` 仍然失败，请直接运行 DeepScientist 使用的同类非交互式 smoke test：
+
+```bash
+printf 'Reply with exactly HELLO.' | codex --search exec --json --cd /tmp --skip-git-repo-check -
+```
+
+如果这个命令失败，优先修 Codex 本身、模型、profile、provider key 或代理。如果这个命令成功但 `ds doctor` 失败，再对比：
+
+- `which codex`
+- `CODEX_HOME`
+- `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`
+- `~/DeepScientist/config/runners.yaml`
+- provider-backed profile 需要的 `runners.codex.env`
 
 ### Codex profile 在终端里可用，但 DeepScientist 还是失败
 
@@ -189,6 +207,15 @@ ds --stop
 ```
 
 然后重新执行 `ds`。
+
+如果 `ds doctor` 明确提示当前端口正在服务另一个 DeepScientist home，请使用报错里打印的 home 路径。例如：
+
+```bash
+ds --home /doctor/打印出来的/home doctor
+ds --home /doctor/打印出来的/home --stop
+```
+
+这通常说明你之前从一个目录/home 启动了 DeepScientist，现在又在另一个 home 上运行 `ds doctor`。要么继续使用已经运行的那个 home，要么给当前 home 换一个端口。
 
 如果是其他服务占用了端口，请修改：
 
