@@ -6,6 +6,7 @@ The current open-source runtime prefers the built-in long-connection path:
 
 - no public event callback is required for the recommended setup
 - the main credentials are `app_id` and `app_secret`
+- multiple Feishu app connections can be configured as separate `profiles`
 - direct messages can auto-bind to the latest active quest when enabled
 
 ## 1. What Feishu support includes
@@ -30,6 +31,10 @@ This means Feishu already fits the same quest-binding model as the other connect
 8. Save the connector.
 9. Send one real message to the bot.
 10. Return to DeepScientist and confirm that the target conversation has been discovered.
+
+For multiple Feishu apps, add one enabled entry per app under `profiles`. Each
+profile needs a unique `profile_id`, unique `app_id`, and its own `app_secret`
+or `app_secret_env`.
 
 ## 2.1 Settings page at a glance
 
@@ -63,6 +68,7 @@ Main fields:
 - `groups`
 - `require_mention_in_groups`
 - `auto_bind_dm_to_active_quest`
+- `profiles`
 
 For the full field reference, see [01 Settings Reference](./01_SETTINGS_REFERENCE.md).
 

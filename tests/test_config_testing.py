@@ -1664,6 +1664,99 @@ def test_saving_runners_profile_invalidates_cached_codex_bootstrap_state(temp_ho
     assert state["codex_last_result"]["summary"] == "Codex runner configuration changed. A new startup probe is required."
 
 
+def test_runner_live_config_test_persists_startup_probe_state(monkeypatch, temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+    runners = manager.load_named("runners")
+    for runner in runners.values():
+        if isinstance(runner, dict):
+            runner["enabled"] = False
+    runners["claude"]["enabled"] = True
+    runners["claude"]["binary"] = "claude"
+
+    monkeypatch.setattr(
+        "deepscientist.config.service.resolve_runner_binary",
+        lambda _binary, *, runner_name=None: f"/tmp/fake-{runner_name or 'runner'}",
+    )
+
+    probed: list[str] = []
+
+    def fake_probe(runner_name: str, *, persist: bool = False, payload=None):  # noqa: ANN001
+        probed.append(runner_name)
+        assert persist is True
+        if runner_name != "claude":
+            return {
+                "ok": True,
+                "summary": f"{runner_name} startup probe completed.",
+                "warnings": [],
+                "errors": [],
+                "details": {"checked_at": "2026-05-13T02:15:00+00:00"},
+            }
+        config = manager.load_named_normalized("config")
+        bootstrap = config.get("bootstrap") if isinstance(config.get("bootstrap"), dict) else {}
+        readiness = bootstrap.get("runner_readiness") if isinstance(bootstrap.get("runner_readiness"), dict) else {}
+        readiness["claude"] = {
+            "ready": True,
+            "last_checked_at": "2026-05-13T02:15:00+00:00",
+            "last_result": {
+                "ok": True,
+                "summary": "Claude Code startup probe completed.",
+                "warnings": [],
+                "errors": [],
+                "guidance": [],
+            },
+        }
+        bootstrap["runner_readiness"] = readiness
+        config["bootstrap"] = bootstrap
+        manager.save_named_payload("config", config)
+        return {
+            "ok": True,
+            "summary": "Claude Code startup probe completed.",
+            "warnings": [],
+            "errors": [],
+            "details": {"checked_at": "2026-05-13T02:15:00+00:00"},
+        }
+
+    monkeypatch.setattr(manager, "probe_runner_bootstrap", fake_probe)
+
+    result = manager._test_runners_payload(runners, live=True)
+    state = manager.runner_bootstrap_state("claude")
+
+    assert result["ok"] is True
+    assert "claude" in probed
+    assert state["ready"] is True
+    assert state["last_result"]["summary"] == "Claude Code startup probe completed."
+
+
+def test_feishu_profiles_validate_profile_credentials_without_top_level_secret(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+    connectors = manager.load_named("connectors")
+    connectors["feishu"]["enabled"] = True
+    connectors["feishu"]["app_id"] = ""
+    connectors["feishu"]["app_secret"] = ""
+    connectors["feishu"]["profiles"] = [
+        {
+            "profile_id": "feishu-alpha",
+            "enabled": True,
+            "app_id": "cli_alpha",
+            "app_secret": "alpha-secret",
+        },
+        {
+            "profile_id": "feishu-beta",
+            "enabled": True,
+            "app_id": "cli_beta",
+            "app_secret": "beta-secret",
+        },
+    ]
+
+    result = manager._validate_connectors_payload(connectors)
+
+    assert result["errors"] == []
+
+
 def test_default_config_includes_deepxiv_defaults(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     manager = ConfigManager(temp_home)

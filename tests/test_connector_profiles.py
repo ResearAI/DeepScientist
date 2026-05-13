@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from urllib.error import URLError
 
 import pytest
 
+from deepscientist.bridges.connectors import FeishuConnectorBridge
 from deepscientist.config import ConfigManager
 from deepscientist.config.models import default_connectors
 from deepscientist.connector.connector_profiles import (
@@ -568,6 +571,52 @@ def test_generic_relay_send_uses_profile_specific_credentials(
     assert captured_configs
     assert captured_configs[-1]["profile_id"] == "telegram-beta"
     assert captured_configs[-1]["bot_token"] == "beta-token"
+
+
+def test_feishu_delivery_retries_transient_urlopen_error(monkeypatch) -> None:
+    calls: list[str] = []
+
+    class _Response:
+        def __init__(self, status: int, payload: dict) -> None:
+            self.status = status
+            self._payload = payload
+
+        def __enter__(self):  # noqa: ANN001
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):  # noqa: ANN001
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps(self._payload, ensure_ascii=False).encode("utf-8")
+
+    def fake_urlopen(request, timeout=8):  # noqa: ANN001
+        url = str(getattr(request, "full_url", ""))
+        calls.append(url)
+        if len(calls) == 1:
+            raise URLError("[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol")
+        if "tenant_access_token" in url:
+            return _Response(200, {"tenant_access_token": "tenant-token"})
+        return _Response(200, {"code": 0, "msg": "success"})
+
+    monkeypatch.setattr("deepscientist.bridges.connectors.urlopen", fake_urlopen)
+
+    result = FeishuConnectorBridge().deliver_direct(
+        {
+            "conversation_id": "feishu:direct:oc_123",
+            "text": "hello",
+            "attachments": [],
+        },
+        {
+            "app_id": "cli_xxx",
+            "app_secret": "secret",
+        },
+    )
+
+    assert result is not None
+    assert result["ok"] is True
+    assert result["retry_count"] == 1
+    assert len(calls) == 3
 
 
 def test_daemon_latest_connector_conversation_ids_reads_profile_runtime_files(temp_home: Path) -> None:

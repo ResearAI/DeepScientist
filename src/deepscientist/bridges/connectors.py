@@ -9,7 +9,7 @@ from hashlib import sha256
 from hmac import new as hmac_new
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
 from ..network import urlopen_with_proxy as urlopen
@@ -164,6 +164,7 @@ class SlackConnectorBridge(BaseConnectorBridge):
 
 class FeishuConnectorBridge(BaseConnectorBridge):
     name = "feishu"
+    http_max_attempts = 3
 
     def parse_webhook(self, *, method: str, headers: dict[str, str], query: dict[str, list[str]], raw_body: bytes, body: dict[str, Any] | None, config: dict[str, Any]) -> BridgeWebhookResult:
         if method != "POST":
@@ -223,27 +224,98 @@ class FeishuConnectorBridge(BaseConnectorBridge):
         app_secret = self.read_secret(config, "app_secret", "app_secret_env")
         if not app_id or not app_secret:
             return None
-        token_request = Request(
-            "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-            data=json.dumps({"app_id": app_id, "app_secret": app_secret}).encode("utf-8"),
-            method="POST",
+        token_result = self._request_json_with_retry(
+            lambda: self._json_request(
+                "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+                {"app_id": app_id, "app_secret": app_secret},
+            )
         )
-        token_request.add_header("Content-Type", "application/json; charset=utf-8")
-        with urlopen(token_request, timeout=8) as token_response:  # noqa: S310
-            token_payload = json.loads(token_response.read().decode("utf-8"))
+        if not token_result["ok"]:
+            return {
+                "ok": False,
+                "status_code": token_result.get("status_code"),
+                "response": str(token_result.get("response") or "")[:500],
+                "error": token_result.get("error"),
+                "retry_count": token_result.get("retry_count", 0),
+                "transport": "feishu-http",
+            }
+        token_payload = token_result["payload"] if isinstance(token_result.get("payload"), dict) else {}
         tenant_access_token = str(token_payload.get("tenant_access_token") or "").strip()
         if not tenant_access_token:
-            return {"ok": False, "status_code": token_response.status, "response": json.dumps(token_payload, ensure_ascii=False)[:500], "transport": "feishu-http"}
+            return {
+                "ok": False,
+                "status_code": token_result.get("status_code"),
+                "response": json.dumps(token_payload, ensure_ascii=False)[:500],
+                "retry_count": token_result.get("retry_count", 0),
+                "transport": "feishu-http",
+            }
+        message_result = self._request_json_with_retry(
+            lambda: self._json_request(
+                "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
+                self.format_outbound(payload, config),
+                headers={"Authorization": f"Bearer {tenant_access_token}"},
+            )
+        )
+        return {
+            "ok": bool(message_result.get("ok")) and 200 <= int(message_result.get("status_code") or 0) < 300,
+            "status_code": message_result.get("status_code"),
+            "response": str(message_result.get("response") or "")[:500],
+            "error": message_result.get("error"),
+            "retry_count": int(token_result.get("retry_count") or 0) + int(message_result.get("retry_count") or 0),
+            "transport": "feishu-http",
+        }
+
+    @staticmethod
+    def _json_request(url: str, body: dict[str, Any], *, headers: dict[str, str] | None = None) -> Request:
         request = Request(
-            "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
-            data=json.dumps(self.format_outbound(payload, config), ensure_ascii=False).encode("utf-8"),
+            url,
+            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
             method="POST",
         )
         request.add_header("Content-Type", "application/json; charset=utf-8")
-        request.add_header("Authorization", f"Bearer {tenant_access_token}")
-        with urlopen(request, timeout=8) as response:  # noqa: S310
-            response_text = response.read().decode("utf-8", errors="replace")
-            return {"ok": 200 <= response.status < 300, "status_code": response.status, "response": response_text[:500], "transport": "feishu-http"}
+        for key, value in (headers or {}).items():
+            request.add_header(key, value)
+        return request
+
+    def _request_json_with_retry(self, request_factory, *, timeout: int = 8) -> dict[str, Any]:  # noqa: ANN001
+        retry_count = 0
+        last_error = ""
+        for attempt in range(self.http_max_attempts):
+            try:
+                with urlopen(request_factory(), timeout=timeout) as response:  # noqa: S310
+                    response_text = response.read().decode("utf-8", errors="replace")
+                    try:
+                        payload = json.loads(response_text)
+                    except json.JSONDecodeError:
+                        payload = {}
+                    return {
+                        "ok": True,
+                        "status_code": response.status,
+                        "response": response_text,
+                        "payload": payload,
+                        "retry_count": retry_count,
+                    }
+            except (HTTPError, URLError, TimeoutError, OSError) as exc:
+                last_error = str(exc)
+                if attempt >= self.http_max_attempts - 1:
+                    return {
+                        "ok": False,
+                        "status_code": getattr(exc, "code", None),
+                        "response": "",
+                        "payload": {},
+                        "error": last_error,
+                        "retry_count": retry_count,
+                    }
+                retry_count += 1
+                time.sleep(min(0.2 * retry_count, 1.0))
+        return {
+            "ok": False,
+            "status_code": None,
+            "response": "",
+            "payload": {},
+            "error": last_error,
+            "retry_count": retry_count,
+        }
 
 
 class WhatsAppConnectorBridge(BaseConnectorBridge):

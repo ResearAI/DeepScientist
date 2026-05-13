@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 from deepscientist.channels.feishu_long_connection import FeishuLongConnectionService
@@ -8,6 +10,20 @@ from deepscientist.config import ConfigManager
 from deepscientist.daemon.app import DaemonApp
 from deepscientist.home import ensure_home_layout
 from deepscientist.shared import read_json, write_yaml
+
+
+def test_feishu_sdk_bundle_installs_thread_loop_proxy(monkeypatch) -> None:
+    client_module = SimpleNamespace(loop=object(), Client=object)
+    enum_module = SimpleNamespace(LogLevel=SimpleNamespace(INFO="info"))
+    monkeypatch.setitem(sys.modules, "lark_oapi.ws.client", client_module)
+    monkeypatch.setitem(sys.modules, "lark_oapi.core.enum", enum_module)
+
+    bundle = FeishuLongConnectionService._sdk_bundle()
+
+    assert bundle is not None
+    assert bundle["client_module"] is client_module
+    assert client_module.loop.__class__.__name__ == "_ThreadLoopProxy"
+    assert hasattr(client_module.loop, "create_task")
 
 
 def test_feishu_long_connection_reports_missing_sdk_dependency(temp_home: Path, monkeypatch) -> None:
