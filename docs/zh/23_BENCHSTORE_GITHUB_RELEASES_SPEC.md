@@ -42,7 +42,7 @@
 - `benchstore-assets-r1`
 - `benchstore-assets-2026q2`
 
-不要把 benchmark 资产直接混入普通程序版本 tag，例如 `v1.5.17`，除非你明确接受“程序版本节奏”和“benchmark 资产节奏”强绑定。
+不要把 benchmark 资产直接混入普通程序版本 tag，例如 `v1.6.0`，除非你明确接受“程序版本节奏”和“benchmark 资产节奏”强绑定。
 
 ## 3. 资产粒度
 

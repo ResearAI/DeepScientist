@@ -264,7 +264,7 @@ This guide was manually verified on:
 - Node.js 20.x
 - npm 10.8.2
 - Codex CLI 0.57.0
-- DeepScientist 1.5.17
+- DeepScientist 1.6.0
 - Alibaba Bailian Coding Plan with `qwen3.5-plus`
 
 If package versions, Codex compatibility, or Bailian API behavior changes later, recheck the latest official references first:

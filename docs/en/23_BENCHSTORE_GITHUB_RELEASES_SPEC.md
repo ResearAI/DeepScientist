@@ -42,7 +42,7 @@ Recommended release tag style:
 - `benchstore-assets-r1`
 - `benchstore-assets-2026q2`
 
-Do **not** mix benchmark assets into ordinary application-version tags such as `v1.5.17` unless you are fully willing to couple software release cadence and benchmark asset cadence.
+Do **not** mix benchmark assets into ordinary application-version tags such as `v1.6.0` unless you are fully willing to couple software release cadence and benchmark asset cadence.
 
 ## 3. Asset granularity
 

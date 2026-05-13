@@ -69,8 +69,8 @@ function installLandingStubs(page: Page) {
         contentType: 'application/json',
         body: JSON.stringify({
           ok: true,
-          current_version: '1.5.17',
-          latest_version: '1.5.17',
+          current_version: '1.6.0',
+          latest_version: '1.6.0',
           update_available: false,
           prompt_recommended: false,
           busy: false,

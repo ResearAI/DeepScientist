@@ -255,7 +255,7 @@ ds --stop
 - Node.js 20.x
 - npm 10.8.2
 - Codex CLI 0.57.0
-- DeepScientist 1.5.17
+- DeepScientist 1.6.0
 - 阿里百炼 Coding Plan（`qwen3.5-plus`）
 
 如果后续项目版本、Codex 版本或阿里百炼 API 兼容方式发生变化，请以最新官方文档为准，并优先复查：
