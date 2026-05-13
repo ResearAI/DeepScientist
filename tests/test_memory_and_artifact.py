@@ -4985,6 +4985,46 @@ def test_artifact_interact_redirects_ordinary_decision_requests_in_autonomous_mo
     assert not snapshot_after["pending_decisions"]
 
 
+def test_artifact_interact_does_not_redirect_copilot_decision_request_with_stale_autonomous_policy(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create(
+        "copilot stale autonomous decision quest",
+        startup_contract={"workspace_mode": "copilot", "decision_policy": "user_gated"},
+    )
+    quest_root = Path(quest["quest_root"])
+    quest_service.update_research_state(quest_root, workspace_mode="copilot")
+    quest_yaml_path = quest_root / "quest.yaml"
+    quest_yaml = read_yaml(quest_yaml_path, {})
+    startup_contract = dict(quest_yaml.get("startup_contract") or {})
+    startup_contract["decision_policy"] = "autonomous"
+    quest_yaml["startup_contract"] = startup_contract
+    write_yaml(quest_yaml_path, quest_yaml)
+    artifact = ArtifactService(temp_home)
+
+    result = artifact.interact(
+        quest_root,
+        kind="decision_request",
+        message="Should I choose branch A or branch B?",
+        deliver_to_bound_conversations=False,
+        include_recent_inbound_messages=False,
+        reply_mode="blocking",
+        options=[
+            {"id": "a", "label": "A", "description": "Choose branch A."},
+            {"id": "b", "label": "B", "description": "Choose branch B."},
+        ],
+    )
+
+    assert result["status"] == "ok"
+    assert result["reply_mode"] == "blocking"
+    assert result["interaction_id"]
+    snapshot_after = quest_service.snapshot(quest["quest_id"])
+    assert snapshot_after["workspace_mode"] == "copilot"
+    assert snapshot_after["status"] == "waiting_for_user"
+    assert snapshot_after["pending_decisions"]
+
+
 def test_artifact_interact_allows_completion_approval_in_autonomous_mode(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()

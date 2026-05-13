@@ -2913,6 +2913,16 @@ class QuestService:
             return "benchstore"
         return "research"
 
+    @staticmethod
+    def _normalize_startup_contract_modes(startup_contract: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not isinstance(startup_contract, dict):
+            return None
+        normalized = dict(startup_contract)
+        workspace_mode = str(normalized.get("workspace_mode") or "").strip().lower()
+        if workspace_mode == "copilot":
+            normalized["decision_policy"] = "user_gated"
+        return normalized
+
     @contextmanager
     def _quest_id_state_lock(self):
         lock_path = self._quest_id_lock_path()
@@ -3048,7 +3058,7 @@ class QuestService:
                 resolved_runner,
                 title=title,
                 requested_baseline_ref=dict(requested_baseline_ref) if isinstance(requested_baseline_ref, dict) else None,
-                startup_contract=dict(startup_contract) if isinstance(startup_contract, dict) else None,
+                startup_contract=self._normalize_startup_contract_modes(startup_contract),
             ),
         )
         write_text(quest_root / "brief.md", initial_brief(goal))
@@ -4295,8 +4305,11 @@ class QuestService:
             )
             if str(startup_contract.get("workspace_mode") or "").strip().lower() != normalized_workspace_mode:
                 startup_contract["workspace_mode"] = normalized_workspace_mode
-                quest_data["startup_contract"] = startup_contract
                 changed = True
+            if normalized_workspace_mode == "copilot" and startup_contract.get("decision_policy") != "user_gated":
+                startup_contract["decision_policy"] = "user_gated"
+                changed = True
+            quest_data["startup_contract"] = startup_contract
             if str(self.read_research_state(quest_root).get("workspace_mode") or "").strip().lower() != normalized_workspace_mode:
                 research_state_updates["workspace_mode"] = normalized_workspace_mode
             runtime_state_updates["continuation_policy"] = (
@@ -4315,16 +4328,20 @@ class QuestService:
                 if isinstance(quest_data.get("startup_contract"), dict)
                 else {}
             )
-            if str(startup_contract.get("decision_policy") or "").strip().lower() != normalized_decision_policy:
-                startup_contract["decision_policy"] = normalized_decision_policy
-                quest_data["startup_contract"] = startup_contract
-                changed = True
             effective_workspace_mode = str(
                 research_state_updates.get("workspace_mode")
                 or self.read_research_state(quest_root).get("workspace_mode")
                 or startup_contract.get("workspace_mode")
                 or ""
             ).strip().lower()
+            if effective_workspace_mode == "copilot":
+                normalized_decision_policy = "user_gated"
+                runtime_state_updates["continuation_policy"] = "wait_for_user_or_resume"
+                runtime_state_updates["continuation_reason"] = "copilot_mode"
+            if str(startup_contract.get("decision_policy") or "").strip().lower() != normalized_decision_policy:
+                startup_contract["decision_policy"] = normalized_decision_policy
+                quest_data["startup_contract"] = startup_contract
+                changed = True
             if normalized_decision_policy == "autonomous" and effective_workspace_mode == "autonomous":
                 runtime_state = self._read_runtime_state(quest_root)
                 current_policy = str(runtime_state.get("continuation_policy") or "").strip().lower()
@@ -4412,7 +4429,7 @@ class QuestService:
                 changed = True
 
         if startup_contract is not _UNSET:
-            normalized_contract = dict(startup_contract) if isinstance(startup_contract, dict) else None
+            normalized_contract = self._normalize_startup_contract_modes(startup_contract)
             if quest_data.get("startup_contract") != normalized_contract:
                 quest_data["startup_contract"] = normalized_contract
                 changed = True
@@ -5988,6 +6005,9 @@ class QuestService:
         pending_count = len((queue_payload or {}).get("pending") or [])
         timestamp = quest_yaml.get("updated_at") or quest_yaml.get("created_at") or utc_now()
         status = str(quest_yaml.get("status") or "idle")
+        startup_contract = quest_yaml.get("startup_contract") if isinstance(quest_yaml.get("startup_contract"), dict) else {}
+        workspace_mode = str(startup_contract.get("workspace_mode") or "").strip().lower()
+        copilot_mode = workspace_mode == "copilot"
         return {
             "quest_id": str(quest_yaml.get("quest_id") or quest_root.name),
             "status": status,
@@ -6000,10 +6020,10 @@ class QuestService:
             "last_tool_activity_at": None,
             "last_tool_activity_name": None,
             "tool_calls_since_last_artifact_interact": 0,
-            "continuation_policy": "auto",
-            "continuation_anchor": None,
-            "continuation_reason": None,
-            "continuation_updated_at": None,
+            "continuation_policy": "wait_for_user_or_resume" if copilot_mode else "auto",
+            "continuation_anchor": "decision" if copilot_mode else None,
+            "continuation_reason": "copilot_mode" if copilot_mode else None,
+            "continuation_updated_at": timestamp if copilot_mode else None,
             "waiting_notice": None,
             "last_resume_source": None,
             "last_resume_at": None,

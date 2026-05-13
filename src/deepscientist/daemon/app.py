@@ -3745,10 +3745,13 @@ class DaemonApp:
                 return value
         return "user_gated"
 
+    def _effective_autonomous_decision_mode(self, snapshot: dict) -> bool:
+        return self._workspace_mode_for(snapshot) == "autonomous" and self._decision_policy_for(snapshot) == "autonomous"
+
     def _auto_resume_wait_if_allowed(self, quest_id: str, snapshot: dict) -> tuple[dict, bool]:
         if str(snapshot.get("continuation_policy") or "").strip().lower() != "wait_for_user_or_resume":
             return snapshot, False
-        if self._decision_policy_for(snapshot) != "autonomous":
+        if not self._effective_autonomous_decision_mode(snapshot):
             return snapshot, False
         reason = str(snapshot.get("continuation_reason") or "").strip() or "wait_for_user_or_resume"
         if reason in AUTONOMOUS_BLOCKING_WAIT_REASONS:

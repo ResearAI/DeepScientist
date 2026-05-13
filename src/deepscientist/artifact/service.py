@@ -11493,6 +11493,23 @@ class ArtifactService:
             return value
         return "user_gated"
 
+    def _workspace_mode(self, quest_root: Path) -> str:
+        try:
+            quest_id = self._quest_id(quest_root)
+            snapshot = self.quest_service.snapshot(quest_id)
+            value = str(snapshot.get("workspace_mode") or "").strip().lower()
+            if value in {"copilot", "autonomous"}:
+                return value
+        except Exception:
+            pass
+        value = str(self._startup_contract(quest_root).get("workspace_mode") or "").strip().lower()
+        if value in {"copilot", "autonomous"}:
+            return value
+        return "autonomous"
+
+    def _effective_autonomous_decision_mode(self, quest_root: Path) -> bool:
+        return self._workspace_mode(quest_root) == "autonomous" and self._decision_policy(quest_root) == "autonomous"
+
     @staticmethod
     def _blocking_wait_reasons() -> set[str]:
         return set(AUTONOMOUS_BLOCKING_WAIT_REASONS)
@@ -11529,7 +11546,7 @@ class ArtifactService:
     ) -> dict[str, Any]:
         normalized_reason = str(reason or "").strip() or "waiting_for_feedback"
         decision_policy = self._decision_policy(quest_root)
-        should_wait = force_wait or decision_policy != "autonomous" or normalized_reason in self._blocking_wait_reasons()
+        should_wait = force_wait or not self._effective_autonomous_decision_mode(quest_root) or normalized_reason in self._blocking_wait_reasons()
         if should_wait:
             message = self.quest_service.localized_copy(
                 quest_root=quest_root,
@@ -14844,7 +14861,7 @@ class ArtifactService:
         decision_type = self._interaction_decision_type({"reply_schema": reply_schema_resolved})
         if (
             kind == "decision_request"
-            and decision_policy == "autonomous"
+            and self._effective_autonomous_decision_mode(quest_root)
             and decision_type != QUEST_COMPLETION_DECISION_TYPE
         ):
             mailbox_payload = {

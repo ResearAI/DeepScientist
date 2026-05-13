@@ -3034,6 +3034,33 @@ def test_quest_create_handler_copilot_workspace_starts_idle_and_waits_for_user(t
     assert "Ready for your first instruction." in status_md
 
 
+def test_quest_create_handler_normalizes_copilot_autonomous_decision_policy(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+
+    payload = app.handlers.quest_create(
+        {
+            "goal": "Copilot dirty policy quest",
+            "title": "Copilot dirty policy quest",
+            "startup_contract": {
+                "workspace_mode": "copilot",
+                "decision_policy": "autonomous",
+                "launch_mode": "custom",
+                "custom_profile": "freeform",
+            },
+            "auto_start": False,
+        }
+    )
+
+    assert payload["ok"] is True
+    snapshot = payload["snapshot"]
+    assert snapshot["workspace_mode"] == "copilot"
+    assert snapshot["startup_contract"]["decision_policy"] == "user_gated"
+    assert snapshot["continuation_policy"] == "wait_for_user_or_resume"
+    assert snapshot["continuation_reason"] == "copilot_mode"
+
+
 def test_quest_settings_handler_updates_quest_yaml(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
@@ -3066,7 +3093,10 @@ def test_quest_settings_handler_updates_workspace_mode_and_research_state(temp_h
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
     app = DaemonApp(temp_home)
-    quest = app.quest_service.create("workspace mode settings quest")
+    quest = app.quest_service.create(
+        "workspace mode settings quest",
+        startup_contract={"workspace_mode": "autonomous", "decision_policy": "autonomous"},
+    )
     quest_id = quest["quest_id"]
 
     payload = app.handlers.quest_settings(
@@ -3085,6 +3115,7 @@ def test_quest_settings_handler_updates_workspace_mode_and_research_state(temp_h
     quest_yaml = read_yaml(temp_home / "quests" / quest_id / "quest.yaml", {})
     startup_contract = dict(quest_yaml.get("startup_contract") or {})
     assert startup_contract["workspace_mode"] == "copilot"
+    assert startup_contract["decision_policy"] == "user_gated"
 
     research_state = read_json(temp_home / "quests" / quest_id / ".ds" / "research_state.json", {})
     assert research_state["workspace_mode"] == "copilot"
@@ -3116,6 +3147,27 @@ def test_quest_settings_handler_updates_decision_policy(temp_home: Path) -> None
     quest_yaml = read_yaml(temp_home / "quests" / quest_id / "quest.yaml", {})
     startup_contract = dict(quest_yaml.get("startup_contract") or {})
     assert startup_contract["decision_policy"] == "autonomous"
+
+
+def test_quest_settings_handler_keeps_copilot_decision_policy_user_gated(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create(
+        "copilot decision policy settings quest",
+        startup_contract={"workspace_mode": "copilot", "decision_policy": "user_gated"},
+    )
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+    app.quest_service.update_research_state(quest_root, workspace_mode="copilot")
+
+    payload = app.handlers.quest_settings(quest_id, {"decision_policy": "autonomous"})
+
+    assert isinstance(payload, dict)
+    assert payload["ok"] is True
+    assert payload["snapshot"]["workspace_mode"] == "copilot"
+    assert payload["snapshot"]["startup_contract"]["decision_policy"] == "user_gated"
+    assert payload["snapshot"]["continuation_policy"] != "auto"
 
 
 def test_quest_settings_decision_policy_autonomous_wakes_non_blocking_wait(temp_home: Path) -> None:
@@ -7184,6 +7236,37 @@ def test_waiting_notice_auto_resumes_for_autonomous_policy(temp_home: Path) -> N
     )
 
 
+def test_copilot_waiting_notice_does_not_auto_resume_with_stale_autonomous_policy(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create(
+        "copilot stale autonomous policy wait quest",
+        startup_contract={"workspace_mode": "copilot", "decision_policy": "user_gated", "user_language": "en"},
+    )
+    quest_root = Path(quest["quest_root"])
+    app.quest_service.update_research_state(quest_root, workspace_mode="copilot")
+    quest_yaml_path = quest_root / "quest.yaml"
+    quest_yaml = read_yaml(quest_yaml_path, {})
+    startup_contract = dict(quest_yaml.get("startup_contract") or {})
+    startup_contract["decision_policy"] = "autonomous"
+    quest_yaml["startup_contract"] = startup_contract
+    write_yaml(quest_yaml_path, quest_yaml)
+
+    result = app.artifact_service._set_waiting_or_auto_resume(
+        quest_root,
+        reason="paper_bundle_submitted",
+        anchor="decision",
+    )
+    snapshot = app.quest_service.snapshot(quest["quest_id"])
+
+    assert result["action"] == "waiting"
+    assert snapshot["workspace_mode"] == "copilot"
+    assert snapshot["continuation_policy"] == "wait_for_user_or_resume"
+    assert snapshot["waiting_notice"]["status"] == "waiting"
+    assert snapshot["waiting_notice"]["reason"] == "paper_bundle_submitted"
+
+
 def test_autonomous_auto_continue_keeps_running_without_external_progress(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
@@ -7234,6 +7317,39 @@ def test_copilot_auto_continue_parks_without_external_progress(temp_home: Path) 
 
     assert snapshot["continuation_policy"] == "wait_for_user_or_resume"
     assert snapshot["continuation_reason"] == "copilot_mode"
+
+
+def test_copilot_wait_state_does_not_auto_resume_with_stale_autonomous_policy(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create(
+        "copilot stale autonomous policy daemon quest",
+        startup_contract={"workspace_mode": "copilot", "decision_policy": "user_gated"},
+    )
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+    app.quest_service.update_research_state(quest_root, workspace_mode="copilot")
+    quest_yaml_path = quest_root / "quest.yaml"
+    quest_yaml = read_yaml(quest_yaml_path, {})
+    startup_contract = dict(quest_yaml.get("startup_contract") or {})
+    startup_contract["decision_policy"] = "autonomous"
+    quest_yaml["startup_contract"] = startup_contract
+    write_yaml(quest_yaml_path, quest_yaml)
+    app.quest_service.update_runtime_state(
+        quest_root=quest_root,
+        status="active",
+        continuation_policy="wait_for_user_or_resume",
+        continuation_reason="copilot_mode",
+    )
+
+    snapshot, auto_resumed = app._auto_resume_wait_if_allowed(quest_id, app.quest_service.snapshot(quest_id))
+
+    assert auto_resumed is False
+    assert snapshot["workspace_mode"] == "copilot"
+    assert snapshot["continuation_policy"] == "wait_for_user_or_resume"
+    assert snapshot["continuation_reason"] == "copilot_mode"
+    assert snapshot.get("waiting_notice") is None
 
 
 def test_auto_continue_switches_to_external_progress_monitoring_when_bash_runs_exist(temp_home: Path) -> None:

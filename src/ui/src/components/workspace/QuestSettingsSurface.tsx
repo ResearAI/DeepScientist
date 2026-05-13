@@ -495,7 +495,9 @@ export function QuestSettingsSurface({
     [runnerEnvRows, savedRunnerEnvRows]
   )
   const workspaceModeDirty = workspaceMode !== savedWorkspaceMode
-  const decisionPolicyDirty = decisionPolicy !== savedDecisionPolicy
+  const decisionPolicyLockedByCopilot = workspaceMode === 'copilot'
+  const visibleDecisionPolicy: DecisionPolicy = decisionPolicyLockedByCopilot ? 'user_gated' : decisionPolicy
+  const decisionPolicyDirty = !decisionPolicyLockedByCopilot && decisionPolicy !== savedDecisionPolicy
   const activeRunnerName = String(snapshot?.runner || snapshot?.default_runner || 'codex').trim().toLowerCase() || 'codex'
   const activeRunnerDefaultEnvKeys = DEFAULT_RUNNER_ENV_KEYS[activeRunnerName] || []
 
@@ -509,10 +511,14 @@ export function QuestSettingsSurface({
 
   const decisionPolicyItems = React.useMemo(
     () => [
-      { value: 'autonomous' as DecisionPolicy, label: t('quest_settings_decision_autonomous') },
+      {
+        value: 'autonomous' as DecisionPolicy,
+        label: t('quest_settings_decision_autonomous'),
+        disabled: decisionPolicyLockedByCopilot,
+      },
       { value: 'user_gated' as DecisionPolicy, label: t('quest_settings_decision_user_gated') },
     ],
-    [t]
+    [decisionPolicyLockedByCopilot, t]
   )
 
   const saveWorkspaceMode = React.useCallback(async () => {
@@ -530,6 +536,10 @@ export function QuestSettingsSurface({
         return
       }
       setSavedWorkspaceMode(workspaceMode)
+      if (workspaceMode === 'copilot') {
+        setDecisionPolicy('user_gated')
+        setSavedDecisionPolicy('user_gated')
+      }
       await onRefresh()
       toast({
         title: t('quest_settings_mode_saved_title'),
@@ -705,7 +715,7 @@ export function QuestSettingsSurface({
                   type="button"
                   size="sm"
                   onClick={() => void saveDecisionPolicy()}
-                  disabled={decisionPolicySaving || !decisionPolicyDirty}
+                  disabled={decisionPolicySaving || decisionPolicyLockedByCopilot || !decisionPolicyDirty}
                 >
                   {t('quest_settings_decision_save')}
                 </Button>
@@ -714,12 +724,20 @@ export function QuestSettingsSurface({
               <Separator className="bg-border/50" />
 
               <SegmentedControl
-                value={decisionPolicy}
-                onValueChange={(value) => setDecisionPolicy(value as DecisionPolicy)}
+                value={visibleDecisionPolicy}
+                onValueChange={(value) => {
+                  if (decisionPolicyLockedByCopilot) return
+                  setDecisionPolicy(value as DecisionPolicy)
+                }}
                 items={decisionPolicyItems}
                 size="sm"
                 ariaLabel={t('quest_settings_decision_title')}
               />
+              {decisionPolicyLockedByCopilot ? (
+                <div className="text-xs text-muted-foreground">
+                  {t('quest_settings_decision_copilot_locked')}
+                </div>
+              ) : null}
             </div>
           </EnhancedCard>
 
