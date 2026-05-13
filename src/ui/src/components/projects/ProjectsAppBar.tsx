@@ -1,5 +1,5 @@
 import { GraduationCap, Languages, Search } from 'lucide-react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,7 +22,7 @@ export function ProjectsAppBar({
   onSearchChange?: (value: string) => void
 }) {
   const { locale, toggleLocale, t } = useI18n()
-  const location = useLocation()
+  const navigate = useNavigate()
   const restartTutorial = useOnboardingStore((state) => state.restartTutorial)
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const resolvedTitle = title || t('projectsTitle')
@@ -92,7 +92,11 @@ export function ProjectsAppBar({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => restartTutorial(location.pathname || '/', locale === 'zh' ? 'zh' : 'en')}
+            onClick={() => {
+              const nextLanguage = locale === 'zh' ? 'zh' : 'en'
+              navigate('/')
+              restartTutorial('/', nextLanguage)
+            }}
             className="rounded-full px-2 sm:px-3"
             aria-label={locale === 'zh' ? '教程' : 'Tutorial'}
           >

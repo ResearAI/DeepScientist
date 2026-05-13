@@ -16,6 +16,12 @@ async function expectStepProgress(page: Page, step: number) {
   await expect(page.getByText(stepProgressPattern(step))).toBeVisible()
 }
 
+async function expectLandingUrl(page: Page) {
+  await expect
+    .poll(() => new URL(page.url()).pathname.replace(/\/+$/, '') || '/')
+    .toMatch(/^\/(?:ui)?$/)
+}
+
 async function readCurrentStep(page: Page) {
   const bodyText = await page.locator('body').innerText()
   const match = bodyText.match(/\bStep\s+(\d+)\s*\/\s*(\d+)\b/i)
@@ -324,6 +330,45 @@ test.describe('onboarding launch flow', () => {
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
     expect(overflow).toBeLessThanOrEqual(1)
+  })
+
+  test('the docs and settings tutorial buttons return to the landing tour', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 1000 })
+    await page.addInitScript(() => {
+      window.localStorage.setItem(
+        'ds:onboarding:v1',
+        JSON.stringify({
+          firstRunHandled: true,
+          completed: true,
+          neverRemind: true,
+          language: 'en',
+        })
+      )
+      window.localStorage.setItem('ds:ui-language', 'en')
+      ;(window as typeof window & { __DEEPSCIENTIST_RUNTIME__?: unknown }).__DEEPSCIENTIST_RUNTIME__ = {
+        auth: {
+          enabled: false,
+          tokenQueryParam: 'token',
+          storageKey: 'ds_local_auth_token',
+        },
+      }
+    })
+    await installLandingStubs(page)
+
+    await page.goto(appUrl('/docs'))
+    await expect(page.getByLabel('Tutorial')).toBeVisible({ timeout: 30_000 })
+    await page.getByLabel('Tutorial').click()
+    await expectLandingUrl(page)
+    await expectStepProgress(page, 1)
+    await expect(page.getByRole('heading', { name: 'This is the launch surface' })).toBeVisible()
+    await page.getByRole('button', { name: 'Skip tutorial' }).click()
+
+    await page.goto(appUrl('/settings'))
+    await expect(page.getByLabel('Tutorial')).toBeVisible({ timeout: 30_000 })
+    await page.getByLabel('Tutorial').click()
+    await expectLandingUrl(page)
+    await expectStepProgress(page, 1)
+    await expect(page.getByRole('heading', { name: 'This is the launch surface' })).toBeVisible()
   })
 
   test('the project tutorial still reaches the canvas stage with a connected graph', async ({ page }) => {
