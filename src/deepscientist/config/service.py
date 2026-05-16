@@ -697,7 +697,7 @@ Use **Test** when the file exposes runtime dependencies.
                 "results": [],
                 "preview": "",
             }
-        url = f"{base_url.rstrip('/')}/arxiv/?{urlencode({'type': 'retrieve', 'query': query, 'size': str(result_size)})}"
+        url = f"{base_url.rstrip('/')}/arxiv/?{urlencode({'type': 'retrieve', 'query': query, 'top_k': str(result_size)})}"
         request = Request(
             url,
             headers={
@@ -744,7 +744,7 @@ Use **Test** when the file exposes runtime dependencies.
             total = parsed.get("total_count")
         preview_payload = {
             "total": total,
-            "took": parsed.get("took"),
+            "status": parsed.get("status"),
             "results": results[: min(3, len(results))],
         }
         preview = json.dumps(preview_payload, ensure_ascii=False, indent=2)

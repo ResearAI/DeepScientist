@@ -43,9 +43,9 @@ def test_deepxiv_test_payload_returns_preview_and_uses_transformers(temp_home: P
         captured["auth"] = request.headers.get("Authorization")
         captured["timeout"] = timeout
         return _FakeResponse({
-            "total": 1,
-            "took": 12,
-            "results": [{"title": "Transformers for Science", "paper_id": "2501.00001"}],
+            "status": "success",
+            "total_count": 1,
+            "result": [{"title": "Transformers for Science", "paper_id": "2501.00001"}],
         })
 
     monkeypatch.setattr(config_service_module, "urlopen", fake_urlopen)
@@ -112,7 +112,7 @@ def test_deepxiv_test_payload_reports_empty_results(temp_home: Path, monkeypatch
     monkeypatch.setattr(
         config_service_module,
         "urlopen",
-        lambda request, timeout=None: _FakeResponse({"total": 0, "took": 3, "results": []}),
+        lambda request, timeout=None: _FakeResponse({"status": "success", "total_count": 0, "result": []}),
     )
 
     result = manager.test_deepxiv_payload(payload)
