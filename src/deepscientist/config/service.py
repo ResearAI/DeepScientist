@@ -745,6 +745,7 @@ Use **Test** when the file exposes runtime dependencies.
         preview_payload = {
             "total": total,
             "status": parsed.get("status"),
+            "took": parsed.get("took"),
             "results": results[: min(3, len(results))],
         }
         preview = json.dumps(preview_payload, ensure_ascii=False, indent=2)
