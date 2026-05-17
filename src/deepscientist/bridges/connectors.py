@@ -479,6 +479,7 @@ class DiscordConnectorBridge(BaseConnectorBridge):
         request = Request(f"https://discord.com/api/v10/channels/{channel_id}/messages", data=json.dumps(formatted, ensure_ascii=False).encode("utf-8"), method="POST")
         request.add_header("Content-Type", "application/json; charset=utf-8")
         request.add_header("Authorization", f"Bot {token}")
+        request.add_header("User-Agent", "DiscordBot (https://github.com/ResearAI/DeepScientist, 1.5.17)")
         with urlopen(request, timeout=8) as response:  # noqa: S310
             response_text = response.read().decode("utf-8", errors="replace")
             return {"ok": 200 <= response.status < 300, "status_code": response.status, "response": response_text[:500], "transport": "discord-http"}
