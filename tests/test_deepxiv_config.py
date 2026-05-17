@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import deepscientist.config.service as config_service_module
 from deepscientist.config import ConfigManager
@@ -43,9 +44,9 @@ def test_deepxiv_test_payload_returns_preview_and_uses_transformers(temp_home: P
         captured["auth"] = request.headers.get("Authorization")
         captured["timeout"] = timeout
         return _FakeResponse({
-            "total": 1,
-            "took": 12,
-            "results": [{"title": "Transformers for Science", "paper_id": "2501.00001"}],
+            "status": "success",
+            "total_count": 1,
+            "result": [{"title": "Transformers for Science", "paper_id": "2501.00001"}],
         })
 
     monkeypatch.setattr(config_service_module, "urlopen", fake_urlopen)
@@ -53,11 +54,16 @@ def test_deepxiv_test_payload_returns_preview_and_uses_transformers(temp_home: P
     result = manager.test_deepxiv_payload(payload)
 
     assert result["ok"] is True
-    assert "transformers" in str(captured["url"])
+    captured_url = str(captured["url"])
+    params = parse_qs(urlparse(captured_url).query)
+    assert params["query"] == ["transformers"]
+    assert params["top_k"] == ["20"]
+    assert "size" not in params
     assert captured["auth"] == "Bearer token-123"
     assert captured["timeout"] == 90
     assert result["details"]["result_count"] == 1
     assert "Transformers for Science" in result["preview"]
+    assert '"status": "success"' in result["preview"]
 
 
 def test_deepxiv_test_payload_accepts_current_deepxiv_result_shape(temp_home: Path, monkeypatch) -> None:
@@ -92,6 +98,42 @@ def test_deepxiv_test_payload_accepts_current_deepxiv_result_shape(temp_home: Pa
     assert result["details"]["result_count"] == 1
     assert result["details"]["first_title"] == "Transformers and Large Language Models"
     assert "Transformers and Large Language Models" in result["preview"]
+    assert '"status": "success"' in result["preview"]
+
+
+def test_deepxiv_test_payload_accepts_legacy_deepxiv_result_shape(temp_home: Path, monkeypatch) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+    payload = manager.load_named_normalized("config")
+    payload["literature"]["deepxiv"] = {
+        "enabled": True,
+        "base_url": "https://data.rag.ac.cn",
+        "token": "token-123",
+        "token_env": None,
+        "default_result_size": 10,
+        "preview_characters": 1200,
+        "request_timeout_seconds": 20,
+    }
+
+    monkeypatch.setattr(
+        config_service_module,
+        "urlopen",
+        lambda request, timeout=None: _FakeResponse({
+            "total": 1,
+            "took": 12,
+            "results": [{"title": "Legacy DeepXiv Result", "paper_id": "2501.00001"}],
+        }),
+    )
+
+    result = manager.test_deepxiv_payload(payload)
+
+    assert result["ok"] is True
+    assert result["details"]["total"] == 1
+    assert result["details"]["result_count"] == 1
+    assert result["details"]["first_title"] == "Legacy DeepXiv Result"
+    assert "Legacy DeepXiv Result" in result["preview"]
+    assert '"took": 12' in result["preview"]
 
 
 def test_deepxiv_test_payload_reports_empty_results(temp_home: Path, monkeypatch) -> None:
@@ -112,7 +154,7 @@ def test_deepxiv_test_payload_reports_empty_results(temp_home: Path, monkeypatch
     monkeypatch.setattr(
         config_service_module,
         "urlopen",
-        lambda request, timeout=None: _FakeResponse({"total": 0, "took": 3, "results": []}),
+        lambda request, timeout=None: _FakeResponse({"status": "success", "total_count": 0, "result": []}),
     )
 
     result = manager.test_deepxiv_payload(payload)
