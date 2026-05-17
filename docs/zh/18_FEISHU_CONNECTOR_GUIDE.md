@@ -6,6 +6,7 @@
 
 - 不需要公网 event callback
 - 核心凭据是 `app_id` 和 `app_secret`
+- 可以把多个 Feishu 应用连接配置成独立的 `profiles`
 - 如果启用自动绑定，私聊可以自动跟随最新活跃 quest
 
 ## 1. Feishu 支持包含什么
@@ -31,6 +32,10 @@
 9. 给 bot 发送一条真实消息。
 10. 回到 DeepScientist，确认目标会话已经被自动发现。
 
+如果要连接多个 Feishu 应用，请在 `profiles` 下为每个应用添加一个启用项。
+每个 profile 都需要唯一的 `profile_id`、唯一的 `app_id`，以及自己的
+`app_secret` 或 `app_secret_env`。
+
 ## 3. 关键配置字段
 
 主要字段包括：
@@ -49,6 +54,7 @@
 - `groups`
 - `require_mention_in_groups`
 - `auto_bind_dm_to_active_quest`
+- `profiles`
 
 完整字段说明请参考 [01 设置参考](./01_SETTINGS_REFERENCE.md)。
 

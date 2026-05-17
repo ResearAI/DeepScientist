@@ -923,7 +923,7 @@ Use **Test** when the file exposes runtime dependencies.
                 },
             }
             if enabled and exists and live:
-                probe = self.probe_runner_bootstrap(name, persist=False, payload=normalized_payload)
+                probe = self.probe_runner_bootstrap(name, persist=True, payload=normalized_payload)
                 item["ok"] = bool(probe.get("ok"))
                 item["warnings"] = [*warnings, *list(probe.get("warnings") or [])]
                 item["errors"] = list(probe.get("errors") or [])
@@ -1040,14 +1040,34 @@ Use **Test** when the file exposes runtime dependencies.
                 if not str(config.get("login_user_id") or "").strip():
                     warnings.append("weixin: `login_user_id` is empty. Save the scanner user id after QR login for easier diagnostics.")
             elif name == "feishu":
-                has_app_id = bool(str(config.get("app_id") or "").strip())
-                has_app_secret = self._has_secret(config, "app_secret", "app_secret_env")
                 if transport != "long_connection":
                     errors.append("feishu: `transport` must stay `long_connection`.")
-                if not has_app_id:
-                    errors.append("feishu: `transport: long_connection` requires `app_id`.")
-                if not has_app_secret:
-                    errors.append("feishu: `transport: long_connection` requires `app_secret` or `app_secret_env`.")
+                profiles = list_connector_profiles("feishu", config)
+                if profiles:
+                    seen_profile_ids: set[str] = set()
+                    seen_app_ids: set[str] = set()
+                    for profile in profiles:
+                        profile_id = str(profile.get("profile_id") or "").strip() or "unknown"
+                        app_id = str(profile.get("app_id") or "").strip()
+                        if profile_id in seen_profile_ids:
+                            errors.append(f"feishu: duplicate profile_id `{profile_id}`.")
+                        else:
+                            seen_profile_ids.add(profile_id)
+                        if not app_id:
+                            errors.append(f"feishu[{profile_id}]: requires `app_id`.")
+                        elif app_id in seen_app_ids:
+                            errors.append(f"feishu: duplicate app_id `{app_id}` across profiles.")
+                        else:
+                            seen_app_ids.add(app_id)
+                        if not self._has_secret(profile, "app_secret", "app_secret_env"):
+                            errors.append(f"feishu[{profile_id}]: requires `app_secret` or `app_secret_env`.")
+                else:
+                    has_app_id = bool(str(config.get("app_id") or "").strip())
+                    has_app_secret = self._has_secret(config, "app_secret", "app_secret_env")
+                    if not has_app_id:
+                        errors.append("feishu: `transport: long_connection` requires `app_id`.")
+                    if not has_app_secret:
+                        errors.append("feishu: `transport: long_connection` requires `app_secret` or `app_secret_env`.")
             elif name == "whatsapp":
                 if transport != "local_session":
                     errors.append("whatsapp: `transport` must stay `local_session`.")

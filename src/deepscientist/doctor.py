@@ -328,9 +328,9 @@ def _check_runner(config_manager: ConfigManager, runner_name: str) -> dict[str, 
         )
 
     probe = (
-        config_manager.probe_codex_bootstrap(persist=False, payload=runners_payload)
+        config_manager.probe_codex_bootstrap(persist=True, payload=runners_payload)
         if normalized_runner == "codex"
-        else config_manager.probe_runner_bootstrap(normalized_runner, persist=False, payload=runners_payload)
+        else config_manager.probe_runner_bootstrap(normalized_runner, persist=True, payload=runners_payload)
     )
     probe_errors = [str(value) for value in probe.get("errors") or []]
     probe_warnings = [str(value) for value in probe.get("warnings") or []]

@@ -13,6 +13,39 @@ from ..connector_runtime import format_conversation_id, parse_conversation_id
 from ..shared import read_json, utc_now, write_json
 
 
+class _ThreadLoopProxy:
+    """Thread-safe proxy for lark SDK module-level ``loop``.
+
+    The lark_oapi SDK stores a single module-level ``loop`` and all
+    ``Client`` instances call ``loop.create_task(...)`` on it.  When
+    DeepScientist runs multiple Feishu profiles each in its own thread
+    with its own event loop, the shared module variable becomes a race.
+    This proxy replaces the module attribute so every thread sees its
+    own loop.
+    """
+
+    def __init__(self) -> None:
+        self._loops: dict[int, asyncio.AbstractEventLoop] = {}
+
+    def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loops[threading.get_ident()] = loop
+
+    def _loop(self) -> asyncio.AbstractEventLoop:
+        loop = self._loops.get(threading.get_ident())
+        if loop is None:
+            loop = asyncio.get_event_loop()
+        return loop
+
+    def create_task(self, coro: Any) -> asyncio.Task:
+        return self._loop().create_task(coro)
+
+    def run_until_complete(self, future: Any) -> Any:
+        return self._loop().run_until_complete(future)
+
+
+_feishu_loop_proxy = _ThreadLoopProxy()
+
+
 class _FeishuEventHandler:
     def __init__(self, service: "FeishuLongConnectionService") -> None:
         self.service = service
@@ -122,7 +155,7 @@ class FeishuLongConnectionService:
         loop = asyncio.new_event_loop()
         self._loop = loop
         asyncio.set_event_loop(loop)
-        client_module.loop = loop
+        _feishu_loop_proxy.set_loop(loop)
         stop_signal = asyncio.Event()
         self._async_stop = stop_signal
         app_id = str(self.config.get("app_id") or "").strip()
@@ -252,6 +285,8 @@ class FeishuLongConnectionService:
             enum_module = import_module("lark_oapi.core.enum")
         except ImportError:
             return None
+        if not isinstance(client_module.loop, _ThreadLoopProxy):
+            client_module.loop = _feishu_loop_proxy
         return {
             "client_module": client_module,
             "client_cls": getattr(client_module, "Client"),

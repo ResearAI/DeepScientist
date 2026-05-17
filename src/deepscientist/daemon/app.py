@@ -7048,6 +7048,16 @@ class DaemonApp:
                 zh=f"正在启动 DeepScientist，当前会先恢复 `{quest_id}` 里停滞的运行，再继续处理您的新消息。",
                 en=f"DeepScientist is starting up. I’m recovering the stalled run in `{quest_id}` first, then I’ll continue with your new message.",
             )
+        if started or auto_resumed:
+            return self._polite_copy(
+                zh=f"已经成功收到消息，DeepScientist 已经启动并开始处理 `{quest_id}` 啦。",
+                en=f"Message received successfully. DeepScientist has started and is now processing `{quest_id}`.",
+            )
+        if queued:
+            return self._polite_copy(
+                zh=f"已经成功收到消息，`{quest_id}` 当前正在运行中，这条消息也已经排进队列了。",
+                en=f"Message received successfully. `{quest_id}` is already running, and this message has been queued.",
+            )
         if not ready and has_explicit_runner_failure:
             status_line = f" 当前状态：{readiness_summary}" if readiness_summary else ""
             return self._polite_copy(
@@ -7058,16 +7068,6 @@ class DaemonApp:
                     f"DeepScientist is still offline. Please check whether the bound {runner_label} can connect normally."
                     f"{(' Current status: ' + readiness_summary) if readiness_summary else ''}"
                 ),
-            )
-        if started or auto_resumed:
-            return self._polite_copy(
-                zh=f"已经成功收到消息，DeepScientist 已经启动并开始处理 `{quest_id}` 啦。",
-                en=f"Message received successfully. DeepScientist has started and is now processing `{quest_id}`.",
-            )
-        if queued:
-            return self._polite_copy(
-                zh=f"已经成功收到消息，`{quest_id}` 当前正在运行中，这条消息也已经排进队列了。",
-                en=f"Message received successfully. `{quest_id}` is already running, and this message has been queued.",
             )
         return self._polite_copy(
             zh=f"已经成功收到消息，我会继续推进 `{quest_id}` 并同步后续进展。",

@@ -782,6 +782,60 @@ def test_generic_connector_ack_reports_stalled_startup(temp_home: Path, monkeypa
     assert "正在启动 DeepScientist" in str(response["reply"]["payload"]["text"] or "")
 
 
+def test_generic_connector_ack_prefers_started_state_over_stale_runner_readiness(
+    temp_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HOME", str(temp_home / "user-home"))
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    _enable_system_connectors(temp_home, "whatsapp")
+    quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create("stale readiness ack quest")
+    quest_id = quest["quest_id"]
+    app = DaemonApp(temp_home)
+    conversation_id = "whatsapp:direct:+15550006667"
+    channel = app._channel_with_bindings("whatsapp")
+    channel.bind_conversation(conversation_id, quest_id)
+    app.sessions.bind(quest_id, conversation_id)
+    app.quest_service.bind_source(quest_id, conversation_id)
+    monkeypatch.setattr(
+        app,
+        "submit_user_message",
+        lambda *args, **kwargs: {
+            "scheduled": True,
+            "started": True,
+            "queued": False,
+            "reason": "user_message",
+            "auto_resumed": False,
+        },
+    )
+    monkeypatch.setattr(app, "_runner_name_for", lambda snapshot: "claude")
+    monkeypatch.setattr(
+        app.config_manager,
+        "runner_bootstrap_state",
+        lambda runner_name: {
+            "runner": runner_name,
+            "ready": False,
+            "last_result": {"summary": "Claude Code runner configuration changed. A new startup probe is required."},
+        },
+    )
+
+    response = app.handle_connector_inbound(
+        "whatsapp",
+        {
+            "chat_type": "direct",
+            "sender_id": "+15550006667",
+            "sender_name": "Researcher",
+            "text": "Please continue.",
+        },
+    )
+
+    text_payload = str(response["reply"]["payload"]["text"] or "")
+    assert response["accepted"] is True
+    assert "已经成功收到消息" in text_payload
+    assert "DeepScientist 仍然不在线哟" not in text_payload
+
+
 def test_generic_connector_ack_reports_runner_offline(temp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
