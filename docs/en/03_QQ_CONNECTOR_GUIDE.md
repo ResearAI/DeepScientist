@@ -145,6 +145,8 @@ The remaining settings such as group mention policy, command prefix, auto-bindin
 
 This is the most reliable path with the fewest surprises.
 
+If several quests are running, QQ is useful for a few common tasks, but keep it to about five quests. For more than that, use Web as the main surface. See [34 Multitask Entry Guide](./34_MULTITASK_ORCHESTRATION_GUIDE.md).
+
 ### Step 1: save the credentials
 
 Fill:

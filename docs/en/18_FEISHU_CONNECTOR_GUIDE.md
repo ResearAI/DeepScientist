@@ -87,6 +87,8 @@ Important rules:
 - direct messages can auto-follow the latest active quest when auto-bind is enabled
 - bindings can be changed later from the project settings page
 
+If several quests are running, read [34 Multitask Entry Guide](./34_MULTITASK_ORCHESTRATION_GUIDE.md) first. Do not put every task into one chat entry.
+
 ## 5. Group behavior
 
 By default:

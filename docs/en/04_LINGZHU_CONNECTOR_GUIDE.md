@@ -86,6 +86,8 @@ Usage rules:
 - only the text after that prefix is treated as a fresh DeepScientist task
 - if you only want buffered progress, do not repeat the prefix; just say `找DeepScientist` or `继续`
 
+If several quests are running, Lingzhu is better for quick creation or key progress checks than for the main multitask dashboard. See [34 Multitask Entry Guide](./34_MULTITASK_ORCHESTRATION_GUIDE.md).
+
 ## 6. Common questions
 
 ### Why can’t I use `127.0.0.1`?

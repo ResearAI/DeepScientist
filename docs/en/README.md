@@ -97,6 +97,8 @@ Built-in runners today:
   Use QQ as a practical collaboration surface for progress, commands, and milestone delivery.
 - [04 Lingzhu Connector Guide](./04_LINGZHU_CONNECTOR_GUIDE.md)
   Bind Lingzhu / Rokid Glasses to DeepScientist.
+- [34 Multitask Entry Guide](./34_MULTITASK_ORCHESTRATION_GUIDE.md)
+  Read this when several quests are running and you need to choose between Web, Weixin, QQ, or another connector.
 
 ## If you want to understand how the system works
 
@@ -146,5 +148,5 @@ Built-in runners today:
 Welcome to join the WeChat group for discussion.
 
 <p align="center">
-  <img src="../../assets/readme/wechat6.jpg" alt="DeepScientist WeChat group" width="360" />
+  <img src="../../assets/readme/wechat11.jpg" alt="DeepScientist WeChat group" width="360" />
 </p>

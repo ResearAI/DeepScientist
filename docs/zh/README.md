@@ -130,6 +130,8 @@ DeepScientist 灵活且易于使用，支持：
   适合把 QQ 当作日常协作、里程碑通知和命令入口。
 - [04 灵珠 / Rokid 指南](./04_LINGZHU_CONNECTOR_GUIDE.md)
   适合绑定灵珠 / Rokid Glasses。
+- [34 多任务入口选择](./34_MULTITASK_ORCHESTRATION_GUIDE.md)
+  如果你同时跑多个 quest，先看这篇决定该用 Web、微信、QQ 还是其他 connector。
 
 ## 如果你想理解系统是怎么工作的
 
@@ -177,5 +179,5 @@ DeepScientist 灵活且易于使用，支持：
 欢迎加群讨论。
 
 <p align="center">
-  <img src="../../assets/readme/wechat6.jpg" alt="DeepScientist 微信群" width="360" />
+  <img src="../../assets/readme/wechat11.jpg" alt="DeepScientist 微信群" width="360" />
 </p>

@@ -143,6 +143,7 @@ acp:
 - 作用：限制同时活跃的项目数量。
 - 推荐值：大多数情况下保持 `1`。
 - 风险：并发项目越多，资源竞争、连接器串扰和观察复杂度越高。
+- 多任务入口选择：少量 quest 可以任选入口；微信只绑定一个主 quest，QQ 建议最多 5 个左右；超过后建议主要用 Web 查看和操作。详见 [34 多任务入口选择](./34_MULTITASK_ORCHESTRATION_GUIDE.md)。
 
 **`daemon.ack_timeout_ms`**
 
@@ -800,6 +801,7 @@ opencode:
 - 类型：`boolean`
 - 默认值：大多数 connector 为 `true`
 - 作用：私聊默认自动跟随当前活跃项目。
+- 多任务提醒：同时跑多个 quest 时，不要把所有任务都塞进同一个聊天入口。详见 [34 多任务入口选择](./34_MULTITASK_ORCHESTRATION_GUIDE.md)。
 
 ### `telegram`
 

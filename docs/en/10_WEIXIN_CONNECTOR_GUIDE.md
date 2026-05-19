@@ -104,6 +104,8 @@ Current behavior:
 - outbound image, video, and file delivery works when the agent sends a real local file path
 - outbound main-experiment metric charts are sent automatically as native WeChat images
 
+If several quests are running, use Weixin for only one current main quest. See [34 Multitask Entry Guide](./34_MULTITASK_ORCHESTRATION_GUIDE.md) for the full entry choice.
+
 ![Quest-local media flow](../images/weixin/weixin-quest-media-flow.svg)
 
 ## 5. What the agent should do with Weixin media

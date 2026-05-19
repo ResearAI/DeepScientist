@@ -389,6 +389,7 @@ acp:
 - UI label: `Max concurrent projects`
 - Meaning: upper bound on how many projects may run at the same time.
 - Recommendation: keep `1` unless you intentionally want parallel project execution.
+- Multitask entry choice: any entry is fine for a few quests; use Weixin for one main quest, QQ for up to about five, and Web as the main surface beyond that. See [34 Multitask Entry Guide](./34_MULTITASK_ORCHESTRATION_GUIDE.md).
 
 **`daemon.ack_timeout_ms`**
 
@@ -1035,6 +1036,7 @@ These fields appear across multiple connectors:
 - Type: `boolean`
 - Default: usually `true`
 - Meaning: direct messages automatically follow the current active project.
+- Multitask note: when several quests are running, do not put every task into the same chat entry. See [34 Multitask Entry Guide](./34_MULTITASK_ORCHESTRATION_GUIDE.md).
 
 ### `telegram`
 
