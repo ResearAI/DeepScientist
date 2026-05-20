@@ -48,6 +48,11 @@ import { useI18n } from "@/lib/i18n/useI18n";
 import { useWorkspaceSurfaceStore } from "@/lib/stores/workspace-surface";
 import { toFilesResourcePath } from "@/lib/utils/resource-paths";
 import { supportsSocketIo } from "@/lib/runtime/quest-runtime";
+import {
+  BIBTEX_LANGUAGE_ID,
+  LATEX_LANGUAGE_ID,
+  ensureMonacoLatexLanguages,
+} from "@/lib/monaco-latex";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 configureMonacoLoader();
@@ -124,6 +129,14 @@ type BibSnippet = {
   snippet: string;
 };
 
+type LatexCompletionSnippet = {
+  label: string;
+  insertText: string;
+  detail: string;
+  documentation?: string;
+  filterText?: string;
+};
+
 const normalizeBuildErrors = (
   errors?: LatexBuildError[] | null,
   logItems?: LatexLogItem[] | null
@@ -158,6 +171,100 @@ const BIB_SNIPPETS: BibSnippet[] = [
     labelKey: "bib_snippet_misc",
     snippet:
       "@misc{key,\n  title = {},\n  author = {},\n  year = {},\n  note = {},\n}\n",
+  },
+];
+
+const LATEX_ENVIRONMENT_SNIPPETS: LatexCompletionSnippet[] = [
+  {
+    label: "begin{comment}",
+    filterText: "\\begin{comment}",
+    detail: "comment environment",
+    insertText: "\\begin{comment}\n\t$0\n\\end{comment}",
+    documentation: "Insert a complete comment environment.",
+  },
+  {
+    label: "begin{figure}",
+    filterText: "\\begin{figure}",
+    detail: "figure environment",
+    insertText: "\\begin{figure}[${1:htbp}]\n\t\\centering\n\t$0\n\t\\caption{${2:Caption}}\n\t\\label{fig:${3:label}}\n\\end{figure}",
+  },
+  {
+    label: "begin{table}",
+    filterText: "\\begin{table}",
+    detail: "table environment",
+    insertText: "\\begin{table}[${1:htbp}]\n\t\\centering\n\t$0\n\t\\caption{${2:Caption}}\n\t\\label{tab:${3:label}}\n\\end{table}",
+  },
+  {
+    label: "begin{equation}",
+    filterText: "\\begin{equation}",
+    detail: "equation environment",
+    insertText: "\\begin{equation}\n\t$0\n\\end{equation}",
+  },
+  {
+    label: "begin{align}",
+    filterText: "\\begin{align}",
+    detail: "align environment",
+    insertText: "\\begin{align}\n\t$0\n\\end{align}",
+  },
+  {
+    label: "begin{itemize}",
+    filterText: "\\begin{itemize}",
+    detail: "itemize environment",
+    insertText: "\\begin{itemize}\n\t\\item $0\n\\end{itemize}",
+  },
+  {
+    label: "begin{enumerate}",
+    filterText: "\\begin{enumerate}",
+    detail: "enumerate environment",
+    insertText: "\\begin{enumerate}\n\t\\item $0\n\\end{enumerate}",
+  },
+];
+
+const LATEX_COMMAND_SNIPPETS: LatexCompletionSnippet[] = [
+  {
+    label: "\\begin",
+    detail: "LaTeX environment",
+    insertText: "\\begin{${1:environment}}\n\t$0\n\\end{${1:environment}}",
+  },
+  {
+    label: "\\section",
+    detail: "section heading",
+    insertText: "\\section{${1:Title}}",
+  },
+  {
+    label: "\\subsection",
+    detail: "subsection heading",
+    insertText: "\\subsection{${1:Title}}",
+  },
+  {
+    label: "\\label",
+    detail: "label",
+    insertText: "\\label{${1:key}}",
+  },
+  {
+    label: "\\ref",
+    detail: "reference",
+    insertText: "\\ref{${1:key}}",
+  },
+  {
+    label: "\\eqref",
+    detail: "equation reference",
+    insertText: "\\eqref{${1:key}}",
+  },
+  {
+    label: "\\cite",
+    detail: "citation",
+    insertText: "\\cite{${1:key}}",
+  },
+  {
+    label: "\\textbf",
+    detail: "bold text",
+    insertText: "\\textbf{${1:text}}",
+  },
+  {
+    label: "\\emph",
+    detail: "emphasized text",
+    insertText: "\\emph{${1:text}}",
   },
 ];
 
@@ -941,15 +1048,8 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       const model = editor.getModel?.();
       if (!model) return;
 
-      const ensureLanguage = (id: string) => {
-        const languages = monaco.languages.getLanguages?.() || [];
-        if (!languages.some((item: { id: string }) => item.id === id)) {
-          monaco.languages.register({ id });
-        }
-      };
-      ensureLanguage("latex-ds");
-      ensureLanguage("bibtex-ds");
-      monaco.editor.setModelLanguage(model, isBibFile ? "bibtex-ds" : "latex-ds");
+      ensureMonacoLatexLanguages(monaco);
+      monaco.editor.setModelLanguage(model, isBibFile ? BIBTEX_LANGUAGE_ID : LATEX_LANGUAGE_ID);
 
       latexCompletionDisposablesRef.current.forEach((disposable) => {
         try {
@@ -959,8 +1059,8 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         }
       });
       latexCompletionDisposablesRef.current = [
-        monaco.languages.registerCompletionItemProvider("latex-ds", {
-          triggerCharacters: ["\\", "{"],
+        monaco.languages.registerCompletionItemProvider(LATEX_LANGUAGE_ID, {
+          triggerCharacters: ["\\", "{", "}"],
           provideCompletionItems: (targetModel: any, position: any) => {
             const linePrefix = targetModel.getValueInRange({
               startLineNumber: position.lineNumber,
@@ -975,6 +1075,30 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
               position.lineNumber,
               word.endColumn
             );
+            const beginMatch = linePrefix.match(/\\begin\{([A-Za-z*]*)\}?$/);
+            if (beginMatch) {
+              const replaceRange = new monaco.Range(
+                position.lineNumber,
+                position.column - beginMatch[0].length,
+                position.lineNumber,
+                position.column
+              );
+              const envPrefix = beginMatch[1].toLowerCase();
+              return {
+                suggestions: LATEX_ENVIRONMENT_SNIPPETS.filter((item) =>
+                  item.label.toLowerCase().startsWith(`begin{${envPrefix}`)
+                ).map((item) => ({
+                  label: item.label,
+                  kind: monaco.languages.CompletionItemKind.Snippet,
+                  insertText: item.insertText,
+                  insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                  detail: item.detail,
+                  documentation: item.documentation,
+                  filterText: item.filterText,
+                  range: replaceRange,
+                })),
+              };
+            }
 
             if (/\\(?:cite|citet|citep|autocite|parencite)\{[^}]*$/i.test(linePrefix)) {
               return {
@@ -1001,10 +1125,31 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
               };
             }
 
-            return { suggestions: [] };
+            const commandMatch = linePrefix.match(/\\[A-Za-z]*$/);
+            const commandRange = commandMatch
+              ? new monaco.Range(
+                  position.lineNumber,
+                  position.column - commandMatch[0].length,
+                  position.lineNumber,
+                  position.column
+                )
+              : range;
+
+            return {
+              suggestions: LATEX_COMMAND_SNIPPETS.map((item) => ({
+                label: item.label,
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                insertText: item.insertText,
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                detail: item.detail,
+                documentation: item.documentation,
+                filterText: item.filterText,
+                range: commandRange,
+              })),
+            };
           },
         }),
-        monaco.languages.registerCompletionItemProvider("bibtex-ds", {
+        monaco.languages.registerCompletionItemProvider(BIBTEX_LANGUAGE_ID, {
           triggerCharacters: ["@"],
           provideCompletionItems: (_targetModel: any, position: any) => {
             const range = new monaco.Range(
@@ -2058,8 +2203,15 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
               <MonacoEditor
                 key={`${activeFileId ?? "latex"}:${resetNonce}`}
                 defaultValue={initialText}
-                language="plaintext"
+                language={isBibFile ? BIBTEX_LANGUAGE_ID : LATEX_LANGUAGE_ID}
                 theme={isDark ? "vs-dark" : "light"}
+                beforeMount={(monaco) => {
+                  try {
+                    ensureMonacoLatexLanguages(monaco);
+                  } catch (e) {
+                    console.error("[LatexPlugin] Failed to configure LaTeX language:", e);
+                  }
+                }}
                 onMount={(editor, monaco) => {
                   try {
                     bindEditor(editor, monaco);
@@ -2069,10 +2221,18 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                 }}
                 options={{
                   readOnly: effectiveReadOnly,
+                  automaticLayout: true,
                   minimap: { enabled: false },
                   wordWrap: "on",
                   fontSize: 13,
                   scrollBeyondLastLine: false,
+                  tabCompletion: "on",
+                  quickSuggestions: { other: true, comments: false, strings: false },
+                  suggestOnTriggerCharacters: true,
+                  acceptSuggestionOnCommitCharacter: true,
+                  renderWhitespace: "selection",
+                  tabSize: 2,
+                  insertSpaces: true,
                 }}
               />
             )}
