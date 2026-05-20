@@ -329,6 +329,7 @@ Explorer 是 quest 的文件视角。
 - 实验总结
 - 结果报告
 - 论文草稿
+- LaTeX 源文件与 BibTeX 引用
 
 很多用户会把 quest 里的 Markdown 文件当作一个本地优先、类似 Notion 的私有笔记本，用来记录：
 
@@ -337,6 +338,8 @@ Explorer 是 quest 的文件视角。
 - handoff
 - 发现
 - 协作信息
+
+打开 LaTeX 项目文件夹时，浏览器编辑器会在输入后短时间内自动保存源文件。`Ctrl/Cmd+S` 也会保存当前 LaTeX 文件，`保存并编译` 仍会先保存当前源码，再启动 PDF 编译。
 
 ### 6.5 Canvas
 

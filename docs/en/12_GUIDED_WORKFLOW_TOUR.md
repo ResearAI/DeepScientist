@@ -331,6 +331,7 @@ Common examples:
 - experiment summaries
 - result reports
 - paper drafts
+- LaTeX source files and BibTeX references
 
 In practice, many users treat Markdown files in the quest as a private local-first notebook for:
 
@@ -339,6 +340,8 @@ In practice, many users treat Markdown files in the quest as a private local-fir
 - handoffs
 - findings
 - team coordination
+
+When you open a LaTeX project folder, the browser editor auto-saves source edits shortly after you type. `Ctrl/Cmd+S` also saves the active LaTeX file, and `Save & Compile` still saves the current source before starting PDF compilation.
 
 ### 6.5 Canvas
 
