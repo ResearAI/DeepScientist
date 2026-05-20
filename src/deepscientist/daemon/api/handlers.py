@@ -2046,7 +2046,7 @@ npm --prefix src/ui run build</pre>
         try:
             return self.app.quest_service.save_document(
                 quest_id,
-                document_id,
+                unquote(document_id),
                 body["content"],
                 previous_revision=body.get("revision"),
             )

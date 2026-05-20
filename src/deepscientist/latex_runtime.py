@@ -223,12 +223,12 @@ class QuestLatexService:
             if folder_path not in path.resolve().parents:
                 raise ValueError("`main_file_id` must belong to the selected LaTeX folder.")
             return path, relative
-        preferred = folder_path / "main.tex"
-        if preferred.exists():
-            return preferred, f"{folder_relative.rstrip('/')}/main.tex"
         tex_candidates = sorted(folder_path.glob("*.tex"))
         if not tex_candidates:
             raise FileNotFoundError("No `.tex` file found in the LaTeX folder.")
+        for candidate in tex_candidates:
+            if candidate.name.lower() == "main.tex":
+                return candidate, f"{folder_relative.rstrip('/')}/{candidate.name}"
         chosen = tex_candidates[0]
         return chosen, f"{folder_relative.rstrip('/')}/{chosen.name}"
 
