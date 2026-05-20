@@ -157,6 +157,7 @@ const normalizeBuildErrors = (
 
 const LATEX_COMPILER_OPTIONS: LatexCompiler[] = ["pdflatex", "xelatex", "lualatex"];
 const LATEX_AUTOSAVE_DELAY_MS = 1000;
+const LATEX_AUTO_COMPILE_ON_SAVE_STORAGE_PREFIX = "ds:latex:auto-compile-on-save";
 const BIB_SNIPPETS: BibSnippet[] = [
   {
     id: "article",
@@ -275,6 +276,14 @@ const LATEX_COMMAND_SNIPPETS: LatexCompletionSnippet[] = [
 function normalizeCompiler(value?: string | null): LatexCompiler {
   if (value === "xelatex" || value === "lualatex") return value;
   return "pdflatex";
+}
+
+function latexAutoCompileOnSaveStorageKey(projectId?: string, folderId?: string) {
+  return [
+    LATEX_AUTO_COMPILE_ON_SAVE_STORAGE_PREFIX,
+    projectId || "unknown-project",
+    folderId || "unknown-folder",
+  ].join(":");
 }
 
 function normalizeLatexPath(value?: string | null) {
@@ -415,6 +424,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const [buildError, setBuildError] = React.useState<string | null>(null);
   const [buildErrors, setBuildErrors] = React.useState<LatexBuildError[]>([]);
   const [compiler, setCompiler] = React.useState<LatexCompiler>("pdflatex");
+  const [autoCompileOnSave, setAutoCompileOnSave] = React.useState(true);
   const [currentBranch, setCurrentBranch] = React.useState<string | null>(null);
   const [pdfObjectUrl, setPdfObjectUrl] = React.useState<string | null>(null);
   const [logText, setLogText] = React.useState<string | null>(null);
@@ -434,6 +444,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const lastSavedRef = React.useRef<string>("");
   const isDirtyRef = React.useRef(false);
   const saveStateRef = React.useRef<LatexSaveState>("idle");
+  const buildStatusRef = React.useRef<LatexBuildStatus | "idle">("idle");
   const activeFileIdRef = React.useRef<string | null>(activeFileId);
   const saveInFlightRef = React.useRef<{ fileId: string; promise: Promise<boolean> } | null>(null);
   const failedSaveTextRef = React.useRef<string | null>(null);
@@ -475,6 +486,31 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   React.useEffect(() => {
     saveStateRef.current = saveState;
   }, [saveState]);
+
+  React.useEffect(() => {
+    buildStatusRef.current = buildStatus;
+  }, [buildStatus]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(
+      latexAutoCompileOnSaveStorageKey(projectId, latexFolderId)
+    );
+    // Default-on: only an explicit "0" disables manual-save auto compile.
+    setAutoCompileOnSave(stored !== "0");
+  }, [latexFolderId, projectId]);
+
+  const updateAutoCompileOnSave = React.useCallback(
+    (enabled: boolean) => {
+      setAutoCompileOnSave(enabled);
+      if (typeof window === "undefined") return;
+      window.localStorage.setItem(
+        latexAutoCompileOnSaveStorageKey(projectId, latexFolderId),
+        enabled ? "1" : "0"
+      );
+    },
+    [latexFolderId, projectId]
+  );
 
   const setEditorDirty = React.useCallback(
     (nextDirty: boolean) => {
@@ -1432,18 +1468,6 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   }, [activeFileId, dirtyVersion, effectiveReadOnly, getCurrentText, isDirty, save, saveState, syncState]);
 
   React.useEffect(() => {
-    if (!activeFileId || effectiveReadOnly) return;
-    const handler = (event: KeyboardEvent) => {
-      const isSave = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s";
-      if (!isSave) return;
-      event.preventDefault();
-      void save("manual");
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [activeFileId, effectiveReadOnly, save]);
-
-  React.useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       if (!isDirtyRef.current) return;
       event.preventDefault();
@@ -1474,6 +1498,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     async (opts?: { auto?: boolean }) => {
       if (!projectId || !latexFolderId) return;
       if (viewReadOnly) return;
+      if (buildStatusRef.current === "queued" || buildStatusRef.current === "running") return;
       if (!effectiveReadOnly && (isDirtyRef.current || saveStateRef.current === "saving")) {
         const saved = await save("compile");
         if (!saved) return;
@@ -1483,6 +1508,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         setBuildError(null);
         setBuildErrors([]);
         setLogText(null);
+        buildStatusRef.current = "queued";
         setBuildStatus("queued");
         const res = await compileLatex(projectId, latexFolderId, {
           compiler,
@@ -1492,15 +1518,50 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         });
         setBuildId(res.build_id);
         setCompiler(normalizeCompiler(res.compiler));
+        buildStatusRef.current = res.status ?? "queued";
         setBuildStatus(res.status ?? "queued");
       } catch (e) {
         console.error("[LatexPlugin] Compile failed:", e);
         setBuildError(e instanceof Error ? e.message : t("compile_request_failed"));
+        buildStatusRef.current = "error";
         setBuildStatus("error");
       }
     },
     [compiler, compileMainFileId, effectiveReadOnly, latexFolderId, projectId, save, t, viewReadOnly]
   );
+
+  const triggerManualSave = React.useCallback(async () => {
+    const targetFileId = activeFileIdRef.current;
+    if (!targetFileId || effectiveReadOnly) return;
+
+    let saved = await save("manual");
+    // A manual save may have joined an in-flight autosave that captured older text.
+    // Retry once so Ctrl/Cmd+S means "save the text I see now", then compile.
+    if (!saved && isDirtyRef.current && activeFileIdRef.current === targetFileId) {
+      saved = await save("manual");
+    }
+
+    if (!saved) return;
+    if (isDirtyRef.current) return;
+    if (activeFileIdRef.current !== targetFileId) return;
+    if (!autoCompileOnSave) return;
+    if (viewReadOnly) return;
+    if (buildStatusRef.current === "queued" || buildStatusRef.current === "running") return;
+
+    void compile({ auto: true });
+  }, [autoCompileOnSave, compile, effectiveReadOnly, save, viewReadOnly]);
+
+  React.useEffect(() => {
+    if (!activeFileId || effectiveReadOnly) return;
+    const handler = (event: KeyboardEvent) => {
+      const isSave = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s";
+      if (!isSave) return;
+      event.preventDefault();
+      void triggerManualSave();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [activeFileId, effectiveReadOnly, triggerManualSave]);
 
   React.useEffect(() => {
     if (!projectId || !latexFolderId) return;
@@ -2104,6 +2165,25 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
               </select>
             </div>
 
+            <label
+              className={cn(
+                "h-8 px-2.5 rounded-lg text-xs border inline-flex items-center gap-2",
+                "bg-white/70 border-black/10 text-muted-foreground",
+                "dark:bg-white/[0.04] dark:border-white/10",
+                viewReadOnly && "opacity-70"
+              )}
+              title={t("auto_compile_on_save_hint")}
+            >
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-[#8FA3B8]"
+                checked={autoCompileOnSave}
+                disabled={viewReadOnly}
+                onChange={(event) => updateAutoCompileOnSave(event.target.checked)}
+              />
+              <span>{t("auto_compile_on_save")}</span>
+            </label>
+
             {!isBibFile ? (
               <button
                 type="button"
@@ -2166,8 +2246,8 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
 
               <button
                 type="button"
-                onClick={() => void save("manual")}
-                disabled={effectiveReadOnly || saveState === "saving" || !isDirty}
+                onClick={() => void triggerManualSave()}
+                disabled={effectiveReadOnly || saveState === "saving"}
                 className={cn(
                   "h-8 px-3 rounded-lg text-sm font-medium border",
                   "bg-white/70 border-black/10 hover:bg-white/90",

@@ -341,7 +341,7 @@ In practice, many users treat Markdown files in the quest as a private local-fir
 - findings
 - team coordination
 
-When you open a LaTeX project folder, the browser editor auto-saves source edits shortly after you type. `Ctrl/Cmd+S` also saves the active LaTeX file, and `Save & Compile` still saves the current source before starting PDF compilation.
+When you open a LaTeX project folder, the browser editor auto-saves source edits shortly after you type. Background autosaves only persist the source; they do not start PDF compilation. Manual saves default to compile-on-save: `Ctrl/Cmd+S` or the `Save` button saves the active LaTeX file and then starts one PDF compilation when the save succeeds. `Save & Compile` remains available for an explicit compile action and still saves the current source before starting PDF compilation.
 
 ### 6.5 Canvas
 
