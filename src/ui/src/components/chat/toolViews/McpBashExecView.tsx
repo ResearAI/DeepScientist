@@ -205,6 +205,33 @@ function isActiveBashStatus(status?: string | null) {
   return ['running', 'calling', 'pending', 'queued', 'starting', 'terminating'].includes(normalized)
 }
 
+function stableProgressKey(value: BashProgress | null) {
+  if (!value) return ''
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function progressEquals(left: BashProgress | null, right: BashProgress | null) {
+  return left === right || stableProgressKey(left) === stableProgressKey(right)
+}
+
+function buildLiveStateKey(args: {
+  status: BashSessionStatus | null
+  exitCode: number | null
+  stopReason: string
+  progress: BashProgress | null
+}) {
+  return [
+    args.status ?? '',
+    args.exitCode == null ? '' : String(args.exitCode),
+    args.stopReason,
+    stableProgressKey(args.progress),
+  ].join('\u0001')
+}
+
 const filterMarkerLines = (log: string) => {
   if (!log) return ''
   return log
@@ -496,6 +523,11 @@ function McpBashExecSessionView({
   const hasSnapshotRef = useRef(false)
   const initialLoadAttemptedRef = useRef(false)
   const snapshotTimerRef = useRef<number | null>(null)
+  const lastLiveStateKeyRef = useRef('')
+
+  const setProgressIfChanged = useCallback((nextProgress: BashProgress | null) => {
+    setProgress((current) => (progressEquals(current, nextProgress) ? current : nextProgress))
+  }, [])
 
   useEffect(() => {
     lastSeqRef.current = lastSeq
@@ -535,9 +567,9 @@ function McpBashExecSessionView({
   }, [isChatNearBottom, isInline])
 
   useEffect(() => {
-    setSessionStatus(initialStatus)
-    setExitCode(initialExitCode)
-    setStopReason(initialStopReason)
+    setSessionStatus((current) => (current === initialStatus ? current : initialStatus))
+    setExitCode((current) => (current === initialExitCode ? current : initialExitCode))
+    setStopReason((current) => (current === initialStopReason ? current : initialStopReason))
   }, [initialExitCode, initialStatus, initialStopReason, bashId])
 
   useEffect(() => {
@@ -559,7 +591,7 @@ function McpBashExecSessionView({
           setStopReason(session.stop_reason)
         }
         if (session.last_progress) {
-          setProgress(session.last_progress)
+          setProgressIfChanged(session.last_progress)
         }
       } catch {
         // Ignore session fetch errors; old events can still render from local payloads.
@@ -569,26 +601,40 @@ function McpBashExecSessionView({
     return () => {
       active = false
     }
-  }, [bashId, mode, projectId])
+  }, [bashId, mode, projectId, setProgressIfChanged])
 
   useEffect(() => {
     if (resolvedSession?.status) {
-      setSessionStatus(resolvedSession.status as BashSessionStatus)
+      setSessionStatus((current) =>
+        current === resolvedSession.status ? current : (resolvedSession.status as BashSessionStatus)
+      )
     }
     if (typeof resolvedSession?.exit_code === 'number') {
-      setExitCode(resolvedSession.exit_code)
+      setExitCode((current) => (current === resolvedSession.exit_code ? current : resolvedSession.exit_code))
     }
     if (typeof resolvedSession?.stop_reason === 'string') {
-      setStopReason(resolvedSession.stop_reason)
+      setStopReason((current) =>
+        current === resolvedSession.stop_reason ? current : resolvedSession.stop_reason
+      )
     }
   }, [resolvedSession?.exit_code, resolvedSession?.status, resolvedSession?.stop_reason])
 
   useEffect(() => {
-    setProgress(null)
+    setProgressIfChanged(null)
     setFallbackOutput('')
-  }, [bashId, mode])
+  }, [bashId, mode, setProgressIfChanged])
 
   useEffect(() => {
+    const nextKey = buildLiveStateKey({
+      status: sessionStatus,
+      exitCode,
+      stopReason,
+      progress,
+    })
+    if (lastLiveStateKeyRef.current === nextKey) {
+      return
+    }
+    lastLiveStateKeyRef.current = nextKey
     onLiveStateChange?.({
       status: sessionStatus,
       exitCode,
@@ -606,9 +652,9 @@ function McpBashExecSessionView({
         : null
     const nextProgress = fromResult ?? resolvedSession?.last_progress ?? null
     if (nextProgress) {
-      setProgress(nextProgress)
+      setProgressIfChanged(nextProgress)
     }
-  }, [resolvedSession?.last_progress, resultPayload])
+  }, [resolvedSession?.last_progress, resultPayload, setProgressIfChanged])
 
   useEffect(() => {
     if (!projectId || !preferBashTerminalRender) return
@@ -665,15 +711,15 @@ function McpBashExecSessionView({
       if (isBashProgressMarker(line)) {
         const nextProgress = parseBashProgressMarker(line)
         if (nextProgress) {
-          setProgress(nextProgress)
+          setProgressIfChanged(nextProgress)
         }
         return
       }
       const marker = parseBashStatusMarker(line)
       if (marker) {
-        setSessionStatus(marker.status)
-        setExitCode(marker.exitCode)
-        setStopReason(marker.reason)
+        setSessionStatus((current) => (current === marker.status ? current : marker.status))
+        setExitCode((current) => (current === marker.exitCode ? current : marker.exitCode))
+        setStopReason((current) => (current === marker.reason ? current : marker.reason))
         return
       }
       const parsed = splitBashLogLine(line)
@@ -683,7 +729,7 @@ function McpBashExecSessionView({
       }
       appendToTerminal(`${parsed.text}\n`)
     },
-    [appendToTerminal]
+    [appendToTerminal, setProgressIfChanged]
   )
 
   const handleSnapshot = useCallback(
@@ -713,7 +759,7 @@ function McpBashExecSessionView({
         setLogTruncated(false)
       }
       if (event.progress) {
-        setProgress(event.progress)
+        setProgressIfChanged(event.progress)
       }
       let maxSeq: number | null = latestSeq ?? null
       event.lines?.forEach((line) => {
@@ -726,7 +772,7 @@ function McpBashExecSessionView({
         setLastSeq(maxSeq)
       }
     },
-    [appendToTerminal, command, handleLogLine, resetTerminal, workdir]
+    [appendToTerminal, command, handleLogLine, resetTerminal, setProgressIfChanged, workdir]
   )
 
   const handleLogBatch = useCallback(
@@ -871,7 +917,7 @@ function McpBashExecSessionView({
     onSnapshot: handleSnapshot,
     onLogBatch: handleLogBatch,
     onProgress: (event) => {
-      setProgress(event)
+      setProgressIfChanged(event)
     },
     onLog: (event) => {
       hasSnapshotRef.current = true
@@ -900,10 +946,12 @@ function McpBashExecSessionView({
     },
     onDone: (event) => {
       if (event?.status) {
-        setSessionStatus(event.status as BashSessionStatus)
+        setSessionStatus((current) =>
+          current === event.status ? current : (event.status as BashSessionStatus)
+        )
       }
       if (typeof event?.exit_code === 'number') {
-        setExitCode(event.exit_code)
+        setExitCode((current) => (current === event.exit_code ? current : event.exit_code))
       }
     },
   })

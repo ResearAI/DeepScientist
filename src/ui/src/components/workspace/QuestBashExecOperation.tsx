@@ -14,6 +14,7 @@ import { McpBashExecView } from '@/components/chat/toolViews/McpBashExecView'
 import { useI18n } from '@/lib/i18n/useI18n'
 import type { ToolContent } from '@/lib/plugins/ai-manus/types'
 import type { EventMetadata } from '@/lib/types/chat-events'
+import type { BashExecLiveState } from '@/components/chat/toolViews/types'
 import type { BashProgress } from '@/lib/types/bash'
 import { formatProgressLabel, formatProgressMeta, getProgressPercent } from '@/lib/utils/bash-progress'
 import { cn } from '@/lib/utils'
@@ -161,7 +162,20 @@ function formatPercentLabel(value: number | null) {
   return Number.isInteger(rounded) ? `${rounded.toFixed(0)}%` : `${rounded.toFixed(1)}%`
 }
 
-export function QuestBashExecOperation({
+function stableProgressKey(value: BashProgress | null) {
+  if (!value) return ''
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function progressEquals(left: BashProgress | null, right: BashProgress | null) {
+  return left === right || stableProgressKey(left) === stableProgressKey(right)
+}
+
+export const QuestBashExecOperation = React.memo(function QuestBashExecOperation({
   questId,
   itemId,
   toolCallId,
@@ -196,9 +210,9 @@ export function QuestBashExecOperation({
   const { t } = useI18n('workspace')
   const timestamp = createdAt ? Date.parse(createdAt) : Date.now()
   const resolvedTimestamp = Number.isFinite(timestamp) ? timestamp : Date.now()
-  const parsedArgs = asRecord(parseStructuredValue(args))
-  const parsedOutput = extractBashResult(output)
-  const initialProgress = extractInitialProgress(parsedOutput)
+  const parsedArgs = React.useMemo(() => asRecord(parseStructuredValue(args)), [args])
+  const parsedOutput = React.useMemo(() => extractBashResult(output), [output])
+  const initialProgress = React.useMemo(() => extractInitialProgress(parsedOutput), [parsedOutput])
   const mode = typeof parsedArgs?.mode === 'string' ? parsedArgs.mode.trim().toLowerCase() : ''
   const command =
     typeof parsedArgs?.command === 'string'
@@ -231,26 +245,26 @@ export function QuestBashExecOperation({
           ? parsedArgs.id
         : ''
   const exitCode = typeof parsedOutput?.exit_code === 'number' ? parsedOutput.exit_code : null
-  const [liveProgress, setLiveProgress] = React.useState<BashProgress | null>(initialProgress)
-  const [liveStatus, setLiveStatus] = React.useState<string | null>(
+  const initialStatus =
     typeof parsedOutput?.status === 'string' ? parsedOutput.status : typeof status === 'string' ? status : null
-  )
+  const initialStopReason = typeof parsedOutput?.stop_reason === 'string' ? parsedOutput.stop_reason : ''
+  const [liveProgress, setLiveProgress] = React.useState<BashProgress | null>(initialProgress)
+  const [liveStatus, setLiveStatus] = React.useState<string | null>(initialStatus)
   const [liveExitCode, setLiveExitCode] = React.useState<number | null>(exitCode)
-  const [liveStopReason, setLiveStopReason] = React.useState<string>(
-    typeof parsedOutput?.stop_reason === 'string' ? parsedOutput.stop_reason : ''
-  )
+  const [liveStopReason, setLiveStopReason] = React.useState<string>(initialStopReason)
+  const setLiveProgressIfChanged = React.useCallback((nextProgress: BashProgress | null) => {
+    setLiveProgress((current) => (progressEquals(current, nextProgress) ? current : nextProgress))
+  }, [])
 
   React.useEffect(() => {
-    setLiveProgress(initialProgress)
-  }, [initialProgress, bashId])
+    setLiveProgressIfChanged(initialProgress)
+  }, [initialProgress, bashId, setLiveProgressIfChanged])
 
   React.useEffect(() => {
-    setLiveStatus(
-      typeof parsedOutput?.status === 'string' ? parsedOutput.status : typeof status === 'string' ? status : null
-    )
-    setLiveExitCode(exitCode)
-    setLiveStopReason(typeof parsedOutput?.stop_reason === 'string' ? parsedOutput.stop_reason : '')
-  }, [bashId, exitCode, parsedOutput, status])
+    setLiveStatus((current) => (current === initialStatus ? current : initialStatus))
+    setLiveExitCode((current) => (current === exitCode ? current : exitCode))
+    setLiveStopReason((current) => (current === initialStopReason ? current : initialStopReason))
+  }, [bashId, exitCode, initialStatus, initialStopReason])
 
   const rawStatus = String(
     liveStatus ||
@@ -343,37 +357,53 @@ export function QuestBashExecOperation({
     }
   }, [isLatest, isRunning, shouldAutoExpandRunning])
 
-  const eventMetadata: EventMetadata = {
-    surface: 'copilot',
-    quest_id: questId,
-    session_id:
-      typeof metadata?.session_id === 'string' && metadata.session_id.trim()
-        ? metadata.session_id
-        : `quest:${questId}`,
-    sender_type: 'agent',
-    sender_label: 'DeepScientist',
-    sender_name: 'DeepScientist',
-    ...(metadata as EventMetadata | undefined),
-  }
+  const eventMetadata = React.useMemo<EventMetadata>(
+    () => ({
+      surface: 'copilot',
+      quest_id: questId,
+      session_id:
+        typeof metadata?.session_id === 'string' && metadata.session_id.trim()
+          ? metadata.session_id
+          : `quest:${questId}`,
+      sender_type: 'agent',
+      sender_label: 'DeepScientist',
+      sender_name: 'DeepScientist',
+      ...(metadata as EventMetadata | undefined),
+    }),
+    [metadata, questId]
+  )
 
-  const toolContent: ToolContent = {
-    event_id: itemId,
-    timestamp: resolvedTimestamp,
-    tool_call_id: toolCallId || itemId,
-    name: toolName || 'bash_exec',
-    function: 'mcp__bash_exec__bash_exec',
-    status: label === 'tool_call' ? 'calling' : 'called',
-    args: parsedArgs ?? (args ? { raw: args } : {}),
-    content:
-      label === 'tool_result'
-        ? {
-            ...(parsedOutput ? { result: parsedOutput } : {}),
-            ...(output && !parsedOutput ? { text: output } : {}),
-            ...(status ? { status } : {}),
-          }
-        : {},
-    metadata: eventMetadata,
-  }
+  const toolContent = React.useMemo<ToolContent>(
+    () => ({
+      event_id: itemId,
+      timestamp: resolvedTimestamp,
+      tool_call_id: toolCallId || itemId,
+      name: toolName || 'bash_exec',
+      function: 'mcp__bash_exec__bash_exec',
+      status: label === 'tool_call' ? 'calling' : 'called',
+      args: parsedArgs ?? (args ? { raw: args } : {}),
+      content:
+        label === 'tool_result'
+          ? {
+              ...(parsedOutput ? { result: parsedOutput } : {}),
+              ...(output && !parsedOutput ? { text: output } : {}),
+              ...(status ? { status } : {}),
+            }
+          : {},
+      metadata: eventMetadata,
+    }),
+    [args, eventMetadata, itemId, label, output, parsedArgs, parsedOutput, resolvedTimestamp, status, toolCallId, toolName]
+  )
+
+  const handleLiveStateChange = React.useCallback(
+    (state: BashExecLiveState) => {
+      setLiveProgressIfChanged(state.progress)
+      setLiveStatus((current) => (current === state.status ? current : state.status))
+      setLiveExitCode((current) => (current === state.exitCode ? current : state.exitCode))
+      setLiveStopReason((current) => (current === state.stopReason ? current : state.stopReason))
+    },
+    [setLiveProgressIfChanged]
+  )
 
   return (
     <article
@@ -471,18 +501,13 @@ export function QuestBashExecOperation({
               panelMode="inline"
               chrome="bare"
               preferBashTerminalRender
-              onLiveStateChange={(state) => {
-                setLiveProgress(state.progress)
-                setLiveStatus(state.status)
-                setLiveExitCode(state.exitCode)
-                setLiveStopReason(state.stopReason)
-              }}
+              onLiveStateChange={handleLiveStateChange}
             />
           </div>
         </div>
       ) : null}
     </article>
   )
-}
+})
 
 export default QuestBashExecOperation

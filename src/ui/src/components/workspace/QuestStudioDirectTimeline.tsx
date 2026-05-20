@@ -220,7 +220,7 @@ function StudioInlineFileText({
 }: {
   questId: string
   content: string
-  onOpenFile: (href: string) => void
+  onOpenFile: (href: string) => void | Promise<unknown>
 }) {
   const parts: Array<{ kind: 'text' | 'file'; value: string }> = []
   let lastIndex = 0
@@ -283,7 +283,7 @@ function StudioInlineFileText({
   )
 }
 
-function StudioMessageBlock({
+const StudioMessageBlock = React.memo(function StudioMessageBlock({
   block,
   questId,
   markdownComponents,
@@ -292,7 +292,7 @@ function StudioMessageBlock({
   block: Extract<StudioTurnBlock, { kind: 'message' }>
   questId: string
   markdownComponents?: Components
-  onOpenFile: (href: string) => void
+  onOpenFile: (href: string) => void | Promise<unknown>
 }) {
   return (
     <div className="min-w-0 overflow-hidden pl-0.5">
@@ -314,9 +314,9 @@ function StudioMessageBlock({
       )}
     </div>
   )
-}
+})
 
-function StudioReasoningBlock({
+const StudioReasoningBlock = React.memo(function StudioReasoningBlock({
   block,
   markdownComponents,
 }: {
@@ -361,7 +361,7 @@ function StudioReasoningBlock({
       </div>
     </details>
   )
-}
+})
 
 function isBashExecOperation(block: Extract<StudioTurnBlock, { kind: 'operation' }>) {
   const identity = deriveMcpIdentity(
@@ -372,7 +372,7 @@ function isBashExecOperation(block: Extract<StudioTurnBlock, { kind: 'operation'
   return identity.server === 'bash_exec'
 }
 
-function StudioOperationBlock({
+const StudioOperationBlock = React.memo(function StudioOperationBlock({
   questId,
   block,
   isLatestOperation,
@@ -404,9 +404,9 @@ function StudioOperationBlock({
     )
   }
   return <StudioToolCard questId={questId} item={block.item} isLatest={isLatestOperation} />
-}
+})
 
-function StudioArtifactBlock({ block }: { block: Extract<StudioTurnBlock, { kind: 'artifact' }> }) {
+const StudioArtifactBlock = React.memo(function StudioArtifactBlock({ block }: { block: Extract<StudioTurnBlock, { kind: 'artifact' }> }) {
   const { t } = useI18n('workspace')
   const item = block.item
   const detailEntries = Object.entries(item.details ?? {}).filter(([, value]) => value != null && value !== '')
@@ -453,9 +453,9 @@ function StudioArtifactBlock({ block }: { block: Extract<StudioTurnBlock, { kind
       ) : null}
     </div>
   )
-}
+})
 
-function StudioEventBlock({ block }: { block: Extract<StudioTurnBlock, { kind: 'event' }> }) {
+const StudioEventBlock = React.memo(function StudioEventBlock({ block }: { block: Extract<StudioTurnBlock, { kind: 'event' }> }) {
   const item = block.item
   const label = humanizeEventLabel(item.label)
   const text = [label, item.content ? item.content.trim() : ''].filter(Boolean).join(' · ')
@@ -465,18 +465,20 @@ function StudioEventBlock({ block }: { block: Extract<StudioTurnBlock, { kind: '
       <span className="truncate">{text}</span>
     </div>
   )
-}
+})
 
-function AssistantTurn({
+const AssistantTurn = React.memo(function AssistantTurn({
   questId,
   turn,
   latestOperationId,
   markdownComponents,
+  onOpenFile,
 }: {
   questId: string
   turn: StudioTurn
   latestOperationId: string | null
   markdownComponents?: Components
+  onOpenFile: (href: string) => void | Promise<unknown>
 }) {
   const hasStreamingMessage = turn.blocks.some(
     (block) =>
@@ -508,9 +510,7 @@ function AssistantTurn({
                 block={block}
                 questId={questId}
                 markdownComponents={markdownComponents}
-                onOpenFile={(href) => {
-                  void handleOpenStudioFile(href)
-                }}
+                onOpenFile={onOpenFile}
               />
             )
           }
@@ -537,9 +537,9 @@ function AssistantTurn({
       </div>
     </div>
   )
-}
+})
 
-function UserTurn({
+const UserTurn = React.memo(function UserTurn({
   turn,
   markdownComponents,
   onReadNow,
@@ -591,9 +591,9 @@ function UserTurn({
       </div>
     </div>
   )
-}
+})
 
-function SystemTurn({ turn }: { turn: StudioTurn }) {
+const SystemTurn = React.memo(function SystemTurn({ turn }: { turn: StudioTurn }) {
   return (
     <div className="flex justify-center">
       <div className="space-y-2">
@@ -603,9 +603,9 @@ function SystemTurn({ turn }: { turn: StudioTurn }) {
       </div>
     </div>
   )
-}
+})
 
-export function QuestStudioDirectTimeline({
+export const QuestStudioDirectTimeline = React.memo(function QuestStudioDirectTimeline({
   questId,
   feed,
   loading,
@@ -834,6 +834,7 @@ export function QuestStudioDirectTimeline({
                     turn={turn}
                     latestOperationId={latestOperationId}
                     markdownComponents={markdownComponents}
+                    onOpenFile={handleOpenStudioFile}
                   />
                 )
               })
@@ -843,6 +844,6 @@ export function QuestStudioDirectTimeline({
       </ChatScrollProvider>
     </div>
   )
-}
+})
 
 export default QuestStudioDirectTimeline

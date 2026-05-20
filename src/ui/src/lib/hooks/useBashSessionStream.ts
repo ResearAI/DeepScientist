@@ -61,13 +61,41 @@ const isLikelyNetworkStreamError = (error: unknown) => {
 const sortSessions = (sessions: BashSession[]) =>
   [...sessions].sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at))
 
+const sessionFingerprint = (session: BashSession) => {
+  try {
+    return JSON.stringify(session)
+  } catch {
+    return String(session.bash_id || '')
+  }
+}
+
+const sessionEquals = (left: BashSession | undefined, right: BashSession | undefined) => {
+  if (left === right) return true
+  if (!left || !right) return false
+  return sessionFingerprint(left) === sessionFingerprint(right)
+}
+
+const sessionsEqual = (left: BashSession[], right: BashSession[]) => {
+  if (left === right) return true
+  if (left.length !== right.length) return false
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index]?.bash_id !== right[index]?.bash_id) return false
+    if (!sessionEquals(left[index], right[index])) return false
+  }
+  return true
+}
+
 const mergeSessions = (previous: BashSession[], incoming: BashSession) => {
   if (!incoming?.bash_id) return previous
   const map = new Map(previous.map((session) => [session.bash_id, session]))
   const existing = map.get(incoming.bash_id)
   const merged = existing ? { ...existing, ...incoming } : incoming
+  if (existing && sessionEquals(existing, merged)) {
+    return previous
+  }
   map.set(incoming.bash_id, merged)
-  return sortSessions(Array.from(map.values()))
+  const next = sortSessions(Array.from(map.values()))
+  return sessionsEqual(previous, next) ? previous : next
 }
 
 const buildAuthContext = () => {
@@ -84,6 +112,8 @@ const buildAuthContext = () => {
 const handleUnauthorized = (authMode: RequestAuthMode) => {
   handleUnauthorizedAuth(authMode, 'session_expired')
 }
+
+const SESSION_STREAM_FLUSH_MS = 1000
 
 export function useBashSessionStream({
   projectId,
@@ -105,6 +135,8 @@ export function useBashSessionStream({
   const abortRef = useRef<AbortController | null>(null)
   const reconnectRef = useRef<number | null>(null)
   const hasSnapshotRef = useRef(false)
+  const pendingSessionEventsRef = useRef<Map<string, BashSession>>(new Map())
+  const sessionFlushTimerRef = useRef<number | null>(null)
 
   const queryKey = useMemo(() => {
     return [
@@ -125,8 +157,45 @@ export function useBashSessionStream({
   ])
 
   const updateConnection = useCallback((next: BashSessionStreamState) => {
-    setConnection(next)
+    setConnection((current) =>
+      current.status === next.status && current.error === next.error ? current : next
+    )
   }, [])
+
+  const flushPendingSessionEvents = useCallback(() => {
+    sessionFlushTimerRef.current = null
+    const pending = Array.from(pendingSessionEventsRef.current.values())
+    pendingSessionEventsRef.current.clear()
+    if (pending.length === 0) return
+    setSessions((current) => {
+      let next = current
+      for (const session of pending) {
+        next = mergeSessions(next, session)
+      }
+      return next
+    })
+  }, [])
+
+  const clearPendingSessionEvents = useCallback(() => {
+    pendingSessionEventsRef.current.clear()
+    if (sessionFlushTimerRef.current != null) {
+      window.clearTimeout(sessionFlushTimerRef.current)
+      sessionFlushTimerRef.current = null
+    }
+  }, [])
+
+  const queueSessionEvent = useCallback(
+    (session: BashSession) => {
+      if (!session?.bash_id) return
+      pendingSessionEventsRef.current.set(session.bash_id, session)
+      if (sessionFlushTimerRef.current != null) return
+      sessionFlushTimerRef.current = window.setTimeout(
+        flushPendingSessionEvents,
+        SESSION_STREAM_FLUSH_MS
+      )
+    },
+    [flushPendingSessionEvents]
+  )
 
   const stopStream = useCallback(() => {
     if (abortRef.current) {
@@ -137,7 +206,8 @@ export function useBashSessionStream({
       window.clearTimeout(reconnectRef.current)
       reconnectRef.current = null
     }
-  }, [])
+    clearPendingSessionEvents()
+  }, [clearPendingSessionEvents])
 
   const reload = useCallback(async () => {
     if (!enabled || !projectId) {
@@ -152,7 +222,10 @@ export function useBashSessionStream({
         chatSessionId: chatSessionId ?? undefined,
         limit,
       })
-      setSessions(sortSessions(response))
+      setSessions((current) => {
+        const next = sortSessions(response)
+        return sessionsEqual(current, next) ? current : next
+      })
     } catch (error) {
       updateConnection({
         status: 'error',
@@ -250,13 +323,16 @@ export function useBashSessionStream({
                   const data = JSON.parse(parsed.data) as { sessions?: BashSession[] }
                   if (Array.isArray(data.sessions)) {
                     hasSnapshotRef.current = true
-                    setSessions(sortSessions(data.sessions))
+                    setSessions((current) => {
+                      const next = sortSessions(data.sessions)
+                      return sessionsEqual(current, next) ? current : next
+                    })
                   }
                 }
                 if (parsed.event === 'session') {
                   const data = JSON.parse(parsed.data) as { session?: BashSession }
                   if (data.session) {
-                    setSessions((current) => mergeSessions(current, data.session as BashSession))
+                    queueSessionEvent(data.session as BashSession)
                   }
                 }
               } catch (error) {
@@ -276,13 +352,16 @@ export function useBashSessionStream({
                 const data = JSON.parse(parsed.data) as { sessions?: BashSession[] }
                 if (Array.isArray(data.sessions)) {
                   hasSnapshotRef.current = true
-                  setSessions(sortSessions(data.sessions))
+                    setSessions((current) => {
+                      const next = sortSessions(data.sessions)
+                      return sessionsEqual(current, next) ? current : next
+                    })
                 }
               }
               if (parsed.event === 'session') {
                 const data = JSON.parse(parsed.data) as { session?: BashSession }
                 if (data.session) {
-                  setSessions((current) => mergeSessions(current, data.session as BashSession))
+                  queueSessionEvent(data.session as BashSession)
                 }
               }
             } catch (error) {
@@ -331,6 +410,7 @@ export function useBashSessionStream({
       normalizedAgentIds.key,
       normalizedAgentInstanceIds.key,
       projectId,
+      queueSessionEvent,
       reload,
       stopStream,
       status,

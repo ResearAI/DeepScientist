@@ -197,7 +197,7 @@ export function OrbitLogoStatus({
       rafRef.current = window.requestAnimationFrame(tick)
     }
     rafRef.current = window.requestAnimationFrame(tick)
-  }, [drawFrame, prefersReducedMotion])
+  }, [drawFrame, shouldAnimate])
 
   useEffect(() => {
     if (prefersReducedMotion) {

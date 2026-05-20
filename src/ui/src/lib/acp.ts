@@ -867,14 +867,20 @@ function snapshotIndicatesLiveRun(snapshot?: QuestSummary | null) {
     Number.isFinite(latestActivityMs) &&
     Date.now() - latestActivityMs > 90_000
 
+  const isStaleCopilotWait =
+    workspaceMode === 'copilot' &&
+    continuationPolicy === 'wait_for_user_or_resume' &&
+    !activeRunId &&
+    Number.isFinite(latestActivityMs) &&
+    Date.now() - latestActivityMs > 90_000
   const isParkedCopilot =
     workspaceMode === 'copilot' &&
     continuationPolicy === 'wait_for_user_or_resume' &&
     !activeRunId &&
-    runtimeStatus !== 'running' &&
-    (bashRunningCount === 0 ||
-      (bashRunningCount === 1 &&
-        latestBashKind === 'terminal' &&
+    (runtimeStatus !== 'running' || isStaleCopilotWait) &&
+    (isStaleCopilotWait ||
+      bashRunningCount === 0 ||
+      (latestBashKind === 'terminal' &&
         (latestBashId === '' || latestBashId === 'terminal-main')))
   if (isParkedCopilot) return false
   if (staleRunningWithoutSignals) return false

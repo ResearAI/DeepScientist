@@ -14,12 +14,12 @@ function AtmosphereFrame({ children }: { children: ReactNode }) {
   return (
     <div className="relative isolate min-h-screen overflow-hidden bg-[#ABA9A5] dark:bg-[#0B0C0E] font-project">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -top-40 -left-40 h-[560px] w-[560px] rounded-full blur-3xl animate-blob bg-[radial-gradient(circle_at_center,rgba(143,163,184,0.16),transparent_72%)] dark:bg-[radial-gradient(circle_at_center,rgba(143,163,184,0.16),transparent_72%)]" />
+        <div className="absolute -top-40 -left-40 h-[560px] w-[560px] rounded-full blur-3xl bg-[radial-gradient(circle_at_center,rgba(143,163,184,0.16),transparent_72%)] dark:bg-[radial-gradient(circle_at_center,rgba(143,163,184,0.16),transparent_72%)]" />
         <div
-          className="absolute top-10 -right-52 h-[640px] w-[640px] rounded-full blur-3xl animate-blob bg-[radial-gradient(circle_at_center,rgba(47,52,55,0.08),transparent_72%)] dark:bg-[radial-gradient(circle_at_center,rgba(47,52,55,0.10),transparent_72%)]"
+          className="absolute top-10 -right-52 h-[640px] w-[640px] rounded-full blur-3xl bg-[radial-gradient(circle_at_center,rgba(47,52,55,0.08),transparent_72%)] dark:bg-[radial-gradient(circle_at_center,rgba(47,52,55,0.10),transparent_72%)]"
           style={{ animationDelay: '1.5s' }}
         />
-        <Noise size={260} className="opacity-[0.04] dark:opacity-[0.05]" />
+        <Noise size={260} animated={false} className="opacity-[0.04] dark:opacity-[0.05]" />
       </div>
       {children}
     </div>

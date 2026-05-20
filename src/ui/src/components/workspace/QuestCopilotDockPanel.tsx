@@ -33,6 +33,11 @@ function isParkedCopilotWorkspace(workspace: QuestWorkspaceState) {
   const continuationPolicy = String(snapshot?.continuation_policy || '').trim().toLowerCase()
   const activeRunId = String(snapshot?.active_run_id || '').trim()
   const bashRunningCount = Number(snapshot?.counts?.bash_running_count || 0)
+  const runtimeStatus = String(snapshot?.runtime_status || snapshot?.status || '').trim().toLowerCase()
+  const latestActivityRaw = String(snapshot?.last_tool_activity_at || snapshot?.updated_at || '').trim()
+  const latestActivityMs = latestActivityRaw ? Date.parse(latestActivityRaw) : Number.NaN
+  const staleWaitingState =
+    Number.isFinite(latestActivityMs) && Date.now() - latestActivityMs > 90_000
   const latestBashSession =
     snapshot?.summary?.latest_bash_session &&
     typeof snapshot.summary.latest_bash_session === 'object' &&
@@ -51,9 +56,10 @@ function isParkedCopilotWorkspace(workspace: QuestWorkspaceState) {
     !workspace.loading &&
     !workspace.restoring &&
     !workspace.error &&
-    (bashRunningCount === 0 ||
-      (bashRunningCount === 1 &&
-        latestBashKind === 'terminal' &&
+    (runtimeStatus !== 'running' || staleWaitingState) &&
+    (staleWaitingState ||
+      bashRunningCount === 0 ||
+      (latestBashKind === 'terminal' &&
         (latestBashId === '' || latestBashId === 'terminal-main')))
   )
 }
