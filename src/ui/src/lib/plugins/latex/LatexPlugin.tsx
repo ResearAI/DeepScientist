@@ -287,9 +287,14 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const initialFileId = custom.openFileId ?? custom.mainFileId ?? null;
   const [activeFileId, setActiveFileId] = React.useState<string | null>(initialFileId);
   const [activeFileName, setActiveFileName] = React.useState<string>("main.tex");
+  const compileMainFileId = React.useMemo(() => {
+    if (custom.mainFileId) return custom.mainFileId;
+    return files.find((file) => file.name.toLowerCase() === "main.tex")?.id ?? null;
+  }, [custom.mainFileId, files]);
   const [initialText, setInitialText] = React.useState<string>("");
   const [syncState, setSyncState] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
   const [saveState, setSaveState] = React.useState<"idle" | "saving" | "error">("idle");
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isDirty, setIsDirty] = React.useState(false);
   const [buildId, setBuildId] = React.useState<string | null>(null);
@@ -356,7 +361,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
           ? "compiling"
           : saveState === "saving"
             ? "saving"
-            : buildStatus === "error"
+            : saveError || buildStatus === "error"
               ? "error"
               : "idle",
       diagnostics: {
@@ -372,6 +377,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     context.resourceName,
     effectiveReadOnly,
     files,
+    saveError,
     saveState,
     tabId,
     updateWorkspaceTabState,
@@ -840,6 +846,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     editor.focus?.();
     setIsDirty(true);
     setDirty(true);
+    setSaveError(null);
   }, [effectiveReadOnly, setDirty]);
 
   const insertCitation = React.useCallback(
@@ -1098,6 +1105,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
           }
         }, "ds-monaco");
         setIsDirty(true);
+        setSaveError(null);
       });
 
       bindingCleanupRef.current = () => {
@@ -1132,6 +1140,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     if (!ytext) return false;
     try {
       setSaveState("saving");
+      setSaveError(null);
       const text = String(ytext.toString?.() ?? "");
       const res = await updateFileContent(activeFileId, text);
       lastSavedRef.current = text;
@@ -1148,11 +1157,12 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       return true;
     } catch (e) {
       console.error("[LatexPlugin] Save failed:", e);
+      setSaveError(e instanceof Error ? e.message : t("save_request_failed"));
       setSaveState("error");
       window.setTimeout(() => setSaveState("idle"), 1400);
       return false;
     }
-  }, [activeFileId, effectiveReadOnly, setDirty, updateFileMeta]);
+  }, [activeFileId, effectiveReadOnly, setDirty, t, updateFileMeta]);
 
   const compile = React.useCallback(
     async (opts?: { auto?: boolean }) => {
@@ -1170,6 +1180,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         setBuildStatus("queued");
         const res = await compileLatex(projectId, latexFolderId, {
           compiler,
+          main_file_id: compileMainFileId,
           auto: Boolean(opts?.auto),
           stop_on_first_error: false,
         });
@@ -1182,7 +1193,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         setBuildStatus("error");
       }
     },
-    [compiler, effectiveReadOnly, isDirty, latexFolderId, projectId, save, t, viewReadOnly]
+    [compiler, compileMainFileId, effectiveReadOnly, isDirty, latexFolderId, projectId, save, t, viewReadOnly]
   );
 
   React.useEffect(() => {
@@ -1388,6 +1399,13 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
           "border-[#A6B0B6]/30 bg-[#A6B0B6]/12 text-[#5c666b] dark:bg-[#A6B0B6]/12 dark:text-[#d8dde0]",
       };
     }
+    if (saveError || saveState === "error") {
+      return {
+        label: t("status_save_failed"),
+        className:
+          "border-red-400/30 bg-red-50/80 text-red-600 dark:bg-red-500/10 dark:text-red-200",
+      };
+    }
     if (isDirty) {
       return {
         label: t("status_unsaved"),
@@ -1407,7 +1425,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       className:
         "border-[#9AA79A]/30 bg-[#9AA79A]/12 text-[#5f6b5f] dark:bg-[#9AA79A]/12 dark:text-[#dbe4db]",
     };
-  }, [buildStatus, effectiveReadOnly, isDirty, saveState, t]);
+  }, [buildStatus, effectiveReadOnly, isDirty, saveError, saveState, t]);
 
   const buildFocusedIssue = React.useCallback(
     (issue: LatexBuildError) => {
@@ -2059,6 +2077,20 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
               />
             )}
           </div>
+
+        {saveError ? (
+          <div className="border-t border-black/5 dark:border-white/10 p-4 text-sm">
+            <div className="flex items-start gap-2 text-red-600">
+              <AlertTriangle className="h-4 w-4 mt-0.5" />
+              <div className="min-w-0">
+                <div className="font-medium">{t("save_failed_title")}</div>
+                <div className="text-xs opacity-90 break-words">
+                  {saveError}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {buildStatus === "error" ? (
           <div className="border-t border-black/5 dark:border-white/10 p-4 text-sm max-h-[35vh] overflow-auto">
