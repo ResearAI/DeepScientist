@@ -4419,6 +4419,34 @@ def test_explorer_lists_real_files_and_path_documents_can_be_saved(temp_home: Pa
     assert "Updated from explorer." in reopened["content"]
 
 
+def test_save_document_rejects_stale_revision_after_external_change(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("document revision conflict quest")
+    quest_root = Path(quest["quest_root"])
+
+    note_path = quest_root / "paper" / "latex" / "main.tex"
+    note_path.parent.mkdir(parents=True, exist_ok=True)
+    note_path.write_text("original text\n", encoding="utf-8")
+
+    opened = quest_service.open_document(quest["quest_id"], "path::paper/latex/main.tex")
+    note_path.write_text("external ai edit\n", encoding="utf-8")
+
+    stale_save = quest_service.save_document(
+        quest["quest_id"],
+        "path::paper/latex/main.tex",
+        "stale editor buffer\n",
+        previous_revision=opened["revision"],
+    )
+
+    assert stale_save["ok"] is False
+    assert stale_save["conflict"] is True
+    assert stale_save["current_revision"] != opened["revision"]
+    assert "external ai edit" in stale_save["updated_payload"]["content"]
+    assert note_path.read_text(encoding="utf-8") == "external ai edit\n"
+
+
 def test_explorer_search_finds_paths_and_normalizes_legacy_glob_wrappers(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()

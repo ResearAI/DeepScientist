@@ -331,6 +331,8 @@ def test_local_workspace_does_not_route_markdown_or_commands_through_dead_notebo
     workspace_source = _read("src/ui/src/components/workspace/WorkspaceLayout.tsx")
     open_file_source = _read("src/ui/src/hooks/useOpenFile.ts")
     open_queue_source = _read("src/ui/src/lib/latex/open-queue.ts")
+    files_api_source = _read("src/ui/src/lib/api/files.ts")
+    quest_files_source = _read("src/ui/src/lib/api/quest-files.ts")
     latex_source = _read("src/ui/src/lib/api/latex.ts")
     latex_plugin_source = _read("src/ui/src/lib/plugins/latex/LatexPlugin.tsx")
     tabs_source = _read("src/ui/src/lib/stores/tabs.ts")
@@ -371,6 +373,15 @@ def test_local_workspace_does_not_route_markdown_or_commands_through_dead_notebo
     assert "openFileTabs" not in latex_plugin_source
     assert "handleCloseFileTab" not in latex_plugin_source
     assert "synctex_hint" not in latex_plugin_source
+    assert "getFileContentSnapshot" in files_api_source
+    assert "getQuestFileContentSnapshot" in quest_files_source
+    assert "updateQuestFileContent(fileId, content, options)" in files_api_source
+    assert "const existing = await questClient.openDocument" not in quest_files_source
+    assert "savedRevisionRef.current" in latex_plugin_source
+    assert "externalConflictRef.current" in latex_plugin_source
+    assert "external_change_save_blocked" in latex_plugin_source
+    assert "LATEX_EXTERNAL_CHECK_INTERVAL_MS" in latex_plugin_source
+    assert 'window.addEventListener("ds:file:diff"' in latex_plugin_source
     assert '"text/markdown": BUILTIN_PLUGINS.NOTEBOOK' in plugin_types_source
     assert '".md": BUILTIN_PLUGINS.NOTEBOOK' in plugin_types_source
     assert 'extensions: [".md", ".markdown"],\n        mimeTypes: ["text/markdown", "text/x-markdown"],\n        priority: 95,' in plugin_init_source

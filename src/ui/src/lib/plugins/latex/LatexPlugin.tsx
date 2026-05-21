@@ -17,7 +17,13 @@ import {
 import type { PluginComponentProps } from "@/lib/types/plugin";
 import { cn } from "@/lib/utils";
 import { client as questClient } from "@/lib/api";
-import { listFiles, getFileContent, updateFileContent } from "@/lib/api/files";
+import {
+  listFiles,
+  getFileContent,
+  getFileContentSnapshot,
+  updateFileContent,
+  type FileContentSnapshot,
+} from "@/lib/api/files";
 import { useFileTreeStore } from "@/lib/stores/file-tree";
 import { ProjectSyncClient } from "@/lib/plugins/notebook/lib/project-sync";
 import { useAuthStore } from "@/lib/stores/auth";
@@ -165,6 +171,14 @@ type LabelEntry = {
   sourceFile: string;
 };
 
+type LatexExternalConflict = {
+  fileId: string;
+  remoteContent: string;
+  remoteRevision?: string | null;
+  remoteUpdatedAt?: string | null;
+  reason: "poll" | "focus" | "visibility" | "diff" | "save_conflict";
+};
+
 type BibSnippet = {
   id: string;
   labelKey: string;
@@ -196,6 +210,7 @@ const normalizeBuildErrors = (
 
 const LATEX_COMPILER_OPTIONS: LatexCompiler[] = ["pdflatex", "xelatex", "lualatex"];
 const LATEX_AUTOSAVE_DELAY_MS = 1000;
+const LATEX_EXTERNAL_CHECK_INTERVAL_MS = 4000;
 const LATEX_AUTO_COMPILE_ON_SAVE_STORAGE_PREFIX = "ds:latex:auto-compile-on-save";
 const BIB_SNIPPETS: BibSnippet[] = [
   {
@@ -690,6 +705,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const [saveState, setSaveState] = React.useState<LatexSaveState>("idle");
   const [saveTrigger, setSaveTrigger] = React.useState<LatexSaveTrigger>("manual");
   const [saveError, setSaveError] = React.useState<string | null>(null);
+  const [externalConflict, setExternalConflict] = React.useState<LatexExternalConflict | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isDirty, setIsDirty] = React.useState(false);
   const [dirtyVersion, setDirtyVersion] = React.useState(0);
@@ -726,6 +742,10 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const saveInFlightRef = React.useRef<{ fileId: string; promise: Promise<boolean> } | null>(null);
   const failedSaveTextRef = React.useRef<string | null>(null);
   const lastSaveTriggerRef = React.useRef<LatexSaveTrigger>("manual");
+  const savedRevisionRef = React.useRef<string | null>(null);
+  const loadedRevisionRef = React.useRef<string | null>(null);
+  const externalConflictRef = React.useRef<LatexExternalConflict | null>(null);
+  const externalCheckInFlightRef = React.useRef(false);
   const yDocRef = React.useRef<any>(null);
   const yTextRef = React.useRef<any>(null);
   const syncRef = React.useRef<ProjectSyncClient | null>(null);
@@ -814,6 +834,102 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     const ytext = yTextRef.current;
     return ytext ? String(ytext.toString?.() ?? "") : "";
   }, []);
+
+  const setExternalConflictState = React.useCallback((conflict: LatexExternalConflict | null) => {
+    externalConflictRef.current = conflict;
+    setExternalConflict(conflict);
+  }, []);
+
+  const applyFileSnapshotToEditor = React.useCallback(
+    (fileId: string, snapshot: Pick<FileContentSnapshot, "content" | "revision" | "updated_at" | "size" | "mime_type">) => {
+      const content = String(snapshot.content ?? "");
+      const revision = snapshot.revision ?? null;
+      const ydoc = yDocRef.current;
+      const ytext = yTextRef.current;
+      let origin = remoteOriginRef.current;
+      if (!origin) {
+        origin = `ds-external:${projectId || "project"}:${fileId}:${Date.now()}`;
+        remoteOriginRef.current = origin;
+      }
+
+      applyingRemoteRef.current = true;
+      try {
+        if (ydoc && ytext) {
+          ydoc.transact(() => {
+            const length = Number(ytext.length || 0);
+            if (length) ytext.delete(0, length);
+            if (content) ytext.insert(0, content);
+          }, origin);
+        }
+
+        const editor = editorRef.current;
+        const model = editor?.getModel?.();
+        if (model && typeof model.getValue === "function" && model.getValue() !== content) {
+          model.setValue(content);
+        }
+      } finally {
+        applyingRemoteRef.current = false;
+      }
+
+      setInitialText(content);
+      lastSavedRef.current = content;
+      loadedRevisionRef.current = revision;
+      savedRevisionRef.current = revision;
+      failedSaveTextRef.current = null;
+      setSaveError(null);
+      saveStateRef.current = "idle";
+      setSaveState("idle");
+      setEditorDirty(false);
+      setExternalConflictState(null);
+      if (fileId) {
+        updateFileMeta(fileId, {
+          updatedAt: snapshot.updated_at ?? undefined,
+          size: typeof snapshot.size === "number" ? snapshot.size : undefined,
+          mimeType: snapshot.mime_type ?? undefined,
+        });
+      }
+    },
+    [projectId, setEditorDirty, setExternalConflictState, updateFileMeta]
+  );
+
+  const checkExternalSnapshot = React.useCallback(
+    async (reason: LatexExternalConflict["reason"] = "poll") => {
+      const fileId = activeFileIdRef.current;
+      if (!fileId || syncState !== "ready") return;
+      if (saveStateRef.current === "saving") return;
+      if (externalCheckInFlightRef.current) return;
+
+      externalCheckInFlightRef.current = true;
+      try {
+        const snapshot = await getFileContentSnapshot(fileId);
+        if (activeFileIdRef.current !== fileId) return;
+        const remoteRevision = snapshot.revision ?? null;
+        const knownRevision = savedRevisionRef.current;
+        const changed = remoteRevision && knownRevision
+          ? remoteRevision !== knownRevision
+          : String(snapshot.content ?? "") !== lastSavedRef.current;
+        if (!changed) return;
+
+        if (isDirtyRef.current) {
+          setExternalConflictState({
+            fileId,
+            remoteContent: String(snapshot.content ?? ""),
+            remoteRevision,
+            remoteUpdatedAt: snapshot.updated_at ?? null,
+            reason,
+          });
+          return;
+        }
+
+        applyFileSnapshotToEditor(fileId, snapshot);
+      } catch (e) {
+        console.warn("[LatexPlugin] External LaTeX refresh check failed:", e);
+      } finally {
+        externalCheckInFlightRef.current = false;
+      }
+    },
+    [applyFileSnapshotToEditor, setExternalConflictState, syncState]
+  );
 
   React.useEffect(() => {
     const activeFileMeta =
@@ -1116,6 +1232,9 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     lastSaveTriggerRef.current = "manual";
     setSaveTrigger("manual");
     failedSaveTextRef.current = null;
+    savedRevisionRef.current = null;
+    loadedRevisionRef.current = null;
+    setExternalConflictState(null);
     setSaveError(null);
     setError(null);
 
@@ -1129,16 +1248,21 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       yTextRef.current = ytext;
 
       if (!canUseRealtimeSync) {
-        const seed = await getFileContent(activeFileId);
+        const remoteOrigin = `ds-external:${projectId || "project"}:${activeFileId}:${Date.now()}`;
+        remoteOriginRef.current = remoteOrigin;
+        const seedSnapshot = await getFileContentSnapshot(activeFileId);
+        const seed = seedSnapshot.content;
         ydoc.transact(() => {
           const length = ytext.length || 0;
           if (length) ytext.delete(0, length);
           if (seed) ytext.insert(0, seed);
-        }, "ds-local-seed");
+        }, remoteOrigin);
 
         const textNow = ytext.toString();
         setInitialText(textNow);
         lastSavedRef.current = textNow;
+        loadedRevisionRef.current = seedSnapshot.revision ?? null;
+        savedRevisionRef.current = seedSnapshot.revision ?? null;
         setEditorDirty(false);
         setSyncState("ready");
 
@@ -1170,12 +1294,15 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       }
 
       if (forceSeedRef.current) {
-        const seed = await getFileContent(activeFileId);
+        const seedSnapshot = await getFileContentSnapshot(activeFileId);
+        const seed = seedSnapshot.content;
         ydoc.transact(() => {
           const length = ytext.length || 0;
           if (length) ytext.delete(0, length);
           if (seed) ytext.insert(0, seed);
         }, "ds-reset");
+        loadedRevisionRef.current = seedSnapshot.revision ?? null;
+        savedRevisionRef.current = seedSnapshot.revision ?? null;
         if (!effectiveReadOnly) {
           const resetUpdate = encodeStateAsUpdate(ydoc);
           await sync.pushDocUpdate(activeFileId, resetUpdate);
@@ -1184,13 +1311,24 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       }
 
       if (!diff) {
-        const seed = await getFileContent(activeFileId);
+        const seedSnapshot = await getFileContentSnapshot(activeFileId);
+        const seed = seedSnapshot.content;
         ydoc.transact(() => {
           ytext.insert(0, seed);
         }, "ds-seed");
+        loadedRevisionRef.current = seedSnapshot.revision ?? null;
+        savedRevisionRef.current = seedSnapshot.revision ?? null;
         if (!effectiveReadOnly) {
           const initUpdate = encodeStateAsUpdate(ydoc);
           await sync.pushDocUpdate(activeFileId, initUpdate);
+        }
+      } else {
+        try {
+          const baselineSnapshot = await getFileContentSnapshot(activeFileId);
+          loadedRevisionRef.current = baselineSnapshot.revision ?? null;
+          savedRevisionRef.current = baselineSnapshot.revision ?? null;
+        } catch {
+          // Keep editing usable even when revision metadata cannot be refreshed.
         }
       }
 
@@ -1344,7 +1482,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       cancelled = true;
       cleanup?.();
     };
-  }, [activeFileId, canUseRealtimeSync, effectiveReadOnly, projectId, resetNonce, setEditorDirty, socketAuthMode, t, user?.id, user?.username]);
+  }, [activeFileId, canUseRealtimeSync, effectiveReadOnly, projectId, resetNonce, setEditorDirty, setExternalConflictState, socketAuthMode, t, user?.id, user?.username]);
 
   const revealEditorRange = React.useCallback(
     (
@@ -1852,11 +1990,24 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     flushPendingJump();
   }, [activeFileId, flushPendingJump, resetNonce, syncState]);
 
-  const save = React.useCallback(async (trigger: LatexSaveTrigger = "manual") => {
+  const save = React.useCallback(async (
+    trigger: LatexSaveTrigger = "manual",
+    opts: { overwriteExternal?: boolean } = {}
+  ) => {
     if (!activeFileId) return false;
     if (effectiveReadOnly) return false;
     const ytext = yTextRef.current;
     if (!ytext) return false;
+    const externalConflictForSave = externalConflictRef.current;
+    const overwriteExternal = opts.overwriteExternal === true;
+    if (externalConflictForSave && !overwriteExternal) {
+      failedSaveTextRef.current = String(ytext.toString?.() ?? "");
+      saveStateRef.current = "error";
+      setSaveError(t("external_change_save_blocked"));
+      setSaveState("error");
+      setEditorDirty(true);
+      return false;
+    }
 
     const activeInFlight = saveInFlightRef.current;
     if (activeInFlight && activeInFlight.fileId === activeFileId) {
@@ -1877,7 +2028,13 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         failedSaveTextRef.current = null;
         setSaveError(null);
         setSaveState("saving");
-        const res = await updateFileContent(fileId, textToSave);
+        const expectedRevision = overwriteExternal
+          ? externalConflictForSave?.remoteRevision ?? savedRevisionRef.current
+          : savedRevisionRef.current;
+        const res = await updateFileContent(fileId, textToSave, {
+          revision: expectedRevision,
+          force: overwriteExternal && !expectedRevision,
+        });
 
         if (res?.updated_at) {
           updateFileMeta(fileId, {
@@ -1893,7 +2050,11 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
 
         const currentYText = yTextRef.current;
         const currentText = currentYText ? String(currentYText.toString?.() ?? "") : "";
+        const nextRevision = typeof res?.revision === "string" ? res.revision : null;
+        savedRevisionRef.current = nextRevision;
+        loadedRevisionRef.current = nextRevision;
         lastSavedRef.current = textToSave;
+        setExternalConflictState(null);
         saveStateRef.current = "idle";
         setSaveState("idle");
 
@@ -1907,9 +2068,33 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       } catch (e) {
         console.error("[LatexPlugin] Save failed:", e);
         if (activeFileIdRef.current === fileId) {
+          const maybeConflict = e as Error & {
+            conflict?: boolean;
+            currentRevision?: string | null;
+            updatedPayload?: {
+              content?: string;
+              revision?: string;
+              updated_at?: string;
+            };
+          };
+          if (maybeConflict.conflict && maybeConflict.updatedPayload) {
+            setExternalConflictState({
+              fileId,
+              remoteContent: String(maybeConflict.updatedPayload.content ?? ""),
+              remoteRevision: maybeConflict.updatedPayload.revision ?? maybeConflict.currentRevision ?? null,
+              remoteUpdatedAt: maybeConflict.updatedPayload.updated_at ?? null,
+              reason: "save_conflict",
+            });
+          }
           failedSaveTextRef.current = textToSave;
           saveStateRef.current = "error";
-          setSaveError(e instanceof Error ? e.message : t("save_request_failed"));
+          setSaveError(
+            maybeConflict.conflict
+              ? t("external_change_save_blocked")
+              : e instanceof Error
+                ? e.message
+                : t("save_request_failed")
+          );
           setSaveState("error");
           setEditorDirty(true);
         }
@@ -1923,7 +2108,21 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
 
     saveInFlightRef.current = { fileId, promise };
     return promise;
-  }, [activeFileId, effectiveReadOnly, setEditorDirty, t, updateFileMeta]);
+  }, [activeFileId, effectiveReadOnly, setEditorDirty, setExternalConflictState, t, updateFileMeta]);
+
+  const reloadExternalVersion = React.useCallback(() => {
+    const conflict = externalConflictRef.current;
+    if (!conflict) return;
+    applyFileSnapshotToEditor(conflict.fileId, {
+      content: conflict.remoteContent,
+      revision: conflict.remoteRevision ?? null,
+      updated_at: conflict.remoteUpdatedAt ?? null,
+    });
+  }, [applyFileSnapshotToEditor]);
+
+  const overwriteExternalVersion = React.useCallback(() => {
+    void save("manual", { overwriteExternal: true });
+  }, [save]);
 
   const switchToLatexFile = React.useCallback(
     async (
@@ -2013,6 +2212,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     if (effectiveReadOnly) return;
     if (syncState !== "ready") return;
     if (!isDirty) return;
+    if (externalConflictRef.current) return;
     if (saveState === "saving") return;
 
     const currentText = getCurrentText();
@@ -2023,6 +2223,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     const timer = window.setTimeout(() => {
       if (!activeFileIdRef.current) return;
       if (!isDirtyRef.current) return;
+      if (externalConflictRef.current) return;
       if (saveStateRef.current === "saving") return;
       const latestText = getCurrentText();
       if (saveStateRef.current === "error" && failedSaveTextRef.current === latestText) {
@@ -2035,6 +2236,54 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       window.clearTimeout(timer);
     };
   }, [activeFileId, dirtyVersion, effectiveReadOnly, getCurrentText, isDirty, save, saveState, syncState]);
+
+  React.useEffect(() => {
+    if (!activeFileId) return;
+    if (syncState !== "ready") return;
+    const interval = window.setInterval(() => {
+      void checkExternalSnapshot("poll");
+    }, LATEX_EXTERNAL_CHECK_INTERVAL_MS);
+
+    const handleFocus = () => {
+      void checkExternalSnapshot("focus");
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void checkExternalSnapshot("visibility");
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeFileId, checkExternalSnapshot, syncState]);
+
+  React.useEffect(() => {
+    if (!activeFileId) return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        fileId?: string;
+        filePath?: string;
+        projectId?: string;
+      }>).detail;
+      if (!detail) return;
+      if (detail.projectId && projectId && detail.projectId !== projectId) return;
+      const activeMeta = files.find((file) => file.id === activeFileId) ?? null;
+      const filePath = String(detail.filePath || "").replace(/^\/+/, "");
+      const matches =
+        detail.fileId === activeFileId ||
+        (filePath && resolveLatexFileId(files, filePath) === activeFileId) ||
+        (filePath && activeMeta && [activeMeta.path, activeMeta.relativePath].filter(Boolean).includes(filePath));
+      if (!matches) return;
+      void checkExternalSnapshot("diff");
+    };
+    window.addEventListener("ds:file:diff", handler as EventListener);
+    return () => window.removeEventListener("ds:file:diff", handler as EventListener);
+  }, [activeFileId, checkExternalSnapshot, files, projectId]);
 
   React.useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -2336,6 +2585,13 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
           "border-[#8FA3B8]/30 bg-[#8FA3B8]/10 text-[#52667a] dark:bg-[#8FA3B8]/12 dark:text-[#c8d4df]",
       };
     }
+    if (externalConflict) {
+      return {
+        label: t("status_external_changed"),
+        className:
+          "border-amber-400/40 bg-amber-50/90 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200",
+      };
+    }
     if (saveState === "saving") {
       const autosaveLike = saveTrigger === "auto" || saveTrigger === "lifecycle";
       return {
@@ -2370,7 +2626,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       className:
         "border-[#9AA79A]/30 bg-[#9AA79A]/12 text-[#5f6b5f] dark:bg-[#9AA79A]/12 dark:text-[#dbe4db]",
     };
-  }, [buildStatus, effectiveReadOnly, isDirty, saveError, saveState, saveTrigger, t]);
+  }, [buildStatus, effectiveReadOnly, externalConflict, isDirty, saveError, saveState, saveTrigger, t]);
 
   const buildFocusedIssue = React.useCallback(
     (issue: LatexBuildError) => {
@@ -3094,6 +3350,38 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
               />
             )}
           </div>
+
+        {externalConflict ? (
+          <div className="border-t border-amber-300/30 bg-amber-50/80 dark:bg-amber-500/10 dark:border-amber-300/20 p-4 text-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex min-w-0 items-start gap-2 text-amber-800 dark:text-amber-100">
+                <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div className="min-w-0">
+                  <div className="font-medium">{t("external_change_title")}</div>
+                  <div className="text-xs opacity-90 break-words">
+                    {t("external_change_dirty_message")}
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <button
+                  type="button"
+                  className="inline-flex items-center rounded-md border border-amber-400/40 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-amber-800 hover:bg-white dark:bg-white/[0.06] dark:text-amber-100 dark:hover:bg-white/[0.1]"
+                  onClick={reloadExternalVersion}
+                >
+                  {t("external_change_reload")}
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center rounded-md border border-red-400/30 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-white dark:bg-white/[0.06] dark:text-red-200 dark:hover:bg-white/[0.1]"
+                  onClick={overwriteExternalVersion}
+                >
+                  {t("external_change_overwrite")}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {saveError ? (
           <div className="border-t border-black/5 dark:border-white/10 p-4 text-sm">

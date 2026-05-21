@@ -22,6 +22,7 @@ import {
   getQuestFile,
   getQuestFileBlob,
   getQuestFileContent,
+  getQuestFileContentSnapshot,
   getQuestFileTextPreview,
   getQuestFileTree,
   getQuestNodeAssetUrl,
@@ -61,6 +62,21 @@ export interface FileTextPreviewResponse {
   content: string;
   truncated: boolean;
   encoding: string;
+}
+
+export interface FileContentSnapshot {
+  file_id: string;
+  content: string;
+  revision?: string | null;
+  updated_at?: string | null;
+  size?: number;
+  mime_type?: string | null;
+  project_id?: string;
+}
+
+export interface FileSaveOptions {
+  revision?: string | null;
+  force?: boolean;
 }
 
 /**
@@ -357,6 +373,51 @@ export async function getFileContent(fileId: string): Promise<string> {
 }
 
 /**
+ * Get file content plus the backend revision used for optimistic save checks.
+ */
+export async function getFileContentSnapshot(fileId: string): Promise<FileContentSnapshot> {
+  if (isDemoFileId(fileId)) {
+    const demoContent = getDemoFileContent(fileId);
+    if (demoContent == null) {
+      throw new Error(`Unknown demo file content for \`${fileId}\`.`);
+    }
+    return {
+      file_id: fileId,
+      content: demoContent,
+      revision: null,
+      updated_at: null,
+      size: demoContent.length,
+      mime_type: "text/plain",
+    };
+  }
+  const cliRef = parseCliFileId(fileId);
+  if (cliRef) {
+    const response = await readCliFile(cliRef.projectId, cliRef.serverId, cliRef.path);
+    return {
+      file_id: fileId,
+      content: response.content,
+      revision: response.modified_at ? `modified:${response.modified_at}` : null,
+      updated_at: response.modified_at ?? null,
+      size: typeof response.size === "number" ? response.size : response.content.length,
+      mime_type: "text/plain",
+      project_id: cliRef.projectId,
+    };
+  }
+  if (isQuestNodeId(fileId)) {
+    return await getQuestFileContentSnapshot(fileId);
+  }
+  const content = await getFileContent(fileId);
+  return {
+    file_id: fileId,
+    content,
+    revision: null,
+    updated_at: null,
+    size: content.length,
+    mime_type: "text/plain",
+  };
+}
+
+/**
  * Get a truncated text preview for a file.
  */
 export async function getFileTextPreview(
@@ -383,8 +444,9 @@ export async function getFileTextPreview(
  */
 export async function updateFileContent(
   fileId: string,
-  content: string
-): Promise<FileAPIResponse & { checksum?: string; project_id?: string }> {
+  content: string,
+  options: FileSaveOptions = {}
+): Promise<FileAPIResponse & { checksum?: string; project_id?: string; revision?: string | null; conflict?: boolean; current_revision?: string | null }> {
   const cliRef = parseCliFileId(fileId);
   if (cliRef) {
     await writeCliFile(cliRef.projectId, cliRef.serverId, {
@@ -418,7 +480,7 @@ export async function updateFileContent(
     };
   }
   if (isQuestNodeId(fileId)) {
-    return await updateQuestFileContent(fileId, content);
+    return await updateQuestFileContent(fileId, content, options);
   }
   const response = await apiClient.put(
     `${FILES_BASE}/${fileId}/content`,

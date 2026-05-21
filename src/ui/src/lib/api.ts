@@ -582,6 +582,7 @@ export const client = {
       conflict?: boolean
       message?: string
       revision?: string
+      current_revision?: string
       updated_payload?: OpenDocumentPayload
     }>(`/api/quests/${questId}/documents/${documentId}`, {
       method: 'PUT',

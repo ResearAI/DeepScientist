@@ -26,6 +26,21 @@ type CachedQuestFile = FileAPIResponse & {
   document_id?: string
 }
 
+export type QuestFileContentSnapshot = {
+  file_id: string
+  content: string
+  revision?: string | null
+  updated_at?: string | null
+  size?: number
+  mime_type?: string | null
+  project_id?: string
+}
+
+export type QuestFileSaveOptions = {
+  revision?: string | null
+  force?: boolean
+}
+
 type QuestMutationItem = {
   name: string
   path: string
@@ -538,6 +553,24 @@ export async function getQuestFileContent(fileId: string): Promise<string> {
   return document.content || ''
 }
 
+export async function getQuestFileContentSnapshot(fileId: string): Promise<QuestFileContentSnapshot> {
+  const ref = parseQuestNodeId(fileId)
+  if (!ref || ref.type !== 'file') {
+    throw new Error('Only quest files can be opened as text.')
+  }
+  const document = await questClient.openDocument(ref.projectId, ref.documentId)
+  upsertFileFromDocument(fileId, ref, document)
+  return {
+    file_id: fileId,
+    content: document.content || '',
+    revision: typeof document.revision === 'string' ? document.revision : null,
+    updated_at: typeof document.updated_at === 'string' ? document.updated_at : null,
+    size: typeof document.size_bytes === 'number' ? document.size_bytes : undefined,
+    mime_type: document.mime_type ?? null,
+    project_id: ref.projectId,
+  }
+}
+
 export async function getQuestFileTextPreview(
   fileId: string,
   maxChars = 4000
@@ -556,19 +589,44 @@ export async function getQuestFileTextPreview(
   }
 }
 
-export async function updateQuestFileContent(fileId: string, content: string): Promise<FileAPIResponse> {
+export async function updateQuestFileContent(
+  fileId: string,
+  content: string,
+  options: QuestFileSaveOptions = {}
+): Promise<FileAPIResponse & { revision?: string | null; conflict?: boolean; current_revision?: string | null }> {
   const ref = parseQuestNodeId(fileId)
   if (!ref || ref.type !== 'file') {
     throw new Error('Only quest files can be saved.')
   }
-  const existing = await questClient.openDocument(ref.projectId, ref.documentId)
-  const saved = await questClient.saveDocument(ref.projectId, ref.documentId, content, existing.revision)
+  const expectedRevision =
+    options.force === true
+      ? undefined
+      : options.revision === null
+        ? undefined
+        : options.revision
+  const saved = await questClient.saveDocument(ref.projectId, ref.documentId, content, expectedRevision)
   const updated = saved.updated_payload
   if (!saved.ok || !updated) {
-    throw new Error(saved.message || 'Failed to save quest file.')
+    const error = new Error(saved.message || 'Failed to save quest file.') as Error & {
+      conflict?: boolean
+      currentRevision?: string | null
+      updatedPayload?: OpenDocumentPayload
+    }
+    error.conflict = Boolean(saved.conflict)
+    error.currentRevision = typeof saved.current_revision === 'string' ? saved.current_revision : null
+    error.updatedPayload = updated
+    throw error
   }
   treeCache.delete(ref.projectId)
-  return upsertFileFromDocument(fileId, ref, updated)
+  return {
+    ...upsertFileFromDocument(fileId, ref, updated),
+    revision: typeof saved.revision === 'string'
+      ? saved.revision
+      : typeof updated.revision === 'string'
+        ? updated.revision
+        : null,
+    conflict: false,
+  }
 }
 
 export async function getQuestFileBlob(fileId: string): Promise<Blob> {
