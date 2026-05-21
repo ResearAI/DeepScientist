@@ -2046,7 +2046,7 @@ npm --prefix src/ui run build</pre>
         try:
             return self.app.quest_service.save_document(
                 quest_id,
-                document_id,
+                unquote(document_id),
                 body["content"],
                 previous_revision=body.get("revision"),
             )
@@ -2121,6 +2121,9 @@ npm --prefix src/ui run build</pre>
             auto=body.get("auto"),
         )
 
+    def latex_manifest(self, project_id: str, folder_id: str) -> dict:
+        return self.app.latex_service.manifest(project_id, folder_id)
+
     def latex_builds(self, project_id: str, folder_id: str, path: str) -> list[dict]:
         query = self.parse_query(path)
         limit_raw = ((query.get("limit") or ["10"])[0] or "10").strip()
@@ -2132,6 +2135,21 @@ npm --prefix src/ui run build</pre>
 
     def latex_build(self, project_id: str, folder_id: str, build_id: str) -> dict:
         return self.app.latex_service.get_build(project_id, folder_id, build_id)
+
+    def latex_synctex_edit(self, project_id: str, folder_id: str, build_id: str, body: dict) -> dict:
+        return self.app.latex_service.synctex_edit(
+            project_id,
+            folder_id,
+            build_id,
+            page=body.get("page"),
+            x=body.get("x"),
+            y=body.get("y"),
+            pdf_word=body.get("pdf_word"),
+            pdf_context_words=body.get("pdf_context_words"),
+            pdf_context_index=body.get("pdf_context_index"),
+            pdf_word_bbox=body.get("pdf_word_bbox"),
+            pdf_word_center=body.get("pdf_word_center"),
+        )
 
     def latex_build_pdf(self, project_id: str, folder_id: str, build_id: str) -> tuple[int, dict, bytes]:
         payload, file_name = self.app.latex_service.get_build_pdf(project_id, folder_id, build_id)

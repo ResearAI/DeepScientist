@@ -18,6 +18,12 @@ import type {
 } from '@/lib/types/ui-effects'
 import { queueFileJumpEffect } from '@/lib/ai/file-jump-queue'
 import { queuePdfEffect } from '@/lib/ai/pdf-effect-queue'
+import {
+  buildLatexTabContext,
+  findLatexRootFolderForFile,
+  isLatexSourceFileName,
+  queueLatexOpenFile,
+} from '@/lib/latex/open-queue'
 
 type UIEffectContext = {
   surface?: 'welcome' | 'copilot' | 'lab-direct' | 'lab-group' | 'lab-friends'
@@ -51,24 +57,8 @@ function requestCopilotOpen() {
   dispatchCustomEvent('ds:copilot:open', { source: 'ui-effect' })
 }
 
-function findLatexFolderForFile(file: FileNode): FileNode | null {
-  if (!file.parentId) return null
-  const findNode = useFileTreeStore.getState().findNode
-  let currentId: string | null = file.parentId
-  while (currentId) {
-    const parent = findNode(currentId)
-    if (!parent) return null
-    if (parent.type === 'folder' && parent.folderKind === 'latex') {
-      return parent
-    }
-    currentId = parent.parentId
-  }
-  return null
-}
-
 function isLatexSourceFile(filename: string): boolean {
-  const lower = filename.toLowerCase()
-  return lower.endsWith('.tex') || lower.endsWith('.bib')
+  return isLatexSourceFileName(filename)
 }
 
 function isMarkdownFileName(filename: string): boolean {
@@ -107,22 +97,31 @@ function openFileInTab(file: FileNode, data: FileEffectData, options?: { preferE
   const projectId = data.projectId ?? useFileTreeStore.getState().projectId ?? undefined
 
   if (projectId && isLatexSourceFile(file.name)) {
-    const latexFolder = findLatexFolderForFile(file)
+    const latexFolder = findLatexRootFolderForFile(file, useFileTreeStore.getState().findNode)
     if (latexFolder) {
+      const context = buildLatexTabContext({
+        projectId,
+        latexFolder,
+      })
+      const existing = tabsStore.findTabByContext(context)
+      if (existing) {
+        tabsStore.setActiveTab(existing.id)
+        queueLatexOpenFile({
+          projectId,
+          latexFolderId: latexFolder.id,
+          fileId: file.id,
+        })
+        return existing.id
+      }
       const tabId = tabsStore.openTab({
         pluginId: BUILTIN_PLUGINS.LATEX,
-        context: {
-          type: 'custom',
-          resourceId: latexFolder.id,
-          resourceName: latexFolder.name,
-          customData: {
-            projectId,
-            latexFolderId: latexFolder.id,
-            mainFileId: latexFolder.latex?.mainFileId ?? null,
-            openFileId: file.id,
-          },
-        },
+        context,
         title: latexFolder.name,
+      })
+      queueLatexOpenFile({
+        projectId,
+        latexFolderId: latexFolder.id,
+        fileId: file.id,
       })
       return tabId
     }

@@ -23,6 +23,12 @@ import {
 } from "@/lib/types/plugin";
 import { downloadFileById } from "@/lib/api/files";
 import { toFilesResourcePath } from "@/lib/utils/resource-paths";
+import {
+  buildLatexTabContext,
+  findLatexRootFolderForFile,
+  isLatexSourceFileName,
+  queueLatexOpenFile,
+} from "@/lib/latex/open-queue";
 
 /**
  * Options for opening a file
@@ -67,26 +73,8 @@ export function useOpenFile() {
   const findNode = useFileTreeStore((state) => state.findNode);
   const storeProjectId = useFileTreeStore((state) => state.projectId);
 
-  const findLatexFolderForFile = useCallback(
-    (file: FileNode): FileNode | null => {
-      if (!file.parentId) return null;
-      let currentId: string | null = file.parentId;
-      while (currentId) {
-        const parent = findNode(currentId);
-        if (!parent) return null;
-        if (parent.type === "folder" && parent.folderKind === "latex") {
-          return parent;
-        }
-        currentId = parent.parentId;
-      }
-      return null;
-    },
-    [findNode]
-  );
-
   const isLatexSourceFile = useCallback((fileName: string): boolean => {
-    const lower = fileName.toLowerCase();
-    return lower.endsWith(".tex") || lower.endsWith(".bib");
+    return isLatexSourceFileName(fileName);
   }, []);
 
   const isMarkdownFileName = useCallback((fileName: string): boolean => {
@@ -174,27 +162,36 @@ export function useOpenFile() {
           : options.customData;
 
       if (resolvedProjectId && isLatexSourceFile(file.name)) {
-        const latexFolder = findLatexFolderForFile(file);
+        const latexFolder = findLatexRootFolderForFile(file, findNode);
         if (latexFolder) {
           preloadPlugin(BUILTIN_PLUGINS.LATEX);
           const readOnly =
             Boolean(options.customData?.readOnly) ||
             Boolean(options.customData?.readonly);
+          const context = buildLatexTabContext({
+            projectId: resolvedProjectId,
+            latexFolder,
+            readOnly,
+          });
+          const existing = findTabByContext(context);
+          if (existing) {
+            setActiveTab(existing.id);
+            queueLatexOpenFile({
+              projectId: resolvedProjectId,
+              latexFolderId: latexFolder.id,
+              fileId: file.id,
+            });
+            return { success: true, tabId: existing.id };
+          }
           const tabId = openTab({
             pluginId: BUILTIN_PLUGINS.LATEX,
-            context: {
-              type: "custom",
-              resourceId: latexFolder.id,
-              resourceName: latexFolder.name,
-              customData: {
-                projectId: resolvedProjectId,
-                latexFolderId: latexFolder.id,
-                mainFileId: latexFolder.latex?.mainFileId ?? null,
-                openFileId: file.id,
-                readOnly,
-              },
-            },
+            context,
             title: latexFolder.name,
+          });
+          queueLatexOpenFile({
+            projectId: resolvedProjectId,
+            latexFolderId: latexFolder.id,
+            fileId: file.id,
           });
 
           return { success: true, tabId };
@@ -255,7 +252,7 @@ export function useOpenFile() {
     },
     [
       downloadFile,
-      findLatexFolderForFile,
+      findNode,
       findTabByContext,
       getPluginForFile,
       isLatexSourceFile,

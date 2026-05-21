@@ -145,11 +145,13 @@ def test_backend_routes_cover_shared_web_and_tui_surface() -> None:
         ("PATCH", "/api/v1/annotations/ann-001", "annotation_update"),
         ("DELETE", "/api/v1/annotations/ann-001", "annotation_delete"),
         ("POST", "/api/v1/projects/q-001/latex/init", "latex_init"),
+        ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/manifest", "latex_manifest"),
         ("POST", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/compile", "latex_compile"),
         ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/builds", "latex_builds"),
         ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/builds/latex-001", "latex_build"),
         ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/builds/latex-001/pdf", "latex_build_pdf"),
         ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/builds/latex-001/log", "latex_build_log"),
+        ("POST", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/builds/latex-001/synctex/edit", "latex_synctex_edit"),
         ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/archive", "latex_archive"),
         ("GET", "/api/config/files", "config_files"),
         ("GET", "/api/config/core", "config_show"),
@@ -268,11 +270,13 @@ def test_web_client_uses_acp_and_git_surface_expected_by_backend() -> None:
 
     latex_fragments = [
         "/api/v1/projects/${projectId}/latex/init",
+        "/api/v1/projects/${projectId}/latex/${folderId}/manifest",
         "/api/v1/projects/${projectId}/latex/${folderId}/compile",
         "/api/v1/projects/${projectId}/latex/${folderId}/builds",
         "/api/v1/projects/${projectId}/latex/${folderId}/builds/${buildId}",
         "/api/v1/projects/${projectId}/latex/${folderId}/builds/${buildId}/pdf",
         "/api/v1/projects/${projectId}/latex/${folderId}/builds/${buildId}/log",
+        "/api/v1/projects/${projectId}/latex/${folderId}/builds/${buildId}/synctex/edit",
         "/api/v1/projects/${projectId}/latex/${folderId}/archive",
     ]
 
@@ -326,6 +330,10 @@ def test_settings_control_center_client_prefers_system_alias_surface() -> None:
 def test_local_workspace_does_not_route_markdown_or_commands_through_dead_notebook_and_auth_paths() -> None:
     workspace_source = _read("src/ui/src/components/workspace/WorkspaceLayout.tsx")
     open_file_source = _read("src/ui/src/hooks/useOpenFile.ts")
+    open_queue_source = _read("src/ui/src/lib/latex/open-queue.ts")
+    latex_source = _read("src/ui/src/lib/api/latex.ts")
+    latex_plugin_source = _read("src/ui/src/lib/plugins/latex/LatexPlugin.tsx")
+    tabs_source = _read("src/ui/src/lib/stores/tabs.ts")
     plugin_types_source = _read("src/ui/src/lib/types/plugin.ts")
     plugin_init_source = _read("src/ui/src/lib/plugin/init.ts")
 
@@ -336,6 +344,33 @@ def test_local_workspace_does_not_route_markdown_or_commands_through_dead_notebo
     assert "BUILTIN_PLUGINS.NOTEBOOK,\n    BUILTIN_PLUGINS.LATEX" not in workspace_source
     assert "updateTabPlugin(tab.id, BUILTIN_PLUGINS.NOTEBOOK" in workspace_source
     assert 'return BUILTIN_PLUGINS.NOTEBOOK;' in open_file_source
+    assert "queueLatexOpenFile" in open_file_source
+    assert "openFileId: file.id" not in open_file_source
+    assert "latexContextIdentity" in tabs_source
+    assert "mainFileId:" not in open_queue_source
+    assert "quest_stage_selection" not in open_queue_source
+    assert "LATEX_OPEN_FILE_EVENT" in latex_plugin_source
+    assert "syncTexEditLatexBuild" in latex_plugin_source
+    assert "jumpEditorToLocation" in latex_plugin_source
+    assert "hitTestPdfTextLayerWord" in latex_plugin_source
+    assert "pdf_word_bbox" in latex_source
+    assert "pdf_context_words" in latex_source
+    assert "contextWords: wordHit?.contextWords" in latex_plugin_source
+    assert "selection?: LatexSyncTexSelection" in latex_source
+    assert "result.selection" in latex_plugin_source
+    assert "revealEditorRange" in latex_plugin_source
+    assert "revealRangeInCenter" in latex_plugin_source
+    assert "selectionHighlight: false" in latex_plugin_source
+    assert 'occurrencesHighlight: "off"' in latex_plugin_source
+    assert "boundEditorFileIdRef" in latex_plugin_source
+    assert "boundEditorFileIdRef.current !== activeFileId" in latex_plugin_source
+    assert "select?: boolean" not in latex_plugin_source
+    assert "ds-latex-jump-inline" not in _read("src/ui/src/index.css")
+    assert 'setSyncState("loading")' in latex_plugin_source
+    assert "getWordAtPosition" in latex_plugin_source
+    assert "openFileTabs" not in latex_plugin_source
+    assert "handleCloseFileTab" not in latex_plugin_source
+    assert "synctex_hint" not in latex_plugin_source
     assert '"text/markdown": BUILTIN_PLUGINS.NOTEBOOK' in plugin_types_source
     assert '".md": BUILTIN_PLUGINS.NOTEBOOK' in plugin_types_source
     assert 'extensions: [".md", ".markdown"],\n        mimeTypes: ["text/markdown", "text/x-markdown"],\n        priority: 95,' in plugin_init_source

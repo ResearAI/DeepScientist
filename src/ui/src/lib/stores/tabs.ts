@@ -56,6 +56,12 @@ export interface TabsState {
 function contextEquals(a: TabContext, b: TabContext): boolean {
   if (a.type !== b.type) return false;
 
+  const latexA = latexContextIdentity(a);
+  const latexB = latexContextIdentity(b);
+  if (latexA && latexB) {
+    return latexA === latexB;
+  }
+
   // For file and notebook types, compare resourceId
   if (a.type === "file" || a.type === "notebook") {
     return a.resourceId === b.resourceId;
@@ -67,6 +73,28 @@ function contextEquals(a: TabContext, b: TabContext): boolean {
   }
 
   return false;
+}
+
+function customStringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function latexContextIdentity(context: TabContext): string | null {
+  if (context.type !== "custom") return null;
+  const customData = context.customData;
+  if (!customData || typeof customData !== "object" || Array.isArray(customData)) return null;
+  const record = customData as Record<string, unknown>;
+  const hasLatexMarker = record.kind === "latex-workspace" || customStringValue(record.latexFolderId);
+  if (!hasLatexMarker) return null;
+  const projectId = customStringValue(record.projectId);
+  const latexFolderId = customStringValue(record.latexFolderId) ?? customStringValue(context.resourceId);
+  if (!projectId || !latexFolderId) return null;
+  return [
+    "latex-workspace",
+    projectId,
+    latexFolderId,
+    Boolean(record.readOnly || record.readonly) ? "readonly" : "writable",
+  ].join("::");
 }
 
 /**

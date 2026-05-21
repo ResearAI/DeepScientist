@@ -18,6 +18,7 @@ import { ConfirmModal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { compileLatex } from "@/lib/api/latex";
+import { findLatexRootFolderForFile } from "@/lib/latex/open-queue";
 
 /**
  * FileTree props
@@ -492,16 +493,7 @@ export function FileTree({
 
   const findLatexFolderForFile = React.useCallback(
     (file: FileNode): FileNode | null => {
-      let currentId: string | null = file.parentId;
-      while (currentId) {
-        const parent = findNode(currentId);
-        if (!parent) return null;
-        if (parent.type === "folder" && parent.folderKind === "latex") {
-          return parent;
-        }
-        currentId = parent.parentId;
-      }
-      return null;
+      return findLatexRootFolderForFile(file, findNode);
     },
     [findNode]
   );
@@ -523,7 +515,10 @@ export function FileTree({
 
       try {
         const build = await compileLatex(projectId, folder.id, {
-          main_file_id: node.id,
+          main_file_id:
+            node.name.toLowerCase() === "main.tex" || folder.latex?.mainFileId === node.id
+              ? node.id
+              : folder.latex?.mainFileId ?? null,
           stop_on_first_error: false,
         });
         addToast({

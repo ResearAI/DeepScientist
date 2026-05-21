@@ -1319,8 +1319,13 @@ def test_daemon_serves_health_and_ui(temp_home: Path, project_root: Path, python
     (quest_root / "docs").mkdir(parents=True, exist_ok=True)
     (quest_root / "figures").mkdir(parents=True, exist_ok=True)
     (quest_root / "paper" / "latex").mkdir(parents=True, exist_ok=True)
+    (quest_root / "paper" / "latex" / "sections").mkdir(parents=True, exist_ok=True)
     (quest_root / "docs" / "appendix.pdf").write_bytes(b"%PDF-1.4\n%quest-pdf\n")
     (quest_root / "figures" / "plot.png").write_bytes(b"\x89PNG\r\n\x1a\nquest-plot")
+    (quest_root / "paper" / "latex" / "sections" / "intro.tex").write_text(
+        "Hello from daemon API test.\n",
+        encoding="utf-8",
+    )
     (quest_root / "paper" / "latex" / "main.tex").write_text(
         "\n".join(
             [
@@ -1330,7 +1335,7 @@ def test_daemon_serves_health_and_ui(temp_home: Path, project_root: Path, python
                 r"\date{}",
                 r"\begin{document}",
                 r"\maketitle",
-                "Hello from daemon API test.",
+                r"\input{sections/intro}",
                 r"\end{document}",
                 "",
             ]
@@ -1450,6 +1455,13 @@ def test_daemon_serves_health_and_ui(temp_home: Path, project_root: Path, python
             assert response.read().startswith(b"%PDF-1.4")
         if shutil.which("pdflatex"):
             folder_id = f"quest-dir::{quest_id}::paper%2Flatex"
+            manifest = _get_json(
+                f"http://127.0.0.1:20901/api/v1/projects/{quest_id}/latex/{folder_id}/manifest"
+            )
+            assert manifest["main_file_path"] == "paper/latex/main.tex"
+            manifest_paths = {item["relative_path"] for item in manifest["files"]}
+            assert {"main.tex", "sections/intro.tex"}.issubset(manifest_paths)
+            assert manifest["main_file_id"]
             compile_request = Request(
                 f"http://127.0.0.1:20901/api/v1/projects/{quest_id}/latex/{folder_id}/compile",
                 data=json.dumps({"compiler": "pdflatex"}).encode("utf-8"),
@@ -1462,6 +1474,7 @@ def test_daemon_serves_health_and_ui(temp_home: Path, project_root: Path, python
             assert compile_payload["folder_id"] == folder_id
             assert compile_payload["status"] == "success"
             assert compile_payload["pdf_ready"] is True
+            assert compile_payload["synctex_ready"] is True
             build_id = compile_payload["build_id"]
             builds = _get_json(
                 f"http://127.0.0.1:20901/api/v1/projects/{quest_id}/latex/{folder_id}/builds?limit=5"
@@ -1476,11 +1489,22 @@ def test_daemon_serves_health_and_ui(temp_home: Path, project_root: Path, python
             ) as response:
                 log_text = response.read().decode("utf-8")
             assert "pdflatex" in log_text
+            assert "-synctex=1" in log_text
             with urlopen(  # noqa: S310
                 f"http://127.0.0.1:20901/api/v1/projects/{quest_id}/latex/{folder_id}/builds/{build_id}/pdf"
             ) as response:
                 assert response.headers["Content-Type"] == "application/pdf"
                 assert response.read().startswith(b"%PDF-")
+            if shutil.which("synctex") and build.get("synctex_ready"):
+                synctex_request = Request(
+                    f"http://127.0.0.1:20901/api/v1/projects/{quest_id}/latex/{folder_id}/builds/{build_id}/synctex/edit",
+                    data=json.dumps({"page": 1, "x": 100, "y": 100}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urlopen(synctex_request) as response:  # noqa: S310
+                    synctex_payload = json.loads(response.read().decode("utf-8"))
+                assert "ok" in synctex_payload
             with urlopen(  # noqa: S310
                 f"http://127.0.0.1:20901/api/v1/projects/{quest_id}/latex/{folder_id}/archive"
             ) as response:

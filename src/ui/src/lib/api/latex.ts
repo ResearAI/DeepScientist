@@ -63,8 +63,85 @@ export interface LatexBuildResponse {
   error_message?: string | null;
   pdf_ready: boolean;
   log_ready: boolean;
+  synctex_ready?: boolean;
   errors: LatexBuildError[];
   log_items?: LatexLogItem[];
+  synctex_path?: string | null;
+}
+
+export interface LatexManifestFile {
+  id: string;
+  name: string;
+  path: string;
+  relative_path?: string;
+  role: "main" | "tex" | "bib" | "style" | "resource" | "other" | string;
+  editable: boolean;
+  size?: number;
+  dependencies?: Array<{ kind: string; path: string }>;
+}
+
+export interface LatexManifestResponse {
+  folder_id: string;
+  folder_path: string;
+  folder_name?: string;
+  main_file_id?: string | null;
+  main_file_path?: string | null;
+  compiler?: LatexCompiler;
+  files: LatexManifestFile[];
+}
+
+export interface LatexSyncTexEditRequest {
+  page: number;
+  x: number;
+  y: number;
+  pdf_word?: string | null;
+  pdf_context_words?: string[] | null;
+  pdf_context_index?: number | null;
+  pdf_word_bbox?: {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+    width?: number;
+    height?: number;
+  } | null;
+  pdf_word_center?: { x: number; y: number } | null;
+}
+
+export interface LatexSyncTexSelection {
+  start_line: number;
+  start_column: number;
+  end_line: number;
+  end_column: number;
+  text?: string;
+  precision?: "exact_word" | "nearest_token" | "line_column" | "line_only" | string;
+  confidence?: number;
+}
+
+export interface LatexSyncTexEditResponse {
+  ok: boolean;
+  message?: string;
+  reason?: string;
+  file_id?: string;
+  file_path?: string;
+  file_name?: string;
+  line?: number;
+  column?: number | null;
+  selection?: LatexSyncTexSelection | null;
+  precision?: string;
+  confidence?: number | null;
+  pdf_word?: string | null;
+  pdf_context_words?: string[] | null;
+  pdf_context_index?: number | null;
+  synctex_line?: number;
+  synctex_column?: number | null;
+  sample_count?: number;
+  candidate_count?: number;
+  page?: number;
+  x?: number;
+  y?: number;
+  folder_id?: string;
+  folder_path?: string;
 }
 
 export async function initLatexProject(
@@ -86,6 +163,16 @@ export async function compileLatex(
   const res = await apiClient.post<LatexBuildResponse>(
     `/api/v1/projects/${projectId}/latex/${folderId}/compile`,
     request
+  );
+  return res.data;
+}
+
+export async function getLatexManifest(
+  projectId: string,
+  folderId: string
+): Promise<LatexManifestResponse> {
+  const res = await apiClient.get<LatexManifestResponse>(
+    `/api/v1/projects/${projectId}/latex/${folderId}/manifest`
   );
   return res.data;
 }
@@ -135,6 +222,19 @@ export async function getLatexBuildLogText(
     { responseType: "text" }
   );
   return String(res.data ?? "");
+}
+
+export async function syncTexEditLatexBuild(
+  projectId: string,
+  folderId: string,
+  buildId: string,
+  request: LatexSyncTexEditRequest
+): Promise<LatexSyncTexEditResponse> {
+  const res = await apiClient.post<LatexSyncTexEditResponse>(
+    `/api/v1/projects/${projectId}/latex/${folderId}/builds/${buildId}/synctex/edit`,
+    request
+  );
+  return res.data;
 }
 
 export async function getLatexSourcesArchiveBlob(

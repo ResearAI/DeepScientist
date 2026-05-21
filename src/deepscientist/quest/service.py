@@ -7794,17 +7794,43 @@ class QuestService:
         normalized = str(relative or "").strip().replace("\\", "/")
         if not normalized:
             return False
+        if normalized == ".ds" or normalized.startswith(".ds/"):
+            return False
         try:
             if (path / "main.tex").is_file():
                 return True
         except OSError:
             return False
-        if normalized.startswith(".ds/"):
-            return False
+
+        # A chapter folder under an existing LaTeX project (for example
+        # paper/latex/sections/) may contain .tex files, but opening it as a
+        # separate LaTeX project fragments the editor and build context. Prefer
+        # the nearest/top-level ancestor that owns main.tex.
         try:
-            return any(item.is_file() and item.suffix.lower() == ".tex" for item in path.iterdir())
+            parts = PurePosixPath(normalized).parts
+            ancestor = path.parent
+            for _ in range(max(0, len(parts) - 1)):
+                if (ancestor / "main.tex").is_file():
+                    return False
+                ancestor = ancestor.parent
         except OSError:
             return False
+
+        try:
+            tex_files = [item for item in path.iterdir() if item.is_file() and item.suffix.lower() == ".tex"]
+        except OSError:
+            return False
+        if not tex_files:
+            return False
+        for item in tex_files:
+            try:
+                if "\\documentclass" in item.read_text(encoding="utf-8", errors="ignore")[:8192]:
+                    return True
+            except OSError:
+                continue
+        # Legacy fallback: a folder with direct .tex files can still be a
+        # standalone LaTeX folder when no ancestor owns main.tex.
+        return True
 
     @staticmethod
     def _renderer_hint_for(path: Path) -> tuple[str, str]:

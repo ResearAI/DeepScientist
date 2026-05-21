@@ -4530,6 +4530,47 @@ def test_explorer_marks_paper_latex_folder_for_workspace_opening(temp_home: Path
     assert latex_node["folder_kind"] == "latex"
 
 
+def test_explorer_keeps_nested_latex_chapter_folders_under_root_project(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("nested paper latex explorer quest")
+    quest_root = Path(quest["quest_root"])
+
+    latex_root = quest_root / "paper" / "latex"
+    sections_root = latex_root / "sections"
+    sections_root.mkdir(parents=True, exist_ok=True)
+    (latex_root / "main.tex").write_text(
+        "\n".join(
+            [
+                r"\documentclass{article}",
+                r"\begin{document}",
+                r"\input{sections/intro}",
+                r"\end{document}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (sections_root / "intro.tex").write_text(r"\section{Introduction}" + "\n", encoding="utf-8")
+
+    explorer = quest_service.explorer(quest["quest_id"])
+    research = next(section for section in explorer["sections"] if section["id"] == "research")
+
+    def flatten(nodes: list[dict]) -> list[dict]:
+        items: list[dict] = []
+        for node in nodes:
+            items.append(node)
+            items.extend(flatten(node.get("children") or []))
+        return items
+
+    research_nodes = flatten(research["nodes"])
+    latex_node = next(node for node in research_nodes if node.get("path") == "paper/latex")
+    sections_node = next(node for node in research_nodes if node.get("path") == "paper/latex/sections")
+    assert latex_node["folder_kind"] == "latex"
+    assert sections_node.get("folder_kind") is None
+
+
 def test_explorer_marks_paper_latex_folder_for_snapshot_opening(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()

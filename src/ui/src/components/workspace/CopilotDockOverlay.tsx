@@ -13,7 +13,6 @@ import type {
 import OrbitLogoStatus from '@/lib/plugins/ai-manus/components/OrbitLogoStatus'
 import type { ChatSurface } from '@/lib/types/chat-events'
 import { Noise } from '@/components/react-bits'
-import RotatingText from '@/components/RotatingText'
 import { cn } from '@/lib/utils'
 import { COPILOT_FILES_ENABLED } from '@/lib/feature-flags'
 import {
@@ -31,6 +30,7 @@ import { useMaxEntitlement } from '@/lib/hooks/useMaxEntitlement'
 import { useI18n } from '@/lib/i18n/useI18n'
 import { useWorkspaceSurfaceStore, type WorkspaceTabViewState } from '@/lib/stores/workspace-surface'
 import { getWorkspaceContentKind, getWorkspaceContentKindBadge } from '@/lib/workspace/content-meta'
+import { findLatexRootFolderForFile } from '@/lib/latex/open-queue'
 
 const CopilotDockHeaderPortalContext = React.createContext<HTMLElement | null>(null)
 
@@ -680,6 +680,15 @@ export function CopilotDockOverlay({
     setCopilotMeta((prev) => (isCopilotMetaEqual(prev, next) ? prev : next))
   }, [])
 
+  const dockCallbacksValue = React.useMemo(
+    () => ({
+      onActionsChange: handleActionsChange,
+      onMetaChange: handleMetaChange,
+      onHeaderExtraChange: setHeaderExtraContent,
+    }),
+    [handleActionsChange, handleMetaChange]
+  )
+
   const logHistoryToggle = React.useCallback((next: boolean) => {
     if (typeof window === 'undefined') return
     if (process.env.NODE_ENV !== 'production' || window.localStorage.getItem('ds_debug_copilot') === '1') {
@@ -719,14 +728,9 @@ export function CopilotDockOverlay({
     if (activeTab.context.type === 'file' && typeof activeTab.context.resourceId === 'string') {
       const node = findNode(activeTab.context.resourceId)
       if (!node) return null
-      let currentId = node.parentId
-      while (currentId) {
-        const parent = findNode(currentId)
-        if (!parent) break
-        if (parent.type === 'folder' && parent.folderKind === 'latex') {
-          return { folderId: parent.id, label: parent.name || getFileLabel(activeTab) }
-        }
-        currentId = parent.parentId
+      const parent = findLatexRootFolderForFile(node, findNode)
+      if (parent) {
+        return { folderId: parent.id, label: parent.name || getFileLabel(activeTab) }
       }
     }
     return null
@@ -826,7 +830,7 @@ export function CopilotDockOverlay({
       : [statusText]
     : []
   const showStatus = statusTexts.length > 0
-  const statusAnimate = statusTexts.length > 1
+  const visibleStatusText = statusTexts[statusTexts.length - 1] || ''
   const historyOpen = historyOpenOverride
   const headerOrbitResetKey = `${copilotMeta?.threadId ?? projectId}:${copilotMeta?.statusKey ?? 0}:${
     copilotMeta?.isResponding ? 'busy' : 'idle'
@@ -953,7 +957,7 @@ export function CopilotDockOverlay({
       >
         <div className="relative h-full w-full overflow-hidden rounded-[18px]">
           <div className="ds-copilot-glass">
-            <Noise size={260} className="ds-copilot-noise opacity-[0.06]" />
+            <Noise size={260} animated={false} className="ds-copilot-noise opacity-[0.06]" />
 
             <div className="ds-copilot-glass-inner">
               <div className="ds-copilot-header" onPointerDown={handleHeaderDrag}>
@@ -981,33 +985,14 @@ export function CopilotDockOverlay({
                         {showStatus ? (
                           <>
                             <span className="ds-copilot-title-sep">·</span>
-                            <RotatingText
-                              key={`copilot-status-${statusKey}`}
-                              texts={statusTexts}
-                              auto={statusAnimate}
-                              loop={false}
-                              rotationInterval={1200}
-                              staggerFrom="last"
-                              staggerDuration={0.02}
-                              initial={{ y: '90%', opacity: 0 }}
-                              animate={{ y: 0, opacity: 1 }}
-                              exit={{ y: '-120%', opacity: 0 }}
-                              animatePresenceInitial
-                              maxWords={14}
-                              mainClassName="ds-copilot-status-text"
-                              splitLevelClassName="ds-copilot-status-text-split"
-                              elementLevelClassName="ds-copilot-status-text-element"
-                            />
+                            <span className="ds-copilot-status-text">{visibleStatusText}</span>
                           </>
                         ) : null}
                       </div>
                       {headerBadges.length > 0 ? (
-                        <motion.div
+                        <div
                           data-testid="copilot-header-badges"
                           className="ds-copilot-header-badges"
-                          initial={prefersReducedMotion ? false : { opacity: 0, y: 4 }}
-                          animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
-                          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
                         >
                           {headerBadges.map((badge) => (
                             <span
@@ -1018,7 +1003,7 @@ export function CopilotDockOverlay({
                               {badge.label}
                             </span>
                           ))}
-                        </motion.div>
+                        </div>
                       ) : null}
                     </div>
                   </div>
@@ -1101,11 +1086,7 @@ export function CopilotDockOverlay({
                 <div className="ds-copilot-chat">
                   <CopilotDockHeaderPortalContext.Provider value={headerPortalEl}>
                     <CopilotDockCallbacksContext.Provider
-                      value={{
-                        onActionsChange: handleActionsChange,
-                        onMetaChange: handleMetaChange,
-                        onHeaderExtraChange: setHeaderExtraContent,
-                      }}
+                      value={dockCallbacksValue}
                     >
                       {hasCustomBody ? (
                         bodyContent
