@@ -346,6 +346,7 @@ def test_local_workspace_does_not_route_markdown_or_commands_through_dead_notebo
     tabs_source = _read("src/ui/src/lib/stores/tabs.ts")
     plugin_types_source = _read("src/ui/src/lib/types/plugin.ts")
     plugin_init_source = _read("src/ui/src/lib/plugin/init.ts")
+    daemon_app_source = _read("src/deepscientist/daemon/app.py")
 
     assert "getMyToken(" not in workspace_source
     assert "rotateMyToken(" not in workspace_source
@@ -395,6 +396,8 @@ def test_local_workspace_does_not_route_markdown_or_commands_through_dead_notebo
     assert "maybeCreateLatexAutoVersion" in latex_source
     assert "restoreLatexVersion" in latex_source
     assert "compareLatexVersions" in latex_source
+    assert '"latex_version_create"' in daemon_app_source
+    assert '"latex_version_restore"' in daemon_app_source
     assert "historyOpen" in latex_plugin_source
     assert "version_history" in latex_plugin_source
     assert "createAutoLatexVersion" in latex_plugin_source
