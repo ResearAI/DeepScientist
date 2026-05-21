@@ -20,6 +20,8 @@ import {
 import type { PluginComponentProps } from "@/lib/types/plugin";
 import { cn } from "@/lib/utils";
 import { client as questClient } from "@/lib/api";
+import { GitDiffViewer } from "@/components/workspace/GitDiffViewer";
+import type { GitDiffPayload } from "@/types";
 import {
   listFiles,
   getFileContent,
@@ -740,6 +742,11 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const [historyActionBusy, setHistoryActionBusy] = React.useState(false);
   const [historyError, setHistoryError] = React.useState<string | null>(null);
   const [historyCompare, setHistoryCompare] = React.useState<LatexVersionCompareResponse | null>(null);
+  const [historyCompareMode, setHistoryCompareMode] = React.useState<"saved" | "current" | null>(null);
+  const [historyDiffPath, setHistoryDiffPath] = React.useState<string | null>(null);
+  const [historyDiffPayload, setHistoryDiffPayload] = React.useState<GitDiffPayload | null>(null);
+  const [historyDiffLoading, setHistoryDiffLoading] = React.useState(false);
+  const [historyDiffError, setHistoryDiffError] = React.useState<string | null>(null);
   const [historyLabel, setHistoryLabel] = React.useState("");
   const [historyDescription, setHistoryDescription] = React.useState("");
   const [historyShowBuildSnapshots, setHistoryShowBuildSnapshots] = React.useState(false);
@@ -962,6 +969,14 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     [latexVersions, selectedVersionId]
   );
 
+  const clearHistoryDiff = React.useCallback(() => {
+    setHistoryCompareMode(null);
+    setHistoryDiffPath(null);
+    setHistoryDiffPayload(null);
+    setHistoryDiffLoading(false);
+    setHistoryDiffError(null);
+  }, []);
+
   const loadLatexVersionHistory = React.useCallback(async () => {
     if (!projectId || !latexFolderId) return;
     setHistoryLoading(true);
@@ -1070,24 +1085,59 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     }
   }, [historyDescription, historyLabel, latexFolderId, loadLatexVersionHistory, projectId, t, viewReadOnly]);
 
-  const compareSelectedLatexVersion = React.useCallback(async () => {
+  const loadHistoryDiffFile = React.useCallback(
+    async (comparePayload: LatexVersionCompareResponse, filePath: string) => {
+      if (!projectId || !filePath) return;
+      setHistoryDiffLoading(true);
+      setHistoryDiffError(null);
+      try {
+        const diff = await questClient.gitDiffFile(projectId, comparePayload.base, comparePayload.head, filePath);
+        setHistoryDiffPath(filePath);
+        setHistoryDiffPayload(diff);
+      } catch (e) {
+        setHistoryDiffPayload(null);
+        setHistoryDiffError(e instanceof Error ? e.message : t("version_diff_failed"));
+      } finally {
+        setHistoryDiffLoading(false);
+      }
+    },
+    [projectId, t]
+  );
+
+  const compareSelectedLatexVersion = React.useCallback(async (mode: "saved" | "current" = "current") => {
     if (!projectId || !latexFolderId || !selectedLatexVersion) return;
+    const selectedHead = selectedLatexVersion.commit || selectedLatexVersion.version_id;
+    const base =
+      mode === "saved"
+        ? selectedLatexVersion.compare_base || selectedLatexVersion.parents?.[0] || ""
+        : selectedLatexVersion.version_id || selectedLatexVersion.commit;
+    const head = mode === "saved" ? selectedHead : latexVersionsHead || "HEAD";
+    if (!base || !head) {
+      setHistoryError(t("version_compare_failed"));
+      return;
+    }
     setHistoryActionBusy(true);
     setHistoryError(null);
+    clearHistoryDiff();
     try {
       const result = await compareLatexVersions(
         projectId,
         latexFolderId,
-        selectedLatexVersion.version_id || selectedLatexVersion.commit,
-        latexVersionsHead || "HEAD"
+        base,
+        head
       );
       setHistoryCompare(result);
+      setHistoryCompareMode(mode);
+      const firstFile = (result.files || []).find((file) => !file.binary) ?? (result.files || [])[0] ?? null;
+      if (firstFile?.path) {
+        await loadHistoryDiffFile(result, firstFile.path);
+      }
     } catch (e) {
       setHistoryError(e instanceof Error ? e.message : t("version_compare_failed"));
     } finally {
       setHistoryActionBusy(false);
     }
-  }, [latexFolderId, latexVersionsHead, projectId, selectedLatexVersion, t]);
+  }, [clearHistoryDiff, latexFolderId, latexVersionsHead, loadHistoryDiffFile, projectId, selectedLatexVersion, t]);
 
   const restoreSelectedLatexVersion = React.useCallback(
     async (mode: "file" | "folder") => {
@@ -3486,6 +3536,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                           onChange={(event) => {
                             setHistoryShowBuildSnapshots(event.target.checked);
                             setHistoryCompare(null);
+                            clearHistoryDiff();
                           }}
                         />
                         <span>{t("version_show_build_snapshots")}</span>
@@ -3500,10 +3551,11 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                             <button
                               type="button"
                               key={version.version_id || version.commit}
-                              onClick={() => {
-                                setSelectedVersionId(version.version_id || version.commit);
-                                setHistoryCompare(null);
-                              }}
+	                              onClick={() => {
+	                                setSelectedVersionId(version.version_id || version.commit);
+	                                setHistoryCompare(null);
+	                                clearHistoryDiff();
+	                              }}
                               className={cn(
                                 "w-full rounded-lg border px-3 py-2 text-left transition-colors",
                                 selected
@@ -3554,17 +3606,28 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                             {selectedLatexVersion.description ? (
                               <div className="mt-2 text-xs text-muted-foreground">{selectedLatexVersion.description}</div>
                             ) : null}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => void compareSelectedLatexVersion()}
-                              disabled={historyActionBusy || !latexVersionsHead}
-                              className="inline-flex h-8 items-center gap-1 rounded-md border border-black/10 bg-white/80 px-2.5 text-xs hover:bg-white disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.05]"
-                            >
-                              <GitCompare className="h-3.5 w-3.5" />
-                              {t("version_compare_current")}
-                            </button>
+	                          </div>
+	                          <div className="flex flex-wrap items-center gap-2">
+	                            <button
+	                              type="button"
+	                              onClick={() => void compareSelectedLatexVersion("saved")}
+	                              disabled={historyActionBusy || !selectedLatexVersion.compare_base}
+	                              title={t("version_saved_changes_hint")}
+	                              className="inline-flex h-8 items-center gap-1 rounded-md border border-[#8FA3B8]/30 bg-[#8FA3B8]/12 px-2.5 text-xs font-medium text-[#405267] hover:bg-[#8FA3B8]/18 disabled:opacity-50 dark:text-[#dbe6ef]"
+	                            >
+	                              <GitCompare className="h-3.5 w-3.5" />
+	                              {t("version_view_changes")}
+	                            </button>
+	                            <button
+	                              type="button"
+	                              onClick={() => void compareSelectedLatexVersion("current")}
+	                              disabled={historyActionBusy || !latexVersionsHead}
+	                              title={t("version_compare_current_hint")}
+	                              className="inline-flex h-8 items-center gap-1 rounded-md border border-black/10 bg-white/80 px-2.5 text-xs hover:bg-white disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.05]"
+	                            >
+	                              <GitCompare className="h-3.5 w-3.5" />
+	                              {t("version_compare_current")}
+	                            </button>
                             <button
                               type="button"
                               onClick={() => void restoreSelectedLatexVersion("file")}
@@ -3586,27 +3649,73 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                           </div>
                         </div>
 
-                        {historyCompare ? (
-                          <div className="rounded-lg border border-black/5 bg-black/[0.02] p-3 dark:border-white/10 dark:bg-white/[0.03]">
-                            <div className="mb-2 text-xs font-medium text-muted-foreground">
-                              {t("version_compare_summary")}: {historyCompare.file_count ?? historyCompare.files?.length ?? 0} {t("version_files_changed")}
-                            </div>
-                            <div className="max-h-40 space-y-1 overflow-auto">
-                              {(historyCompare.files || []).length > 0 ? (
-                                historyCompare.files.map((file) => (
-                                  <div key={`${file.path}:${file.status}`} className="flex items-center justify-between gap-3 rounded-md bg-white/60 px-2 py-1 text-xs dark:bg-white/[0.04]">
-                                    <span className="min-w-0 truncate font-mono">{file.path}</span>
-                                    <span className="shrink-0 text-muted-foreground">
-                                      {file.status || "M"} · +{file.added ?? 0} / -{file.removed ?? 0}
-                                    </span>
-                                  </div>
-                                ))
-                              ) : (
-                                <div className="text-xs text-muted-foreground">{t("version_compare_empty")}</div>
-                              )}
-                            </div>
-                          </div>
-                        ) : null}
+	                        {historyCompare ? (
+	                          <div className="rounded-lg border border-black/5 bg-black/[0.02] p-3 dark:border-white/10 dark:bg-white/[0.03]">
+	                            <div className="mb-3">
+	                              <div className="text-xs font-medium text-muted-foreground">
+	                                {t("version_compare_summary")}: {historyCompare.file_count ?? historyCompare.files?.length ?? 0} {t("version_files_changed")}
+	                              </div>
+	                              <div className="mt-1 text-[11px] text-muted-foreground">
+	                                {historyCompareMode === "saved" ? t("version_saved_changes_hint") : t("version_compare_current_hint")}
+	                              </div>
+	                            </div>
+	                            {(historyCompare.files || []).length > 0 ? (
+	                              <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
+	                                <div className="max-h-72 space-y-1 overflow-auto pr-1">
+	                                  {(historyCompare.files || []).map((file) => {
+	                                    const selected = historyDiffPath === file.path;
+	                                    return (
+	                                      <button
+	                                        type="button"
+	                                        key={`${file.path}:${file.old_path || ""}:${file.status}`}
+	                                        onClick={() => void loadHistoryDiffFile(historyCompare, file.path)}
+	                                        className={cn(
+	                                          "w-full rounded-md border px-2 py-1.5 text-left text-xs transition-colors",
+	                                          selected
+	                                            ? "border-[#8FA3B8]/45 bg-[#8FA3B8]/14"
+	                                            : "border-black/5 bg-white/60 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.04]"
+	                                        )}
+	                                      >
+	                                        <div className="truncate font-mono text-[11px] text-foreground">{file.path}</div>
+	                                        <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+	                                          <span>{file.status || "modified"}</span>
+	                                          <span className="shrink-0">
+	                                            <span className="text-emerald-700 dark:text-emerald-300">+{file.added ?? 0}</span>
+	                                            <span> / </span>
+	                                            <span className="text-rose-700 dark:text-rose-300">-{file.removed ?? 0}</span>
+	                                          </span>
+	                                        </div>
+	                                      </button>
+	                                    );
+	                                  })}
+	                                </div>
+	                                <div className="min-h-[180px] rounded-lg border border-black/5 bg-white/60 dark:border-white/10 dark:bg-white/[0.04]">
+	                                  {historyDiffLoading ? (
+	                                    <div className="flex min-h-[180px] items-center justify-center gap-2 text-xs text-muted-foreground">
+	                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+	                                      {t("version_diff_loading")}
+	                                    </div>
+	                                  ) : historyDiffError ? (
+	                                    <div className="m-3 flex items-start gap-2 rounded-lg border border-red-400/20 bg-red-50/80 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-200">
+	                                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+	                                      <span>{historyDiffError}</span>
+	                                    </div>
+	                                  ) : historyDiffPayload ? (
+	                                    <div className="max-h-[360px] overflow-auto">
+	                                      <GitDiffViewer diff={historyDiffPayload} pathLabel={historyDiffPath || undefined} />
+	                                    </div>
+	                                  ) : (
+	                                    <div className="flex min-h-[180px] items-center justify-center px-3 text-center text-xs text-muted-foreground">
+	                                      {t("version_diff_select_file")}
+	                                    </div>
+	                                  )}
+	                                </div>
+	                              </div>
+	                            ) : (
+	                              <div className="text-xs text-muted-foreground">{t("version_compare_empty")}</div>
+	                            )}
+	                          </div>
+	                        ) : null}
 
                         {selectedLatexVersion.changed_paths && selectedLatexVersion.changed_paths.length > 0 ? (
                           <div>
