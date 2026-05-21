@@ -15,7 +15,6 @@ import {
   AtSign,
   History,
   RotateCcw,
-  GitCompare,
 } from "lucide-react";
 import type { PluginComponentProps } from "@/lib/types/plugin";
 import { cn } from "@/lib/utils";
@@ -742,7 +741,6 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const [historyActionBusy, setHistoryActionBusy] = React.useState(false);
   const [historyError, setHistoryError] = React.useState<string | null>(null);
   const [historyCompare, setHistoryCompare] = React.useState<LatexVersionCompareResponse | null>(null);
-  const [historyCompareMode, setHistoryCompareMode] = React.useState<"saved" | "current" | null>(null);
   const [historyDiffPath, setHistoryDiffPath] = React.useState<string | null>(null);
   const [historyDiffPayload, setHistoryDiffPayload] = React.useState<GitDiffPayload | null>(null);
   const [historyDiffLoading, setHistoryDiffLoading] = React.useState(false);
@@ -778,6 +776,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const externalConflictRef = React.useRef<LatexExternalConflict | null>(null);
   const externalCheckInFlightRef = React.useRef(false);
   const autoVersionTimerRef = React.useRef<number | null>(null);
+  const historyAutoCompareKeyRef = React.useRef<string | null>(null);
   const aiVersionTimerRef = React.useRef<number | null>(null);
   const yDocRef = React.useRef<any>(null);
   const yTextRef = React.useRef<any>(null);
@@ -969,8 +968,12 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     [latexVersions, selectedVersionId]
   );
 
+  const latestLatexArchiveVersion = React.useMemo(
+    () => latexVersions.find((version) => !version.hidden) ?? latexVersions[0] ?? null,
+    [latexVersions]
+  );
+
   const clearHistoryDiff = React.useCallback(() => {
-    setHistoryCompareMode(null);
     setHistoryDiffPath(null);
     setHistoryDiffPayload(null);
     setHistoryDiffLoading(false);
@@ -981,6 +984,9 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     if (!projectId || !latexFolderId) return;
     setHistoryLoading(true);
     setHistoryError(null);
+    historyAutoCompareKeyRef.current = null;
+    setHistoryCompare(null);
+    clearHistoryDiff();
     try {
       const payload = await listLatexVersions(projectId, latexFolderId, 50, historyShowBuildSnapshots);
       const versions = Array.isArray(payload.versions) ? payload.versions : [];
@@ -990,14 +996,18 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         if (current && versions.some((version) => version.version_id === current || version.commit === current)) {
           return current;
         }
-        return versions[0]?.version_id ?? null;
+        const firstComparable = versions.find((version) => !version.hidden) ?? versions[0] ?? null;
+        const firstDifferentFromLatest =
+          versions.find((version) => (version.version_id || version.commit) !== (firstComparable?.version_id || firstComparable?.commit)) ??
+          firstComparable;
+        return firstDifferentFromLatest?.version_id ?? firstDifferentFromLatest?.commit ?? null;
       });
     } catch (e) {
       setHistoryError(e instanceof Error ? e.message : t("version_history_load_failed"));
     } finally {
       setHistoryLoading(false);
     }
-  }, [historyShowBuildSnapshots, latexFolderId, projectId, t]);
+  }, [clearHistoryDiff, historyShowBuildSnapshots, latexFolderId, projectId, t]);
 
   const createAutoLatexVersion = React.useCallback(
     async (reason: "idle_save" | "manual_save" | "ai_edit" | "compile" | "visibility_hidden") => {
@@ -1104,14 +1114,10 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     [projectId, t]
   );
 
-  const compareSelectedLatexVersion = React.useCallback(async (mode: "saved" | "current" = "current") => {
-    if (!projectId || !latexFolderId || !selectedLatexVersion) return;
-    const selectedHead = selectedLatexVersion.commit || selectedLatexVersion.version_id;
-    const base =
-      mode === "saved"
-        ? selectedLatexVersion.compare_base || selectedLatexVersion.parents?.[0] || ""
-        : selectedLatexVersion.version_id || selectedLatexVersion.commit;
-    const head = mode === "saved" ? selectedHead : latexVersionsHead || "HEAD";
+  const compareLatexVersionWithLatest = React.useCallback(async (version: LatexVersionSummary | null = selectedLatexVersion) => {
+    if (!projectId || !latexFolderId || !version || !latestLatexArchiveVersion) return;
+    const base = version.version_id || version.commit;
+    const head = latestLatexArchiveVersion.version_id || latestLatexArchiveVersion.commit;
     if (!base || !head) {
       setHistoryError(t("version_compare_failed"));
       return;
@@ -1127,7 +1133,6 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         head
       );
       setHistoryCompare(result);
-      setHistoryCompareMode(mode);
       const firstFile = (result.files || []).find((file) => !file.binary) ?? (result.files || [])[0] ?? null;
       if (firstFile?.path) {
         await loadHistoryDiffFile(result, firstFile.path);
@@ -1137,7 +1142,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     } finally {
       setHistoryActionBusy(false);
     }
-  }, [clearHistoryDiff, latexFolderId, latexVersionsHead, loadHistoryDiffFile, projectId, selectedLatexVersion, t]);
+  }, [clearHistoryDiff, latestLatexArchiveVersion, latexFolderId, loadHistoryDiffFile, projectId, selectedLatexVersion, t]);
 
   const restoreSelectedLatexVersion = React.useCallback(
     async (mode: "file" | "folder") => {
@@ -1195,6 +1200,23 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     if (!historyOpen) return;
     void loadLatexVersionHistory();
   }, [historyOpen, loadLatexVersionHistory]);
+
+  React.useEffect(() => {
+    if (!historyOpen || historyLoading || !selectedLatexVersion || !latestLatexArchiveVersion) return;
+    const selectedRef = selectedLatexVersion.version_id || selectedLatexVersion.commit;
+    const latestRef = latestLatexArchiveVersion.version_id || latestLatexArchiveVersion.commit;
+    if (!selectedRef || !latestRef) return;
+    const compareKey = `${selectedRef}->${latestRef}`;
+    if (historyAutoCompareKeyRef.current === compareKey) return;
+    historyAutoCompareKeyRef.current = compareKey;
+    void compareLatexVersionWithLatest(selectedLatexVersion);
+  }, [
+    compareLatexVersionWithLatest,
+    historyLoading,
+    historyOpen,
+    latestLatexArchiveVersion,
+    selectedLatexVersion,
+  ]);
 
   React.useEffect(() => {
     const activeFileMeta =
@@ -3266,11 +3288,12 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         <div
           className={cn(
             "min-h-0 flex flex-col min-w-0",
+            historyOpen && "flex-1",
             isWideLayout ? "lg:border-r-0" : "border-b border-black/5 dark:border-white/10",
             isResizing ? "transition-none" : "transition-[flex-basis] duration-200 ease-out"
           )}
           style={
-            isWideLayout
+            isWideLayout && !historyOpen
               ? {
                   flexBasis: `${splitRatio * 100}%`,
                   flexGrow: 0,
@@ -3486,9 +3509,9 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
 		          </div>
 
             {historyOpen ? (
-              <div className="border-b border-black/5 bg-[#f8fafc]/80 px-3 py-3 text-sm dark:border-white/10 dark:bg-white/[0.025]">
-                <div className="flex flex-col gap-3 xl:flex-row">
-                  <div className="min-w-[260px] xl:w-[320px] xl:shrink-0">
+              <div className="flex flex-1 min-h-0 flex-col overflow-hidden border-b border-black/5 bg-[#f8fafc]/80 px-3 py-3 text-sm dark:border-white/10 dark:bg-white/[0.025]">
+                <div className="flex min-h-0 flex-1 flex-col gap-3 xl:flex-row">
+                  <div className="flex min-w-[260px] min-h-0 flex-col xl:w-[320px] xl:shrink-0">
                     <div className="flex items-center justify-between gap-2">
                       <div>
                         <div className="text-sm font-medium text-foreground">{t("version_history_title")}</div>
@@ -3532,18 +3555,19 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                       <label className="flex items-center gap-2 rounded-lg border border-black/5 bg-white/45 px-2.5 py-2 text-xs text-muted-foreground dark:border-white/10 dark:bg-white/[0.03]">
                         <input
                           type="checkbox"
-                          checked={historyShowBuildSnapshots}
-                          onChange={(event) => {
-                            setHistoryShowBuildSnapshots(event.target.checked);
-                            setHistoryCompare(null);
-                            clearHistoryDiff();
-                          }}
+	                          checked={historyShowBuildSnapshots}
+	                          onChange={(event) => {
+	                            setHistoryShowBuildSnapshots(event.target.checked);
+	                            historyAutoCompareKeyRef.current = null;
+	                            setHistoryCompare(null);
+	                            clearHistoryDiff();
+	                          }}
                         />
                         <span>{t("version_show_build_snapshots")}</span>
                       </label>
                     </div>
 
-                    <div className="mt-3 max-h-56 space-y-1 overflow-auto pr-1">
+                    <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-auto pr-1">
                       {latexVersions.length > 0 ? (
                         latexVersions.map((version) => {
                           const selected = selectedLatexVersion?.version_id === version.version_id;
@@ -3551,11 +3575,12 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                             <button
                               type="button"
                               key={version.version_id || version.commit}
-	                              onClick={() => {
-	                                setSelectedVersionId(version.version_id || version.commit);
-	                                setHistoryCompare(null);
-	                                clearHistoryDiff();
-	                              }}
+		                              onClick={() => {
+		                                setSelectedVersionId(version.version_id || version.commit);
+		                                historyAutoCompareKeyRef.current = null;
+		                                setHistoryCompare(null);
+		                                clearHistoryDiff();
+		                              }}
                               className={cn(
                                 "w-full rounded-lg border px-3 py-2 text-left transition-colors",
                                 selected
@@ -3589,9 +3614,9 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                     </div>
                   </div>
 
-                  <div className="min-w-0 flex-1 rounded-xl border border-black/5 bg-white/65 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+                  <div className="min-w-0 min-h-0 flex-1 overflow-hidden rounded-xl border border-black/5 bg-white/65 p-3 dark:border-white/10 dark:bg-white/[0.03]">
                     {selectedLatexVersion ? (
-                      <div className="space-y-3">
+                      <div className="flex h-full min-h-0 flex-col gap-3">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="break-words text-sm font-medium text-foreground">{selectedLatexVersion.label}</div>
@@ -3606,31 +3631,11 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                             {selectedLatexVersion.description ? (
                               <div className="mt-2 text-xs text-muted-foreground">{selectedLatexVersion.description}</div>
                             ) : null}
-	                          </div>
-	                          <div className="flex flex-wrap items-center gap-2">
+		                          </div>
+		                          <div className="flex flex-wrap items-center gap-2">
 	                            <button
 	                              type="button"
-	                              onClick={() => void compareSelectedLatexVersion("saved")}
-	                              disabled={historyActionBusy || !selectedLatexVersion.compare_base}
-	                              title={t("version_saved_changes_hint")}
-	                              className="inline-flex h-8 items-center gap-1 rounded-md border border-[#8FA3B8]/30 bg-[#8FA3B8]/12 px-2.5 text-xs font-medium text-[#405267] hover:bg-[#8FA3B8]/18 disabled:opacity-50 dark:text-[#dbe6ef]"
-	                            >
-	                              <GitCompare className="h-3.5 w-3.5" />
-	                              {t("version_view_changes")}
-	                            </button>
-	                            <button
-	                              type="button"
-	                              onClick={() => void compareSelectedLatexVersion("current")}
-	                              disabled={historyActionBusy || !latexVersionsHead}
-	                              title={t("version_compare_current_hint")}
-	                              className="inline-flex h-8 items-center gap-1 rounded-md border border-black/10 bg-white/80 px-2.5 text-xs hover:bg-white disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.05]"
-	                            >
-	                              <GitCompare className="h-3.5 w-3.5" />
-	                              {t("version_compare_current")}
-	                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void restoreSelectedLatexVersion("file")}
+	                              onClick={() => void restoreSelectedLatexVersion("file")}
                               disabled={viewReadOnly || historyActionBusy}
                               className="inline-flex h-8 items-center gap-1 rounded-md border border-amber-400/30 bg-white/80 px-2.5 text-xs text-amber-700 hover:bg-white disabled:opacity-50 dark:bg-white/[0.05] dark:text-amber-200"
                             >
@@ -3649,19 +3654,19 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                           </div>
                         </div>
 
-	                        {historyCompare ? (
-	                          <div className="rounded-lg border border-black/5 bg-black/[0.02] p-3 dark:border-white/10 dark:bg-white/[0.03]">
-	                            <div className="mb-3">
-	                              <div className="text-xs font-medium text-muted-foreground">
-	                                {t("version_compare_summary")}: {historyCompare.file_count ?? historyCompare.files?.length ?? 0} {t("version_files_changed")}
-	                              </div>
-	                              <div className="mt-1 text-[11px] text-muted-foreground">
-	                                {historyCompareMode === "saved" ? t("version_saved_changes_hint") : t("version_compare_current_hint")}
-	                              </div>
-	                            </div>
-	                            {(historyCompare.files || []).length > 0 ? (
-	                              <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
-	                                <div className="max-h-72 space-y-1 overflow-auto pr-1">
+		                        {historyCompare ? (
+		                          <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-black/5 bg-black/[0.02] p-3 dark:border-white/10 dark:bg-white/[0.03]">
+		                            <div className="mb-3">
+		                              <div className="text-xs font-medium text-muted-foreground">
+		                                {t("version_compare_summary")}: {historyCompare.file_count ?? historyCompare.files?.length ?? 0} {t("version_files_changed")}
+		                              </div>
+		                              <div className="mt-1 text-[11px] text-muted-foreground">
+		                                {t("version_compare_latest_hint")}
+		                              </div>
+		                            </div>
+		                            {(historyCompare.files || []).length > 0 ? (
+		                              <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
+		                                <div className="min-h-0 space-y-1 overflow-auto pr-1">
 	                                  {(historyCompare.files || []).map((file) => {
 	                                    const selected = historyDiffPath === file.path;
 	                                    return (
@@ -3689,9 +3694,9 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
 	                                    );
 	                                  })}
 	                                </div>
-	                                <div className="min-h-[180px] rounded-lg border border-black/5 bg-white/60 dark:border-white/10 dark:bg-white/[0.04]">
-	                                  {historyDiffLoading ? (
-	                                    <div className="flex min-h-[180px] items-center justify-center gap-2 text-xs text-muted-foreground">
+		                                <div className="min-h-0 overflow-hidden rounded-lg border border-black/5 bg-white/60 dark:border-white/10 dark:bg-white/[0.04]">
+		                                  {historyDiffLoading ? (
+		                                    <div className="flex h-full min-h-[180px] items-center justify-center gap-2 text-xs text-muted-foreground">
 	                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
 	                                      {t("version_diff_loading")}
 	                                    </div>
@@ -3700,8 +3705,8 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
 	                                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
 	                                      <span>{historyDiffError}</span>
 	                                    </div>
-	                                  ) : historyDiffPayload ? (
-	                                    <div className="max-h-[360px] overflow-auto">
+		                                  ) : historyDiffPayload ? (
+		                                    <div className="h-full overflow-auto">
 	                                      <GitDiffViewer diff={historyDiffPayload} pathLabel={historyDiffPath || undefined} />
 	                                    </div>
 	                                  ) : (
@@ -3747,6 +3752,8 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
               </div>
             ) : null}
 
+            {!historyOpen ? (
+              <>
             {showAssistPanel ? (
               <div className="border-b border-black/5 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] px-3 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -4020,9 +4027,11 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
             </div>
           </div>
         ) : null}
+              </>
+            ) : null}
         </div>
 
-        {isWideLayout ? (
+        {isWideLayout && !historyOpen ? (
           <div
             className={cn(
               "hidden lg:flex w-3 relative items-stretch cursor-col-resize",
@@ -4042,7 +4051,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
           </div>
         ) : null}
 
-        <div className="min-h-0 flex flex-1 flex-col min-w-0">
+        <div className={cn("min-h-0 flex flex-1 flex-col min-w-0", historyOpen && "hidden")}>
           <div ref={pdfPaneRef} className="relative flex-1 min-h-0 overflow-hidden">
             <div
               className={cn(

@@ -406,10 +406,15 @@ def test_local_workspace_does_not_route_markdown_or_commands_through_dead_notebo
     assert "GitDiffViewer" in latex_plugin_source
     assert "questClient.gitDiffFile" in latex_plugin_source
     assert "historyDiffPath" in latex_plugin_source
-    assert "version_view_changes" in latex_plugin_source
+    assert "latestLatexArchiveVersion" in latex_plugin_source
+    assert "compareLatexVersionWithLatest" in latex_plugin_source
+    assert "version_compare_latest_hint" in latex_plugin_source
     assert "version_diff_select_file" in latex_plugin_source
-    assert "historyCompareMode" in latex_plugin_source
-    assert "version_saved_changes_hint" in latex_plugin_source
+    assert "version_view_changes" not in latex_plugin_source
+    assert "version_compare_current" not in latex_plugin_source
+    assert "historyCompareMode" not in latex_plugin_source
+    assert "isWideLayout && !historyOpen" in latex_plugin_source
+    assert 'historyOpen && "hidden"' in latex_plugin_source
     assert '"text/markdown": BUILTIN_PLUGINS.NOTEBOOK' in plugin_types_source
     assert '".md": BUILTIN_PLUGINS.NOTEBOOK' in plugin_types_source
     assert 'extensions: [".md", ".markdown"],\n        mimeTypes: ["text/markdown", "text/x-markdown"],\n        priority: 95,' in plugin_init_source
