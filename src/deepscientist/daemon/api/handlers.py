@@ -2127,11 +2127,12 @@ npm --prefix src/ui run build</pre>
     def latex_versions(self, project_id: str, folder_id: str, path: str = "") -> dict:
         query = self.parse_query(path)
         limit_raw = ((query.get("limit") or ["30"])[0] or "30").strip()
+        include_hidden = ((query.get("include_hidden") or ["false"])[0] or "").strip().lower() in {"1", "true", "yes", "on"}
         try:
             limit = int(limit_raw)
         except ValueError:
             limit = 30
-        return self.app.latex_service.list_versions(project_id, folder_id, limit=limit)
+        return self.app.latex_service.list_versions(project_id, folder_id, limit=limit, include_hidden=include_hidden)
 
     def latex_version_create(self, project_id: str, folder_id: str, body: dict) -> dict:
         return self.app.latex_service.create_version(
@@ -2143,6 +2144,14 @@ npm --prefix src/ui run build</pre>
             author=body.get("author"),
             build_id=body.get("build_id"),
             allow_empty=body.get("allow_empty", True) is not False,
+        )
+
+    def latex_version_auto(self, project_id: str, folder_id: str, body: dict) -> dict:
+        return self.app.latex_service.maybe_create_auto_version(
+            project_id,
+            folder_id,
+            reason=body.get("reason"),
+            active_file=body.get("active_file"),
         )
 
     def latex_versions_compare(self, project_id: str, folder_id: str, path: str = "") -> dict:

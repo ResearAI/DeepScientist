@@ -178,6 +178,7 @@ ROUTES: list[tuple[str, re.Pattern[str], str]] = [
     ("GET", re.compile(r"^/api/v1/projects/(?P<project_id>[^/]+)/latex/(?P<folder_id>[^/]+)/manifest$"), "latex_manifest"),
     ("GET", re.compile(r"^/api/v1/projects/(?P<project_id>[^/]+)/latex/(?P<folder_id>[^/]+)/versions$"), "latex_versions"),
     ("POST", re.compile(r"^/api/v1/projects/(?P<project_id>[^/]+)/latex/(?P<folder_id>[^/]+)/versions$"), "latex_version_create"),
+    ("POST", re.compile(r"^/api/v1/projects/(?P<project_id>[^/]+)/latex/(?P<folder_id>[^/]+)/versions/auto$"), "latex_version_auto"),
     ("GET", re.compile(r"^/api/v1/projects/(?P<project_id>[^/]+)/latex/(?P<folder_id>[^/]+)/versions/compare$"), "latex_versions_compare"),
     ("GET", re.compile(r"^/api/v1/projects/(?P<project_id>[^/]+)/latex/(?P<folder_id>[^/]+)/versions/(?P<version_id>[^/]+)$"), "latex_version"),
     ("GET", re.compile(r"^/api/v1/projects/(?P<project_id>[^/]+)/latex/(?P<folder_id>[^/]+)/versions/(?P<version_id>[^/]+)/files$"), "latex_version_files"),

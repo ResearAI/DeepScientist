@@ -111,8 +111,13 @@ export interface LatexVersionSummary {
   author?: string | null;
   created_at: string;
   build_id?: string | null;
+  reason?: string | null;
+  hidden?: boolean;
   changed_paths?: string[];
   file_count?: number;
+  changed_files?: number;
+  changed_lines?: number;
+  changed_chars?: number;
   added?: number;
   removed?: number;
 }
@@ -125,6 +130,7 @@ export interface LatexVersionListResponse {
   head?: string | null;
   versions: LatexVersionSummary[];
   limit?: number;
+  include_hidden?: boolean;
 }
 
 export interface LatexVersionCreateRequest {
@@ -143,6 +149,31 @@ export interface LatexVersionCreateResponse extends LatexVersionSummary {
   head?: string | null;
   previous_head?: string | null;
   version?: LatexVersionSummary;
+}
+
+export interface LatexAutoVersionRequest {
+  reason?: "idle_save" | "manual_save" | "ai_edit" | "compile" | "visibility_hidden" | string;
+  active_file?: string | null;
+}
+
+export interface LatexAutoVersionResponse extends Partial<LatexVersionCreateResponse> {
+  ok: boolean;
+  created: boolean;
+  skipped_reason?: string | null;
+  metrics?: {
+    changed_paths?: string[];
+    file_count?: number;
+    changed_files?: number;
+    added?: number;
+    removed?: number;
+    changed_lines?: number;
+    changed_chars?: number;
+    score?: number;
+    significant?: boolean;
+    has_changes?: boolean;
+  };
+  next_eligible_at?: string | null;
+  elapsed_seconds?: number | null;
 }
 
 export interface LatexVersionFileEntry {
@@ -294,11 +325,12 @@ export async function getLatexManifest(
 export async function listLatexVersions(
   projectId: string,
   folderId: string,
-  limit = 30
+  limit = 30,
+  includeHidden = false
 ): Promise<LatexVersionListResponse> {
   const res = await apiClient.get<LatexVersionListResponse>(
     `/api/v1/projects/${projectId}/latex/${folderId}/versions`,
-    { params: { limit } }
+    { params: { limit, include_hidden: includeHidden ? "true" : undefined } }
   );
   return res.data;
 }
@@ -310,6 +342,18 @@ export async function createLatexVersion(
 ): Promise<LatexVersionCreateResponse> {
   const res = await apiClient.post<LatexVersionCreateResponse>(
     `/api/v1/projects/${projectId}/latex/${folderId}/versions`,
+    request
+  );
+  return res.data;
+}
+
+export async function maybeCreateLatexAutoVersion(
+  projectId: string,
+  folderId: string,
+  request: LatexAutoVersionRequest
+): Promise<LatexAutoVersionResponse> {
+  const res = await apiClient.post<LatexAutoVersionResponse>(
+    `/api/v1/projects/${projectId}/latex/${folderId}/versions/auto`,
     request
   );
   return res.data;

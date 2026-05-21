@@ -9,15 +9,18 @@ import subprocess
 import unicodedata
 import zipfile
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote
 
+from .file_lock import advisory_file_lock
 from .gitops import compare_refs, head_commit
 from .runtime_tools import RuntimeToolService
 from .shared import (
     ensure_dir,
     generate_id,
+    read_json,
     resolve_within,
     run_command,
     run_command_bytes,
@@ -79,7 +82,16 @@ _LATEX_VERSION_TRAILERS = {
     "Build",
     "Label",
     "Description",
+    "Base",
+    "Reason",
+    "Hidden",
 }
+_LATEX_AUTO_VERSION_POLICY_VERSION = "auto-v1"
+_LATEX_AUTO_VERSION_MIN_INTERVAL_SECONDS = 5 * 60
+_LATEX_AUTO_VERSION_TIME_INTERVAL_SECONDS = 15 * 60
+_LATEX_AUTO_VERSION_SIGNIFICANT_LINES = 30
+_LATEX_AUTO_VERSION_SIGNIFICANT_CHARS = 1500
+_LATEX_AUTO_VERSION_SIGNIFICANT_FILES = 2
 
 
 def _encode_relative(value: str) -> str:
@@ -1151,6 +1163,12 @@ class QuestLatexService:
     def _folder_version_index_path(self, project_id: str, folder_relative: str) -> Path:
         return self._folder_version_root(project_id, folder_relative) / "index.json"
 
+    def _folder_auto_version_state_path(self, project_id: str, folder_relative: str) -> Path:
+        return self._folder_version_root(project_id, folder_relative) / "auto_state.json"
+
+    def _folder_version_lock_path(self, project_id: str, folder_relative: str) -> Path:
+        return self._folder_version_root(project_id, folder_relative) / "version.lock"
+
     def _build_record_path(self, project_id: str, folder_relative: str, build_id: str) -> Path:
         return self._folder_build_root(project_id, folder_relative) / "builds" / build_id / "build.json"
 
@@ -1172,6 +1190,14 @@ class QuestLatexService:
                 message = "Git command failed."
             raise RuntimeError(message or "Git command failed.")
         return result.stdout
+
+    @staticmethod
+    def _commit_exists(repo: Path, commit: str | None) -> bool:
+        raw = str(commit or "").strip()
+        if not raw:
+            return False
+        result = run_command(["git", "cat-file", "-e", f"{raw}^{{commit}}"], cwd=repo, check=False)
+        return result.returncode == 0
 
     @staticmethod
     def _clean_version_text(value: Any, *, fallback: str = "", max_length: int = 500) -> str:
@@ -1196,6 +1222,23 @@ class QuestLatexService:
                 trailers[trailer_key.lower()] = value.strip()
         return trailers
 
+    @staticmethod
+    def _is_truthy_trailer(value: Any) -> bool:
+        return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _parse_utc_timestamp(value: Any) -> datetime | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+
     def _latex_version_commit_message(
         self,
         *,
@@ -1207,6 +1250,9 @@ class QuestLatexService:
         source: str,
         author: str | None,
         build_id: str | None,
+        base_commit: str | None = None,
+        reason: str | None = None,
+        hidden: bool = False,
     ) -> str:
         title = self._clean_version_text(label, fallback="LaTeX version", max_length=120)
         body_lines = [f"latex: {title}", ""]
@@ -1221,6 +1267,9 @@ class QuestLatexService:
             "Build": build_id or "",
             "Label": title,
             "Description": self._clean_version_text(description or "", max_length=500),
+            "Base": self._clean_version_text(base_commit or "", max_length=80),
+            "Reason": self._clean_version_text(reason or "", max_length=80),
+            "Hidden": "true" if hidden else "false",
         }
         for key, value in trailers.items():
             body_lines.append(f"{_LATEX_VERSION_TRAILER_PREFIX}{key}: {value}")
@@ -1228,6 +1277,67 @@ class QuestLatexService:
 
     def _folder_has_git_changes(self, repo: Path, folder_relative: str) -> bool:
         result = run_command(["git", "status", "--porcelain", "--", folder_relative], cwd=repo, check=False)
+        return bool((result.stdout or "").strip())
+
+    @staticmethod
+    def _is_transient_latex_artifact_path(relative: str) -> bool:
+        path = Path(str(relative or ""))
+        name = path.name
+        lower_name = name.lower()
+        suffix = path.suffix.lower()
+        return suffix in _TRANSIENT_SOURCE_SUFFIXES or any(
+            lower_name.endswith(transient_suffix) for transient_suffix in _TRANSIENT_SOURCE_SUFFIXES
+        )
+
+    @classmethod
+    def _is_latex_version_file(cls, relative: str, main_file_relative: str | None = None) -> bool:
+        normalized = str(relative or "").strip().lstrip("/")
+        if not normalized:
+            return False
+        path = Path(normalized)
+        if any(part.startswith(".git") for part in path.parts):
+            return False
+        if path.name.startswith("."):
+            return False
+        if cls._is_transient_latex_artifact_path(normalized):
+            return False
+        if main_file_relative:
+            main_pdf = Path(main_file_relative).with_suffix(".pdf").as_posix()
+            if normalized == main_pdf:
+                return False
+        return path.suffix.lower() in _LATEX_MANIFEST_SUFFIXES
+
+    def _latex_version_paths(self, repo: Path, folder_path: Path, folder_relative: str, main_file_relative: str | None) -> list[str]:
+        paths: set[str] = set()
+        for path in sorted(folder_path.rglob("*")):
+            if not path.is_file():
+                continue
+            try:
+                relative = path.relative_to(repo).as_posix()
+            except ValueError:
+                continue
+            if self._is_latex_version_file(relative, main_file_relative):
+                paths.add(relative)
+
+        status = run_command(["git", "status", "--porcelain", "--", folder_relative], cwd=repo, check=False)
+        if status.returncode == 0:
+            for raw_line in status.stdout.splitlines():
+                if len(raw_line) < 4:
+                    continue
+                raw_path = raw_line[3:].strip()
+                candidates = [raw_path]
+                if " -> " in raw_path:
+                    candidates = [part.strip() for part in raw_path.split(" -> ", 1)]
+                for candidate in candidates:
+                    if self._is_latex_version_file(candidate, main_file_relative):
+                        paths.add(candidate)
+        return sorted(paths)
+
+    @staticmethod
+    def _paths_have_git_changes(repo: Path, paths: list[str]) -> bool:
+        if not paths:
+            return False
+        result = run_command(["git", "status", "--porcelain", "--", *paths], cwd=repo, check=False)
         return bool((result.stdout or "").strip())
 
     def _create_empty_latex_version_commit(self, repo: Path, message: str) -> tuple[bool, str | None, str | None]:
@@ -1246,7 +1356,110 @@ class QuestLatexService:
             return False, head, (update.stderr or update.stdout or "Failed to update HEAD.").strip()
         return True, commit, None
 
-    def _latex_commit_stats(self, repo: Path, commit: str, folder_relative: str) -> dict[str, Any]:
+    def _latex_range_stats(
+        self,
+        repo: Path,
+        folder_relative: str,
+        base_ref: str | None,
+        head_ref: str | None = None,
+        main_file_relative: str | None = None,
+    ) -> dict[str, Any]:
+        args = ["diff", "--find-renames", "--numstat"]
+        if base_ref and head_ref:
+            args.extend([base_ref, head_ref])
+        elif base_ref:
+            args.append(base_ref)
+        else:
+            args.append("HEAD")
+        args.extend(["--", folder_relative])
+        result = run_command(["git", *args], cwd=repo, check=False)
+        raw = result.stdout if result.returncode == 0 else ""
+
+        changed_paths: list[str] = []
+        seen_paths: set[str] = set()
+        added_total = 0
+        removed_total = 0
+        binary_files = 0
+        for line in raw.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 3:
+                continue
+            added_raw, removed_raw, file_path = parts[0], parts[1], parts[-1]
+            file_path = file_path.strip()
+            if not file_path:
+                continue
+            if not self._is_latex_version_file(file_path, main_file_relative):
+                continue
+            if file_path not in seen_paths:
+                seen_paths.add(file_path)
+                changed_paths.append(file_path)
+            if added_raw.isdigit():
+                added_total += int(added_raw)
+            elif added_raw == "-":
+                binary_files += 1
+            if removed_raw.isdigit():
+                removed_total += int(removed_raw)
+
+        untracked_count = 0
+        untracked_bytes = 0
+        if head_ref is None:
+            untracked = run_command(
+                ["git", "ls-files", "--others", "--exclude-standard", "--", folder_relative],
+                cwd=repo,
+                check=False,
+            )
+            if untracked.returncode == 0:
+                for raw_path in untracked.stdout.splitlines():
+                    file_path = raw_path.strip()
+                    if not file_path or file_path in seen_paths:
+                        continue
+                    if not self._is_latex_version_file(file_path, main_file_relative):
+                        continue
+                    path = repo / file_path
+                    if not path.exists() or not path.is_file():
+                        continue
+                    seen_paths.add(file_path)
+                    changed_paths.append(file_path)
+                    untracked_count += 1
+                    try:
+                        size = path.stat().st_size
+                    except OSError:
+                        size = 0
+                    untracked_bytes += max(0, size)
+                    if path.suffix.lower() in _LATEX_EDITABLE_SUFFIXES:
+                        try:
+                            text = path.read_text(encoding="utf-8", errors="replace")
+                        except OSError:
+                            text = ""
+                        added_total += len(text.splitlines()) or (1 if text else 0)
+
+        changed_lines = added_total + removed_total
+        changed_chars = changed_lines * 80 + untracked_bytes
+        score = changed_lines + min(changed_chars // 80, 100) + len(changed_paths) * 10 + binary_files * 10
+        significant = (
+            changed_lines >= _LATEX_AUTO_VERSION_SIGNIFICANT_LINES
+            or changed_chars >= _LATEX_AUTO_VERSION_SIGNIFICANT_CHARS
+            or len(changed_paths) >= _LATEX_AUTO_VERSION_SIGNIFICANT_FILES
+            or score >= 40
+        )
+        return {
+            "changed_paths": changed_paths,
+            "file_count": len(changed_paths),
+            "changed_files": len(changed_paths),
+            "added": added_total,
+            "removed": removed_total,
+            "changed_lines": changed_lines,
+            "changed_chars": changed_chars,
+            "binary_files": binary_files,
+            "untracked_files": untracked_count,
+            "score": score,
+            "significant": significant,
+            "has_changes": bool(changed_paths or changed_lines or changed_chars),
+            "base": base_ref,
+            "head": head_ref,
+        }
+
+    def _latex_commit_stats(self, repo: Path, commit: str, folder_relative: str, main_file_relative: str | None = None) -> dict[str, Any]:
         try:
             raw = self._git_stdout(
                 repo,
@@ -1264,6 +1477,8 @@ class QuestLatexService:
             added_raw, removed_raw, file_path = parts[0], parts[1], parts[-1]
             file_path = file_path.strip()
             if not file_path:
+                continue
+            if not self._is_latex_version_file(file_path, main_file_relative):
                 continue
             changed_paths.append(file_path)
             if added_raw.isdigit():
@@ -1301,25 +1516,39 @@ class QuestLatexService:
         version_id = trailers.get("version") or sha
         label = trailers.get("label") or subject.removeprefix("latex:").strip() or short_sha
         description = trailers.get("description") or None
-        stats = self._latex_commit_stats(repo, sha, folder_relative)
+        main_file_relative = trailers.get("main") or None
+        source = trailers.get("source") or "manual"
+        hidden = self._is_truthy_trailer(trailers.get("hidden")) or (
+            source == "compile" and "hidden" not in trailers
+        )
         parent_raw = run_command(["git", "rev-list", "--parents", "-n", "1", sha], cwd=repo, check=False)
         parent_parts = (parent_raw.stdout or "").strip().split()
         parents = parent_parts[1:] if len(parent_parts) > 1 else []
+        trailer_base = trailers.get("base") or None
+        if trailer_base and not self._commit_exists(repo, trailer_base):
+            trailer_base = None
+        compare_base = trailer_base or (parents[0] if parents else None)
+        if compare_base:
+            stats = self._latex_range_stats(repo, folder_relative, compare_base, sha, main_file_relative=main_file_relative)
+        else:
+            stats = self._latex_commit_stats(repo, sha, folder_relative, main_file_relative=main_file_relative)
         return {
             "version_id": version_id,
             "commit": sha,
             "short_commit": short_sha or sha[:7],
             "parents": parents,
-            "compare_base": parents[0] if parents else None,
+            "compare_base": compare_base,
             "folder_id": folder_id,
             "folder_path": folder_relative,
-            "main_file_path": trailers.get("main") or None,
+            "main_file_path": main_file_relative,
             "label": label,
             "description": description,
-            "source": trailers.get("source") or "manual",
+            "source": source,
             "author": trailers.get("author") or author_name or None,
             "created_at": authored_at or utc_now(),
             "build_id": trailers.get("build") or None,
+            "reason": trailers.get("reason") or None,
+            "hidden": hidden,
             **stats,
         }
 
@@ -1342,6 +1571,47 @@ class QuestLatexService:
                 "versions": versions[:200],
             },
         )
+
+    def _read_latex_auto_version_state(self, project_id: str, folder_relative: str) -> dict[str, Any]:
+        payload = read_json(self._folder_auto_version_state_path(project_id, folder_relative), default={})
+        return payload if isinstance(payload, dict) else {}
+
+    def _write_latex_auto_version_state(self, project_id: str, folder_relative: str, state: dict[str, Any]) -> None:
+        payload = {
+            "schema_version": 1,
+            "policy_version": _LATEX_AUTO_VERSION_POLICY_VERSION,
+            "folder_path": folder_relative,
+            "updated_at": utc_now(),
+            **state,
+        }
+        write_json(self._folder_auto_version_state_path(project_id, folder_relative), payload)
+
+    def _remember_latex_visible_version(self, project_id: str, folder_relative: str, summary: dict[str, Any]) -> None:
+        if summary.get("hidden"):
+            return
+        commit = str(summary.get("commit") or "").strip()
+        if not commit:
+            return
+        state = self._read_latex_auto_version_state(project_id, folder_relative)
+        created_at = str(summary.get("created_at") or utc_now())
+        state.update(
+            {
+                "last_visible_version_commit": commit,
+                "last_visible_version_id": summary.get("version_id"),
+                "last_visible_version_at": created_at,
+                "last_visible_source": summary.get("source"),
+            }
+        )
+        if str(summary.get("source") or "").lower() in {"auto", "ai"}:
+            state.update(
+                {
+                    "last_auto_version_commit": commit,
+                    "last_auto_version_id": summary.get("version_id"),
+                    "last_auto_version_at": created_at,
+                    "last_auto_reason": summary.get("reason"),
+                }
+            )
+        self._write_latex_auto_version_state(project_id, folder_relative, state)
 
     def _list_build_records(self, project_id: str, folder_relative: str) -> list[dict[str, Any]]:
         builds_root = self._folder_build_root(project_id, folder_relative) / "builds"
@@ -1544,6 +1814,9 @@ class QuestLatexService:
         author: str | None = None,
         build_id: str | None = None,
         allow_empty: bool = True,
+        hidden: bool = False,
+        reason: str | None = None,
+        base_commit: str | None = None,
     ) -> dict[str, Any]:
         folder_path, folder_relative = self._resolve_folder_path(project_id, folder_id)
         _main_tex_path, main_tex_relative = self._resolve_main_tex(project_id, folder_path, folder_relative, None)
@@ -1570,9 +1843,13 @@ class QuestLatexService:
             source=resolved_source,
             author=author,
             build_id=build_id,
+            base_commit=base_commit,
+            reason=reason,
+            hidden=hidden,
         )
 
-        has_changes = self._folder_has_git_changes(repo, folder_relative)
+        version_paths = self._latex_version_paths(repo, folder_path, folder_relative, main_tex_relative)
+        has_changes = self._paths_have_git_changes(repo, version_paths)
         previous_head = head_commit(repo)
         if not has_changes and not allow_empty:
             return {
@@ -1584,14 +1861,14 @@ class QuestLatexService:
                 "head": previous_head,
                 "folder_id": folder_id,
                 "folder_path": folder_relative,
-            }
+        }
 
         if has_changes:
-            run_command(["git", "add", "-A", "--", folder_relative], cwd=repo, check=False)
+            run_command(["git", "add", "-A", "--", *version_paths], cwd=repo, check=False)
             command = ["git", "commit"]
             if allow_empty:
                 command.append("--allow-empty")
-            command.extend(["-m", message, "--", folder_relative])
+            command.extend(["-m", message, "--", *version_paths])
             result = run_command(command, cwd=repo, check=False)
             if result.returncode != 0:
                 return {
@@ -1640,12 +1917,16 @@ class QuestLatexService:
                 "author": author or "user",
                 "created_at": utc_now(),
                 "build_id": build_id,
+                "reason": reason,
+                "hidden": bool(hidden),
+                "compare_base": base_commit,
                 "changed_paths": [],
                 "file_count": 0,
                 "added": 0,
                 "removed": 0,
             }
         self._remember_latex_version(project_id, folder_relative, summary)
+        self._remember_latex_visible_version(project_id, folder_relative, summary)
         return {
             "ok": True,
             "created": True,
@@ -1656,11 +1937,11 @@ class QuestLatexService:
             **summary,
         }
 
-    def list_versions(self, project_id: str, folder_id: str, limit: int = 30) -> dict[str, Any]:
+    def list_versions(self, project_id: str, folder_id: str, limit: int = 30, *, include_hidden: bool = False) -> dict[str, Any]:
         _folder_path, folder_relative = self._resolve_folder_path(project_id, folder_id)
         repo = self._workspace_root(project_id)
         resolved_limit = max(1, min(int(limit or 30), 100))
-        scan_limit = max(100, resolved_limit * 8)
+        scan_limit = max(500, resolved_limit * 50)
         try:
             raw = self._git_stdout(
                 repo,
@@ -1692,6 +1973,8 @@ class QuestLatexService:
             )
             if not summary:
                 continue
+            if summary.get("hidden") and not include_hidden:
+                continue
             versions.append(summary)
             if len(versions) >= resolved_limit:
                 break
@@ -1703,7 +1986,188 @@ class QuestLatexService:
             "head": head_commit(repo),
             "versions": versions,
             "limit": resolved_limit,
+            "include_hidden": include_hidden,
         }
+
+    def maybe_create_auto_version(
+        self,
+        project_id: str,
+        folder_id: str,
+        *,
+        reason: str | None = None,
+        active_file: str | None = None,
+    ) -> dict[str, Any]:
+        folder_path, folder_relative = self._resolve_folder_path(project_id, folder_id)
+        _main_tex_path, main_tex_relative = self._resolve_main_tex(project_id, folder_path, folder_relative, None)
+        repo = self._workspace_root(project_id)
+        reason_key = self._clean_version_text(reason or "idle_save", fallback="idle_save", max_length=80)
+        reason_key = re.sub(r"[^a-zA-Z0-9_-]+", "_", reason_key.lower()).strip("_") or "idle_save"
+
+        with advisory_file_lock(self._folder_version_lock_path(project_id, folder_relative)):
+            state = self._read_latex_auto_version_state(project_id, folder_relative)
+            visible_versions = self.list_versions(project_id, folder_id, limit=1, include_hidden=False).get("versions") or []
+            latest_visible = visible_versions[0] if visible_versions and isinstance(visible_versions[0], dict) else None
+            if latest_visible:
+                state_commit = str(state.get("last_visible_version_commit") or "").strip()
+                latest_commit = str(latest_visible.get("commit") or "").strip()
+                if latest_commit and state_commit != latest_commit:
+                    state.update(
+                        {
+                            "last_visible_version_commit": latest_commit,
+                            "last_visible_version_id": latest_visible.get("version_id"),
+                            "last_visible_version_at": latest_visible.get("created_at") or utc_now(),
+                            "last_visible_source": latest_visible.get("source"),
+                        }
+                    )
+
+            base_commit = str(state.get("last_visible_version_commit") or "").strip()
+            if base_commit and not self._commit_exists(repo, base_commit):
+                base_commit = ""
+            if not base_commit and latest_visible:
+                base_commit = str(latest_visible.get("commit") or "").strip()
+            if base_commit and not self._commit_exists(repo, base_commit):
+                base_commit = ""
+            if not base_commit:
+                base_commit = head_commit(repo) or ""
+
+            metrics = self._latex_range_stats(
+                repo,
+                folder_relative,
+                base_commit or None,
+                None,
+                main_file_relative=main_tex_relative,
+            )
+            if not metrics.get("has_changes"):
+                self._write_latex_auto_version_state(project_id, folder_relative, state)
+                return {
+                    "ok": True,
+                    "created": False,
+                    "skipped_reason": "no_changes",
+                    "message": "No LaTeX source changes to checkpoint.",
+                    "folder_id": folder_id,
+                    "folder_path": folder_relative,
+                    "head": head_commit(repo),
+                    "base": base_commit or None,
+                    "metrics": metrics,
+                    "policy": {
+                        "version": _LATEX_AUTO_VERSION_POLICY_VERSION,
+                        "min_interval_seconds": _LATEX_AUTO_VERSION_MIN_INTERVAL_SECONDS,
+                        "time_interval_seconds": _LATEX_AUTO_VERSION_TIME_INTERVAL_SECONDS,
+                    },
+                }
+
+            now = datetime.now(UTC)
+            last_checkpoint_at = self._parse_utc_timestamp(state.get("last_visible_version_at"))
+            if last_checkpoint_at is None:
+                last_checkpoint_at = self._parse_utc_timestamp(state.get("last_auto_version_at"))
+            elapsed_seconds = None
+            if last_checkpoint_at is not None:
+                elapsed_seconds = max(0, int((now - last_checkpoint_at).total_seconds()))
+                if elapsed_seconds < _LATEX_AUTO_VERSION_MIN_INTERVAL_SECONDS:
+                    next_eligible = last_checkpoint_at.timestamp() + _LATEX_AUTO_VERSION_MIN_INTERVAL_SECONDS
+                    return {
+                        "ok": True,
+                        "created": False,
+                        "skipped_reason": "too_soon",
+                        "message": "The last LaTeX checkpoint is too recent.",
+                        "folder_id": folder_id,
+                        "folder_path": folder_relative,
+                        "head": head_commit(repo),
+                        "base": base_commit or None,
+                        "metrics": metrics,
+                        "elapsed_seconds": elapsed_seconds,
+                        "next_eligible_at": datetime.fromtimestamp(next_eligible, UTC).replace(microsecond=0).isoformat(),
+                        "policy": {
+                            "version": _LATEX_AUTO_VERSION_POLICY_VERSION,
+                            "min_interval_seconds": _LATEX_AUTO_VERSION_MIN_INTERVAL_SECONDS,
+                            "time_interval_seconds": _LATEX_AUTO_VERSION_TIME_INTERVAL_SECONDS,
+                        },
+                    }
+
+            first_visible_checkpoint = latest_visible is None and not state.get("last_visible_version_commit")
+            significant = bool(metrics.get("significant"))
+            timed = elapsed_seconds is not None and elapsed_seconds >= _LATEX_AUTO_VERSION_TIME_INTERVAL_SECONDS
+            if not (first_visible_checkpoint or significant or timed):
+                self._write_latex_auto_version_state(project_id, folder_relative, state)
+                return {
+                    "ok": True,
+                    "created": False,
+                    "skipped_reason": "change_below_threshold",
+                    "message": "LaTeX changes are below the automatic checkpoint threshold.",
+                    "folder_id": folder_id,
+                    "folder_path": folder_relative,
+                    "head": head_commit(repo),
+                    "base": base_commit or None,
+                    "metrics": metrics,
+                    "elapsed_seconds": elapsed_seconds,
+                    "policy": {
+                        "version": _LATEX_AUTO_VERSION_POLICY_VERSION,
+                        "min_interval_seconds": _LATEX_AUTO_VERSION_MIN_INTERVAL_SECONDS,
+                        "time_interval_seconds": _LATEX_AUTO_VERSION_TIME_INTERVAL_SECONDS,
+                        "significant_lines": _LATEX_AUTO_VERSION_SIGNIFICANT_LINES,
+                        "significant_chars": _LATEX_AUTO_VERSION_SIGNIFICANT_CHARS,
+                        "significant_files": _LATEX_AUTO_VERSION_SIGNIFICANT_FILES,
+                    },
+                }
+
+            source = "ai" if reason_key == "ai_edit" else "auto"
+            label = "AI edit" if source == "ai" else "Auto version"
+            if reason_key == "visibility_hidden":
+                description = "Automatic checkpoint captured when the editor was hidden."
+            elif reason_key == "compile":
+                description = "Automatic checkpoint captured before LaTeX compilation."
+            elif source == "ai":
+                description = "Automatic checkpoint captured after an AI file edit."
+            elif timed:
+                description = "Automatic checkpoint captured after an editing interval."
+            else:
+                description = "Automatic checkpoint captured after significant LaTeX edits."
+
+            created = self.create_version(
+                project_id,
+                folder_id,
+                label=label,
+                description=description,
+                source=source,
+                author="ai" if source == "ai" else "system",
+                allow_empty=True,
+                hidden=False,
+                reason=reason_key,
+                base_commit=base_commit or None,
+            )
+            if not created.get("ok"):
+                return {
+                    **created,
+                    "created": False,
+                    "skipped_reason": "create_failed",
+                    "metrics": metrics,
+                    "base": base_commit or None,
+                }
+            state = self._read_latex_auto_version_state(project_id, folder_relative)
+            state.update(
+                {
+                    "last_auto_metrics": metrics,
+                    "last_auto_active_file": self._clean_version_text(active_file or "", max_length=240),
+                    "last_auto_reason": reason_key,
+                }
+            )
+            self._write_latex_auto_version_state(project_id, folder_relative, state)
+            return {
+                **created,
+                "created": True,
+                "skipped_reason": None,
+                "reason": reason_key,
+                "base": base_commit or None,
+                "metrics": metrics,
+                "policy": {
+                    "version": _LATEX_AUTO_VERSION_POLICY_VERSION,
+                    "min_interval_seconds": _LATEX_AUTO_VERSION_MIN_INTERVAL_SECONDS,
+                    "time_interval_seconds": _LATEX_AUTO_VERSION_TIME_INTERVAL_SECONDS,
+                    "significant_lines": _LATEX_AUTO_VERSION_SIGNIFICANT_LINES,
+                    "significant_chars": _LATEX_AUTO_VERSION_SIGNIFICANT_CHARS,
+                    "significant_files": _LATEX_AUTO_VERSION_SIGNIFICANT_FILES,
+                },
+            }
 
     def _resolve_version_commit(self, project_id: str, folder_id: str, version_id: str) -> tuple[str, dict[str, Any] | None, str]:
         _folder_path, folder_relative = self._resolve_folder_path(project_id, folder_id)
@@ -1711,7 +2175,7 @@ class QuestLatexService:
         raw = str(version_id or "").strip()
         if not raw:
             raise ValueError("`version_id` is required.")
-        versions = self.list_versions(project_id, folder_id, limit=100).get("versions") or []
+        versions = self.list_versions(project_id, folder_id, limit=100, include_hidden=True).get("versions") or []
         for item in versions:
             if not isinstance(item, dict):
                 continue
@@ -1822,11 +2286,19 @@ class QuestLatexService:
         head_commit_value, head_summary, _folder_relative = self._resolve_version_commit(project_id, folder_id, head)
         repo = self._workspace_root(project_id)
         payload = compare_refs(repo, base=base_commit, head=head_commit_value)
+        main_file_relative = str(
+            (head_summary or {}).get("main_file_path")
+            or (base_summary or {}).get("main_file_path")
+            or ""
+        )
         files = [
             item
             for item in payload.get("files", [])
             if str(item.get("path") or "") == folder_relative
-            or str(item.get("path") or "").startswith(f"{folder_relative.rstrip('/')}/")
+            or (
+                str(item.get("path") or "").startswith(f"{folder_relative.rstrip('/')}/")
+                and self._is_latex_version_file(str(item.get("path") or ""), main_file_relative or None)
+            )
         ]
         return {
             **payload,
@@ -1840,7 +2312,12 @@ class QuestLatexService:
             "file_count": len(files),
         }
 
-    def _current_manifest_paths(self, folder_path: Path) -> set[str]:
+    def _current_manifest_paths(
+        self,
+        folder_path: Path,
+        folder_relative: str = "",
+        main_file_relative: str | None = None,
+    ) -> set[str]:
         paths: set[str] = set()
         for path in sorted(folder_path.rglob("*")):
             if not path.is_file():
@@ -1851,7 +2328,8 @@ class QuestLatexService:
                 continue
             if any(part.startswith(".git") for part in Path(relative).parts):
                 continue
-            if self._is_manifest_file(path):
+            workspace_relative = f"{folder_relative.rstrip('/')}/{relative}" if folder_relative else relative
+            if self._is_latex_version_file(workspace_relative, main_file_relative):
                 paths.add(relative)
         return paths
 
@@ -1878,7 +2356,15 @@ class QuestLatexService:
                 "current_head": current_head,
             }
         force = str(conflict_policy or "").strip().lower() == "force"
-        if self._folder_has_git_changes(repo, folder_relative) and not force:
+        folder_path, _folder_relative = self._resolve_folder_path(project_id, folder_id)
+        main_file_relative = str((summary or {}).get("main_file_path") or "")
+        if not main_file_relative:
+            try:
+                _main_tex_path, main_file_relative = self._resolve_main_tex(project_id, folder_path, folder_relative, None)
+            except Exception:
+                main_file_relative = ""
+        current_version_paths = self._latex_version_paths(repo, folder_path, folder_relative, main_file_relative or None)
+        if self._paths_have_git_changes(repo, current_version_paths) and not force:
             return {
                 "ok": False,
                 "conflict": True,
@@ -1886,7 +2372,6 @@ class QuestLatexService:
                 "current_head": current_head,
             }
 
-        folder_path, _folder_relative = self._resolve_folder_path(project_id, folder_id)
         restore_mode = str(mode or "folder").strip().lower()
         restored_paths: list[str] = []
 
@@ -1906,14 +2391,14 @@ class QuestLatexService:
             version_paths = [
                 line.strip()
                 for line in raw_paths.splitlines()
-                if line.strip() and Path(line.strip()).suffix.lower() in _LATEX_MANIFEST_SUFFIXES
+                if line.strip() and self._is_latex_version_file(line.strip(), main_file_relative or None)
             ]
             version_rel_to_folder = {
                 Path(relative).relative_to(Path(folder_relative)).as_posix()
                 for relative in version_paths
                 if relative == folder_relative or relative.startswith(f"{folder_relative.rstrip('/')}/")
             }
-            for current_relative in self._current_manifest_paths(folder_path):
+            for current_relative in self._current_manifest_paths(folder_path, folder_relative, main_file_relative or None):
                 if current_relative not in version_rel_to_folder:
                     try:
                         (folder_path / current_relative).unlink()
@@ -2099,7 +2584,19 @@ class QuestLatexService:
             "source_version_id": None,
             "source_version": None,
             "source_version_error": None,
+            "auto_version_id": None,
+            "auto_version": None,
+            "auto_version_skipped_reason": None,
         }
+
+        try:
+            auto_version = self.maybe_create_auto_version(project_id, folder_id, reason="compile")
+            build["auto_version_skipped_reason"] = auto_version.get("skipped_reason")
+            if auto_version.get("created") and isinstance(auto_version.get("version"), dict):
+                build["auto_version_id"] = auto_version["version"].get("version_id")
+                build["auto_version"] = auto_version["version"]
+        except Exception:
+            pass
 
         try:
             source_version = self.create_version(
@@ -2110,6 +2607,8 @@ class QuestLatexService:
                 source="compile",
                 author="system",
                 build_id=build_id,
+                hidden=True,
+                reason="compile",
                 allow_empty=not bool(auto),
             )
             if source_version.get("ok") and isinstance(source_version.get("version"), dict):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -490,6 +491,7 @@ def test_latex_versions_create_compare_and_restore_file(temp_home: Path) -> None
     versions = service.list_versions(project_id, folder_id)
     assert versions["ok"] is True
     assert [item["label"] for item in versions["versions"][:2]] == ["After rewrite", "Before rewrite"]
+    assert all(not item.get("hidden") for item in versions["versions"])
 
     compare = service.compare_versions(
         project_id,
@@ -512,6 +514,50 @@ def test_latex_versions_create_compare_and_restore_file(temp_home: Path) -> None
     assert restored["ok"] is True
     assert restored["restore_version"]["source"] == "restore"
     assert main_tex.read_text(encoding="utf-8") == "original source\n"
+
+
+def test_latex_auto_versions_use_change_and_time_policy(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("latex auto version quest")
+    quest_root = Path(quest["quest_root"])
+    project_id = quest["quest_id"]
+
+    latex_root = quest_root / "paper" / "latex"
+    latex_root.mkdir(parents=True, exist_ok=True)
+    main_tex = latex_root / "main.tex"
+    main_tex.write_text("baseline\n", encoding="utf-8")
+
+    service = QuestLatexService(quest_service)
+    folder_id = f"quest-dir::{project_id}::paper%2Flatex"
+
+    baseline = service.create_version(project_id, folder_id, label="Baseline")
+    assert baseline["ok"] is True
+
+    main_tex.write_text("baseline\nsmall edit\n", encoding="utf-8")
+    too_soon = service.maybe_create_auto_version(project_id, folder_id, reason="idle_save")
+    assert too_soon["ok"] is True
+    assert too_soon["created"] is False
+    assert too_soon["skipped_reason"] == "too_soon"
+
+    state_path = service._folder_auto_version_state_path(project_id, "paper/latex")
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["last_visible_version_at"] = "2000-01-01T00:00:00+00:00"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    main_tex.write_text("".join(f"line {idx}\n" for idx in range(45)), encoding="utf-8")
+    auto = service.maybe_create_auto_version(project_id, folder_id, reason="idle_save")
+    assert auto["ok"] is True
+    assert auto["created"] is True
+    assert auto["version"]["source"] == "auto"
+    assert auto["version"]["reason"] == "idle_save"
+    assert auto["metrics"]["changed_lines"] >= 30
+
+    versions = service.list_versions(project_id, folder_id)
+    assert versions["versions"][0]["source"] == "auto"
+    assert versions["versions"][0]["compare_base"] == baseline["commit"]
+    assert "paper/latex/main.tex" in versions["versions"][0]["changed_paths"]
 
 
 def test_latex_compile_records_source_version_even_without_latex_runtime(temp_home: Path, monkeypatch) -> None:
@@ -540,5 +586,10 @@ def test_latex_compile_records_source_version_even_without_latex_runtime(temp_ho
     assert build["source_version_id"]
     assert build["source_commit"]
     versions = service.list_versions(project_id, folder_id)
-    assert versions["versions"][0]["source"] == "compile"
-    assert versions["versions"][0]["build_id"] == build["build_id"]
+    assert versions["versions"][0]["source"] == "auto"
+    assert not versions["versions"][0].get("hidden")
+    all_versions = service.list_versions(project_id, folder_id, include_hidden=True)
+    hidden_compile = [version for version in all_versions["versions"] if version["source"] == "compile"]
+    assert hidden_compile
+    assert hidden_compile[0]["hidden"] is True
+    assert hidden_compile[0]["build_id"] == build["build_id"]

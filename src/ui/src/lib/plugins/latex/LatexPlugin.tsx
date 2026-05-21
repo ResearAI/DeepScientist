@@ -52,6 +52,7 @@ import {
   getLatexBuildPdfBlob,
   listLatexBuilds,
   listLatexVersions,
+  maybeCreateLatexAutoVersion,
   restoreLatexVersion,
   syncTexEditLatexBuild,
   type LatexCompiler,
@@ -220,7 +221,8 @@ const normalizeBuildErrors = (
 const LATEX_COMPILER_OPTIONS: LatexCompiler[] = ["pdflatex", "xelatex", "lualatex"];
 const LATEX_AUTOSAVE_DELAY_MS = 1000;
 const LATEX_EXTERNAL_CHECK_INTERVAL_MS = 4000;
-const LATEX_AUTO_VERSION_INTERVAL_MS = 5 * 60 * 1000;
+const LATEX_AUTO_VERSION_IDLE_DELAY_MS = 25 * 1000;
+const LATEX_AUTO_VERSION_MANUAL_DELAY_MS = 5 * 1000;
 const LATEX_AUTO_COMPILE_ON_SAVE_STORAGE_PREFIX = "ds:latex:auto-compile-on-save";
 const BIB_SNIPPETS: BibSnippet[] = [
   {
@@ -740,6 +742,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const [historyCompare, setHistoryCompare] = React.useState<LatexVersionCompareResponse | null>(null);
   const [historyLabel, setHistoryLabel] = React.useState("");
   const [historyDescription, setHistoryDescription] = React.useState("");
+  const [historyShowBuildSnapshots, setHistoryShowBuildSnapshots] = React.useState(false);
   const [pdfObjectUrl, setPdfObjectUrl] = React.useState<string | null>(null);
   const [logText, setLogText] = React.useState<string | null>(null);
   const [zoomScale, setZoomScale] = React.useState<number>(1);
@@ -767,7 +770,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const loadedRevisionRef = React.useRef<string | null>(null);
   const externalConflictRef = React.useRef<LatexExternalConflict | null>(null);
   const externalCheckInFlightRef = React.useRef(false);
-  const lastAutoVersionAtRef = React.useRef(0);
+  const autoVersionTimerRef = React.useRef<number | null>(null);
   const aiVersionTimerRef = React.useRef<number | null>(null);
   const yDocRef = React.useRef<any>(null);
   const yTextRef = React.useRef<any>(null);
@@ -964,7 +967,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     setHistoryLoading(true);
     setHistoryError(null);
     try {
-      const payload = await listLatexVersions(projectId, latexFolderId, 50);
+      const payload = await listLatexVersions(projectId, latexFolderId, 50, historyShowBuildSnapshots);
       const versions = Array.isArray(payload.versions) ? payload.versions : [];
       setLatexVersions(versions);
       setLatexVersionsHead(payload.head ?? null);
@@ -979,39 +982,55 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     } finally {
       setHistoryLoading(false);
     }
-  }, [latexFolderId, projectId, t]);
+  }, [historyShowBuildSnapshots, latexFolderId, projectId, t]);
 
   const createAutoLatexVersion = React.useCallback(
-    async (source: "auto" | "ai", label: string, description: string) => {
+    async (reason: "idle_save" | "manual_save" | "ai_edit" | "compile" | "visibility_hidden") => {
       if (!projectId || !latexFolderId || viewReadOnly) return;
+      const activeMeta = activeFileIdRef.current
+        ? files.find((file) => file.id === activeFileIdRef.current) ?? null
+        : null;
       try {
-        const result = await createLatexVersion(projectId, latexFolderId, {
-          label,
-          description,
-          source,
-          author: source === "ai" ? "ai" : "system",
-          allow_empty: false,
+        const result = await maybeCreateLatexAutoVersion(projectId, latexFolderId, {
+          reason,
+          active_file: activeMeta?.path ?? activeMeta?.relativePath ?? null,
         });
-        if (result.ok && historyOpen) {
+        if (result.ok && result.created && historyOpen) {
           void loadLatexVersionHistory();
         }
       } catch (e) {
         console.warn("[LatexPlugin] Failed to create automatic LaTeX version:", e);
       }
     },
-    [historyOpen, latexFolderId, loadLatexVersionHistory, projectId, viewReadOnly]
+    [files, historyOpen, latexFolderId, loadLatexVersionHistory, projectId, viewReadOnly]
   );
 
-  const maybeCreateTimedAutoVersion = React.useCallback(() => {
-    const now = Date.now();
-    if (now - lastAutoVersionAtRef.current < LATEX_AUTO_VERSION_INTERVAL_MS) return;
-    lastAutoVersionAtRef.current = now;
-    void createAutoLatexVersion(
-      "auto",
-      t("version_auto_label"),
-      t("version_auto_description")
-    );
-  }, [createAutoLatexVersion, t]);
+  const queueLatexAutoVersionCheck = React.useCallback(
+    (
+      reason: "idle_save" | "manual_save" | "ai_edit" | "compile" | "visibility_hidden",
+      delayMs = LATEX_AUTO_VERSION_IDLE_DELAY_MS
+    ) => {
+      if (!projectId || !latexFolderId || viewReadOnly) return;
+      if (typeof window === "undefined") return;
+      if (autoVersionTimerRef.current != null) {
+        window.clearTimeout(autoVersionTimerRef.current);
+      }
+      autoVersionTimerRef.current = window.setTimeout(() => {
+        autoVersionTimerRef.current = null;
+        void createAutoLatexVersion(reason);
+      }, delayMs);
+    },
+    [createAutoLatexVersion, latexFolderId, projectId, viewReadOnly]
+  );
+
+  React.useEffect(() => {
+    return () => {
+      if (autoVersionTimerRef.current != null) {
+        window.clearTimeout(autoVersionTimerRef.current);
+        autoVersionTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const createManualLatexVersion = React.useCallback(async () => {
     if (!projectId || !latexFolderId || viewReadOnly) return;
@@ -2257,7 +2276,11 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         if (currentText === textToSave) {
           setEditorDirty(false);
           if (trigger === "auto") {
-            maybeCreateTimedAutoVersion();
+            queueLatexAutoVersionCheck("idle_save");
+          } else if (trigger === "manual") {
+            queueLatexAutoVersionCheck("manual_save", LATEX_AUTO_VERSION_MANUAL_DELAY_MS);
+          } else if (trigger === "lifecycle") {
+            void createAutoLatexVersion("visibility_hidden");
           }
           return true;
         }
@@ -2307,7 +2330,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
 
     saveInFlightRef.current = { fileId, promise };
     return promise;
-  }, [activeFileId, effectiveReadOnly, maybeCreateTimedAutoVersion, setEditorDirty, setExternalConflictState, t, updateFileMeta]);
+  }, [activeFileId, createAutoLatexVersion, effectiveReadOnly, queueLatexAutoVersionCheck, setEditorDirty, setExternalConflictState, t, updateFileMeta]);
 
   const reloadExternalVersion = React.useCallback(() => {
     const conflict = externalConflictRef.current;
@@ -2489,11 +2512,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         }
         aiVersionTimerRef.current = window.setTimeout(() => {
           aiVersionTimerRef.current = null;
-          void createAutoLatexVersion(
-            "ai",
-            t("version_ai_label"),
-            t("version_ai_description")
-          );
+          queueLatexAutoVersionCheck("ai_edit");
         }, 1200);
       }
     };
@@ -2505,7 +2524,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         aiVersionTimerRef.current = null;
       }
     };
-  }, [activeFileId, checkExternalSnapshot, createAutoLatexVersion, files, projectId, t, viewReadOnly]);
+  }, [activeFileId, checkExternalSnapshot, files, projectId, queueLatexAutoVersionCheck, viewReadOnly]);
 
   React.useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -3460,6 +3479,17 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                         {historyActionBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <History className="h-3.5 w-3.5" />}
                         {t("version_create")}
                       </button>
+                      <label className="flex items-center gap-2 rounded-lg border border-black/5 bg-white/45 px-2.5 py-2 text-xs text-muted-foreground dark:border-white/10 dark:bg-white/[0.03]">
+                        <input
+                          type="checkbox"
+                          checked={historyShowBuildSnapshots}
+                          onChange={(event) => {
+                            setHistoryShowBuildSnapshots(event.target.checked);
+                            setHistoryCompare(null);
+                          }}
+                        />
+                        <span>{t("version_show_build_snapshots")}</span>
+                      </label>
                     </div>
 
                     <div className="mt-3 max-h-56 space-y-1 overflow-auto pr-1">
@@ -3488,9 +3518,11 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                                 </span>
                               </div>
                               <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-                                <span>{version.short_commit || version.commit?.slice(0, 7)}</span>
-                                <span>{version.created_at ? new Date(version.created_at).toLocaleString(language) : ""}</span>
-                                {typeof version.file_count === "number" ? <span>{version.file_count} {t("version_files_changed")}</span> : null}
+	                                <span>{version.short_commit || version.commit?.slice(0, 7)}</span>
+	                                <span>{version.created_at ? new Date(version.created_at).toLocaleString(language) : ""}</span>
+	                                {version.reason ? <span>{version.reason}</span> : null}
+	                                {version.hidden ? <span>{t("version_hidden_snapshot")}</span> : null}
+	                                {typeof version.file_count === "number" ? <span>{version.file_count} {t("version_files_changed")}</span> : null}
                                 {typeof version.added === "number" ? <span className="text-emerald-700 dark:text-emerald-300">+{version.added}</span> : null}
                                 {typeof version.removed === "number" ? <span className="text-rose-700 dark:text-rose-300">-{version.removed}</span> : null}
                               </div>
@@ -3512,9 +3544,11 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                           <div className="min-w-0">
                             <div className="break-words text-sm font-medium text-foreground">{selectedLatexVersion.label}</div>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              <span>{selectedLatexVersion.short_commit || selectedLatexVersion.commit.slice(0, 8)}</span>
-                              <span>{selectedLatexVersion.source}</span>
-                              {selectedLatexVersion.author ? <span>{selectedLatexVersion.author}</span> : null}
+	                                <span>{selectedLatexVersion.short_commit || selectedLatexVersion.commit.slice(0, 8)}</span>
+	                                <span>{selectedLatexVersion.source}</span>
+	                                {selectedLatexVersion.reason ? <span>{selectedLatexVersion.reason}</span> : null}
+	                                {selectedLatexVersion.hidden ? <span>{t("version_hidden_snapshot")}</span> : null}
+	                                {selectedLatexVersion.author ? <span>{selectedLatexVersion.author}</span> : null}
                               {selectedLatexVersion.build_id ? <span>{t("version_build")}: {selectedLatexVersion.build_id}</span> : null}
                             </div>
                             {selectedLatexVersion.description ? (
