@@ -2124,7 +2124,7 @@ npm --prefix src/ui run build</pre>
     def latex_manifest(self, project_id: str, folder_id: str) -> dict:
         return self.app.latex_service.manifest(project_id, folder_id)
 
-    def latex_versions(self, project_id: str, folder_id: str, path: str) -> dict:
+    def latex_versions(self, project_id: str, folder_id: str, path: str = "") -> dict:
         query = self.parse_query(path)
         limit_raw = ((query.get("limit") or ["30"])[0] or "30").strip()
         try:
@@ -2145,7 +2145,7 @@ npm --prefix src/ui run build</pre>
             allow_empty=body.get("allow_empty", True) is not False,
         )
 
-    def latex_versions_compare(self, project_id: str, folder_id: str, path: str) -> dict:
+    def latex_versions_compare(self, project_id: str, folder_id: str, path: str = "") -> dict:
         query = self.parse_query(path)
         base = ((query.get("base") or [""])[0] or "").strip()
         head = ((query.get("head") or [""])[0] or "").strip()
@@ -2159,7 +2159,7 @@ npm --prefix src/ui run build</pre>
     def latex_version_files(self, project_id: str, folder_id: str, version_id: str) -> dict:
         return self.app.latex_service.version_files(project_id, folder_id, version_id)
 
-    def latex_version_file(self, project_id: str, folder_id: str, version_id: str, path: str) -> dict:
+    def latex_version_file(self, project_id: str, folder_id: str, version_id: str, path: str = "") -> dict:
         query = self.parse_query(path)
         file_path = ((query.get("path") or [""])[0] or "").strip()
         if not file_path:
