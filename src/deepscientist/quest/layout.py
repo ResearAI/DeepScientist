@@ -138,6 +138,8 @@ def gitignore() -> str:
             ".ds/*.pid",
             ".ds/*.sock",
             ".ds/*.tmp",
+            ".ds/latex_builds/",
+            ".ds/latex_versions/",
             ".ds/worktrees/",
             "tmp/",
             "__pycache__/",

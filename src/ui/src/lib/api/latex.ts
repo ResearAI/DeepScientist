@@ -67,6 +67,10 @@ export interface LatexBuildResponse {
   errors: LatexBuildError[];
   log_items?: LatexLogItem[];
   synctex_path?: string | null;
+  source_commit?: string | null;
+  source_version_id?: string | null;
+  source_version?: LatexVersionSummary | null;
+  source_version_error?: string | null;
 }
 
 export interface LatexManifestFile {
@@ -88,6 +92,116 @@ export interface LatexManifestResponse {
   main_file_path?: string | null;
   compiler?: LatexCompiler;
   files: LatexManifestFile[];
+}
+
+export type LatexVersionSource = "manual" | "auto" | "compile" | "ai" | "restore" | string;
+
+export interface LatexVersionSummary {
+  version_id: string;
+  commit: string;
+  short_commit?: string;
+  parents?: string[];
+  compare_base?: string | null;
+  folder_id?: string;
+  folder_path: string;
+  main_file_path?: string | null;
+  label: string;
+  description?: string | null;
+  source: LatexVersionSource;
+  author?: string | null;
+  created_at: string;
+  build_id?: string | null;
+  changed_paths?: string[];
+  file_count?: number;
+  added?: number;
+  removed?: number;
+}
+
+export interface LatexVersionListResponse {
+  ok: boolean;
+  message?: string;
+  folder_id: string;
+  folder_path: string;
+  head?: string | null;
+  versions: LatexVersionSummary[];
+  limit?: number;
+}
+
+export interface LatexVersionCreateRequest {
+  label?: string | null;
+  description?: string | null;
+  source?: LatexVersionSource;
+  author?: string | null;
+  build_id?: string | null;
+  allow_empty?: boolean;
+}
+
+export interface LatexVersionCreateResponse extends LatexVersionSummary {
+  ok: boolean;
+  created?: boolean;
+  message?: string;
+  head?: string | null;
+  previous_head?: string | null;
+  version?: LatexVersionSummary;
+}
+
+export interface LatexVersionFileEntry {
+  id: string;
+  name: string;
+  path: string;
+  relative_path?: string;
+  role?: string;
+  editable?: boolean;
+  document_id?: string;
+}
+
+export interface LatexVersionFilesResponse {
+  ok: boolean;
+  folder_id: string;
+  folder_path: string;
+  version?: LatexVersionSummary | null;
+  commit: string;
+  files: LatexVersionFileEntry[];
+}
+
+export interface LatexVersionRestoreRequest {
+  mode?: "file" | "folder";
+  path?: string | null;
+  expected_head?: string | null;
+  conflict_policy?: "fail" | "force";
+}
+
+export interface LatexVersionRestoreResponse {
+  ok: boolean;
+  conflict?: boolean;
+  message?: string;
+  restored_from?: LatexVersionSummary | null;
+  restored_paths?: string[];
+  restore_version?: LatexVersionSummary | null;
+  head?: string | null;
+  current_head?: string | null;
+}
+
+export interface LatexVersionCompareResponse {
+  ok: boolean;
+  base: string;
+  head: string;
+  folder_id: string;
+  folder_path: string;
+  base_version?: LatexVersionSummary | null;
+  head_version?: LatexVersionSummary | null;
+  files: Array<{
+    path: string;
+    old_path?: string | null;
+    status?: string;
+    added?: number;
+    removed?: number;
+    binary?: boolean;
+  }>;
+  file_count?: number;
+  commit_count?: number;
+  ahead?: number;
+  behind?: number;
 }
 
 export interface LatexSyncTexEditRequest {
@@ -173,6 +287,78 @@ export async function getLatexManifest(
 ): Promise<LatexManifestResponse> {
   const res = await apiClient.get<LatexManifestResponse>(
     `/api/v1/projects/${projectId}/latex/${folderId}/manifest`
+  );
+  return res.data;
+}
+
+export async function listLatexVersions(
+  projectId: string,
+  folderId: string,
+  limit = 30
+): Promise<LatexVersionListResponse> {
+  const res = await apiClient.get<LatexVersionListResponse>(
+    `/api/v1/projects/${projectId}/latex/${folderId}/versions`,
+    { params: { limit } }
+  );
+  return res.data;
+}
+
+export async function createLatexVersion(
+  projectId: string,
+  folderId: string,
+  request: LatexVersionCreateRequest
+): Promise<LatexVersionCreateResponse> {
+  const res = await apiClient.post<LatexVersionCreateResponse>(
+    `/api/v1/projects/${projectId}/latex/${folderId}/versions`,
+    request
+  );
+  return res.data;
+}
+
+export async function getLatexVersion(
+  projectId: string,
+  folderId: string,
+  versionId: string
+): Promise<LatexVersionCreateResponse> {
+  const res = await apiClient.get<LatexVersionCreateResponse>(
+    `/api/v1/projects/${projectId}/latex/${folderId}/versions/${versionId}`
+  );
+  return res.data;
+}
+
+export async function listLatexVersionFiles(
+  projectId: string,
+  folderId: string,
+  versionId: string
+): Promise<LatexVersionFilesResponse> {
+  const res = await apiClient.get<LatexVersionFilesResponse>(
+    `/api/v1/projects/${projectId}/latex/${folderId}/versions/${versionId}/files`
+  );
+  return res.data;
+}
+
+export async function compareLatexVersions(
+  projectId: string,
+  folderId: string,
+  base: string,
+  head: string
+): Promise<LatexVersionCompareResponse> {
+  const res = await apiClient.get<LatexVersionCompareResponse>(
+    `/api/v1/projects/${projectId}/latex/${folderId}/versions/compare`,
+    { params: { base, head } }
+  );
+  return res.data;
+}
+
+export async function restoreLatexVersion(
+  projectId: string,
+  folderId: string,
+  versionId: string,
+  request: LatexVersionRestoreRequest
+): Promise<LatexVersionRestoreResponse> {
+  const res = await apiClient.post<LatexVersionRestoreResponse>(
+    `/api/v1/projects/${projectId}/latex/${folderId}/versions/${versionId}/restore`,
+    request
   );
   return res.data;
 }

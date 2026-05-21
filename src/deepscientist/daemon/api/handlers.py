@@ -2124,6 +2124,59 @@ npm --prefix src/ui run build</pre>
     def latex_manifest(self, project_id: str, folder_id: str) -> dict:
         return self.app.latex_service.manifest(project_id, folder_id)
 
+    def latex_versions(self, project_id: str, folder_id: str, path: str) -> dict:
+        query = self.parse_query(path)
+        limit_raw = ((query.get("limit") or ["30"])[0] or "30").strip()
+        try:
+            limit = int(limit_raw)
+        except ValueError:
+            limit = 30
+        return self.app.latex_service.list_versions(project_id, folder_id, limit=limit)
+
+    def latex_version_create(self, project_id: str, folder_id: str, body: dict) -> dict:
+        return self.app.latex_service.create_version(
+            project_id,
+            folder_id,
+            label=body.get("label"),
+            description=body.get("description"),
+            source=body.get("source"),
+            author=body.get("author"),
+            build_id=body.get("build_id"),
+            allow_empty=body.get("allow_empty", True) is not False,
+        )
+
+    def latex_versions_compare(self, project_id: str, folder_id: str, path: str) -> dict:
+        query = self.parse_query(path)
+        base = ((query.get("base") or [""])[0] or "").strip()
+        head = ((query.get("head") or [""])[0] or "").strip()
+        if not base or not head:
+            return {"ok": False, "message": "`base` and `head` are required."}
+        return self.app.latex_service.compare_versions(project_id, folder_id, base=base, head=head)
+
+    def latex_version(self, project_id: str, folder_id: str, version_id: str) -> dict:
+        return self.app.latex_service.get_version(project_id, folder_id, version_id)
+
+    def latex_version_files(self, project_id: str, folder_id: str, version_id: str) -> dict:
+        return self.app.latex_service.version_files(project_id, folder_id, version_id)
+
+    def latex_version_file(self, project_id: str, folder_id: str, version_id: str, path: str) -> dict:
+        query = self.parse_query(path)
+        file_path = ((query.get("path") or [""])[0] or "").strip()
+        if not file_path:
+            return {"ok": False, "message": "`path` is required."}
+        return self.app.latex_service.version_file(project_id, folder_id, version_id, file_path)
+
+    def latex_version_restore(self, project_id: str, folder_id: str, version_id: str, body: dict) -> dict:
+        return self.app.latex_service.restore_version(
+            project_id,
+            folder_id,
+            version_id,
+            mode=body.get("mode"),
+            path=body.get("path"),
+            expected_head=body.get("expected_head"),
+            conflict_policy=body.get("conflict_policy"),
+        )
+
     def latex_builds(self, project_id: str, folder_id: str, path: str) -> list[dict]:
         query = self.parse_query(path)
         limit_raw = ((query.get("limit") or ["10"])[0] or "10").strip()

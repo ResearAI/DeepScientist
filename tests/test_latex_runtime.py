@@ -459,3 +459,86 @@ def test_latex_manifest_lists_nested_editable_files(temp_home: Path) -> None:
     assert by_relative["refs.bib"]["role"] == "bib"
     assert {"kind": "input", "path": "sections/intro.tex"} in by_relative["main.tex"]["dependencies"]
     assert {"kind": "bibliography", "path": "refs.bib"} in by_relative["main.tex"]["dependencies"]
+
+
+def test_latex_versions_create_compare_and_restore_file(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("latex versions quest")
+    quest_root = Path(quest["quest_root"])
+    project_id = quest["quest_id"]
+
+    latex_root = quest_root / "paper" / "latex"
+    latex_root.mkdir(parents=True, exist_ok=True)
+    main_tex = latex_root / "main.tex"
+    main_tex.write_text("original source\n", encoding="utf-8")
+
+    service = QuestLatexService(quest_service)
+    folder_id = f"quest-dir::{project_id}::paper%2Flatex"
+
+    first = service.create_version(project_id, folder_id, label="Before rewrite", description="baseline")
+    assert first["ok"] is True
+    assert first["version"]["source"] == "manual"
+    assert first["version"]["folder_path"] == "paper/latex"
+    assert "paper/latex/main.tex" in first["version"]["changed_paths"]
+
+    main_tex.write_text("rewritten source\n", encoding="utf-8")
+    second = service.create_version(project_id, folder_id, label="After rewrite", allow_empty=False)
+    assert second["ok"] is True
+
+    versions = service.list_versions(project_id, folder_id)
+    assert versions["ok"] is True
+    assert [item["label"] for item in versions["versions"][:2]] == ["After rewrite", "Before rewrite"]
+
+    compare = service.compare_versions(
+        project_id,
+        folder_id,
+        base=first["version_id"],
+        head=second["version_id"],
+    )
+    assert compare["ok"] is True
+    assert compare["file_count"] == 1
+    assert compare["files"][0]["path"] == "paper/latex/main.tex"
+
+    restored = service.restore_version(
+        project_id,
+        folder_id,
+        first["version_id"],
+        mode="file",
+        path="paper/latex/main.tex",
+        expected_head=second["head"],
+    )
+    assert restored["ok"] is True
+    assert restored["restore_version"]["source"] == "restore"
+    assert main_tex.read_text(encoding="utf-8") == "original source\n"
+
+
+def test_latex_compile_records_source_version_even_without_latex_runtime(temp_home: Path, monkeypatch) -> None:
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    quest_service = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home))
+    quest = quest_service.create("latex compile version quest")
+    quest_root = Path(quest["quest_root"])
+    project_id = quest["quest_id"]
+
+    latex_root = quest_root / "paper" / "latex"
+    latex_root.mkdir(parents=True, exist_ok=True)
+    (latex_root / "main.tex").write_text(r"\documentclass{article}" + "\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        latex_runtime.RuntimeToolService,
+        "resolve_binary",
+        lambda self, binary, preferred_tools=(): {"path": None, "source": None},
+    )
+
+    service = QuestLatexService(quest_service)
+    folder_id = f"quest-dir::{project_id}::paper%2Flatex"
+    build = service.compile(project_id, folder_id, compiler="pdflatex", auto=False)
+
+    assert build["status"] == "error"
+    assert build["source_version_id"]
+    assert build["source_commit"]
+    versions = service.list_versions(project_id, folder_id)
+    assert versions["versions"][0]["source"] == "compile"
+    assert versions["versions"][0]["build_id"] == build["build_id"]

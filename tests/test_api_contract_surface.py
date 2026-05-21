@@ -147,6 +147,13 @@ def test_backend_routes_cover_shared_web_and_tui_surface() -> None:
         ("POST", "/api/v1/projects/q-001/latex/init", "latex_init"),
         ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/manifest", "latex_manifest"),
         ("POST", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/compile", "latex_compile"),
+        ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/versions", "latex_versions"),
+        ("POST", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/versions", "latex_version_create"),
+        ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/versions/compare", "latex_versions_compare"),
+        ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/versions/latex-version-001", "latex_version"),
+        ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/versions/latex-version-001/files", "latex_version_files"),
+        ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/versions/latex-version-001/file", "latex_version_file"),
+        ("POST", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/versions/latex-version-001/restore", "latex_version_restore"),
         ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/builds", "latex_builds"),
         ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/builds/latex-001", "latex_build"),
         ("GET", "/api/v1/projects/q-001/latex/quest-dir::q-001::paper%2Flatex/builds/latex-001/pdf", "latex_build_pdf"),
@@ -382,6 +389,13 @@ def test_local_workspace_does_not_route_markdown_or_commands_through_dead_notebo
     assert "external_change_save_blocked" in latex_plugin_source
     assert "LATEX_EXTERNAL_CHECK_INTERVAL_MS" in latex_plugin_source
     assert 'window.addEventListener("ds:file:diff"' in latex_plugin_source
+    assert "listLatexVersions" in latex_source
+    assert "createLatexVersion" in latex_source
+    assert "restoreLatexVersion" in latex_source
+    assert "compareLatexVersions" in latex_source
+    assert "historyOpen" in latex_plugin_source
+    assert "version_history" in latex_plugin_source
+    assert "createAutoLatexVersion" in latex_plugin_source
     assert '"text/markdown": BUILTIN_PLUGINS.NOTEBOOK' in plugin_types_source
     assert '".md": BUILTIN_PLUGINS.NOTEBOOK' in plugin_types_source
     assert 'extensions: [".md", ".markdown"],\n        mimeTypes: ["text/markdown", "text/x-markdown"],\n        priority: 95,' in plugin_init_source

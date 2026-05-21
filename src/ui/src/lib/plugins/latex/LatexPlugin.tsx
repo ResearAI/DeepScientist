@@ -13,6 +13,9 @@ import {
   ZoomOut,
   Link2,
   AtSign,
+  History,
+  RotateCcw,
+  GitCompare,
 } from "lucide-react";
 import type { PluginComponentProps } from "@/lib/types/plugin";
 import { cn } from "@/lib/utils";
@@ -41,17 +44,23 @@ import { PAGE_DIMENSIONS, ZOOM_LEVELS } from "@/lib/plugins/pdf-viewer/types";
 import { PDF_CMAP_URL, PDF_WORKER_SRC } from "@/lib/plugins/pdf-viewer/lib/pdf-utils";
 import {
   compileLatex,
+  compareLatexVersions,
+  createLatexVersion,
   getLatexManifest,
   getLatexBuild,
   getLatexBuildLogText,
   getLatexBuildPdfBlob,
   listLatexBuilds,
+  listLatexVersions,
+  restoreLatexVersion,
   syncTexEditLatexBuild,
   type LatexCompiler,
   type LatexBuildStatus,
   type LatexBuildError,
   type LatexLogItem,
   type LatexSyncTexSelection,
+  type LatexVersionCompareResponse,
+  type LatexVersionSummary,
 } from "@/lib/api/latex";
 import { useI18n } from "@/lib/i18n/useI18n";
 import { useWorkspaceSurfaceStore } from "@/lib/stores/workspace-surface";
@@ -211,6 +220,7 @@ const normalizeBuildErrors = (
 const LATEX_COMPILER_OPTIONS: LatexCompiler[] = ["pdflatex", "xelatex", "lualatex"];
 const LATEX_AUTOSAVE_DELAY_MS = 1000;
 const LATEX_EXTERNAL_CHECK_INTERVAL_MS = 4000;
+const LATEX_AUTO_VERSION_INTERVAL_MS = 5 * 60 * 1000;
 const LATEX_AUTO_COMPILE_ON_SAVE_STORAGE_PREFIX = "ds:latex:auto-compile-on-save";
 const BIB_SNIPPETS: BibSnippet[] = [
   {
@@ -687,6 +697,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const updateFileMeta = useFileTreeStore((s) => s.updateFileMeta);
 
   const [files, setFiles] = React.useState<LatexFileMeta[]>([]);
+  const [manifestRefreshNonce, setManifestRefreshNonce] = React.useState(0);
   const initialFileId = custom.openFileId ?? custom.mainFileId ?? null;
   const [activeFileId, setActiveFileId] = React.useState<string | null>(initialFileId);
   const [activeFileName, setActiveFileName] = React.useState<string>("main.tex");
@@ -719,6 +730,16 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const [compiler, setCompiler] = React.useState<LatexCompiler>("pdflatex");
   const [autoCompileOnSave, setAutoCompileOnSave] = React.useState(true);
   const [currentBranch, setCurrentBranch] = React.useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [latexVersions, setLatexVersions] = React.useState<LatexVersionSummary[]>([]);
+  const [latexVersionsHead, setLatexVersionsHead] = React.useState<string | null>(null);
+  const [selectedVersionId, setSelectedVersionId] = React.useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
+  const [historyActionBusy, setHistoryActionBusy] = React.useState(false);
+  const [historyError, setHistoryError] = React.useState<string | null>(null);
+  const [historyCompare, setHistoryCompare] = React.useState<LatexVersionCompareResponse | null>(null);
+  const [historyLabel, setHistoryLabel] = React.useState("");
+  const [historyDescription, setHistoryDescription] = React.useState("");
   const [pdfObjectUrl, setPdfObjectUrl] = React.useState<string | null>(null);
   const [logText, setLogText] = React.useState<string | null>(null);
   const [zoomScale, setZoomScale] = React.useState<number>(1);
@@ -746,6 +767,8 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const loadedRevisionRef = React.useRef<string | null>(null);
   const externalConflictRef = React.useRef<LatexExternalConflict | null>(null);
   const externalCheckInFlightRef = React.useRef(false);
+  const lastAutoVersionAtRef = React.useRef(0);
+  const aiVersionTimerRef = React.useRef<number | null>(null);
   const yDocRef = React.useRef<any>(null);
   const yTextRef = React.useRef<any>(null);
   const syncRef = React.useRef<ProjectSyncClient | null>(null);
@@ -930,6 +953,179 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     },
     [applyFileSnapshotToEditor, setExternalConflictState, syncState]
   );
+
+  const selectedLatexVersion = React.useMemo(
+    () => latexVersions.find((version) => version.version_id === selectedVersionId || version.commit === selectedVersionId) ?? latexVersions[0] ?? null,
+    [latexVersions, selectedVersionId]
+  );
+
+  const loadLatexVersionHistory = React.useCallback(async () => {
+    if (!projectId || !latexFolderId) return;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const payload = await listLatexVersions(projectId, latexFolderId, 50);
+      const versions = Array.isArray(payload.versions) ? payload.versions : [];
+      setLatexVersions(versions);
+      setLatexVersionsHead(payload.head ?? null);
+      setSelectedVersionId((current) => {
+        if (current && versions.some((version) => version.version_id === current || version.commit === current)) {
+          return current;
+        }
+        return versions[0]?.version_id ?? null;
+      });
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : t("version_history_load_failed"));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [latexFolderId, projectId, t]);
+
+  const createAutoLatexVersion = React.useCallback(
+    async (source: "auto" | "ai", label: string, description: string) => {
+      if (!projectId || !latexFolderId || viewReadOnly) return;
+      try {
+        const result = await createLatexVersion(projectId, latexFolderId, {
+          label,
+          description,
+          source,
+          author: source === "ai" ? "ai" : "system",
+          allow_empty: false,
+        });
+        if (result.ok && historyOpen) {
+          void loadLatexVersionHistory();
+        }
+      } catch (e) {
+        console.warn("[LatexPlugin] Failed to create automatic LaTeX version:", e);
+      }
+    },
+    [historyOpen, latexFolderId, loadLatexVersionHistory, projectId, viewReadOnly]
+  );
+
+  const maybeCreateTimedAutoVersion = React.useCallback(() => {
+    const now = Date.now();
+    if (now - lastAutoVersionAtRef.current < LATEX_AUTO_VERSION_INTERVAL_MS) return;
+    lastAutoVersionAtRef.current = now;
+    void createAutoLatexVersion(
+      "auto",
+      t("version_auto_label"),
+      t("version_auto_description")
+    );
+  }, [createAutoLatexVersion, t]);
+
+  const createManualLatexVersion = React.useCallback(async () => {
+    if (!projectId || !latexFolderId || viewReadOnly) return;
+    if (externalConflictRef.current) {
+      setHistoryError(t("version_resolve_external_change"));
+      return;
+    }
+    if (isDirtyRef.current) {
+      const inFlightSave = saveInFlightRef.current?.promise;
+      const saved = inFlightSave ? await inFlightSave : false;
+      if (!saved && isDirtyRef.current) {
+        setHistoryError(t("version_save_before_create"));
+        return;
+      }
+    }
+    setHistoryActionBusy(true);
+    setHistoryError(null);
+    try {
+      const result = await createLatexVersion(projectId, latexFolderId, {
+        label: historyLabel.trim() || t("version_manual_label"),
+        description: historyDescription.trim() || null,
+        source: "manual",
+        author: "user",
+        allow_empty: true,
+      });
+      if (!result.ok) {
+        setHistoryError(result.message || t("version_create_failed"));
+        return;
+      }
+      setHistoryLabel("");
+      setHistoryDescription("");
+      await loadLatexVersionHistory();
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : t("version_create_failed"));
+    } finally {
+      setHistoryActionBusy(false);
+    }
+  }, [historyDescription, historyLabel, latexFolderId, loadLatexVersionHistory, projectId, t, viewReadOnly]);
+
+  const compareSelectedLatexVersion = React.useCallback(async () => {
+    if (!projectId || !latexFolderId || !selectedLatexVersion) return;
+    setHistoryActionBusy(true);
+    setHistoryError(null);
+    try {
+      const result = await compareLatexVersions(
+        projectId,
+        latexFolderId,
+        selectedLatexVersion.version_id || selectedLatexVersion.commit,
+        latexVersionsHead || "HEAD"
+      );
+      setHistoryCompare(result);
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : t("version_compare_failed"));
+    } finally {
+      setHistoryActionBusy(false);
+    }
+  }, [latexFolderId, latexVersionsHead, projectId, selectedLatexVersion, t]);
+
+  const restoreSelectedLatexVersion = React.useCallback(
+    async (mode: "file" | "folder") => {
+      if (!projectId || !latexFolderId || !selectedLatexVersion) return;
+      if (viewReadOnly) return;
+      if (externalConflictRef.current || isDirtyRef.current) {
+        setHistoryError(t("version_restore_dirty_blocked"));
+        return;
+      }
+      const activeMeta = files.find((file) => file.id === activeFileIdRef.current) ?? null;
+      const restorePath = mode === "file" ? activeMeta?.path : null;
+      if (mode === "file" && !restorePath) {
+        setHistoryError(t("version_restore_file_missing"));
+        return;
+      }
+      const confirmed = window.confirm(
+        mode === "file"
+          ? t("version_restore_file_confirm")
+          : t("version_restore_folder_confirm")
+      );
+      if (!confirmed) return;
+      setHistoryActionBusy(true);
+      setHistoryError(null);
+      try {
+        const result = await restoreLatexVersion(projectId, latexFolderId, selectedLatexVersion.version_id, {
+          mode,
+          path: restorePath,
+          expected_head: latexVersionsHead ?? undefined,
+          conflict_policy: "fail",
+        });
+        if (!result.ok) {
+          setHistoryError(result.message || t("version_restore_failed"));
+          return;
+        }
+        setManifestRefreshNonce((value) => value + 1);
+        await loadLatexVersionHistory();
+        if (activeFileIdRef.current) {
+          try {
+            const snapshot = await getFileContentSnapshot(activeFileIdRef.current);
+            applyFileSnapshotToEditor(activeFileIdRef.current, snapshot);
+          } catch {
+            // The restored folder may have removed the active file. Manifest refresh will choose another file.
+          }
+        }
+      } catch (e) {
+        setHistoryError(e instanceof Error ? e.message : t("version_restore_failed"));
+      } finally {
+        setHistoryActionBusy(false);
+      }
+    },
+    [applyFileSnapshotToEditor, files, latexFolderId, latexVersionsHead, loadLatexVersionHistory, projectId, selectedLatexVersion, t, viewReadOnly]
+  );
+
+  React.useEffect(() => {
+    if (!historyOpen) return;
+    void loadLatexVersionHistory();
+  }, [historyOpen, loadLatexVersionHistory]);
 
   React.useEffect(() => {
     const activeFileMeta =
@@ -1124,7 +1320,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     return () => {
       cancelled = true;
     };
-  }, [custom.mainFileId, initialFileId, latexFolderId, projectId, t]);
+  }, [custom.mainFileId, initialFileId, latexFolderId, manifestRefreshNonce, projectId, t]);
 
   React.useEffect(() => {
     if (!activeFileId) return;
@@ -2060,6 +2256,9 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
 
         if (currentText === textToSave) {
           setEditorDirty(false);
+          if (trigger === "auto") {
+            maybeCreateTimedAutoVersion();
+          }
           return true;
         }
 
@@ -2108,7 +2307,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
 
     saveInFlightRef.current = { fileId, promise };
     return promise;
-  }, [activeFileId, effectiveReadOnly, setEditorDirty, setExternalConflictState, t, updateFileMeta]);
+  }, [activeFileId, effectiveReadOnly, maybeCreateTimedAutoVersion, setEditorDirty, setExternalConflictState, t, updateFileMeta]);
 
   const reloadExternalVersion = React.useCallback(() => {
     const conflict = externalConflictRef.current;
@@ -2274,16 +2473,39 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       if (detail.projectId && projectId && detail.projectId !== projectId) return;
       const activeMeta = files.find((file) => file.id === activeFileId) ?? null;
       const filePath = String(detail.filePath || "").replace(/^\/+/, "");
+      const matchedFileId =
+        (detail.fileId && files.some((file) => file.id === detail.fileId) ? detail.fileId : null) ||
+        (filePath ? resolveLatexFileId(files, filePath) : null);
       const matches =
         detail.fileId === activeFileId ||
-        (filePath && resolveLatexFileId(files, filePath) === activeFileId) ||
+        matchedFileId === activeFileId ||
         (filePath && activeMeta && [activeMeta.path, activeMeta.relativePath].filter(Boolean).includes(filePath));
-      if (!matches) return;
-      void checkExternalSnapshot("diff");
+      if (matches) {
+        void checkExternalSnapshot("diff");
+      }
+      if (matchedFileId && !viewReadOnly) {
+        if (aiVersionTimerRef.current != null) {
+          window.clearTimeout(aiVersionTimerRef.current);
+        }
+        aiVersionTimerRef.current = window.setTimeout(() => {
+          aiVersionTimerRef.current = null;
+          void createAutoLatexVersion(
+            "ai",
+            t("version_ai_label"),
+            t("version_ai_description")
+          );
+        }, 1200);
+      }
     };
     window.addEventListener("ds:file:diff", handler as EventListener);
-    return () => window.removeEventListener("ds:file:diff", handler as EventListener);
-  }, [activeFileId, checkExternalSnapshot, files, projectId]);
+    return () => {
+      window.removeEventListener("ds:file:diff", handler as EventListener);
+      if (aiVersionTimerRef.current != null) {
+        window.clearTimeout(aiVersionTimerRef.current);
+        aiVersionTimerRef.current = null;
+      }
+    };
+  }, [activeFileId, checkExternalSnapshot, createAutoLatexVersion, files, projectId, t, viewReadOnly]);
 
   React.useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -2341,6 +2563,9 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         setSynctexReady(Boolean(res.synctex_ready));
         buildStatusRef.current = res.status ?? "queued";
         setBuildStatus(res.status ?? "queued");
+        if (historyOpen) {
+          void loadLatexVersionHistory();
+        }
       } catch (e) {
         console.error("[LatexPlugin] Compile failed:", e);
         setBuildError(e instanceof Error ? e.message : t("compile_request_failed"));
@@ -2349,7 +2574,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         setBuildStatus("error");
       }
     },
-    [compiler, compileMainFileId, effectiveReadOnly, latexFolderId, projectId, save, t, viewReadOnly]
+    [compiler, compileMainFileId, effectiveReadOnly, historyOpen, latexFolderId, loadLatexVersionHistory, projectId, save, t, viewReadOnly]
   );
 
   const triggerManualSave = React.useCallback(async () => {
@@ -3104,6 +3329,21 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
             ) : null}
 
             <div className="ml-auto flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setHistoryOpen((value) => !value)}
+                className={cn(
+                  "h-7 shrink-0 whitespace-nowrap px-2 rounded-md text-xs border inline-flex items-center gap-1",
+                  "bg-white/70 border-black/10 hover:bg-white/90",
+                  "dark:bg-white/[0.04] dark:border-white/10 dark:hover:bg-white/[0.08]",
+                  historyOpen && "border-[#8FA3B8]/28 bg-[#8FA3B8]/12 text-[#405267]"
+                )}
+                title={t("version_history")}
+              >
+                <History className="h-3.5 w-3.5" />
+                <span className="hidden xl:inline">{t("version_history")}</span>
+              </button>
+
               <span
                 className={cn(
                   "inline-flex h-6 items-center whitespace-nowrap text-[11px] px-1.5 rounded-full border",
@@ -3175,6 +3415,194 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
 	              </button>
 	            </div>
 		          </div>
+
+            {historyOpen ? (
+              <div className="border-b border-black/5 bg-[#f8fafc]/80 px-3 py-3 text-sm dark:border-white/10 dark:bg-white/[0.025]">
+                <div className="flex flex-col gap-3 xl:flex-row">
+                  <div className="min-w-[260px] xl:w-[320px] xl:shrink-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-medium text-foreground">{t("version_history_title")}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {latexVersionsHead ? `${t("version_current_head")}: ${latexVersionsHead.slice(0, 8)}` : t("version_history_hint")}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-black/10 bg-white/75 px-2 text-xs hover:bg-white dark:border-white/10 dark:bg-white/[0.05]"
+                        onClick={() => void loadLatexVersionHistory()}
+                        disabled={historyLoading}
+                      >
+                        {historyLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                        {t("version_refresh")}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 space-y-2">
+                      <input
+                        value={historyLabel}
+                        onChange={(event) => setHistoryLabel(event.target.value)}
+                        placeholder={t("version_label_placeholder")}
+                        className="h-8 w-full rounded-lg border border-black/10 bg-white/80 px-3 text-xs dark:border-white/10 dark:bg-white/[0.05]"
+                      />
+                      <input
+                        value={historyDescription}
+                        onChange={(event) => setHistoryDescription(event.target.value)}
+                        placeholder={t("version_description_placeholder")}
+                        className="h-8 w-full rounded-lg border border-black/10 bg-white/80 px-3 text-xs dark:border-white/10 dark:bg-white/[0.05]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void createManualLatexVersion()}
+                        disabled={viewReadOnly || historyActionBusy}
+                        className="inline-flex h-8 w-full items-center justify-center gap-1 rounded-lg border border-[#8FA3B8]/30 bg-[#8FA3B8]/12 px-3 text-xs font-medium text-[#405267] hover:bg-[#8FA3B8]/18 disabled:opacity-50 dark:text-[#dbe6ef]"
+                      >
+                        {historyActionBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <History className="h-3.5 w-3.5" />}
+                        {t("version_create")}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 max-h-56 space-y-1 overflow-auto pr-1">
+                      {latexVersions.length > 0 ? (
+                        latexVersions.map((version) => {
+                          const selected = selectedLatexVersion?.version_id === version.version_id;
+                          return (
+                            <button
+                              type="button"
+                              key={version.version_id || version.commit}
+                              onClick={() => {
+                                setSelectedVersionId(version.version_id || version.commit);
+                                setHistoryCompare(null);
+                              }}
+                              className={cn(
+                                "w-full rounded-lg border px-3 py-2 text-left transition-colors",
+                                selected
+                                  ? "border-[#8FA3B8]/40 bg-[#8FA3B8]/14"
+                                  : "border-black/5 bg-white/60 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.03]"
+                              )}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate text-xs font-medium text-foreground">{version.label}</span>
+                                <span className="shrink-0 rounded-full border border-black/10 px-1.5 py-0.5 text-[10px] text-muted-foreground dark:border-white/10">
+                                  {version.source}
+                                </span>
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+                                <span>{version.short_commit || version.commit?.slice(0, 7)}</span>
+                                <span>{version.created_at ? new Date(version.created_at).toLocaleString(language) : ""}</span>
+                                {typeof version.file_count === "number" ? <span>{version.file_count} {t("version_files_changed")}</span> : null}
+                                {typeof version.added === "number" ? <span className="text-emerald-700 dark:text-emerald-300">+{version.added}</span> : null}
+                                {typeof version.removed === "number" ? <span className="text-rose-700 dark:text-rose-300">-{version.removed}</span> : null}
+                              </div>
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="rounded-lg border border-dashed border-black/10 px-3 py-4 text-xs text-muted-foreground dark:border-white/10">
+                          {historyLoading ? t("version_loading") : t("version_empty")}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 flex-1 rounded-xl border border-black/5 bg-white/65 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+                    {selectedLatexVersion ? (
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="break-words text-sm font-medium text-foreground">{selectedLatexVersion.label}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span>{selectedLatexVersion.short_commit || selectedLatexVersion.commit.slice(0, 8)}</span>
+                              <span>{selectedLatexVersion.source}</span>
+                              {selectedLatexVersion.author ? <span>{selectedLatexVersion.author}</span> : null}
+                              {selectedLatexVersion.build_id ? <span>{t("version_build")}: {selectedLatexVersion.build_id}</span> : null}
+                            </div>
+                            {selectedLatexVersion.description ? (
+                              <div className="mt-2 text-xs text-muted-foreground">{selectedLatexVersion.description}</div>
+                            ) : null}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void compareSelectedLatexVersion()}
+                              disabled={historyActionBusy || !latexVersionsHead}
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-black/10 bg-white/80 px-2.5 text-xs hover:bg-white disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.05]"
+                            >
+                              <GitCompare className="h-3.5 w-3.5" />
+                              {t("version_compare_current")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void restoreSelectedLatexVersion("file")}
+                              disabled={viewReadOnly || historyActionBusy}
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-amber-400/30 bg-white/80 px-2.5 text-xs text-amber-700 hover:bg-white disabled:opacity-50 dark:bg-white/[0.05] dark:text-amber-200"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              {t("version_restore_file")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void restoreSelectedLatexVersion("folder")}
+                              disabled={viewReadOnly || historyActionBusy}
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-red-400/30 bg-white/80 px-2.5 text-xs text-red-700 hover:bg-white disabled:opacity-50 dark:bg-white/[0.05] dark:text-red-200"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              {t("version_restore_project")}
+                            </button>
+                          </div>
+                        </div>
+
+                        {historyCompare ? (
+                          <div className="rounded-lg border border-black/5 bg-black/[0.02] p-3 dark:border-white/10 dark:bg-white/[0.03]">
+                            <div className="mb-2 text-xs font-medium text-muted-foreground">
+                              {t("version_compare_summary")}: {historyCompare.file_count ?? historyCompare.files?.length ?? 0} {t("version_files_changed")}
+                            </div>
+                            <div className="max-h-40 space-y-1 overflow-auto">
+                              {(historyCompare.files || []).length > 0 ? (
+                                historyCompare.files.map((file) => (
+                                  <div key={`${file.path}:${file.status}`} className="flex items-center justify-between gap-3 rounded-md bg-white/60 px-2 py-1 text-xs dark:bg-white/[0.04]">
+                                    <span className="min-w-0 truncate font-mono">{file.path}</span>
+                                    <span className="shrink-0 text-muted-foreground">
+                                      {file.status || "M"} · +{file.added ?? 0} / -{file.removed ?? 0}
+                                    </span>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-xs text-muted-foreground">{t("version_compare_empty")}</div>
+                              )}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {selectedLatexVersion.changed_paths && selectedLatexVersion.changed_paths.length > 0 ? (
+                          <div>
+                            <div className="mb-2 text-xs font-medium text-muted-foreground">{t("version_changed_files")}</div>
+                            <div className="max-h-32 space-y-1 overflow-auto">
+                              {selectedLatexVersion.changed_paths.map((path) => (
+                                <div key={path} className="truncate rounded-md bg-black/[0.03] px-2 py-1 font-mono text-xs dark:bg-white/[0.04]">
+                                  {path}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="flex h-full min-h-[160px] items-center justify-center text-xs text-muted-foreground">
+                        {t("version_select_hint")}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {historyError ? (
+                  <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-400/20 bg-red-50/80 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-200">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{historyError}</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {showAssistPanel ? (
               <div className="border-b border-black/5 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] px-3 py-3">

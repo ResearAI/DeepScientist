@@ -347,6 +347,8 @@ The editor auto-saves source edits shortly after you type. Background autosaves 
 
 If another process changes the active LaTeX source file while it is open, such as an AI edit or terminal command, the editor refreshes automatically when the local buffer has no unsaved edits. If the local buffer is dirty, autosave pauses and the editor asks you to either reload the external version or explicitly overwrite it, so an ordinary save cannot silently replace external changes.
 
+The `History` button in the LaTeX toolbar opens a Git-backed version panel scoped to the current LaTeX folder. You can create named versions, inspect changed source files, compare a version with the current workspace, and restore either the active file or the whole LaTeX project. Compile actions also record the source commit used for the build, and AI/file-diff edits are captured as automatic LaTeX versions when possible.
+
 After a successful compile, the PDF preview uses SyncTeX metadata when available. Double-click a rendered PDF word to jump back to the matching LaTeX source file and select the corresponding source token; the editor uses the PDF word box plus multiple SyncTeX samples to avoid broad line-level selections. Older builds without SyncTeX data need to be recompiled before PDF-to-source jumps are available.
 
 ### 6.5 Canvas

@@ -13,8 +13,18 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote
 
+from .gitops import compare_refs, head_commit
 from .runtime_tools import RuntimeToolService
-from .shared import ensure_dir, generate_id, resolve_within, utc_now, utf8_text_subprocess_kwargs, write_json
+from .shared import (
+    ensure_dir,
+    generate_id,
+    resolve_within,
+    run_command,
+    run_command_bytes,
+    utc_now,
+    utf8_text_subprocess_kwargs,
+    write_json,
+)
 
 _QUEST_DIR_PREFIX = "quest-dir::"
 _QUEST_FILE_PREFIX = "quest-file::"
@@ -59,6 +69,17 @@ _LATEX_RESOURCE_SUFFIXES = {
 _LATEX_MANIFEST_SUFFIXES = _LATEX_EDITABLE_SUFFIXES | _LATEX_RESOURCE_SUFFIXES
 _LATEX_INPUT_RE = re.compile(r"\\(?:input|include)\{([^}]+)\}")
 _LATEX_BIB_RE = re.compile(r"\\(?:bibliography|addbibresource)\{([^}]+)\}")
+_LATEX_VERSION_TRAILER_PREFIX = "DeepScientist-Latex-"
+_LATEX_VERSION_TRAILERS = {
+    "Version",
+    "Folder",
+    "Main",
+    "Source",
+    "Author",
+    "Build",
+    "Label",
+    "Description",
+}
 
 
 def _encode_relative(value: str) -> str:
@@ -1123,8 +1144,204 @@ class QuestLatexService:
         quest_root = self._quest_root(project_id)
         return ensure_dir(quest_root / ".ds" / "latex_builds" / _sanitize_folder_key(folder_relative))
 
+    def _folder_version_root(self, project_id: str, folder_relative: str) -> Path:
+        quest_root = self._quest_root(project_id)
+        return ensure_dir(quest_root / ".ds" / "latex_versions" / _sanitize_folder_key(folder_relative))
+
+    def _folder_version_index_path(self, project_id: str, folder_relative: str) -> Path:
+        return self._folder_version_root(project_id, folder_relative) / "index.json"
+
     def _build_record_path(self, project_id: str, folder_relative: str, build_id: str) -> Path:
         return self._folder_build_root(project_id, folder_relative) / "builds" / build_id / "build.json"
+
+    @staticmethod
+    def _git_stdout(repo: Path, args: list[str]) -> str:
+        result = run_command(["git", *args], cwd=repo, check=False)
+        if result.returncode != 0:
+            raise RuntimeError((result.stderr or result.stdout or "Git command failed.").strip())
+        return result.stdout
+
+    @staticmethod
+    def _git_bytes(repo: Path, args: list[str]) -> bytes:
+        result = run_command_bytes(["git", *args], cwd=repo, check=False)
+        if result.returncode != 0:
+            message = ""
+            try:
+                message = (result.stderr or result.stdout or b"").decode("utf-8", errors="replace").strip()
+            except Exception:
+                message = "Git command failed."
+            raise RuntimeError(message or "Git command failed.")
+        return result.stdout
+
+    @staticmethod
+    def _clean_version_text(value: Any, *, fallback: str = "", max_length: int = 500) -> str:
+        text = str(value or "").strip()
+        if not text:
+            text = fallback
+        text = re.sub(r"[\r\n]+", " ", text).strip()
+        if len(text) > max_length:
+            text = text[: max_length - 1].rstrip() + "…"
+        return text
+
+    @staticmethod
+    def _parse_latex_version_trailers(message: str) -> dict[str, str]:
+        trailers: dict[str, str] = {}
+        for raw_line in str(message or "").splitlines():
+            line = raw_line.strip()
+            if not line.startswith(_LATEX_VERSION_TRAILER_PREFIX):
+                continue
+            key, _, value = line.partition(":")
+            trailer_key = key[len(_LATEX_VERSION_TRAILER_PREFIX) :].strip()
+            if trailer_key in _LATEX_VERSION_TRAILERS:
+                trailers[trailer_key.lower()] = value.strip()
+        return trailers
+
+    def _latex_version_commit_message(
+        self,
+        *,
+        version_id: str,
+        folder_relative: str,
+        main_file_relative: str | None,
+        label: str,
+        description: str | None,
+        source: str,
+        author: str | None,
+        build_id: str | None,
+    ) -> str:
+        title = self._clean_version_text(label, fallback="LaTeX version", max_length=120)
+        body_lines = [f"latex: {title}", ""]
+        if description:
+            body_lines.extend([self._clean_version_text(description, max_length=500), ""])
+        trailers = {
+            "Version": version_id,
+            "Folder": folder_relative,
+            "Main": main_file_relative or "",
+            "Source": source,
+            "Author": author or "user",
+            "Build": build_id or "",
+            "Label": title,
+            "Description": self._clean_version_text(description or "", max_length=500),
+        }
+        for key, value in trailers.items():
+            body_lines.append(f"{_LATEX_VERSION_TRAILER_PREFIX}{key}: {value}")
+        return "\n".join(body_lines).rstrip() + "\n"
+
+    def _folder_has_git_changes(self, repo: Path, folder_relative: str) -> bool:
+        result = run_command(["git", "status", "--porcelain", "--", folder_relative], cwd=repo, check=False)
+        return bool((result.stdout or "").strip())
+
+    def _create_empty_latex_version_commit(self, repo: Path, message: str) -> tuple[bool, str | None, str | None]:
+        head = head_commit(repo)
+        if not head:
+            return False, None, "Cannot create an empty LaTeX version before the quest repository has an initial commit."
+        tree = self._git_stdout(repo, ["rev-parse", f"{head}^{{tree}}"]).strip()
+        result = run_command(["git", "commit-tree", tree, "-p", head, "-m", message], cwd=repo, check=False)
+        if result.returncode != 0:
+            return False, head, (result.stderr or result.stdout or "Failed to create LaTeX version.").strip()
+        commit = (result.stdout or "").strip()
+        if not commit:
+            return False, head, "Git did not return a commit id for the LaTeX version."
+        update = run_command(["git", "update-ref", "HEAD", commit], cwd=repo, check=False)
+        if update.returncode != 0:
+            return False, head, (update.stderr or update.stdout or "Failed to update HEAD.").strip()
+        return True, commit, None
+
+    def _latex_commit_stats(self, repo: Path, commit: str, folder_relative: str) -> dict[str, Any]:
+        try:
+            raw = self._git_stdout(
+                repo,
+                ["show", "--find-renames", "--numstat", "--format=", commit, "--", folder_relative],
+            )
+        except Exception:
+            raw = ""
+        changed_paths: list[str] = []
+        added_total = 0
+        removed_total = 0
+        for line in raw.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 3:
+                continue
+            added_raw, removed_raw, file_path = parts[0], parts[1], parts[-1]
+            file_path = file_path.strip()
+            if not file_path:
+                continue
+            changed_paths.append(file_path)
+            if added_raw.isdigit():
+                added_total += int(added_raw)
+            if removed_raw.isdigit():
+                removed_total += int(removed_raw)
+        return {
+            "changed_paths": changed_paths,
+            "file_count": len(changed_paths),
+            "added": added_total,
+            "removed": removed_total,
+        }
+
+    def _version_summary_from_commit(
+        self,
+        repo: Path,
+        *,
+        project_id: str,
+        folder_id: str,
+        folder_relative: str,
+        commit: str,
+    ) -> dict[str, Any] | None:
+        try:
+            raw = self._git_stdout(repo, ["show", "-s", "--format=%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1f%B", commit])
+        except Exception:
+            return None
+        parts = raw.split("\x1f", 5)
+        if len(parts) < 6:
+            return None
+        sha, short_sha, author_name, authored_at, subject, message = [part.strip() for part in parts]
+        trailers = self._parse_latex_version_trailers(message)
+        version_folder = trailers.get("folder")
+        if version_folder != folder_relative:
+            return None
+        version_id = trailers.get("version") or sha
+        label = trailers.get("label") or subject.removeprefix("latex:").strip() or short_sha
+        description = trailers.get("description") or None
+        stats = self._latex_commit_stats(repo, sha, folder_relative)
+        parent_raw = run_command(["git", "rev-list", "--parents", "-n", "1", sha], cwd=repo, check=False)
+        parent_parts = (parent_raw.stdout or "").strip().split()
+        parents = parent_parts[1:] if len(parent_parts) > 1 else []
+        return {
+            "version_id": version_id,
+            "commit": sha,
+            "short_commit": short_sha or sha[:7],
+            "parents": parents,
+            "compare_base": parents[0] if parents else None,
+            "folder_id": folder_id,
+            "folder_path": folder_relative,
+            "main_file_path": trailers.get("main") or None,
+            "label": label,
+            "description": description,
+            "source": trailers.get("source") or "manual",
+            "author": trailers.get("author") or author_name or None,
+            "created_at": authored_at or utc_now(),
+            "build_id": trailers.get("build") or None,
+            **stats,
+        }
+
+    def _remember_latex_version(self, project_id: str, folder_relative: str, summary: dict[str, Any]) -> None:
+        path = self._folder_version_index_path(project_id, folder_relative)
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        except (OSError, json.JSONDecodeError):
+            existing = {}
+        versions = existing.get("versions") if isinstance(existing.get("versions"), list) else []
+        version_id = str(summary.get("version_id") or "")
+        versions = [item for item in versions if not (isinstance(item, dict) and item.get("version_id") == version_id)]
+        versions.insert(0, summary)
+        write_json(
+            path,
+            {
+                "schema_version": 1,
+                "folder_path": folder_relative,
+                "updated_at": utc_now(),
+                "versions": versions[:200],
+            },
+        )
 
     def _list_build_records(self, project_id: str, folder_relative: str) -> list[dict[str, Any]]:
         builds_root = self._folder_build_root(project_id, folder_relative) / "builds"
@@ -1316,6 +1533,421 @@ class QuestLatexService:
             "files": files,
         }
 
+    def create_version(
+        self,
+        project_id: str,
+        folder_id: str,
+        *,
+        label: str | None = None,
+        description: str | None = None,
+        source: str | None = None,
+        author: str | None = None,
+        build_id: str | None = None,
+        allow_empty: bool = True,
+    ) -> dict[str, Any]:
+        folder_path, folder_relative = self._resolve_folder_path(project_id, folder_id)
+        _main_tex_path, main_tex_relative = self._resolve_main_tex(project_id, folder_path, folder_relative, None)
+        repo = self._workspace_root(project_id)
+        version_id = generate_id("latex-version")
+        resolved_source = self._clean_version_text(source, fallback="manual", max_length=40).lower().replace(" ", "_")
+        if resolved_source not in {"manual", "auto", "compile", "ai", "restore"}:
+            resolved_source = "manual"
+        default_label = {
+            "manual": "Manual version",
+            "auto": "Auto version",
+            "compile": "Compile source",
+            "ai": "AI edit",
+            "restore": "Restore version",
+        }.get(resolved_source, "LaTeX version")
+        resolved_label = self._clean_version_text(label, fallback=default_label, max_length=120)
+        resolved_description = self._clean_version_text(description, max_length=500) if description else None
+        message = self._latex_version_commit_message(
+            version_id=version_id,
+            folder_relative=folder_relative,
+            main_file_relative=main_tex_relative,
+            label=resolved_label,
+            description=resolved_description,
+            source=resolved_source,
+            author=author,
+            build_id=build_id,
+        )
+
+        has_changes = self._folder_has_git_changes(repo, folder_relative)
+        previous_head = head_commit(repo)
+        if not has_changes and not allow_empty:
+            return {
+                "ok": False,
+                "created": False,
+                "message": "No LaTeX source changes to version.",
+                "version_id": None,
+                "commit": previous_head,
+                "head": previous_head,
+                "folder_id": folder_id,
+                "folder_path": folder_relative,
+            }
+
+        if has_changes:
+            run_command(["git", "add", "-A", "--", folder_relative], cwd=repo, check=False)
+            command = ["git", "commit"]
+            if allow_empty:
+                command.append("--allow-empty")
+            command.extend(["-m", message, "--", folder_relative])
+            result = run_command(command, cwd=repo, check=False)
+            if result.returncode != 0:
+                return {
+                    "ok": False,
+                    "created": False,
+                    "message": (result.stderr or result.stdout or "Failed to create LaTeX version.").strip(),
+                    "version_id": version_id,
+                    "commit": previous_head,
+                    "head": previous_head,
+                    "folder_id": folder_id,
+                    "folder_path": folder_relative,
+                }
+            commit = head_commit(repo)
+        else:
+            ok, commit, error_message = self._create_empty_latex_version_commit(repo, message)
+            if not ok or not commit:
+                return {
+                    "ok": False,
+                    "created": False,
+                    "message": error_message or "Failed to create LaTeX version.",
+                    "version_id": version_id,
+                    "commit": previous_head,
+                    "head": previous_head,
+                    "folder_id": folder_id,
+                    "folder_path": folder_relative,
+                }
+
+        summary = self._version_summary_from_commit(
+            repo,
+            project_id=project_id,
+            folder_id=folder_id,
+            folder_relative=folder_relative,
+            commit=commit or "",
+        )
+        if not summary:
+            summary = {
+                "version_id": version_id,
+                "commit": commit,
+                "short_commit": str(commit or "")[:7],
+                "folder_id": folder_id,
+                "folder_path": folder_relative,
+                "main_file_path": main_tex_relative,
+                "label": resolved_label,
+                "description": resolved_description,
+                "source": resolved_source,
+                "author": author or "user",
+                "created_at": utc_now(),
+                "build_id": build_id,
+                "changed_paths": [],
+                "file_count": 0,
+                "added": 0,
+                "removed": 0,
+            }
+        self._remember_latex_version(project_id, folder_relative, summary)
+        return {
+            "ok": True,
+            "created": True,
+            "message": "LaTeX version created.",
+            "head": commit,
+            "previous_head": previous_head,
+            "version": summary,
+            **summary,
+        }
+
+    def list_versions(self, project_id: str, folder_id: str, limit: int = 30) -> dict[str, Any]:
+        _folder_path, folder_relative = self._resolve_folder_path(project_id, folder_id)
+        repo = self._workspace_root(project_id)
+        resolved_limit = max(1, min(int(limit or 30), 100))
+        scan_limit = max(100, resolved_limit * 8)
+        try:
+            raw = self._git_stdout(
+                repo,
+                ["log", f"-n{scan_limit}", "--format=%H%x1e"],
+            )
+        except Exception as exc:
+            return {
+                "ok": False,
+                "message": str(exc),
+                "folder_id": folder_id,
+                "folder_path": folder_relative,
+                "head": head_commit(repo),
+                "versions": [],
+            }
+
+        versions: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for record in raw.split("\x1e"):
+            commit = record.strip()
+            if not commit or commit in seen:
+                continue
+            seen.add(commit)
+            summary = self._version_summary_from_commit(
+                repo,
+                project_id=project_id,
+                folder_id=folder_id,
+                folder_relative=folder_relative,
+                commit=commit,
+            )
+            if not summary:
+                continue
+            versions.append(summary)
+            if len(versions) >= resolved_limit:
+                break
+
+        return {
+            "ok": True,
+            "folder_id": folder_id,
+            "folder_path": folder_relative,
+            "head": head_commit(repo),
+            "versions": versions,
+            "limit": resolved_limit,
+        }
+
+    def _resolve_version_commit(self, project_id: str, folder_id: str, version_id: str) -> tuple[str, dict[str, Any] | None, str]:
+        _folder_path, folder_relative = self._resolve_folder_path(project_id, folder_id)
+        repo = self._workspace_root(project_id)
+        raw = str(version_id or "").strip()
+        if not raw:
+            raise ValueError("`version_id` is required.")
+        versions = self.list_versions(project_id, folder_id, limit=100).get("versions") or []
+        for item in versions:
+            if not isinstance(item, dict):
+                continue
+            if raw in {str(item.get("version_id") or ""), str(item.get("commit") or ""), str(item.get("short_commit") or "")}:
+                return str(item.get("commit") or ""), item, folder_relative
+        result = run_command(["git", "rev-parse", "--verify", raw], cwd=repo, check=False)
+        if result.returncode == 0:
+            commit = (result.stdout or "").strip()
+            summary = self._version_summary_from_commit(
+                repo,
+                project_id=project_id,
+                folder_id=folder_id,
+                folder_relative=folder_relative,
+                commit=commit,
+            )
+            return commit, summary, folder_relative
+        raise FileNotFoundError(f"Unknown LaTeX version `{version_id}`.")
+
+    def get_version(self, project_id: str, folder_id: str, version_id: str) -> dict[str, Any]:
+        commit, summary, folder_relative = self._resolve_version_commit(project_id, folder_id, version_id)
+        return {
+            "ok": True,
+            "folder_id": folder_id,
+            "folder_path": folder_relative,
+            "version": summary,
+            **(summary or {"commit": commit}),
+        }
+
+    def version_files(self, project_id: str, folder_id: str, version_id: str) -> dict[str, Any]:
+        commit, summary, folder_relative = self._resolve_version_commit(project_id, folder_id, version_id)
+        repo = self._workspace_root(project_id)
+        raw = self._git_stdout(repo, ["ls-tree", "-r", "--name-only", commit, "--", folder_relative])
+        files: list[dict[str, Any]] = []
+        folder_path, _folder_relative = self._resolve_folder_path(project_id, folder_id)
+        main_relative = str((summary or {}).get("main_file_path") or "")
+        for relative in [line.strip() for line in raw.splitlines() if line.strip()]:
+            path = Path(relative)
+            if path.name.startswith("."):
+                continue
+            if path.suffix.lower() not in _LATEX_MANIFEST_SUFFIXES:
+                continue
+            suffix = path.suffix.lower()
+            if relative == main_relative:
+                role = "main"
+            elif suffix == ".tex":
+                role = "tex"
+            elif suffix == ".bib":
+                role = "bib"
+            elif suffix in {".cls", ".sty", ".bst", ".bbx", ".cbx"}:
+                role = "style"
+            elif suffix in _LATEX_RESOURCE_SUFFIXES:
+                role = "resource"
+            else:
+                role = "other"
+            try:
+                rel_to_folder = path.relative_to(Path(folder_relative)).as_posix()
+            except Exception:
+                rel_to_folder = path.name
+            files.append(
+                {
+                    "id": _encode_quest_file_id(project_id, relative),
+                    "name": path.name,
+                    "path": relative,
+                    "relative_path": rel_to_folder,
+                    "role": role,
+                    "editable": role in {"main", "tex", "bib", "style"},
+                    "document_id": f"git::{commit}::{relative}",
+                }
+            )
+        return {
+            "ok": True,
+            "folder_id": folder_id,
+            "folder_path": folder_relative,
+            "version": summary,
+            "commit": commit,
+            "files": files,
+            "folder_exists": folder_path.exists(),
+        }
+
+    def version_file(self, project_id: str, folder_id: str, version_id: str, path: str) -> dict[str, Any]:
+        commit, summary, folder_relative = self._resolve_version_commit(project_id, folder_id, version_id)
+        relative = str(path or "").strip().lstrip("/")
+        if not relative:
+            raise ValueError("`path` is required.")
+        if not (relative == folder_relative or relative.startswith(f"{folder_relative.rstrip('/')}/")):
+            raise ValueError("`path` must belong to the LaTeX folder.")
+        content = self._git_bytes(self._workspace_root(project_id), ["show", f"{commit}:{relative}"])
+        try:
+            text = content.decode("utf-8")
+            encoding = "utf-8"
+        except UnicodeDecodeError:
+            text = ""
+            encoding = None
+        return {
+            "ok": True,
+            "folder_id": folder_id,
+            "folder_path": folder_relative,
+            "version": summary,
+            "commit": commit,
+            "path": relative,
+            "content": text,
+            "encoding": encoding,
+            "size_bytes": len(content),
+        }
+
+    def compare_versions(self, project_id: str, folder_id: str, *, base: str, head: str) -> dict[str, Any]:
+        base_commit, base_summary, folder_relative = self._resolve_version_commit(project_id, folder_id, base)
+        head_commit_value, head_summary, _folder_relative = self._resolve_version_commit(project_id, folder_id, head)
+        repo = self._workspace_root(project_id)
+        payload = compare_refs(repo, base=base_commit, head=head_commit_value)
+        files = [
+            item
+            for item in payload.get("files", [])
+            if str(item.get("path") or "") == folder_relative
+            or str(item.get("path") or "").startswith(f"{folder_relative.rstrip('/')}/")
+        ]
+        return {
+            **payload,
+            "folder_id": folder_id,
+            "folder_path": folder_relative,
+            "base": base_commit,
+            "head": head_commit_value,
+            "base_version": base_summary,
+            "head_version": head_summary,
+            "files": files,
+            "file_count": len(files),
+        }
+
+    def _current_manifest_paths(self, folder_path: Path) -> set[str]:
+        paths: set[str] = set()
+        for path in sorted(folder_path.rglob("*")):
+            if not path.is_file():
+                continue
+            try:
+                relative = path.relative_to(folder_path).as_posix()
+            except ValueError:
+                continue
+            if any(part.startswith(".git") for part in Path(relative).parts):
+                continue
+            if self._is_manifest_file(path):
+                paths.add(relative)
+        return paths
+
+    def restore_version(
+        self,
+        project_id: str,
+        folder_id: str,
+        version_id: str,
+        *,
+        mode: str | None = None,
+        path: str | None = None,
+        expected_head: str | None = None,
+        conflict_policy: str | None = None,
+    ) -> dict[str, Any]:
+        commit, summary, folder_relative = self._resolve_version_commit(project_id, folder_id, version_id)
+        repo = self._workspace_root(project_id)
+        current_head = head_commit(repo)
+        if expected_head and current_head and str(expected_head).strip() != current_head:
+            return {
+                "ok": False,
+                "conflict": True,
+                "message": "The quest HEAD changed. Refresh the LaTeX history before restoring.",
+                "expected_head": expected_head,
+                "current_head": current_head,
+            }
+        force = str(conflict_policy or "").strip().lower() == "force"
+        if self._folder_has_git_changes(repo, folder_relative) and not force:
+            return {
+                "ok": False,
+                "conflict": True,
+                "message": "The LaTeX folder has unversioned changes. Create a version or force restore before restoring.",
+                "current_head": current_head,
+            }
+
+        folder_path, _folder_relative = self._resolve_folder_path(project_id, folder_id)
+        restore_mode = str(mode or "folder").strip().lower()
+        restored_paths: list[str] = []
+
+        if restore_mode == "file":
+            relative = str(path or "").strip().lstrip("/")
+            if not relative:
+                raise ValueError("`path` is required when restoring one file.")
+            if not (relative == folder_relative or relative.startswith(f"{folder_relative.rstrip('/')}/")):
+                raise ValueError("`path` must belong to the LaTeX folder.")
+            target_path = resolve_within(repo, relative)
+            blob = self._git_bytes(repo, ["show", f"{commit}:{relative}"])
+            ensure_dir(target_path.parent)
+            target_path.write_bytes(blob)
+            restored_paths.append(relative)
+        else:
+            raw_paths = self._git_stdout(repo, ["ls-tree", "-r", "--name-only", commit, "--", folder_relative])
+            version_paths = [
+                line.strip()
+                for line in raw_paths.splitlines()
+                if line.strip() and Path(line.strip()).suffix.lower() in _LATEX_MANIFEST_SUFFIXES
+            ]
+            version_rel_to_folder = {
+                Path(relative).relative_to(Path(folder_relative)).as_posix()
+                for relative in version_paths
+                if relative == folder_relative or relative.startswith(f"{folder_relative.rstrip('/')}/")
+            }
+            for current_relative in self._current_manifest_paths(folder_path):
+                if current_relative not in version_rel_to_folder:
+                    try:
+                        (folder_path / current_relative).unlink()
+                    except FileNotFoundError:
+                        pass
+            for relative in version_paths:
+                if not (relative == folder_relative or relative.startswith(f"{folder_relative.rstrip('/')}/")):
+                    continue
+                target_path = resolve_within(repo, relative)
+                blob = self._git_bytes(repo, ["show", f"{commit}:{relative}"])
+                ensure_dir(target_path.parent)
+                target_path.write_bytes(blob)
+                restored_paths.append(relative)
+
+        label = f"Restore {str((summary or {}).get('label') or version_id)}"
+        created = self.create_version(
+            project_id,
+            folder_id,
+            label=label,
+            description=f"Restored from LaTeX version {version_id} ({commit[:12]}).",
+            source="restore",
+            author="user",
+            allow_empty=False,
+        )
+        return {
+            "ok": bool(created.get("ok")),
+            "message": created.get("message") or "LaTeX version restored.",
+            "restored_from": summary or {"commit": commit, "version_id": version_id},
+            "restored_paths": restored_paths,
+            "restore_version": created.get("version"),
+            "head": created.get("head") or head_commit(repo),
+            "conflict": False,
+        }
+
     def init_project(
         self,
         project_id: str,
@@ -1463,7 +2095,34 @@ class QuestLatexService:
             "bibtex_binary": None,
             "auto": bool(auto),
             "stop_on_first_error": bool(stop_on_first_error),
+            "source_commit": None,
+            "source_version_id": None,
+            "source_version": None,
+            "source_version_error": None,
         }
+
+        try:
+            source_version = self.create_version(
+                project_id,
+                folder_id,
+                label="Compile source" if not auto else "Auto compile source",
+                description="Source snapshot captured before LaTeX compilation.",
+                source="compile",
+                author="system",
+                build_id=build_id,
+                allow_empty=not bool(auto),
+            )
+            if source_version.get("ok") and isinstance(source_version.get("version"), dict):
+                version_payload = dict(source_version["version"])
+                build["source_commit"] = version_payload.get("commit")
+                build["source_version_id"] = version_payload.get("version_id")
+                build["source_version"] = version_payload
+            else:
+                build["source_commit"] = source_version.get("commit") or head_commit(self._workspace_root(project_id))
+                build["source_version_error"] = source_version.get("message")
+        except Exception as exc:
+            build["source_commit"] = head_commit(self._workspace_root(project_id))
+            build["source_version_error"] = str(exc)
         write_json(metadata_path, build)
 
         runtime_tools = RuntimeToolService(self.quest_service.home)
