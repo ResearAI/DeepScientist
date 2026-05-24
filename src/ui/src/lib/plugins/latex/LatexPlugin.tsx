@@ -48,6 +48,11 @@ import { useI18n } from "@/lib/i18n/useI18n";
 import { useWorkspaceSurfaceStore } from "@/lib/stores/workspace-surface";
 import { toFilesResourcePath } from "@/lib/utils/resource-paths";
 import { supportsSocketIo } from "@/lib/runtime/quest-runtime";
+import {
+  BIBTEX_LANGUAGE_ID,
+  LATEX_LANGUAGE_ID,
+  ensureMonacoLatexLanguages,
+} from "@/lib/monaco-latex";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 configureMonacoLoader();
@@ -91,6 +96,9 @@ type LatexFileMeta = {
   path?: string;
 };
 
+type LatexSaveState = "idle" | "saving" | "error";
+type LatexSaveTrigger = "manual" | "auto" | "lifecycle" | "compile";
+
 function getLatexIssueIdentity(issue: {
   resourcePath?: string | null;
   resourceName?: string | null;
@@ -124,6 +132,14 @@ type BibSnippet = {
   snippet: string;
 };
 
+type LatexCompletionSnippet = {
+  label: string;
+  insertText: string;
+  detail: string;
+  documentation?: string;
+  filterText?: string;
+};
+
 const normalizeBuildErrors = (
   errors?: LatexBuildError[] | null,
   logItems?: LatexLogItem[] | null
@@ -140,6 +156,8 @@ const normalizeBuildErrors = (
 };
 
 const LATEX_COMPILER_OPTIONS: LatexCompiler[] = ["pdflatex", "xelatex", "lualatex"];
+const LATEX_AUTOSAVE_DELAY_MS = 1000;
+const LATEX_AUTO_COMPILE_ON_SAVE_STORAGE_PREFIX = "ds:latex:auto-compile-on-save";
 const BIB_SNIPPETS: BibSnippet[] = [
   {
     id: "article",
@@ -161,9 +179,111 @@ const BIB_SNIPPETS: BibSnippet[] = [
   },
 ];
 
+const LATEX_ENVIRONMENT_SNIPPETS: LatexCompletionSnippet[] = [
+  {
+    label: "begin{comment}",
+    filterText: "\\begin{comment}",
+    detail: "comment environment",
+    insertText: "\\begin{comment}\n\t$0\n\\end{comment}",
+    documentation: "Insert a complete comment environment.",
+  },
+  {
+    label: "begin{figure}",
+    filterText: "\\begin{figure}",
+    detail: "figure environment",
+    insertText: "\\begin{figure}[${1:htbp}]\n\t\\centering\n\t$0\n\t\\caption{${2:Caption}}\n\t\\label{fig:${3:label}}\n\\end{figure}",
+  },
+  {
+    label: "begin{table}",
+    filterText: "\\begin{table}",
+    detail: "table environment",
+    insertText: "\\begin{table}[${1:htbp}]\n\t\\centering\n\t$0\n\t\\caption{${2:Caption}}\n\t\\label{tab:${3:label}}\n\\end{table}",
+  },
+  {
+    label: "begin{equation}",
+    filterText: "\\begin{equation}",
+    detail: "equation environment",
+    insertText: "\\begin{equation}\n\t$0\n\\end{equation}",
+  },
+  {
+    label: "begin{align}",
+    filterText: "\\begin{align}",
+    detail: "align environment",
+    insertText: "\\begin{align}\n\t$0\n\\end{align}",
+  },
+  {
+    label: "begin{itemize}",
+    filterText: "\\begin{itemize}",
+    detail: "itemize environment",
+    insertText: "\\begin{itemize}\n\t\\item $0\n\\end{itemize}",
+  },
+  {
+    label: "begin{enumerate}",
+    filterText: "\\begin{enumerate}",
+    detail: "enumerate environment",
+    insertText: "\\begin{enumerate}\n\t\\item $0\n\\end{enumerate}",
+  },
+];
+
+const LATEX_COMMAND_SNIPPETS: LatexCompletionSnippet[] = [
+  {
+    label: "\\begin",
+    detail: "LaTeX environment",
+    insertText: "\\begin{${1:environment}}\n\t$0\n\\end{${1:environment}}",
+  },
+  {
+    label: "\\section",
+    detail: "section heading",
+    insertText: "\\section{${1:Title}}",
+  },
+  {
+    label: "\\subsection",
+    detail: "subsection heading",
+    insertText: "\\subsection{${1:Title}}",
+  },
+  {
+    label: "\\label",
+    detail: "label",
+    insertText: "\\label{${1:key}}",
+  },
+  {
+    label: "\\ref",
+    detail: "reference",
+    insertText: "\\ref{${1:key}}",
+  },
+  {
+    label: "\\eqref",
+    detail: "equation reference",
+    insertText: "\\eqref{${1:key}}",
+  },
+  {
+    label: "\\cite",
+    detail: "citation",
+    insertText: "\\cite{${1:key}}",
+  },
+  {
+    label: "\\textbf",
+    detail: "bold text",
+    insertText: "\\textbf{${1:text}}",
+  },
+  {
+    label: "\\emph",
+    detail: "emphasized text",
+    insertText: "\\emph{${1:text}}",
+  },
+];
+
 function normalizeCompiler(value?: string | null): LatexCompiler {
   if (value === "xelatex" || value === "lualatex") return value;
   return "pdflatex";
+}
+
+function latexAutoCompileOnSaveStorageKey(projectId?: string, folderId?: string) {
+  return [
+    LATEX_AUTO_COMPILE_ON_SAVE_STORAGE_PREFIX,
+    projectId || "unknown-project",
+    folderId || "unknown-folder",
+  ].join(":");
 }
 
 function normalizeLatexPath(value?: string | null) {
@@ -287,16 +407,24 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const initialFileId = custom.openFileId ?? custom.mainFileId ?? null;
   const [activeFileId, setActiveFileId] = React.useState<string | null>(initialFileId);
   const [activeFileName, setActiveFileName] = React.useState<string>("main.tex");
+  const compileMainFileId = React.useMemo(() => {
+    if (custom.mainFileId) return custom.mainFileId;
+    return files.find((file) => file.name.toLowerCase() === "main.tex")?.id ?? null;
+  }, [custom.mainFileId, files]);
   const [initialText, setInitialText] = React.useState<string>("");
   const [syncState, setSyncState] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
-  const [saveState, setSaveState] = React.useState<"idle" | "saving" | "error">("idle");
+  const [saveState, setSaveState] = React.useState<LatexSaveState>("idle");
+  const [saveTrigger, setSaveTrigger] = React.useState<LatexSaveTrigger>("manual");
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isDirty, setIsDirty] = React.useState(false);
+  const [dirtyVersion, setDirtyVersion] = React.useState(0);
   const [buildId, setBuildId] = React.useState<string | null>(null);
   const [buildStatus, setBuildStatus] = React.useState<LatexBuildStatus | "idle">("idle");
   const [buildError, setBuildError] = React.useState<string | null>(null);
   const [buildErrors, setBuildErrors] = React.useState<LatexBuildError[]>([]);
   const [compiler, setCompiler] = React.useState<LatexCompiler>("pdflatex");
+  const [autoCompileOnSave, setAutoCompileOnSave] = React.useState(true);
   const [currentBranch, setCurrentBranch] = React.useState<string | null>(null);
   const [pdfObjectUrl, setPdfObjectUrl] = React.useState<string | null>(null);
   const [logText, setLogText] = React.useState<string | null>(null);
@@ -314,6 +442,13 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const emptyHighlights = React.useMemo(() => [] as IHighlight[], []);
 
   const lastSavedRef = React.useRef<string>("");
+  const isDirtyRef = React.useRef(false);
+  const saveStateRef = React.useRef<LatexSaveState>("idle");
+  const buildStatusRef = React.useRef<LatexBuildStatus | "idle">("idle");
+  const activeFileIdRef = React.useRef<string | null>(activeFileId);
+  const saveInFlightRef = React.useRef<{ fileId: string; promise: Promise<boolean> } | null>(null);
+  const failedSaveTextRef = React.useRef<string | null>(null);
+  const lastSaveTriggerRef = React.useRef<LatexSaveTrigger>("manual");
   const yDocRef = React.useRef<any>(null);
   const yTextRef = React.useRef<any>(null);
   const syncRef = React.useRef<ProjectSyncClient | null>(null);
@@ -341,6 +476,68 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
   const isBibFile = activeFileName.toLowerCase().endsWith(".bib");
 
   React.useEffect(() => {
+    activeFileIdRef.current = activeFileId;
+  }, [activeFileId]);
+
+  React.useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+
+  React.useEffect(() => {
+    saveStateRef.current = saveState;
+  }, [saveState]);
+
+  React.useEffect(() => {
+    buildStatusRef.current = buildStatus;
+  }, [buildStatus]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(
+      latexAutoCompileOnSaveStorageKey(projectId, latexFolderId)
+    );
+    // Default-on: only an explicit "0" disables manual-save auto compile.
+    setAutoCompileOnSave(stored !== "0");
+  }, [latexFolderId, projectId]);
+
+  const updateAutoCompileOnSave = React.useCallback(
+    (enabled: boolean) => {
+      setAutoCompileOnSave(enabled);
+      if (typeof window === "undefined") return;
+      window.localStorage.setItem(
+        latexAutoCompileOnSaveStorageKey(projectId, latexFolderId),
+        enabled ? "1" : "0"
+      );
+    },
+    [latexFolderId, projectId]
+  );
+
+  const setEditorDirty = React.useCallback(
+    (nextDirty: boolean) => {
+      isDirtyRef.current = nextDirty;
+      setIsDirty(nextDirty);
+      setDirty(nextDirty);
+    },
+    [setDirty]
+  );
+
+  const markDirty = React.useCallback(() => {
+    failedSaveTextRef.current = null;
+    setSaveError(null);
+    setEditorDirty(true);
+    setDirtyVersion((version) => version + 1);
+    if (saveStateRef.current === "error") {
+      saveStateRef.current = "idle";
+      setSaveState("idle");
+    }
+  }, [setEditorDirty]);
+
+  const getCurrentText = React.useCallback(() => {
+    const ytext = yTextRef.current;
+    return ytext ? String(ytext.toString?.() ?? "") : "";
+  }, []);
+
+  React.useEffect(() => {
     const activeFileMeta =
       files.find((file) => file.id === activeFileId) ??
       files.find((file) => file.name === activeFileName) ??
@@ -356,7 +553,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
           ? "compiling"
           : saveState === "saving"
             ? "saving"
-            : buildStatus === "error"
+            : saveState === "error" || saveError || buildStatus === "error"
               ? "error"
               : "idle",
       diagnostics: {
@@ -372,6 +569,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     context.resourceName,
     effectiveReadOnly,
     files,
+    saveError,
     saveState,
     tabId,
     updateWorkspaceTabState,
@@ -565,6 +763,12 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     let cleanup: null | (() => void) = null;
 
     setSyncState("loading");
+    saveStateRef.current = "idle";
+    setSaveState("idle");
+    lastSaveTriggerRef.current = "manual";
+    setSaveTrigger("manual");
+    failedSaveTextRef.current = null;
+    setSaveError(null);
     setError(null);
 
     (async () => {
@@ -587,8 +791,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         const textNow = ytext.toString();
         setInitialText(textNow);
         lastSavedRef.current = textNow;
-        setIsDirty(false);
-        setDirty(false);
+        setEditorDirty(false);
         setSyncState("ready");
 
         cleanup = () => {
@@ -732,8 +935,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       const textNow = ytext.toString();
       setInitialText(textNow);
       lastSavedRef.current = textNow;
-      setIsDirty(false);
-      setDirty(false);
+      setEditorDirty(false);
       setSyncState("ready");
 
       cleanup = () => {
@@ -794,7 +996,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       cancelled = true;
       cleanup?.();
     };
-  }, [activeFileId, canUseRealtimeSync, effectiveReadOnly, projectId, resetNonce, setDirty, socketAuthMode, t, user?.id, user?.username]);
+  }, [activeFileId, canUseRealtimeSync, effectiveReadOnly, projectId, resetNonce, setEditorDirty, socketAuthMode, t, user?.id, user?.username]);
 
   const jumpEditorToLine = React.useCallback((line: number) => {
     const editor = editorRef.current;
@@ -838,9 +1040,8 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       },
     ]);
     editor.focus?.();
-    setIsDirty(true);
-    setDirty(true);
-  }, [effectiveReadOnly, setDirty]);
+    markDirty();
+  }, [effectiveReadOnly, markDirty]);
 
   const insertCitation = React.useCallback(
     (entry: CitationEntry, command = "\\cite") => {
@@ -934,15 +1135,8 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       const model = editor.getModel?.();
       if (!model) return;
 
-      const ensureLanguage = (id: string) => {
-        const languages = monaco.languages.getLanguages?.() || [];
-        if (!languages.some((item: { id: string }) => item.id === id)) {
-          monaco.languages.register({ id });
-        }
-      };
-      ensureLanguage("latex-ds");
-      ensureLanguage("bibtex-ds");
-      monaco.editor.setModelLanguage(model, isBibFile ? "bibtex-ds" : "latex-ds");
+      ensureMonacoLatexLanguages(monaco);
+      monaco.editor.setModelLanguage(model, isBibFile ? BIBTEX_LANGUAGE_ID : LATEX_LANGUAGE_ID);
 
       latexCompletionDisposablesRef.current.forEach((disposable) => {
         try {
@@ -952,8 +1146,8 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         }
       });
       latexCompletionDisposablesRef.current = [
-        monaco.languages.registerCompletionItemProvider("latex-ds", {
-          triggerCharacters: ["\\", "{"],
+        monaco.languages.registerCompletionItemProvider(LATEX_LANGUAGE_ID, {
+          triggerCharacters: ["\\", "{", "}"],
           provideCompletionItems: (targetModel: any, position: any) => {
             const linePrefix = targetModel.getValueInRange({
               startLineNumber: position.lineNumber,
@@ -968,6 +1162,30 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
               position.lineNumber,
               word.endColumn
             );
+            const beginMatch = linePrefix.match(/\\begin\{([A-Za-z*]*)\}?$/);
+            if (beginMatch) {
+              const replaceRange = new monaco.Range(
+                position.lineNumber,
+                position.column - beginMatch[0].length,
+                position.lineNumber,
+                position.column
+              );
+              const envPrefix = beginMatch[1].toLowerCase();
+              return {
+                suggestions: LATEX_ENVIRONMENT_SNIPPETS.filter((item) =>
+                  item.label.toLowerCase().startsWith(`begin{${envPrefix}`)
+                ).map((item) => ({
+                  label: item.label,
+                  kind: monaco.languages.CompletionItemKind.Snippet,
+                  insertText: item.insertText,
+                  insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                  detail: item.detail,
+                  documentation: item.documentation,
+                  filterText: item.filterText,
+                  range: replaceRange,
+                })),
+              };
+            }
 
             if (/\\(?:cite|citet|citep|autocite|parencite)\{[^}]*$/i.test(linePrefix)) {
               return {
@@ -994,10 +1212,31 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
               };
             }
 
-            return { suggestions: [] };
+            const commandMatch = linePrefix.match(/\\[A-Za-z]*$/);
+            const commandRange = commandMatch
+              ? new monaco.Range(
+                  position.lineNumber,
+                  position.column - commandMatch[0].length,
+                  position.lineNumber,
+                  position.column
+                )
+              : range;
+
+            return {
+              suggestions: LATEX_COMMAND_SNIPPETS.map((item) => ({
+                label: item.label,
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                insertText: item.insertText,
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                detail: item.detail,
+                documentation: item.documentation,
+                filterText: item.filterText,
+                range: commandRange,
+              })),
+            };
           },
         }),
-        monaco.languages.registerCompletionItemProvider("bibtex-ds", {
+        monaco.languages.registerCompletionItemProvider(BIBTEX_LANGUAGE_ID, {
           triggerCharacters: ["@"],
           provideCompletionItems: (_targetModel: any, position: any) => {
             const range = new monaco.Range(
@@ -1076,7 +1315,9 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         const origin = event?.transaction?.origin;
         if (origin !== remoteOrigin) return;
         applyDelta(event.delta ?? []);
-        setIsDirty(true);
+        if (!effectiveReadOnly) {
+          markDirty();
+        }
       };
       ytext.observe(yObserver);
 
@@ -1097,7 +1338,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
             if (text) ytext.insert(offset, text);
           }
         }, "ds-monaco");
-        setIsDirty(true);
+        markDirty();
       });
 
       bindingCleanupRef.current = () => {
@@ -1117,7 +1358,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         flushPendingJump();
       });
     },
-    [effectiveReadOnly, flushPendingJump, isBibFile, setDirty, t]
+    [effectiveReadOnly, flushPendingJump, isBibFile, markDirty, t]
   );
 
   React.useEffect(() => {
@@ -1125,41 +1366,141 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
     flushPendingJump();
   }, [activeFileId, flushPendingJump, resetNonce, syncState]);
 
-  const save = React.useCallback(async () => {
+  const save = React.useCallback(async (trigger: LatexSaveTrigger = "manual") => {
     if (!activeFileId) return false;
     if (effectiveReadOnly) return false;
     const ytext = yTextRef.current;
     if (!ytext) return false;
-    try {
-      setSaveState("saving");
-      const text = String(ytext.toString?.() ?? "");
-      const res = await updateFileContent(activeFileId, text);
-      lastSavedRef.current = text;
-      setSaveState("idle");
-      setIsDirty(false);
-      setDirty(false);
-      if (res?.updated_at) {
-        updateFileMeta(activeFileId, {
-          updatedAt: res.updated_at,
-          size: typeof res.size === "number" ? res.size : undefined,
-          mimeType: res.mime_type,
-        });
-      }
-      return true;
-    } catch (e) {
-      console.error("[LatexPlugin] Save failed:", e);
-      setSaveState("error");
-      window.setTimeout(() => setSaveState("idle"), 1400);
-      return false;
+
+    const activeInFlight = saveInFlightRef.current;
+    if (activeInFlight && activeInFlight.fileId === activeFileId) {
+      lastSaveTriggerRef.current = trigger;
+      setSaveTrigger(trigger);
+      return activeInFlight.promise;
     }
-  }, [activeFileId, effectiveReadOnly, setDirty, updateFileMeta]);
+
+    const fileId = activeFileId;
+    const textToSave = String(ytext.toString?.() ?? "");
+    lastSaveTriggerRef.current = trigger;
+    setSaveTrigger(trigger);
+
+    let promise: Promise<boolean>;
+    promise = (async () => {
+      try {
+        saveStateRef.current = "saving";
+        failedSaveTextRef.current = null;
+        setSaveError(null);
+        setSaveState("saving");
+        const res = await updateFileContent(fileId, textToSave);
+
+        if (res?.updated_at) {
+          updateFileMeta(fileId, {
+            updatedAt: res.updated_at,
+            size: typeof res.size === "number" ? res.size : undefined,
+            mimeType: res.mime_type,
+          });
+        }
+
+        if (activeFileIdRef.current !== fileId) {
+          return true;
+        }
+
+        const currentYText = yTextRef.current;
+        const currentText = currentYText ? String(currentYText.toString?.() ?? "") : "";
+        lastSavedRef.current = textToSave;
+        saveStateRef.current = "idle";
+        setSaveState("idle");
+
+        if (currentText === textToSave) {
+          setEditorDirty(false);
+          return true;
+        }
+
+        setEditorDirty(true);
+        return false;
+      } catch (e) {
+        console.error("[LatexPlugin] Save failed:", e);
+        if (activeFileIdRef.current === fileId) {
+          failedSaveTextRef.current = textToSave;
+          saveStateRef.current = "error";
+          setSaveError(e instanceof Error ? e.message : t("save_request_failed"));
+          setSaveState("error");
+          setEditorDirty(true);
+        }
+        return false;
+      } finally {
+        if (saveInFlightRef.current?.promise === promise) {
+          saveInFlightRef.current = null;
+        }
+      }
+    })();
+
+    saveInFlightRef.current = { fileId, promise };
+    return promise;
+  }, [activeFileId, effectiveReadOnly, setEditorDirty, t, updateFileMeta]);
+
+  React.useEffect(() => {
+    if (!activeFileId) return;
+    if (effectiveReadOnly) return;
+    if (syncState !== "ready") return;
+    if (!isDirty) return;
+    if (saveState === "saving") return;
+
+    const currentText = getCurrentText();
+    if (saveState === "error" && failedSaveTextRef.current === currentText) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      if (!activeFileIdRef.current) return;
+      if (!isDirtyRef.current) return;
+      if (saveStateRef.current === "saving") return;
+      const latestText = getCurrentText();
+      if (saveStateRef.current === "error" && failedSaveTextRef.current === latestText) {
+        return;
+      }
+      void save("auto");
+    }, LATEX_AUTOSAVE_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [activeFileId, dirtyVersion, effectiveReadOnly, getCurrentText, isDirty, save, saveState, syncState]);
+
+  React.useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!isDirtyRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+      return "";
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "hidden") return;
+      if (!isDirtyRef.current) return;
+      void save("lifecycle").then((saved) => {
+        if (saved) return;
+        if (!isDirtyRef.current) return;
+        if (saveStateRef.current === "saving") return;
+        void save("lifecycle");
+      });
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [save]);
 
   const compile = React.useCallback(
     async (opts?: { auto?: boolean }) => {
       if (!projectId || !latexFolderId) return;
       if (viewReadOnly) return;
-      if (isDirty && !effectiveReadOnly) {
-        const saved = await save();
+      if (buildStatusRef.current === "queued" || buildStatusRef.current === "running") return;
+      if (!effectiveReadOnly && (isDirtyRef.current || saveStateRef.current === "saving")) {
+        const saved = await save("compile");
         if (!saved) return;
       }
 
@@ -1167,23 +1508,60 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
         setBuildError(null);
         setBuildErrors([]);
         setLogText(null);
+        buildStatusRef.current = "queued";
         setBuildStatus("queued");
         const res = await compileLatex(projectId, latexFolderId, {
           compiler,
+          main_file_id: compileMainFileId,
           auto: Boolean(opts?.auto),
           stop_on_first_error: false,
         });
         setBuildId(res.build_id);
         setCompiler(normalizeCompiler(res.compiler));
+        buildStatusRef.current = res.status ?? "queued";
         setBuildStatus(res.status ?? "queued");
       } catch (e) {
         console.error("[LatexPlugin] Compile failed:", e);
         setBuildError(e instanceof Error ? e.message : t("compile_request_failed"));
+        buildStatusRef.current = "error";
         setBuildStatus("error");
       }
     },
-    [compiler, effectiveReadOnly, isDirty, latexFolderId, projectId, save, t, viewReadOnly]
+    [compiler, compileMainFileId, effectiveReadOnly, latexFolderId, projectId, save, t, viewReadOnly]
   );
+
+  const triggerManualSave = React.useCallback(async () => {
+    const targetFileId = activeFileIdRef.current;
+    if (!targetFileId || effectiveReadOnly) return;
+
+    let saved = await save("manual");
+    // A manual save may have joined an in-flight autosave that captured older text.
+    // Retry once so Ctrl/Cmd+S means "save the text I see now", then compile.
+    if (!saved && isDirtyRef.current && activeFileIdRef.current === targetFileId) {
+      saved = await save("manual");
+    }
+
+    if (!saved) return;
+    if (isDirtyRef.current) return;
+    if (activeFileIdRef.current !== targetFileId) return;
+    if (!autoCompileOnSave) return;
+    if (viewReadOnly) return;
+    if (buildStatusRef.current === "queued" || buildStatusRef.current === "running") return;
+
+    void compile({ auto: true });
+  }, [autoCompileOnSave, compile, effectiveReadOnly, save, viewReadOnly]);
+
+  React.useEffect(() => {
+    if (!activeFileId || effectiveReadOnly) return;
+    const handler = (event: KeyboardEvent) => {
+      const isSave = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s";
+      if (!isSave) return;
+      event.preventDefault();
+      void triggerManualSave();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [activeFileId, effectiveReadOnly, triggerManualSave]);
 
   React.useEffect(() => {
     if (!projectId || !latexFolderId) return;
@@ -1382,10 +1760,18 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       };
     }
     if (saveState === "saving") {
+      const autosaveLike = saveTrigger === "auto" || saveTrigger === "lifecycle";
       return {
-        label: t("status_saving"),
+        label: autosaveLike ? t("status_autosaving") : t("status_saving"),
         className:
           "border-[#A6B0B6]/30 bg-[#A6B0B6]/12 text-[#5c666b] dark:bg-[#A6B0B6]/12 dark:text-[#d8dde0]",
+      };
+    }
+    if (saveError || saveState === "error") {
+      return {
+        label: t("status_save_failed"),
+        className:
+          "border-red-400/30 bg-red-50/80 text-red-600 dark:bg-red-500/10 dark:text-red-200",
       };
     }
     if (isDirty) {
@@ -1407,7 +1793,7 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
       className:
         "border-[#9AA79A]/30 bg-[#9AA79A]/12 text-[#5f6b5f] dark:bg-[#9AA79A]/12 dark:text-[#dbe4db]",
     };
-  }, [buildStatus, effectiveReadOnly, isDirty, saveState, t]);
+  }, [buildStatus, effectiveReadOnly, isDirty, saveError, saveState, saveTrigger, t]);
 
   const buildFocusedIssue = React.useCallback(
     (issue: LatexBuildError) => {
@@ -1779,6 +2165,25 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
               </select>
             </div>
 
+            <label
+              className={cn(
+                "h-8 px-2.5 rounded-lg text-xs border inline-flex items-center gap-2",
+                "bg-white/70 border-black/10 text-muted-foreground",
+                "dark:bg-white/[0.04] dark:border-white/10",
+                viewReadOnly && "opacity-70"
+              )}
+              title={t("auto_compile_on_save_hint")}
+            >
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-[#8FA3B8]"
+                checked={autoCompileOnSave}
+                disabled={viewReadOnly}
+                onChange={(event) => updateAutoCompileOnSave(event.target.checked)}
+              />
+              <span>{t("auto_compile_on_save")}</span>
+            </label>
+
             {!isBibFile ? (
               <button
                 type="button"
@@ -1841,8 +2246,8 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
 
               <button
                 type="button"
-                onClick={save}
-                disabled={effectiveReadOnly || saveState === "saving" || !isDirty}
+                onClick={() => void triggerManualSave()}
+                disabled={effectiveReadOnly || saveState === "saving"}
                 className={cn(
                   "h-8 px-3 rounded-lg text-sm font-medium border",
                   "bg-white/70 border-black/10 hover:bg-white/90",
@@ -2040,8 +2445,15 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
               <MonacoEditor
                 key={`${activeFileId ?? "latex"}:${resetNonce}`}
                 defaultValue={initialText}
-                language="plaintext"
+                language={isBibFile ? BIBTEX_LANGUAGE_ID : LATEX_LANGUAGE_ID}
                 theme={isDark ? "vs-dark" : "light"}
+                beforeMount={(monaco) => {
+                  try {
+                    ensureMonacoLatexLanguages(monaco);
+                  } catch (e) {
+                    console.error("[LatexPlugin] Failed to configure LaTeX language:", e);
+                  }
+                }}
                 onMount={(editor, monaco) => {
                   try {
                     bindEditor(editor, monaco);
@@ -2051,14 +2463,36 @@ export default function LatexPlugin({ context, tabId, setDirty, setTitle }: Plug
                 }}
                 options={{
                   readOnly: effectiveReadOnly,
+                  automaticLayout: true,
                   minimap: { enabled: false },
                   wordWrap: "on",
                   fontSize: 13,
                   scrollBeyondLastLine: false,
+                  tabCompletion: "on",
+                  quickSuggestions: { other: true, comments: false, strings: false },
+                  suggestOnTriggerCharacters: true,
+                  acceptSuggestionOnCommitCharacter: true,
+                  renderWhitespace: "selection",
+                  tabSize: 2,
+                  insertSpaces: true,
                 }}
               />
             )}
           </div>
+
+        {saveError ? (
+          <div className="border-t border-black/5 dark:border-white/10 p-4 text-sm">
+            <div className="flex items-start gap-2 text-red-600">
+              <AlertTriangle className="h-4 w-4 mt-0.5" />
+              <div className="min-w-0">
+                <div className="font-medium">{t("save_failed_title")}</div>
+                <div className="text-xs opacity-90 break-words">
+                  {saveError}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {buildStatus === "error" ? (
           <div className="border-t border-black/5 dark:border-white/10 p-4 text-sm max-h-[35vh] overflow-auto">
