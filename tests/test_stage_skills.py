@@ -272,7 +272,7 @@ def test_scout_skill_requires_memory_first_literature_report() -> None:
     assert template.exists()
 
 
-def test_quest_creation_syncs_all_stage_skills(temp_home: Path) -> None:
+def test_quest_creation_syncs_enabled_stage_skills(temp_home: Path) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
     quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create("skill sync quest")
@@ -289,16 +289,42 @@ def test_quest_creation_syncs_all_stage_skills(temp_home: Path) -> None:
     synced_opencode = {path.name.removeprefix("deepscientist-") for path in opencode_skills}
 
     assert EXPECTED_STAGE_SKILLS.issubset(synced_codex)
-    assert EXPECTED_STAGE_SKILLS.issubset(synced_claude)
-    assert EXPECTED_STAGE_SKILLS.issubset(synced_kimi)
-    assert EXPECTED_STAGE_SKILLS.issubset(synced_opencode)
     assert EXPECTED_COMPANION_SKILLS.issubset(synced_codex)
-    assert EXPECTED_COMPANION_SKILLS.issubset(synced_claude)
-    assert EXPECTED_COMPANION_SKILLS.issubset(synced_kimi)
-    assert EXPECTED_COMPANION_SKILLS.issubset(synced_opencode)
+    assert synced_claude == set()
+    assert synced_kimi == set()
+    assert synced_opencode == set()
     assert (quest_root / ".codex" / "prompts" / "system.md").exists()
     assert (quest_root / ".codex" / "prompts" / "contracts" / "shared_interaction.md").exists()
     assert (quest_root / ".codex" / "prompts" / "connectors" / "qq.md").exists()
+
+
+def test_quest_creation_syncs_only_configured_enabled_runner_skills(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+    runners = manager.load_runners_config()
+    for runner in runners.values():
+        if isinstance(runner, dict):
+            runner["enabled"] = False
+    runners["claude"]["enabled"] = True
+    manager.save_named_payload("runners", runners)
+
+    quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create("claude skill sync quest")
+    quest_root = Path(quest["quest_root"])
+
+    codex_skills = sorted((quest_root / ".codex" / "skills").glob("deepscientist-*"))
+    claude_skills = sorted((quest_root / ".claude" / "agents").glob("deepscientist-*.md"))
+    kimi_skills = sorted((quest_root / ".kimi" / "skills").glob("deepscientist-*"))
+    opencode_skills = sorted((quest_root / ".opencode" / "skills").glob("deepscientist-*"))
+
+    synced_claude = {path.stem.removeprefix("deepscientist-") for path in claude_skills}
+
+    assert codex_skills == []
+    assert EXPECTED_STAGE_SKILLS.issubset(synced_claude)
+    assert EXPECTED_COMPANION_SKILLS.issubset(synced_claude)
+    assert kimi_skills == []
+    assert opencode_skills == []
+    assert (quest_root / ".codex" / "prompts" / "system.md").exists()
 
 
 def test_skill_resync_repairs_frontmatter_and_removes_stale_files(temp_home: Path) -> None:
@@ -329,8 +355,28 @@ def test_skill_resync_repairs_frontmatter_and_removes_stale_files(temp_home: Pat
     assert "name:" in repaired
     assert not stale_file.exists()
     assert not stale_removed_codex.exists()
-    assert not stale_removed_claude.exists()
-    assert not stale_removed_kimi.exists()
+    assert stale_removed_claude.exists()
+    assert stale_removed_kimi.exists()
+
+
+def test_sync_quest_does_not_sync_disabled_runner_skills(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+    runners = manager.load_runners_config()
+    for runner in runners.values():
+        if isinstance(runner, dict):
+            runner["enabled"] = False
+    runners["codex"]["enabled"] = True
+    manager.save_named_payload("runners", runners)
+
+    quest = QuestService(temp_home, skill_installer=SkillInstaller(repo_root(), temp_home)).create("disabled runner roots quest")
+    quest_root = Path(quest["quest_root"])
+
+    assert sorted((quest_root / ".codex" / "skills").glob("deepscientist-*"))
+    assert sorted((quest_root / ".claude" / "agents").glob("deepscientist-*.md")) == []
+    assert sorted((quest_root / ".kimi" / "skills").glob("deepscientist-*")) == []
+    assert sorted((quest_root / ".opencode" / "skills").glob("deepscientist-*")) == []
 
 
 def test_paper_reading_stage_skills_use_artifact_arxiv_and_legacy_skill_is_removed() -> None:

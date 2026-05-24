@@ -16,46 +16,71 @@ _PROMPT_VERSIONS_INDEX_FILENAME = "index.json"
 
 
 class SkillInstaller:
-    def __init__(self, repo_root: Path, home: Path) -> None:
+    def __init__(self, repo_root: Path, home: Path, runners_config: dict | None = None) -> None:
         self.repo_root = repo_root
         self.home = home
+        self.runners_config = runners_config if isinstance(runners_config, dict) else self._load_runners_config()
+
+    def _load_runners_config(self) -> dict:
+        try:
+            from ..config import ConfigManager
+
+            return ConfigManager(self.home).load_runners_config()
+        except Exception:
+            return {}
+
+    def _is_runner_enabled(self, runner_name: str) -> bool:
+        runner = self.runners_config.get(runner_name, {})
+        return bool(runner.get("enabled", False))
 
     def discover(self):
         return discover_skill_bundles(self.repo_root)
 
     def sync_global(self) -> dict:
-        codex_root = ensure_dir(Path.home() / ".codex" / "skills")
-        claude_root = ensure_dir(Path.home() / ".claude" / "agents")
-        kimi_root = ensure_dir(Path.home() / ".kimi" / "skills")
-        opencode_root = ensure_dir(Path.home() / ".config" / "opencode" / "skills")
         copied_codex: list[str] = []
         copied_claude: list[str] = []
         copied_kimi: list[str] = []
         copied_opencode: list[str] = []
-        expected_codex: set[str] = set()
-        expected_claude: set[str] = set()
-        expected_kimi: set[str] = set()
-        expected_opencode: set[str] = set()
-        for bundle in self.discover():
-            target = codex_root / f"deepscientist-{bundle.skill_id}"
-            expected_codex.add(target.name)
-            self._sync_bundle_tree(bundle.root, target)
-            copied_codex.append(str(target))
-            claude_target = self._sync_claude_projection(bundle, claude_root)
-            expected_claude.add(claude_target.name)
-            copied_claude.append(str(claude_target))
-            kimi_target = kimi_root / f"deepscientist-{bundle.skill_id}"
-            expected_kimi.add(kimi_target.name)
-            self._sync_bundle_tree(bundle.root, kimi_target)
-            copied_kimi.append(str(kimi_target))
-            opencode_target = opencode_root / f"deepscientist-{bundle.skill_id}"
-            expected_opencode.add(opencode_target.name)
-            self._sync_bundle_tree(bundle.root, opencode_target)
-            copied_opencode.append(str(opencode_target))
-        self._prune_bundle_targets(codex_root, expected_codex)
-        self._prune_bundle_targets(claude_root, expected_claude)
-        self._prune_bundle_targets(kimi_root, expected_kimi)
-        self._prune_bundle_targets(opencode_root, expected_opencode)
+
+        if self._is_runner_enabled("codex"):
+            codex_root = ensure_dir(Path.home() / ".codex" / "skills")
+            expected_codex: set[str] = set()
+            for bundle in self.discover():
+                target = codex_root / f"deepscientist-{bundle.skill_id}"
+                expected_codex.add(target.name)
+                self._sync_bundle_tree(bundle.root, target)
+                copied_codex.append(str(target))
+            self._prune_bundle_targets(codex_root, expected_codex)
+
+        if self._is_runner_enabled("claude"):
+            claude_root = ensure_dir(Path.home() / ".claude" / "agents")
+            expected_claude: set[str] = set()
+            for bundle in self.discover():
+                claude_target = self._sync_claude_projection(bundle, claude_root)
+                expected_claude.add(claude_target.name)
+                copied_claude.append(str(claude_target))
+            self._prune_bundle_targets(claude_root, expected_claude)
+
+        if self._is_runner_enabled("kimi"):
+            kimi_root = ensure_dir(Path.home() / ".kimi" / "skills")
+            expected_kimi: set[str] = set()
+            for bundle in self.discover():
+                kimi_target = kimi_root / f"deepscientist-{bundle.skill_id}"
+                expected_kimi.add(kimi_target.name)
+                self._sync_bundle_tree(bundle.root, kimi_target)
+                copied_kimi.append(str(kimi_target))
+            self._prune_bundle_targets(kimi_root, expected_kimi)
+
+        if self._is_runner_enabled("opencode"):
+            opencode_root = ensure_dir(Path.home() / ".config" / "opencode" / "skills")
+            expected_opencode: set[str] = set()
+            for bundle in self.discover():
+                opencode_target = opencode_root / f"deepscientist-{bundle.skill_id}"
+                expected_opencode.add(opencode_target.name)
+                self._sync_bundle_tree(bundle.root, opencode_target)
+                copied_opencode.append(str(opencode_target))
+            self._prune_bundle_targets(opencode_root, expected_opencode)
+
         return {
             "codex": copied_codex,
             "claude": copied_claude,
@@ -67,38 +92,50 @@ class SkillInstaller:
     def sync_quest(self, quest_root: Path, *, installed_version: str | None = None) -> dict:
         prompt_sync = self.sync_quest_prompts(quest_root, installed_version=installed_version)
         prompts_root = ensure_dir(quest_root / ".codex" / "prompts")
-        codex_root = ensure_dir(quest_root / ".codex" / "skills")
-        claude_root = ensure_dir(quest_root / ".claude" / "agents")
-        kimi_root = ensure_dir(quest_root / ".kimi" / "skills")
-        opencode_root = ensure_dir(quest_root / ".opencode" / "skills")
         copied_codex: list[str] = []
         copied_claude: list[str] = []
         copied_kimi: list[str] = []
         copied_opencode: list[str] = []
-        expected_codex: set[str] = set()
-        expected_claude: set[str] = set()
-        expected_kimi: set[str] = set()
-        expected_opencode: set[str] = set()
-        for bundle in self.discover():
-            target = codex_root / f"deepscientist-{bundle.skill_id}"
-            expected_codex.add(target.name)
-            self._sync_bundle_tree(bundle.root, target)
-            copied_codex.append(str(target))
-            claude_target = self._sync_claude_projection(bundle, claude_root)
-            expected_claude.add(claude_target.name)
-            copied_claude.append(str(claude_target))
-            kimi_target = kimi_root / f"deepscientist-{bundle.skill_id}"
-            expected_kimi.add(kimi_target.name)
-            self._sync_bundle_tree(bundle.root, kimi_target)
-            copied_kimi.append(str(kimi_target))
-            opencode_target = opencode_root / f"deepscientist-{bundle.skill_id}"
-            expected_opencode.add(opencode_target.name)
-            self._sync_bundle_tree(bundle.root, opencode_target)
-            copied_opencode.append(str(opencode_target))
-        self._prune_bundle_targets(codex_root, expected_codex)
-        self._prune_bundle_targets(claude_root, expected_claude)
-        self._prune_bundle_targets(kimi_root, expected_kimi)
-        self._prune_bundle_targets(opencode_root, expected_opencode)
+
+        if self._is_runner_enabled("codex"):
+            codex_root = ensure_dir(quest_root / ".codex" / "skills")
+            expected_codex: set[str] = set()
+            for bundle in self.discover():
+                target = codex_root / f"deepscientist-{bundle.skill_id}"
+                expected_codex.add(target.name)
+                self._sync_bundle_tree(bundle.root, target)
+                copied_codex.append(str(target))
+            self._prune_bundle_targets(codex_root, expected_codex)
+
+        if self._is_runner_enabled("claude"):
+            claude_root = ensure_dir(quest_root / ".claude" / "agents")
+            expected_claude: set[str] = set()
+            for bundle in self.discover():
+                claude_target = self._sync_claude_projection(bundle, claude_root)
+                expected_claude.add(claude_target.name)
+                copied_claude.append(str(claude_target))
+            self._prune_bundle_targets(claude_root, expected_claude)
+
+        if self._is_runner_enabled("kimi"):
+            kimi_root = ensure_dir(quest_root / ".kimi" / "skills")
+            expected_kimi: set[str] = set()
+            for bundle in self.discover():
+                kimi_target = kimi_root / f"deepscientist-{bundle.skill_id}"
+                expected_kimi.add(kimi_target.name)
+                self._sync_bundle_tree(bundle.root, kimi_target)
+                copied_kimi.append(str(kimi_target))
+            self._prune_bundle_targets(kimi_root, expected_kimi)
+
+        if self._is_runner_enabled("opencode"):
+            opencode_root = ensure_dir(quest_root / ".opencode" / "skills")
+            expected_opencode: set[str] = set()
+            for bundle in self.discover():
+                opencode_target = opencode_root / f"deepscientist-{bundle.skill_id}"
+                expected_opencode.add(opencode_target.name)
+                self._sync_bundle_tree(bundle.root, opencode_target)
+                copied_opencode.append(str(opencode_target))
+            self._prune_bundle_targets(opencode_root, expected_opencode)
+
         return {
             "prompts": [str(path) for path in sorted(prompts_root.rglob("*")) if path.is_file()],
             "prompt_sync": prompt_sync,
