@@ -19,7 +19,15 @@ class SkillInstaller:
     def __init__(self, repo_root: Path, home: Path, runners_config: dict | None = None) -> None:
         self.repo_root = repo_root
         self.home = home
-        self.runners_config = runners_config or {}
+        self.runners_config = runners_config if isinstance(runners_config, dict) else self._load_runners_config()
+
+    def _load_runners_config(self) -> dict:
+        try:
+            from ..config import ConfigManager
+
+            return ConfigManager(self.home).load_runners_config()
+        except Exception:
+            return {}
 
     def _is_runner_enabled(self, runner_name: str) -> bool:
         runner = self.runners_config.get(runner_name, {})

@@ -122,10 +122,10 @@ def test_new_creates_standalone_git_repo(temp_home: Path) -> None:
     assert (quest_root / ".codex" / "prompts" / "connectors" / "qq.md").exists()
     assert (quest_root / ".codex" / "skills").exists()
     assert (quest_root / ".claude" / "agents").exists()
-    assert (quest_root / ".claude" / "agents" / "deepscientist-decision.md").exists()
     assert (quest_root / ".kimi" / "skills").exists()
-    assert (quest_root / ".kimi" / "skills" / "deepscientist-decision" / "SKILL.md").exists()
     assert (quest_root / ".codex" / "skills" / "deepscientist-finalize" / "SKILL.md").exists()
+    assert sorted((quest_root / ".claude" / "agents").glob("deepscientist-*.md")) == []
+    assert sorted((quest_root / ".kimi" / "skills").glob("deepscientist-*")) == []
     assert snapshot["quest_id"] == "001"
     assert snapshot["runner"] == "codex"
     assert "paths" in snapshot
@@ -670,6 +670,25 @@ def test_init_command_syncs_global_skills(temp_home: Path, monkeypatch) -> None:
     assert calls == ["sync_global"]
 
 
+def test_skill_installer_defaults_to_home_runners_config(temp_home: Path) -> None:
+    ensure_home_layout(temp_home)
+    manager = ConfigManager(temp_home)
+    manager.ensure_files()
+    runners = manager.load_runners_config()
+    for runner in runners.values():
+        if isinstance(runner, dict):
+            runner["enabled"] = False
+    runners["claude"]["enabled"] = True
+    manager.save_named_payload("runners", runners)
+
+    installer = SkillInstaller(repo_root(), temp_home)
+
+    assert installer._is_runner_enabled("codex") is False
+    assert installer._is_runner_enabled("claude") is True
+    assert installer._is_runner_enabled("kimi") is False
+    assert installer._is_runner_enabled("opencode") is False
+
+
 def test_pause_command_prefers_daemon_control_when_available(temp_home: Path, monkeypatch, capsys) -> None:
     ensure_home_layout(temp_home)
     ConfigManager(temp_home).ensure_files()
@@ -738,6 +757,9 @@ def test_quest_create_uses_configured_default_runner(temp_home) -> None:  # type
     config = manager.load_named('config')
     config['default_runner'] = 'claude'
     write_yaml(manager.path_for('config'), config)
+    runners = manager.load_runners_config()
+    runners['claude']['enabled'] = True
+    manager.save_named_payload('runners', runners)
 
     service = QuestService(temp_home)
     snapshot = service.create('runner-default quest')
