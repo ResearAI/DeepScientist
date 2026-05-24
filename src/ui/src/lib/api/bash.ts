@@ -6,6 +6,16 @@ import type {
   BashStopResponse,
 } from '@/lib/types/bash'
 
+function normalizeBashSessionsPayload(payload: unknown): BashSession[] {
+  if (Array.isArray(payload)) return payload as BashSession[]
+  if (payload && typeof payload === 'object') {
+    const record = payload as Record<string, unknown>
+    if (Array.isArray(record.items)) return record.items as BashSession[]
+    if (Array.isArray(record.sessions)) return record.sessions as BashSession[]
+  }
+  return []
+}
+
 export async function listBashSessions(
   projectId: string,
   params?: {
@@ -29,7 +39,7 @@ export async function listBashSessions(
       limit: params?.limit,
     },
   })
-  return response.data as BashSession[]
+  return normalizeBashSessionsPayload(response.data)
 }
 
 export async function getBashSession(projectId: string, bashId: string) {
