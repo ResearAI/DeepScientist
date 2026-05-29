@@ -206,7 +206,7 @@ class DaemonApp:
         self.runtime_config = self.config_manager.load_runtime_config()
         self.runners_config = self.config_manager.load_runners_config()
         self.connectors_config = self.config_manager.load_named_normalized("connectors")
-        self.skill_installer = SkillInstaller(self.repo_root, home)
+        self.skill_installer = SkillInstaller(self.repo_root, home, runners_config=self.runners_config)
         self.quest_service = QuestService(home, skill_installer=self.skill_installer)
         self.latex_service = QuestLatexService(self.quest_service)
         self.memory_service = MemoryService(home)

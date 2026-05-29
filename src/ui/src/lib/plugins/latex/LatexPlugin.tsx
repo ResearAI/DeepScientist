@@ -144,6 +144,9 @@ type PendingJumpLocation = {
   selection?: LatexSyncTexSelection | null;
 };
 
+type LatexSaveState = "idle" | "saving" | "error";
+type LatexSaveTrigger = "manual" | "auto" | "lifecycle" | "compile";
+
 function getLatexIssueIdentity(issue: {
   resourcePath?: string | null;
   resourceName?: string | null;
