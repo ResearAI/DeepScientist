@@ -535,7 +535,7 @@ url={https://openreview.net/forum?id=cZFgsLq8Gs}
 欢迎加入微信讨论群。
 
 <p align="center">
-  <img src="assets/readme/wechat12.jpg" alt="DeepScientist WeChat group" width="360" />
+  <img src="assets/readme/wechat14.jpg" alt="DeepScientist WeChat group" width="360" />
 </p>
 
 ## 路线图

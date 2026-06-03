@@ -525,7 +525,7 @@ If this feels like the research workflow you have been waiting for, give the pro
 Welcome to join the WeChat group for discussion.
 
 <p align="center">
-  <img src="assets/readme/wechat12.jpg" alt="DeepScientist WeChat group" width="360" />
+  <img src="assets/readme/wechat14.jpg" alt="DeepScientist WeChat group" width="360" />
 </p>
 
 ## More From ResearAI
