@@ -157,6 +157,10 @@ userfiles/...
 有些本地 HTTP 代理隧道对模型请求可用，但会导致微信 iLink 二维码加载失败、二维码图片不显示，
 或者手机确认后页面仍然一直等待。
 
+DeepScientist 当前依赖已经内置 `httpx[socks]`，因此 `socks5://...` 代理会自动安装所需的
+`socksio` 支持。如果旧安装仍提示 `Using SOCKS proxy, but the 'socksio' package is not installed`，
+请先更新并重新安装，或在当前 runtime 里临时执行 `pip install "httpx[socks]"`。
+
 遇到这种情况时，可以保留全局代理给模型、GitHub 等其他请求使用，同时通过 `NO_PROXY`
 和 `no_proxy` 让微信 iLink 与 CDN 域名直连：
 

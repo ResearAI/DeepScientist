@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 from urllib.request import Request
 
@@ -92,3 +93,16 @@ def test_main_accepts_global_proxy_flag(monkeypatch: pytest.MonkeyPatch, temp_ho
 
     assert exit_code == 0
     assert observed["proxy"] == "http://127.0.0.1:7890"
+
+
+def test_runtime_dependencies_include_httpx_socks_for_socks_proxies() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    pyproject = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
+    dependencies = pyproject["project"]["dependencies"]
+    lock = tomllib.loads((repo_root / "uv.lock").read_text(encoding="utf-8"))
+    locked_packages = {package["name"]: package for package in lock["package"]}
+    locked_deepscientist = locked_packages["deepscientist"]
+
+    assert any(item.startswith("httpx[socks]") for item in dependencies)
+    assert "socksio" in locked_packages
+    assert {"name": "httpx", "extra": ["socks"]} in locked_deepscientist["dependencies"]

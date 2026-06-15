@@ -162,6 +162,12 @@ requests can inherit that proxy. Some local HTTP proxy tunnels work for model
 traffic but make the Weixin iLink QR login stall, fail to render the QR image, or
 wait forever after the phone confirmation.
 
+DeepScientist now depends on `httpx[socks]`, so `socks5://...` proxies install
+the required `socksio` transport support automatically. If an older installation
+still reports `Using SOCKS proxy, but the 'socksio' package is not installed`,
+update and reinstall DeepScientist, or temporarily run `pip install "httpx[socks]"`
+inside the active runtime.
+
 When this happens, keep the global proxy for other outbound traffic but bypass
 the Weixin iLink and CDN hosts with `NO_PROXY` and `no_proxy`:
 
