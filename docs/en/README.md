@@ -148,5 +148,5 @@ Built-in runners today:
 Welcome to join the WeChat group for discussion.
 
 <p align="center">
-  <img src="../../assets/readme/wechat14.jpg" alt="DeepScientist WeChat group" width="360" />
+  <img src="../../assets/readme/wechat15.jpg" alt="DeepScientist WeChat group" width="360" />
 </p>
