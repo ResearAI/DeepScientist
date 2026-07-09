@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -95,6 +96,8 @@ _BUILTIN_MCP_TOOL_APPROVALS: dict[str, tuple[str, ...]] = {
         "bash_exec",
     ),
 }
+_BUILTIN_MCP_SERVER_NAMES = tuple(_BUILTIN_MCP_TOOL_APPROVALS)
+_TOML_TABLE_HEADER_PATTERN = re.compile(r"^\s*(\[\[?)\s*([^\]]+?)\s*(\]\]?)\s*(?:#.*)?$")
 
 
 def _builtin_mcp_tool_approvals_for_profile(custom_profile: str | None) -> dict[str, tuple[str, ...]]:
@@ -110,6 +113,34 @@ def _builtin_mcp_tool_approvals_for_profile(custom_profile: str | None) -> dict[
             "bash_exec": _BUILTIN_MCP_TOOL_APPROVALS.get("bash_exec", ()),
         }
     return _BUILTIN_MCP_TOOL_APPROVALS
+
+
+def _strip_builtin_mcp_server_sections(
+    config_text: str,
+    server_names: tuple[str, ...] = _BUILTIN_MCP_SERVER_NAMES,
+) -> str:
+    if not str(config_text or "").strip() or not server_names:
+        return str(config_text or "").rstrip()
+
+    server_prefixes = tuple(
+        prefix
+        for name in server_names
+        for prefix in (
+            f"mcp_servers.{name}",
+            f'mcp_servers."{name}"',
+            f"mcp_servers.'{name}'",
+        )
+    )
+    filtered_lines: list[str] = []
+    skipping = False
+    for line in str(config_text or "").splitlines():
+        match = _TOML_TABLE_HEADER_PATTERN.match(line)
+        if match is not None:
+            header = re.sub(r"\s+", "", match.group(2))
+            skipping = any(header == prefix or header.startswith(f"{prefix}.") for prefix in server_prefixes)
+        if not skipping:
+            filtered_lines.append(line)
+    return "\n".join(filtered_lines).rstrip()
 
 _PROVIDER_ENV_CONFLICT_KEYS = (
     "OPENAI_API_KEY",
@@ -1544,6 +1575,7 @@ class CodexRunner:
             prefix = existing.split(marker_start, 1)[0].rstrip()
         else:
             prefix = existing.rstrip()
+        prefix = _strip_builtin_mcp_server_sections(prefix)
 
         pythonpath = os.environ.get("PYTHONPATH", "")
         resolved_runner_config = runner_config if isinstance(runner_config, dict) else self._load_runner_config()

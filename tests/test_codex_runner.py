@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -693,6 +694,84 @@ def test_codex_runner_injects_builtin_mcp_tool_approval_overrides(temp_home) -> 
     assert 'PYTHONUTF8 = "1"' in config_text
     assert "[mcp_servers.bash_exec.tools.bash_exec]" in config_text
     assert config_text.count('approval_mode = "approve"') >= 3
+
+
+def test_codex_runner_replaces_copied_builtin_mcp_sections_before_injection(temp_home) -> None:  # type: ignore[no-untyped-def]
+    source_codex_home = temp_home / "source-codex-home"
+    source_codex_home.mkdir(parents=True, exist_ok=True)
+    (source_codex_home / "config.toml").write_text(
+        "\n".join(
+            [
+                'model_provider = "ananapi"',
+                "",
+                "[mcp_servers.memory]",
+                'transport = "stdio"',
+                'command = "old-memory-server"',
+                "",
+                "[mcp_servers.memory.env]",
+                'OLD_MEMORY = "1"',
+                "",
+                "[mcp_servers.memory.tools.list_recent]",
+                'approval_mode = "never"',
+                "",
+                "[mcp_servers.artifact]",
+                'transport = "stdio"',
+                'command = "old-artifact-server"',
+                "",
+                "[mcp_servers.bash_exec]",
+                'transport = "stdio"',
+                'command = "old-bash-server"',
+                "",
+                "[mcp_servers.bash_exec.env]",
+                'OLD_BASH = "1"',
+                "",
+                "[mcp_servers.custom]",
+                'transport = "stdio"',
+                'command = "custom-server"',
+                "",
+                "[mcp_servers.custom.env]",
+                'CUSTOM = "1"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (source_codex_home / "auth.json").write_text("{}\n", encoding="utf-8")
+
+    quest_root = temp_home / "quest"
+    quest_root.mkdir(parents=True, exist_ok=True)
+    workspace_root = quest_root
+
+    runner = CodexRunner(
+        home=temp_home,
+        repo_root=temp_home,
+        binary="codex",
+        logger=object(),  # type: ignore[arg-type]
+        prompt_builder=object(),  # type: ignore[arg-type]
+        artifact_service=object(),  # type: ignore[arg-type]
+    )
+
+    codex_home = runner._prepare_project_codex_home(
+        workspace_root,
+        quest_root=quest_root,
+        quest_id="q-001",
+        run_id="run-001",
+        runner_config={"config_dir": str(source_codex_home)},
+    )
+
+    config_text = (codex_home / "config.toml").read_text(encoding="utf-8")
+    parsed = tomllib.loads(config_text)
+    assert config_text.count("[mcp_servers.memory]") == 1
+    assert config_text.count("[mcp_servers.artifact]") == 1
+    assert config_text.count("[mcp_servers.bash_exec]") == 1
+    assert "old-memory-server" not in config_text
+    assert "old-artifact-server" not in config_text
+    assert "old-bash-server" not in config_text
+    assert "OLD_MEMORY" not in config_text
+    assert "OLD_BASH" not in config_text
+    assert parsed["mcp_servers"]["memory"]["transport"] == "stdio"
+    assert parsed["mcp_servers"]["custom"]["command"] == "custom-server"
+    assert parsed["mcp_servers"]["custom"]["env"]["CUSTOM"] == "1"
 
 
 def test_codex_runner_restricts_settings_issue_profile_to_issue_tool_and_bash_exec_only(temp_home) -> None:  # type: ignore[no-untyped-def]
