@@ -15,8 +15,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 
-import pexpect
 import pytest
+
+# Imported lazily: pexpect is only needed by these TUI end-to-end tests.
+# A module-level `import pexpect` runs before the skipif mark below, so on an
+# install without it pytest aborts collection of the whole suite instead of
+# skipping this one file.
+pexpect = pytest.importorskip("pexpect")
 
 
 ROOT = Path(__file__).resolve().parents[1]
