@@ -162,6 +162,8 @@ Instead:
 
 This is the “background progress monitoring” phase.
 
+When a monitoring check finds that the detached task has finished, an active Autonomous quest returns to `auto` and starts its next turn without another user message. A Copilot quest returns to waiting for input. This check does not resume paused, stopped, completed, errored, or user-blocked quests.
+
 ### 4.4 Good fit
 
 Choose `Autonomous` when:
