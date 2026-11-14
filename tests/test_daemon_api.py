@@ -7431,7 +7431,9 @@ def test_background_completion_respects_workspace_mode_and_status(
     monitor_threads: list[threading.Thread] = []
     worker_threads: list[threading.Thread] = []
     turn_reasons: list[str] = []
-    monitor_delay = daemon_app._AUTO_CONTINUE_DELAY_SECONDS
+    # Other daemon tests can leave timers alive; capture only this app's clock.
+    monitor_delay = float(id(app))
+    monkeypatch.setattr(app, "_auto_continue_delay_for_policy", lambda policy: monitor_delay)
 
     # Advance the monitor's clock only after the real subprocess exits.
     def controlled_sleep(seconds: float) -> None:
