@@ -163,6 +163,8 @@ Autonomous 模式下，continuation 可以分成两个阶段来理解。
 
 这是“后台长任务巡检阶段”。
 
+巡检发现 detached 任务结束后，活跃的 Autonomous quest 会恢复为 `auto` 并启动下一轮，无需用户再次发消息；Copilot quest 则转回等待用户输入。该巡检不会恢复已暂停、停止、完成、报错或等待用户决策的 quest。
+
 ### 4.4 什么时候适合选
 
 选择 `Autonomous`，通常意味着：

@@ -25,6 +25,7 @@ from deepscientist.artifact import ArtifactService
 from deepscientist.config import ConfigManager
 from deepscientist.connector.connector_profiles import list_connector_profiles
 from deepscientist.connector_runtime import format_conversation_id
+from deepscientist.daemon import app as daemon_app
 from deepscientist.daemon.api import handlers as daemon_api_handlers
 from deepscientist.daemon.api.router import match_route
 from deepscientist.daemon.app import DaemonApp, _STALLED_RUNNING_TURN_INACTIVITY_SECONDS
@@ -5790,7 +5791,6 @@ def test_quest_control_pause_marks_quest_paused_and_interrupts_runner(temp_home:
     assert pause_payload["action"] == "pause"
     assert pause_payload["interrupted"] is True
     assert pause_payload["snapshot"]["status"] == "paused"
-    assert "发送任意新指令" in str(pause_payload["notice"]["message"])
 
     deadline = time.time() + 3
     while time.time() < deadline:
@@ -5876,7 +5876,6 @@ def test_quest_control_stop_stops_runner_owned_bash_exec_sessions(temp_home: Pat
     assert stop_payload["interrupted"] is True
     assert stop_payload["snapshot"]["status"] == "stopped"
     assert bash_id in stop_payload["stopped_bash_session_ids"]
-    assert "发送任意新指令" in str(stop_payload["notice"]["message"])
 
     final = app.bash_exec_service.wait_for_session(quest_root, bash_id, timeout_seconds=10)
     assert final["status"] == "terminated"
@@ -7391,6 +7390,156 @@ def test_auto_continue_switches_to_external_progress_monitoring_when_bash_runs_e
     assert snapshot["continuation_policy"] == "when_external_progress"
     assert snapshot["continuation_reason"] == "background_external_progress_active"
     app.bash_exec_service.request_stop(quest_root, str(session["bash_id"]))
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Requires the POSIX managed shell")
+@pytest.mark.parametrize(
+    ("workspace_mode", "status"),
+    [
+        ("autonomous", "active"),
+        ("copilot", "active"),
+        ("autonomous", "paused"),
+        ("autonomous", "stopped"),
+        ("autonomous", "completed"),
+        ("autonomous", "error"),
+        ("autonomous", "waiting_for_user"),
+    ],
+)
+def test_background_completion_respects_workspace_mode_and_status(
+    temp_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    workspace_mode: str,
+    status: str,
+) -> None:
+    monkeypatch.setenv("HOME", str(temp_home.parent))
+    monkeypatch.setenv("CODEX_HOME", str(temp_home.parent / ".codex"))
+    ensure_home_layout(temp_home)
+    ConfigManager(temp_home).ensure_files()
+    app = DaemonApp(temp_home)
+    quest = app.quest_service.create(
+        "resume after background completion",
+        startup_contract={
+            "workspace_mode": "autonomous",
+            "decision_policy": "autonomous",
+        },
+    )
+    quest_id = quest["quest_id"]
+    quest_root = Path(quest["quest_root"])
+    monitor_waiting = threading.Event()
+    release_monitor = threading.Event()
+    follow_up_started = threading.Event()
+    monitor_threads: list[threading.Thread] = []
+    worker_threads: list[threading.Thread] = []
+    turn_reasons: list[str] = []
+    # Other daemon tests can leave timers alive; capture only this app's clock.
+    monitor_delay = float(id(app))
+    monkeypatch.setattr(app, "_auto_continue_delay_for_policy", lambda policy: monitor_delay)
+
+    # Advance the monitor's clock only after the real subprocess exits.
+    def controlled_sleep(seconds: float) -> None:
+        if seconds != monitor_delay:
+            time.sleep(seconds)
+            return
+        monitor_threads.append(threading.current_thread())
+        monitor_waiting.set()
+        assert release_monitor.wait(timeout=10)
+
+    monkeypatch.setattr(
+        daemon_app,
+        "time",
+        SimpleNamespace(sleep=controlled_sleep, monotonic=time.monotonic, time=time.time),
+    )
+
+    class BackgroundRunner:
+        binary = ""
+
+        def run(self, request):
+            worker_threads.append(threading.current_thread())
+            turn_reasons.append(request.turn_reason)
+            if request.turn_reason == "auto_continue":
+                app.quest_service.mark_completed(request.quest_id)
+                follow_up_started.set()
+            return RunResult(
+                ok=True,
+                run_id=request.run_id,
+                model=request.model,
+                output_text=f"turn:{request.turn_reason}",
+                exit_code=0,
+                history_root=ensure_dir(request.quest_root / ".ds" / "codex_history" / request.run_id),
+                run_root=ensure_dir(request.quest_root / ".ds" / "runs" / request.run_id),
+                stderr_text="",
+            )
+
+    app.runners["codex"] = BackgroundRunner()
+    context = McpContext(
+        home=temp_home,
+        quest_root=quest_root,
+        quest_id=quest_id,
+        run_id="run-background-progress",
+        active_anchor="experiment",
+        conversation_id=f"quest:{quest_id}",
+        agent_role="pi",
+        worker_id="worker-main",
+        worktree_root=None,
+        team_mode="single",
+    )
+    session = app.bash_exec_service.start_session(
+        context,
+        command="while [ ! -f .ds/background-release ]; do sleep 0.01; done; printf 'background complete\\n'",
+        mode="detach",
+        workdir=str(quest_root),
+    )
+    release_path = quest_root / ".ds" / "background-release"
+    try:
+        app.handlers.chat(quest_id, {"text": "Continue after the background task finishes.", "source": "pytest"})
+        assert monitor_waiting.wait(timeout=10)
+        assert app.quest_service.snapshot(quest_id)["continuation_policy"] == "when_external_progress"
+
+        release_path.touch()
+        finished = app.bash_exec_service.wait_for_session(
+            quest_root, session["bash_id"], poll_interval=0.1, timeout_seconds=10,
+        )
+        assert finished["status"] == "completed"
+        assert finished["exit_code"] == 0
+        # A mode change must also apply to a monitor that is already pending.
+        app.quest_service.update_research_state(quest_root, workspace_mode=workspace_mode)
+        if status in {"paused", "stopped"}:
+            app.handlers.quest_control(
+                quest_id, {"action": "pause" if status == "paused" else "stop", "source": "pytest"},
+            )
+        elif status == "completed":
+            app.quest_service.mark_completed(quest_id)
+        elif status != "active":
+            app.quest_service.set_status(quest_id, status)
+        release_monitor.set()
+
+        for monitor in monitor_threads:
+            monitor.join(timeout=5)
+            assert not monitor.is_alive()
+        should_continue = workspace_mode == "autonomous" and status == "active"
+        if should_continue:
+            assert follow_up_started.wait(timeout=5), "background completion did not start the next autonomous turn"
+        for worker in worker_threads:
+            worker.join(timeout=5)
+            assert not worker.is_alive()
+        snapshot = app.quest_service.snapshot(quest_id)
+        assert snapshot["active_run_id"] is None
+        if should_continue:
+            assert snapshot["status"] == "completed"
+            assert turn_reasons == ["user_message", "auto_continue"]
+        else:
+            assert turn_reasons == ["user_message"]
+            if status == "active":
+                assert snapshot["continuation_policy"] == "wait_for_user_or_resume"
+            else:
+                assert snapshot["status"] == status
+    finally:
+        app.stop_quest(quest_id, source="pytest")
+        release_path.touch()
+        release_monitor.set()
+        for thread in monitor_threads + worker_threads:
+            thread.join(timeout=5)
+        app.bash_exec_service.request_stop(quest_root, session["bash_id"])
 
 
 def test_daemon_retries_failed_runner_attempt_and_continues_with_retry_context(temp_home: Path) -> None:

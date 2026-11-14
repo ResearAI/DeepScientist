@@ -4593,7 +4593,8 @@ class DaemonApp:
                         continuation_reason=next_reason,
                         continuation_updated_at=utc_now(),
                     )
-                    return
+                    if next_policy == "wait_for_user_or_resume":
+                        return
             self.schedule_turn(quest_id, reason=reason)
 
         threading.Thread(
