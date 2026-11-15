@@ -30,6 +30,7 @@ from ..registries import BaselineRegistry
 from ..shared import append_jsonl, ensure_dir, generate_id, iter_jsonl, read_json, read_jsonl, read_jsonl_tail, read_text, read_yaml, resolve_within, run_command, run_command_bytes, sha256_text, slugify, utc_now, write_json, write_text, write_yaml
 from ..skills import SkillInstaller
 from ..web_search import extract_web_search_payload
+from .cache import BoundedCache
 from .layout import (
     QUEST_DIRECTORIES,
     default_active_anchor,
@@ -385,14 +386,14 @@ class QuestService:
         self.skill_installer = skill_installer
         self.baseline_registry = BaselineRegistry(home)
         self._file_cache_lock = threading.Lock()
-        self._file_cache: dict[str, dict[str, Any]] = {}
+        self._file_cache = BoundedCache()
         self._jsonl_cache_lock = threading.Lock()
-        self._jsonl_cache: dict[str, dict[str, Any]] = {}
-        self._jsonl_tail_cache: dict[str, dict[str, Any]] = {}
+        self._jsonl_cache = BoundedCache()
+        self._jsonl_tail_cache = BoundedCache()
         self._snapshot_cache_lock = threading.Lock()
-        self._snapshot_cache: dict[str, dict[str, Any]] = {}
+        self._snapshot_cache = BoundedCache()
         self._codex_history_cache_lock = threading.Lock()
-        self._codex_history_cache: dict[str, dict[str, Any]] = {}
+        self._codex_history_cache = BoundedCache()
         self._runtime_state_locks_lock = threading.Lock()
         self._runtime_state_locks: dict[str, threading.Lock] = {}
         self._artifact_projection_locks_lock = threading.Lock()
@@ -1000,6 +1001,7 @@ class QuestService:
             )
 
     def _collect_artifacts_raw(self, quest_root: Path) -> list[dict[str, Any]]:
+        # Cache the deduplicated projection, not every historical worktree copy.
         artifacts_by_identity: dict[str, dict[str, Any]] = {}
         for root in self._artifact_roots(quest_root):
             artifacts_root = root / "artifacts"
@@ -1009,7 +1011,7 @@ class QuestService:
                 if not folder.is_dir() or folder.name == "graphs":
                     continue
                 for path in sorted(folder.glob("*.json")):
-                    item = self._read_cached_json(path, {})
+                    item = read_json(path, {})
                     payload = item if isinstance(item, dict) else {}
                     try:
                         mtime_ns = path.stat().st_mtime_ns
@@ -1100,7 +1102,7 @@ class QuestService:
             if not runs_root.exists():
                 continue
             for path in sorted(runs_root.glob("*.json")):
-                item = self._read_cached_json(path, {})
+                item = read_json(path, {})
                 payload = item if isinstance(item, dict) else {}
                 if normalized_run_kind and str(payload.get("run_kind") or "").strip() != normalized_run_kind:
                     continue
@@ -3586,7 +3588,7 @@ class QuestService:
         with self._jsonl_cache_lock:
             candidate = self._jsonl_tail_cache.get(cache_key)
             if isinstance(candidate, dict):
-                return dict(candidate)
+                return copy.deepcopy(candidate)
         return None
 
     def _read_cached_path(
@@ -4553,7 +4555,8 @@ class QuestService:
         return datetime.now(UTC) - parsed <= _CRASH_AUTO_RESUME_WINDOW
 
     def history(self, quest_id: str, limit: int = 100) -> list[dict]:
-        return self._read_cached_jsonl(self._quest_root(quest_id) / ".ds" / "conversations" / "main.jsonl")[-limit:]
+        records = self._read_cached_jsonl(self._quest_root(quest_id) / ".ds" / "conversations" / "main.jsonl")
+        return copy.deepcopy(records[-limit:])
 
     def workflow(self, quest_id: str) -> dict:
         return self._projected_payload(quest_id, "details")
@@ -4587,7 +4590,7 @@ class QuestService:
                 {
                     "cursor": cursor,
                     "event_id": item.get("event_id") or f"evt-{quest_id}-{cursor}",
-                    **item,
+                    **copy.deepcopy(item),
                 }
             )
         if before is not None:
