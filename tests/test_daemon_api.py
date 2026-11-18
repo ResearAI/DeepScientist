@@ -4227,6 +4227,12 @@ def test_quest_events_stream_large_jsonl_without_full_cache(
     events_path.write_text("", encoding="utf-8")
     monkeypatch.setattr("deepscientist.quest.service._JSONL_CACHE_MAX_BYTES", 512)
 
+    def read_jsonl_without_full_event_scan(path: Path) -> list[dict]:
+        assert Path(path).resolve() != events_path.resolve()
+        return read_jsonl(path)
+
+    monkeypatch.setattr("deepscientist.quest.service.read_jsonl", read_jsonl_without_full_event_scan)
+
     for index in range(30):
         append_jsonl(
             events_path,
@@ -4254,9 +4260,6 @@ def test_quest_events_stream_large_jsonl_without_full_cache(
         "evt-large-27",
         "evt-large-28",
     ]
-
-    cache_key = str(events_path.resolve())
-    assert cache_key not in app.quest_service._jsonl_cache
 
 
 def test_start_setup_session_turn_finish_settles_snapshot_and_session_even_without_form_patch(temp_home: Path) -> None:

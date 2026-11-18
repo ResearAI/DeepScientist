@@ -118,6 +118,12 @@ The quest layout contract is defined in `src/deepscientist/quest/layout.py`. If 
   - persist runtime state
   - derive explorer and canvas state
 
+Quest readers cache canonical projections rather than every JSON artifact in historical worktrees. Rebuilding a projection reads and deduplicates those source files without pinning all of their parsed copies.
+
+Each `QuestService` shares one synchronized LRU across file reads, full JSONL reads, JSONL tails, snapshots, and parsed Codex history. A 128 MiB object-graph byte budget and a 2,048-entry limit bound retention across all five readers; frequently read projections can use space that other readers leave idle. Oversized entries remain readable but bypass retention, and inode/mtime/size checks still invalidate changed files. The budget bounds retained reader data, not total process memory or transient response-building allocations. Callers must not mutate cached entry graphs after insertion.
+
+Public history/event windows and exposed tail-cache entries return owned nested records. Mutating a returned result must not change a later read or enlarge the cached graph outside its byte accounting.
+
 ### Artifact
 
 - files under `src/deepscientist/artifact/`
