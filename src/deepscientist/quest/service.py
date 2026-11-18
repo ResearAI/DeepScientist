@@ -385,15 +385,7 @@ class QuestService:
         self.quests_root = home / "quests"
         self.skill_installer = skill_installer
         self.baseline_registry = BaselineRegistry(home)
-        self._file_cache_lock = threading.Lock()
-        self._file_cache = BoundedCache()
-        self._jsonl_cache_lock = threading.Lock()
-        self._jsonl_cache = BoundedCache()
-        self._jsonl_tail_cache = BoundedCache()
-        self._snapshot_cache_lock = threading.Lock()
-        self._snapshot_cache = BoundedCache()
-        self._codex_history_cache_lock = threading.Lock()
-        self._codex_history_cache = BoundedCache()
+        self._reader_cache = BoundedCache()
         self._runtime_state_locks_lock = threading.Lock()
         self._runtime_state_locks: dict[str, threading.Lock] = {}
         self._artifact_projection_locks_lock = threading.Lock()
@@ -3263,10 +3255,9 @@ class QuestService:
         quest_root = self._require_initialized_quest_root(quest_id)
         cache_key = f"compact:{self._cache_key_for_path(quest_root)}"
         state = self._compact_summary_state(quest_root)
-        with self._snapshot_cache_lock:
-            cached = self._snapshot_cache.get(cache_key)
-            if cached and cached.get("state") == state:
-                return copy.deepcopy(cached.get("payload"))
+        cached = self._reader_cache.get(cache_key)
+        if cached and cached.get("state") == state:
+            return copy.deepcopy(cached.get("payload"))
 
         quest_yaml = self.read_quest_yaml(quest_root)
         research_state = self.read_research_state(quest_root)
@@ -3395,20 +3386,17 @@ class QuestService:
             "recent_artifacts": [],
             "recent_runs": [],
         }
-        with self._snapshot_cache_lock:
-            self._snapshot_cache[cache_key] = {
-                "state": state,
-                "payload": copy.deepcopy(payload),
-            }
+        self._reader_cache[cache_key] = {
+            "state": state,
+            "payload": copy.deepcopy(payload),
+        }
         return payload
 
     def _read_cached_jsonl(self, path: Path) -> list[dict[str, Any]]:
+        cache_key = f"jsonl:{self._cache_key_for_path(path)}"
         if not path.exists():
-            cache_key = str(path.resolve())
-            with self._jsonl_cache_lock:
-                self._jsonl_cache.pop(cache_key, None)
+            self._reader_cache.pop(cache_key, None)
             return []
-        cache_key = str(path.resolve())
         stat = path.stat()
         state = (
             stat.st_ino,
@@ -3416,19 +3404,16 @@ class QuestService:
             stat.st_size,
         )
         if stat.st_size > _JSONL_CACHE_MAX_BYTES:
-            with self._jsonl_cache_lock:
-                self._jsonl_cache.pop(cache_key, None)
+            self._reader_cache.pop(cache_key, None)
             return read_jsonl(path)
-        with self._jsonl_cache_lock:
-            cached = self._jsonl_cache.get(cache_key)
-            if cached and cached.get("state") == state:
-                return cached.get("records") or []
+        cached = self._reader_cache.get(cache_key)
+        if cached and cached.get("state") == state:
+            return cached.get("records") or []
         items = read_jsonl(path)
-        with self._jsonl_cache_lock:
-            self._jsonl_cache[cache_key] = {
-                "state": state,
-                "records": items,
-            }
+        self._reader_cache[cache_key] = {
+            "state": state,
+            "records": items,
+        }
         return items
 
     def _read_jsonl_cursor_slice(
@@ -3441,10 +3426,9 @@ class QuestService:
         tail: bool = False,
     ) -> tuple[list[tuple[int, dict[str, Any]]], int, bool]:
         normalized_limit = max(int(limit or 0), 0)
-        cache_key = self._cache_key_for_path(path)
+        cache_key = f"jsonl-tail:{self._cache_key_for_path(path)}"
         if not path.exists():
-            with self._jsonl_cache_lock:
-                self._jsonl_tail_cache.pop(cache_key, None)
+            self._reader_cache.pop(cache_key, None)
             return [], 0, False
         if normalized_limit <= 0:
             total = _count_jsonl_lines_fast(path)
@@ -3464,11 +3448,7 @@ class QuestService:
 
         if tail:
             state = self._path_state(path)
-            cached_tail: dict[str, Any] | None = None
-            with self._jsonl_cache_lock:
-                candidate = self._jsonl_tail_cache.get(cache_key)
-                if isinstance(candidate, dict):
-                    cached_tail = dict(candidate)
+            cached_tail = self._reader_cache.get(cache_key)
 
             if cached_tail and cached_tail.get("state") == state:
                 cached_limit = int(cached_tail.get("limit") or 0)
@@ -3480,13 +3460,12 @@ class QuestService:
                     return window, cached_total, has_more
                 if cached_limit < normalized_limit:
                     window, total = _tail_jsonl_records_safely(path, limit=normalized_limit)
-                    with self._jsonl_cache_lock:
-                        self._jsonl_tail_cache[cache_key] = {
-                            "state": state,
-                            "limit": normalized_limit,
-                            "total": total,
-                            "records": list(window),
-                        }
+                    self._reader_cache[cache_key] = {
+                        "state": state,
+                        "limit": normalized_limit,
+                        "total": total,
+                        "records": list(window),
+                    }
                     has_more = total > len(window)
                     return list(window), total, has_more
 
@@ -3520,13 +3499,12 @@ class QuestService:
                 else:
                     total = cached_total
                 stored_records = list(window)
-                with self._jsonl_cache_lock:
-                    self._jsonl_tail_cache[cache_key] = {
-                        "state": state,
-                        "limit": max_limit,
-                        "total": total,
-                        "records": stored_records,
-                    }
+                self._reader_cache[cache_key] = {
+                    "state": state,
+                    "limit": max_limit,
+                    "total": total,
+                    "records": stored_records,
+                }
                 write_json(
                     _jsonl_line_count_cache_path(path),
                     {
@@ -3539,13 +3517,12 @@ class QuestService:
                 return selected, total, has_more
 
             window, total = _tail_jsonl_records_safely(path, limit=normalized_limit)
-            with self._jsonl_cache_lock:
-                self._jsonl_tail_cache[cache_key] = {
-                    "state": state,
-                    "limit": normalized_limit,
-                    "total": total,
-                    "records": list(window),
-                }
+            self._reader_cache[cache_key] = {
+                "state": state,
+                "limit": normalized_limit,
+                "total": total,
+                "records": list(window),
+            }
             has_more = total > len(window)
             return list(window), total, has_more
 
@@ -3584,12 +3561,9 @@ class QuestService:
             return str(path.absolute())
 
     def jsonl_tail_cache_entry(self, path: Path) -> dict[str, Any] | None:
-        cache_key = self._cache_key_for_path(path)
-        with self._jsonl_cache_lock:
-            candidate = self._jsonl_tail_cache.get(cache_key)
-            if isinstance(candidate, dict):
-                return copy.deepcopy(candidate)
-        return None
+        cache_key = f"jsonl-tail:{self._cache_key_for_path(path)}"
+        candidate = self._reader_cache.get(cache_key)
+        return copy.deepcopy(candidate)
 
     def _read_cached_path(
         self,
@@ -3598,23 +3572,17 @@ class QuestService:
         default: Any,
         loader: Any,
     ) -> Any:
-        cache_key = self._cache_key_for_path(path)
+        cache_key = f"file:{self._cache_key_for_path(path)}"
         state = self._path_state(path)
         if state is None:
-            with self._file_cache_lock:
-                self._file_cache.pop(cache_key, None)
+            self._reader_cache.pop(cache_key, None)
             return copy.deepcopy(default)
-        with self._file_cache_lock:
-            cached = self._file_cache.get(cache_key)
-            if cached and cached.get("state") == state:
-                return copy.deepcopy(cached.get("value"))
+        cached = self._reader_cache.get(cache_key)
+        if cached and cached.get("state") == state:
+            return copy.deepcopy(cached.get("value"))
         value = loader(path, default)
-        with self._file_cache_lock:
-            self._file_cache[cache_key] = {
-                "state": state,
-                "value": value,
-            }
-        return copy.deepcopy(value)
+        retained = self._reader_cache.put(cache_key, {"state": state, "value": value})
+        return copy.deepcopy(value) if retained or value is default else value
 
     def _read_cached_json(self, path: Path, default: Any = None) -> Any:
         return self._read_cached_path(path, default=default, loader=read_json)
@@ -3635,27 +3603,24 @@ class QuestService:
         skill_id: str | None,
     ) -> list[dict[str, Any]]:
         history_path = history_root / "events.jsonl"
-        cache_key = f"{self._cache_key_for_path(history_path)}::{quest_id}::{run_id}::{skill_id or ''}"
+        cache_key = f"codex:{self._cache_key_for_path(history_path)}::{quest_id}::{run_id}::{skill_id or ''}"
         state = self._path_state(history_path)
         if state is None:
-            with self._codex_history_cache_lock:
-                self._codex_history_cache.pop(cache_key, None)
+            self._reader_cache.pop(cache_key, None)
             return []
-        with self._codex_history_cache_lock:
-            cached = self._codex_history_cache.get(cache_key)
-            if cached and cached.get("state") == state:
-                return copy.deepcopy(cached.get("entries") or [])
+        cached = self._reader_cache.get(cache_key)
+        if cached and cached.get("state") == state:
+            return copy.deepcopy(cached.get("entries") or [])
         entries = _parse_codex_history(
             history_root,
             quest_id=quest_id,
             run_id=run_id,
             skill_id=skill_id,
         )
-        with self._codex_history_cache_lock:
-            self._codex_history_cache[cache_key] = {
-                "state": state,
-                "entries": copy.deepcopy(entries),
-            }
+        self._reader_cache[cache_key] = {
+            "state": state,
+            "entries": copy.deepcopy(entries),
+        }
         return entries
 
     def snapshot_fast(self, quest_id: str) -> dict:
@@ -3668,10 +3633,9 @@ class QuestService:
         quest_root = self._require_initialized_quest_root(quest_id)
         cache_key = f"snapshot:{self._cache_key_for_path(quest_root)}"
         state = self._snapshot_state(quest_root)
-        with self._snapshot_cache_lock:
-            cached = self._snapshot_cache.get(cache_key)
-            if cached and cached.get("state") == state:
-                return copy.deepcopy(cached.get("payload"))
+        cached = self._reader_cache.get(cache_key)
+        if cached and cached.get("state") == state:
+            return copy.deepcopy(cached.get("payload"))
         workspace_root = self.active_workspace_root(quest_root)
         research_state = self.read_research_state(quest_root)
         quest_yaml = self.read_quest_yaml(quest_root)
@@ -3929,11 +3893,10 @@ class QuestService:
             "analysis_inventory": analysis_inventory,
             "guidance": guidance,
         }
-        with self._snapshot_cache_lock:
-            self._snapshot_cache[cache_key] = {
-                "state": state,
-                "payload": copy.deepcopy(payload),
-            }
+        self._reader_cache[cache_key] = {
+            "state": state,
+            "payload": copy.deepcopy(payload),
+        }
         return payload
 
     def append_message(

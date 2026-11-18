@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import OrderedDict, deque
 from itertools import chain
 import sys
+from threading import Lock
 from typing import Any
 
 
@@ -35,35 +36,40 @@ def _retained_size(value: Any, limit: int) -> int:
 class BoundedCache:
     """LRU retention for JSON-like reader entries, not a process memory limit.
 
-    Callers synchronize access and must not mutate values after insertion.
+    Operations are synchronized; callers must not mutate inserted values.
     The byte charge includes keys and reachable values; the entry limit also
     bounds bookkeeping. Oversized values are read normally but not retained.
     """
 
-    def __init__(self, *, max_bytes: int = 64 * 1024 * 1024, max_entries: int = 2048) -> None:
+    def __init__(self, *, max_bytes: int = 128 * 1024 * 1024, max_entries: int = 2048) -> None:
         self.max_bytes = max_bytes
         self.max_entries = max_entries
         self._entries: OrderedDict[str, tuple[dict[str, Any], int]] = OrderedDict()
         self._retained_bytes = 0
+        self._lock = Lock()
 
     @property
     def retained_bytes(self) -> int:
-        return self._retained_bytes
+        with self._lock:
+            return self._retained_bytes
 
     def __len__(self) -> int:
-        return len(self._entries)
-
-    def __contains__(self, key: object) -> bool:
-        return key in self._entries
+        with self._lock:
+            return len(self._entries)
 
     def get(self, key: str, default: Any = None) -> Any:
-        entry = self._entries.get(key)
-        if entry is None:
-            return default
-        self._entries.move_to_end(key)
-        return entry[0]
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                return default
+            self._entries.move_to_end(key)
+            return entry[0]
 
     def pop(self, key: str, default: Any = None) -> Any:
+        with self._lock:
+            return self._pop(key, default)
+
+    def _pop(self, key: str, default: Any = None) -> Any:
         entry = self._entries.pop(key, None)
         if entry is None:
             return default
@@ -71,21 +77,21 @@ class BoundedCache:
         return entry[0]
 
     def put(self, key: str, value: dict[str, Any]) -> bool:
-        self.pop(key)
-        if self.max_bytes <= 0 or self.max_entries <= 0:
-            return False
+        # Walk large payloads outside the lock so other readers can still hit.
         size = _retained_size((key, value), self.max_bytes)
-        if size > self.max_bytes:
-            return False
-        while self._entries and (
-            self._retained_bytes + size > self.max_bytes
-            or len(self._entries) >= self.max_entries
-        ):
-            _, (_, evicted_size) = self._entries.popitem(last=False)
-            self._retained_bytes -= evicted_size
-        self._entries[key] = (value, size)
-        self._retained_bytes += size
-        return True
+        with self._lock:
+            self._pop(key)
+            if size > self.max_bytes or self.max_entries <= 0:
+                return False
+            while self._entries and (
+                self._retained_bytes + size > self.max_bytes
+                or len(self._entries) >= self.max_entries
+            ):
+                _, (_, evicted_size) = self._entries.popitem(last=False)
+                self._retained_bytes -= evicted_size
+            self._entries[key] = (value, size)
+            self._retained_bytes += size
+            return True
 
     def __setitem__(self, key: str, value: dict[str, Any]) -> None:
         self.put(key, value)
